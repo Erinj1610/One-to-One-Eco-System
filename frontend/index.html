@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>One to One Eco System</title>
+
+    <!-- TinyMCE Visual Editor (free, self-hosted via CDN — no account needed) -->
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
+
+    <!-- Print isolation: only show proposal when printing -->
+    <style>
+      @media print {
+        body > *:not(#proposal-print-root) { display: none !important; }
+        #proposal-print-root {
+          display: block !important;
+          position: fixed;
+          inset: 0;
+          z-index: 99999;
+          background: white;
+        }
+      }
+      #proposal-print-root { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Hidden container used by the proposal print system -->
+    <div id="proposal-print-root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
