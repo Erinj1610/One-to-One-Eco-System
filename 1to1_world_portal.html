@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1-to-1 World Portal — Full Prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f5;
+  --bg-tertiary: #f1efe8;
+  --bg-info: #e6f1fb;
+  --bg-success: #eaf3de;
+  --bg-warning: #faeeda;
+  --bg-danger: #fcebeb;
+  --text-primary: #1a1a1a;
+  --text-secondary: #5f5e5a;
+  --text-tertiary: #888780;
+  --text-info: #185fa5;
+  --text-success: #3b6d11;
+  --text-warning: #854f0b;
+  --text-danger: #a32d2d;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.2);
+  --border-info: rgba(24,95,165,0.3);
+  --border-success: rgba(59,109,17,0.3);
+  --border-warning: rgba(133,79,11,0.3);
+  --border-danger: rgba(163,45,45,0.3);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-tertiary); color: var(--text-primary); font-size: 13px; line-height: 1.5; min-height: 100vh; }
+
+/* PORTAL TOGGLE */
+.portal-toggle-bar { background: var(--text-primary); padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; color: white; }
+.portal-toggle-bar .brand { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.toggle-group { display: flex; background: rgba(255,255,255,0.1); border-radius: 6px; padding: 2px; }
+.toggle-btn { padding: 5px 14px; font-size: 12px; color: rgba(255,255,255,0.7); background: none; border: none; cursor: pointer; border-radius: 4px; font-family: inherit; }
+.toggle-btn.active { background: white; color: var(--text-primary); font-weight: 500; }
+
+/* PORTAL LAYOUT */
+.portal { display: flex; height: calc(100vh - 40px); background: var(--bg-primary); }
+.sidebar { width: 200px; background: var(--bg-secondary); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.sb-logo { padding: 14px 14px; border-bottom: 0.5px solid var(--border); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.sb-logo i { font-size: 17px; color: var(--text-info); }
+.sb-sec-label { font-size: 9px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); padding: 12px 12px 4px; }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 12px; border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary); cursor: pointer; margin: 0 6px 1px; border: none; background: none; width: calc(100% - 12px); text-align: left; font-family: inherit; transition: background 0.1s; }
+.nav-item:hover { background: var(--bg-primary); color: var(--text-primary); }
+.nav-item.active { background: var(--bg-primary); color: var(--text-primary); font-weight: 500; }
+.nav-item i { font-size: 15px; flex-shrink: 0; }
+.sb-bottom { border-top: 0.5px solid var(--border); padding: 8px 0; margin-top: auto; }
+
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.topbar { padding: 11px 18px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-primary); flex-shrink: 0; }
+.topbar-title { font-size: 14px; font-weight: 500; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right .icon-btn { color: var(--text-secondary); cursor: pointer; position: relative; }
+.topbar-right .icon-btn .dot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; background: #e24b4a; border-radius: 50%; }
+.av { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-info); color: var(--text-info); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+.content { flex: 1; overflow-y: auto; padding: 18px 22px; }
+
+/* PAGES */
+.page { display: none; }
+.page.active { display: block; }
+
+/* COMMON */
+.btn { font-size: 12px; padding: 6px 12px; border-radius: var(--radius-md); border: 0.5px solid var(--border-strong); background: var(--bg-primary); cursor: pointer; color: var(--text-primary); font-family: inherit; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; transition: background 0.1s; }
+.btn:hover { background: var(--bg-secondary); }
+.btn-primary { background: var(--text-info); color: white; border-color: transparent; }
+.btn-primary:hover { background: #0c447c; }
+.btn-sm { font-size: 11px; padding: 4px 9px; }
+.btn-ghost { border-color: var(--border); }
+.btn-danger { color: var(--text-danger); border-color: var(--border-danger); }
+
+.badge { font-size: 10px; padding: 2px 8px; border-radius: 100px; font-weight: 500; white-space: nowrap; display: inline-block; }
+.b-success { background: var(--bg-success); color: var(--text-success); }
+.b-info { background: var(--bg-info); color: var(--text-info); }
+.b-warning { background: var(--bg-warning); color: var(--text-warning); }
+.b-danger { background: var(--bg-danger); color: var(--text-danger); }
+.b-default { background: var(--bg-secondary); color: var(--text-tertiary); }
+
+.section-label { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 10px; }
+
+/* STATS */
+.stat-grid { display: grid; gap: 10px; margin-bottom: 18px; }
+.stat-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.stat-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.stat { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 12px 14px; }
+.stat-value { font-size: 19px; font-weight: 500; line-height: 1.1; }
+.stat-label { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.stat-info { color: var(--text-info); }
+.stat-success { color: var(--text-success); }
+.stat-warning { color: var(--text-warning); }
+.stat-danger { color: var(--text-danger); }
+
+/* TABLES */
+.table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.table th { text-align: left; padding: 7px 9px; border-bottom: 0.5px solid var(--border); color: var(--text-tertiary); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg-secondary); }
+.table td { padding: 7px 9px; border-bottom: 0.5px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+.table tr.clickable { cursor: pointer; }
+.table tr.clickable:hover td { background: var(--bg-secondary); }
+.link { color: var(--text-info); font-weight: 500; cursor: pointer; }
+.link:hover { text-decoration: underline; }
+
+/* CARDS */
+.card { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 14px; }
+.card-head { padding: 11px 15px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); }
+.card-title { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.card-body { padding: 14px 15px; }
+
+/* TABS */
+.tabs { display: flex; border-bottom: 0.5px solid var(--border); }
+.tab { padding: 9px 15px; font-size: 12px; cursor: pointer; color: var(--text-secondary); border: none; background: none; font-family: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
+.tab-panel { display: none; padding: 15px; }
+.tab-panel.active { display: block; }
+
+/* KV LIST */
+.kv-list { }
+.kv { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+.kv:last-child { border-bottom: none; }
+.kv-key { color: var(--text-secondary); }
+.kv-val { color: var(--text-primary); font-weight: 500; }
+
+/* FORM */
+.form-row { margin-bottom: 14px; }
+.form-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; display: block; }
+.form-control { width: 100%; padding: 7px 10px; border: 0.5px solid var(--border-strong); border-radius: var(--radius-md); font-size: 12px; font-family: inherit; background: var(--bg-primary); color: var(--text-primary); }
+.form-control:focus { outline: none; border-color: var(--text-info); }
+select.form-control { cursor: pointer; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+/* BACK BUTTON */
+.back-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; margin-bottom: 12px; border: none; background: none; font-family: inherit; padding: 0; }
+.back-btn:hover { color: var(--text-primary); }
+
+/* PIPELINE */
+.pipeline { display: flex; gap: 9px; overflow-x: auto; padding-bottom: 8px; min-height: 400px; }
+.pipe-col { min-width: 170px; flex-shrink: 0; }
+.pipe-head { font-size: 11px; font-weight: 500; color: var(--text-secondary); padding: 6px 10px; background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.pipe-card { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-md); padding: 9px 11px; margin-bottom: 6px; cursor: pointer; }
+.pipe-card:hover { border-color: var(--border-strong); }
+.pipe-title { font-size: 12px; font-weight: 500; margin-bottom: 3px; }
+.pipe-val { font-size: 11px; color: var(--text-secondary); }
+
+/* DESIGN STAGES */
+.stage-card { border: 0.5px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 9px; overflow: hidden; }
+.stage-head { display: flex; align-items: center; gap: 11px; padding: 11px 14px; }
+.stage-ico { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.stage-name { font-size: 12px; font-weight: 500; }
+.stage-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.stage-body { border-top: 0.5px solid var(--border); padding: 11px 14px; background: var(--bg-secondary); }
+.deliv-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 0.5px solid var(--border); font-size: 11px; }
+.deliv-row:last-child { border-bottom: none; }
+
+/* DOCS */
+.doc-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+.doc-row:last-child { border-bottom: none; }
+.doc-ico { width: 32px; height: 32px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.doc-name { font-weight: 500; }
+.doc-meta { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+
+/* HR */
+.hr-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 0.5px solid var(--border); }
+.hr-row:last-child { border-bottom: none; }
+.av-md { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; flex-shrink: 0; }
+
+/* TRACKER */
+.tracker-wrap { overflow-x: auto; border: 0.5px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-primary); }
+.tracker-table { border-collapse: collapse; font-size: 11px; min-width: 1500px; width: 100%; }
+.tracker-table th { text-align: left; padding: 7px 9px; border-bottom: 0.5px solid var(--border); border-right: 0.5px solid var(--border); color: var(--text-tertiary); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg-secondary); white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+.tracker-table td { padding: 5px 8px; border-bottom: 0.5px solid var(--border); border-right: 0.5px solid var(--border); color: var(--text-secondary); vertical-align: middle; white-space: nowrap; }
+.tracker-table tr:last-child td { border-bottom: none; }
+.tracker-table tr:hover td { background: var(--bg-secondary); }
+.tracker-table .sticky-col { position: sticky; left: 0; background: var(--bg-primary); z-index: 1; }
+.tracker-table tr:hover .sticky-col { background: var(--bg-secondary); }
+.tracker-select { font-size: 11px; padding: 3px 6px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; font-family: inherit; max-width: 120px; }
+.tracker-select:focus { outline: none; border-color: var(--text-info); }
+
+/* TOAST */
+.toast { position: fixed; bottom: 20px; right: 20px; background: #1a1a1a; color: white; padding: 9px 16px; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; opacity: 0; transform: translateY(20px); transition: opacity 0.3s, transform 0.3s; pointer-events: none; z-index: 999; display: flex; align-items: center; gap: 7px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* MODAL */
+.modal-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal-bg.active { display: flex; }
+.modal { background: var(--bg-primary); border-radius: var(--radius-lg); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+.modal-head { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-size: 14px; font-weight: 500; }
+.modal-close { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 16px; padding: 4px; }
+.modal-body { padding: 16px 18px; }
+.modal-footer { padding: 12px 18px; border-top: 0.5px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+/* PROGRESS BAR */
+.progress-bar { background: var(--border); border-radius: 100px; height: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--text-info); border-radius: 100px; transition: width 0.3s; }
+
+/* PERMISSIONS BUILDER */
+.perm-roles { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.perm-role-chip { padding: 6px 12px; border-radius: 100px; font-size: 11px; border: 0.5px solid var(--border-strong); cursor: pointer; background: none; color: var(--text-secondary); font-family: inherit; }
+.perm-role-chip.active { background: var(--bg-info); color: var(--text-info); border-color: transparent; font-weight: 500; }
+.perm-row { display: flex; align-items: center; padding: 9px 0; border-bottom: 0.5px solid var(--border); }
+.perm-row:last-child { border-bottom: none; }
+.perm-section { flex: 1; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.perm-section i { font-size: 14px; color: var(--text-tertiary); }
+
+/* DESIGN FEE CALC */
+.calc-toggle { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.calc-toggle label { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; padding: 5px 11px; border: 0.5px solid var(--border); border-radius: 100px; }
+.calc-toggle label:has(input:checked) { background: var(--bg-info); color: var(--text-info); border-color: transparent; }
+.calc-total { background: var(--bg-info); border-radius: var(--radius-lg); padding: 16px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.calc-total-label { font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-info); }
+.calc-total-val { font-size: 24px; font-weight: 500; color: var(--text-info); margin-top: 3px; }
+
+/* CLIENT PORTAL */
+.cp-header { background: var(--bg-primary); border-bottom: 0.5px solid var(--border); padding: 14px 22px; display: flex; align-items: center; justify-content: space-between; }
+.cp-logo { font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.cp-logo i { color: var(--text-info); font-size: 18px; }
+.cp-nav { background: var(--bg-primary); border-bottom: 0.5px solid var(--border); padding: 0 22px; display: flex; gap: 0; }
+.cp-nav-item { padding: 11px 16px; font-size: 12px; cursor: pointer; color: var(--text-secondary); border: none; background: none; font-family: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.cp-nav-item.active { color: var(--text-primary); font-weight: 500; border-bottom-color: var(--text-primary); }
+.cp-content { padding: 22px; max-width: 1100px; margin: 0 auto; }
+.action-card { background: var(--bg-warning); border: 0.5px solid var(--border-warning); border-radius: var(--radius-lg); padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.action-card-title { font-size: 13px; font-weight: 500; color: var(--text-warning); display: flex; align-items: center; gap: 6px; }
+.action-card-desc { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+.project-card { border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.1s; }
+.project-card:hover { border-color: var(--border-strong); }
+.pc-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.pc-title { font-size: 14px; font-weight: 500; }
+.pc-sub { font-size: 11px; color: var(--text-secondary); margin-top: 3px; }
+.pc-progress { margin-top: 8px; }
+.pc-meta { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; color: var(--text-tertiary); }
+
+/* BOQ */
+.boq-line { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid var(--border); font-size: 11px; align-items: center; }
+.boq-line.header { font-weight: 500; color: var(--text-tertiary); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.boq-input { padding: 4px 6px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; width: 100%; font-family: inherit; }
+
+/* LEAVE CALENDAR */
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border: 0.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.cal-day-head { background: var(--bg-secondary); padding: 7px; font-size: 10px; font-weight: 500; color: var(--text-tertiary); text-align: center; text-transform: uppercase; letter-spacing: 0.04em; }
+.cal-day { background: var(--bg-primary); padding: 7px; min-height: 56px; font-size: 11px; }
+.cal-day.other-month { color: var(--text-tertiary); opacity: 0.4; }
+.cal-leave { font-size: 9px; padding: 2px 5px; border-radius: 3px; margin-top: 3px; }
+
+@media (max-width: 900px) {
+  .row-2, .row-3 { grid-template-columns: 1fr; }
+  .stat-grid-4, .stat-grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .sidebar { width: 60px; }
+  .sb-logo span, .sb-sec-label, .nav-item span { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="portal-toggle-bar">
+  <div class="brand"><i class="ti ti-bulb"></i> 1-to-1 World Portal</div>
+  <div class="toggle-group">
+    <button class="toggle-btn active" onclick="switchPortal('staff')">Staff Portal</button>
+    <button class="toggle-btn" onclick="switchPortal('client')">Client View</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ STAFF PORTAL ═══════════════════════════════════════ -->
+<div id="staff-portal" class="portal">
+  <div class="sidebar">
+    <div class="sb-logo"><i class="ti ti-bulb"></i> <span>1-to-1 World</span></div>
+    <button class="nav-item active" onclick="navTo(this,'dashboard')"><i class="ti ti-home"></i><span>Dashboard</span></button>
+    <div class="sb-sec-label">Clients & sales</div>
+    <button class="nav-item" onclick="navTo(this,'crm')"><i class="ti ti-address-book"></i><span>CRM</span></button>
+    <button class="nav-item" onclick="navTo(this,'pipeline')"><i class="ti ti-trending-up"></i><span>Sales pipeline</span></button>
+    <div class="sb-sec-label">Projects</div>
+    <button class="nav-item" onclick="navTo(this,'tracker')"><i class="ti ti-table"></i><span>Design tracker</span></button>
+    <button class="nav-item" onclick="navTo(this,'projects')"><i class="ti ti-layout-kanban"></i><span>Projects</span></button>
+    <button class="nav-item" onclick="navTo(this,'designfee')"><i class="ti ti-calculator"></i><span>Design fee calc</span></button>
+    <button class="nav-item" onclick="navTo(this,'time')"><i class="ti ti-clock"></i><span>Time tracking</span></button>
+    <div class="sb-sec-label">Operations</div>
+    <button class="nav-item" onclick="navTo(this,'products')"><i class="ti ti-package"></i><span>Products</span></button>
+    <button class="nav-item" onclick="navTo(this,'boq')"><i class="ti ti-list-numbers"></i><span>BOQ maker</span></button>
+    <button class="nav-item" onclick="navTo(this,'orders')"><i class="ti ti-truck-delivery"></i><span>Orders</span></button>
+    <button class="nav-item" onclick="navTo(this,'invoices')"><i class="ti ti-receipt"></i><span>Invoices</span></button>
+    <button class="nav-item" onclick="navTo(this,'docs')"><i class="ti ti-folder"></i><span>Documents</span></button>
+    <div class="sb-sec-label">People</div>
+    <button class="nav-item" onclick="navTo(this,'hr')"><i class="ti ti-id-badge"></i><span>HR & people</span></button>
+    <button class="nav-item" onclick="navTo(this,'reports')"><i class="ti ti-chart-bar"></i><span>Reports</span></button>
+    <button class="nav-item" onclick="navTo(this,'support')"><i class="ti ti-headset"></i><span>Support</span></button>
+    <div class="sb-bottom">
+      <button class="nav-item" onclick="navTo(this,'settings')"><i class="ti ti-settings"></i><span>Settings</span></button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-right">
+        <i class="ti ti-bell icon-btn" style="font-size:16px"><span class="dot"></span></i>
+        <div class="av">JV</div>
+      </div>
+    </div>
+    <div class="content">
+
+<!-- ============ DASHBOARD ============ -->
+<div class="page active" id="page-dashboard">
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">12</div><div class="stat-label">Active projects</div></div>
+    <div class="stat"><div class="stat-value stat-warning">R 2.1M</div><div class="stat-label">Outstanding fees</div></div>
+    <div class="stat"><div class="stat-value">4</div><div class="stat-label">Awaiting client</div></div>
+    <div class="stat"><div class="stat-value stat-danger">3</div><div class="stat-label">Off track</div></div>
+  </div>
+  <div class="section-label">Active projects</div>
+  <div class="card">
+    <table class="table">
+      <thead><tr><th>Project</th><th>Offering</th><th>PM</th><th>Stage</th><th>Deadline</th><th>Status</th><th>Outstanding</th></tr></thead>
+      <tbody id="dash-projects"></tbody>
+    </table>
+  </div>
+  <div class="section-label">Today's tasks</div>
+  <div class="card"><div class="card-body">
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:0.5px solid var(--border)"><i class="ti ti-circle" style="color:var(--text-tertiary)"></i><span style="flex:1">Upload Stage 2 layouts — Upper Primrose</span><span class="badge b-warning">Due today</span></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:0.5px solid var(--border)"><i class="ti ti-circle" style="color:var(--text-tertiary)"></i><span style="flex:1">Chase client approval — Villa Z Stage 3</span><span class="badge b-danger">Overdue</span></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0"><i class="ti ti-circle-check" style="color:var(--text-success)"></i><span style="flex:1;text-decoration:line-through;color:var(--text-tertiary)">Send proposal — Nando's exterior</span><span class="badge b-success">Done</span></div>
+  </div></div>
+</div>
+
+<!-- ============ CRM ============ -->
+<div class="page" id="page-crm">
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">38</div><div class="stat-label">Total clients</div></div>
+    <div class="stat"><div class="stat-value stat-success">R 8.4M</div><div class="stat-label">Lifetime fees billed</div></div>
+    <div class="stat"><div class="stat-value stat-info">5</div><div class="stat-label">Active leads</div></div>
+    <div class="stat"><div class="stat-value stat-danger">12</div><div class="stat-label">Lost leads</div></div>
+  </div>
+  <div class="row-2">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="section-label" style="margin:0">Top clients by revenue</div><button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New client</button></div>
+      <div id="top-clients"></div>
+    </div>
+    <div>
+      <div class="section-label">Active leads</div>
+      <div class="card" style="margin-bottom:12px"><table class="table">
+        <thead><tr><th>Lead</th><th>Value</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="link">Clifton villa</td><td>R 280k</td><td><span class="badge b-warning">Proposal sent</span></td></tr>
+          <tr><td class="link">Franschhoek lodge</td><td>R 420k</td><td><span class="badge b-info">Brief received</span></td></tr>
+          <tr><td class="link">Waters Edge 61</td><td>R 74k</td><td><span class="badge b-warning">Proposal sent</span></td></tr>
+          <tr><td class="link">Waterfall retail</td><td>R 95k</td><td><span class="badge b-default">Enquiry</span></td></tr>
+          <tr><td class="link">Omoyo Hospitality</td><td>R 90k</td><td><span class="badge b-warning">Proposal sent</span></td></tr>
+        </tbody></table></div>
+      <div class="section-label">Recent lost leads</div>
+      <div class="card"><table class="table">
+        <thead><tr><th>Lead</th><th>Value</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--text-tertiary)">Hyde Park penthouse</td><td>R 180k</td><td style="color:var(--text-danger);font-size:11px">Price</td></tr>
+          <tr><td style="color:var(--text-tertiary)">Steyn City villa</td><td>R 320k</td><td style="color:var(--text-danger);font-size:11px">Went elsewhere</td></tr>
+          <tr><td style="color:var(--text-tertiary)">Bali resort</td><td>R 890k</td><td style="color:var(--text-danger);font-size:11px">Budget cut</td></tr>
+        </tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CLIENT DETAIL ============ -->
+<div class="page" id="page-client-detail">
+  <button class="back-btn" onclick="navTo(document.querySelectorAll('.nav-item')[1],'crm')"><i class="ti ti-arrow-left"></i> CRM</button>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">
+        <div class="av av-md" id="client-avatar">SA</div>
+        <div>
+          <div style="font-size:14px;font-weight:500" id="client-name">SAOTA</div>
+          <div style="font-size:11px;color:var(--text-tertiary)" id="client-sub">Architecture · Cape Town</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px"><button class="btn btn-sm"><i class="ti ti-mail"></i> Email</button><button class="btn btn-sm"><i class="ti ti-edit"></i> Edit</button></div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab(this,'client','overview')">Overview</button>
+      <button class="tab" onclick="switchTab(this,'client','projects')">Projects</button>
+      <button class="tab" onclick="switchTab(this,'client','proposals')">Proposals</button>
+      <button class="tab" onclick="switchTab(this,'client','orders')">Orders</button>
+      <button class="tab" onclick="switchTab(this,'client','financials')">Financials</button>
+      <button class="tab" onclick="switchTab(this,'client','log')">Activity log</button>
+    </div>
+    <div class="tab-panel active" data-tab-group="client" data-tab="overview">
+      <div class="stat-grid stat-grid-3">
+        <div class="stat"><div class="stat-value">8</div><div class="stat-label">Total projects</div></div>
+        <div class="stat"><div class="stat-value stat-info">R 3.2M</div><div class="stat-label">Total billed</div></div>
+        <div class="stat"><div class="stat-value stat-warning">R 1.2M</div><div class="stat-label">Outstanding</div></div>
+      </div>
+      <div class="row-2">
+        <div>
+          <div class="section-label">Contact details</div>
+          <div class="kv"><span class="kv-key">Primary contact</span><span class="kv-val">Greg Truen</span></div>
+          <div class="kv"><span class="kv-key">Email</span><span class="kv-val" style="color:var(--text-info)">g.truen@saota.com</span></div>
+          <div class="kv"><span class="kv-key">Phone</span><span class="kv-val">+27 21 468 4400</span></div>
+          <div class="kv"><span class="kv-key">Address</span><span class="kv-val">Cape Town, SA</span></div>
+          <div class="kv"><span class="kv-key">Client since</span><span class="kv-val">2022</span></div>
+        </div>
+        <div>
+          <div class="section-label">Relationship summary</div>
+          <div class="kv"><span class="kv-key">Active projects</span><span class="kv-val">4</span></div>
+          <div class="kv"><span class="kv-key">Completed</span><span class="kv-val">3</span></div>
+          <div class="kv"><span class="kv-key">Lost proposals</span><span class="kv-val">1</span></div>
+          <div class="kv"><span class="kv-key">Preferred PM</span><span class="kv-val">Dani / Martin</span></div>
+          <div class="kv"><span class="kv-key">Notes</span><span style="font-size:11px;color:var(--text-secondary)">Long-term referral partner</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="client" data-tab="projects">
+      <table class="table">
+        <thead><tr><th>Project</th><th>Offering</th><th>PM</th><th>Stage</th><th>Fee</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr class="clickable" onclick="openProject('upper')"><td class="link">Upper Primrose</td><td>Signature</td><td>Dani</td><td>Stage 1</td><td>R 1.88M</td><td><span class="badge b-info">Active</span></td></tr>
+          <tr class="clickable" onclick="openProject('villa')"><td class="link">Villa Z</td><td>Signature</td><td>Martin</td><td>Stage 3</td><td>R 436k</td><td><span class="badge b-danger">Off track</span></td></tr>
+          <tr class="clickable" onclick="openProject('sissou')"><td class="link">House Sissou</td><td>Signature</td><td>Dani</td><td>Stage 2</td><td>R 618k</td><td><span class="badge b-info">Active</span></td></tr>
+          <tr><td class="link">Nettleton 16</td><td>Signature</td><td>Dani</td><td>Snags</td><td>R 958k</td><td><span class="badge b-success">Complete</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tab-panel" data-tab-group="client" data-tab="proposals">
+      <table class="table">
+        <thead><tr><th>Proposal</th><th>Sent</th><th>Fee (excl.)</th><th>Outcome</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="link">Upper Primrose</td><td>29 Apr 26</td><td>R 1,888,225</td><td><span class="badge b-success">Approved</span></td><td style="font-size:11px">Converted to project</td></tr>
+          <tr><td class="link">Villa Z</td><td>22 Nov 23</td><td>R 436,727</td><td><span class="badge b-success">Approved</span></td><td style="font-size:11px">Converted to project</td></tr>
+          <tr><td class="link">House Sissou</td><td>12 Mar 24</td><td>R 618,190</td><td><span class="badge b-success">Approved</span></td><td style="font-size:11px">Converted to project</td></tr>
+          <tr><td class="link">Hyde Park penthouse</td><td>3 Jan 24</td><td>R 180,000</td><td><span class="badge b-danger">Lost</span></td><td style="font-size:11px;color:var(--text-danger)">Price — went elsewhere</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tab-panel" data-tab-group="client" data-tab="orders">
+      <table class="table">
+        <thead><tr><th>Order #</th><th>Project</th><th>Supplier</th><th>Value</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="link">PO-083</td><td>Upper Primrose</td><td>ERCO SA</td><td>R 198,750</td><td><span class="badge b-info">Ordered</span></td></tr>
+          <tr><td class="link">PO-079</td><td>House Sissou</td><td>Flos SA</td><td>R 145,200</td><td><span class="badge b-success">Received</span></td></tr>
+          <tr><td class="link">PO-072</td><td>Villa Z</td><td>Multiple</td><td>R 412,000</td><td><span class="badge b-success">Received</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tab-panel" data-tab-group="client" data-tab="financials">
+      <div class="stat-grid stat-grid-3">
+        <div class="stat"><div class="stat-value">R 3.2M</div><div class="stat-label">Total billed (excl.)</div></div>
+        <div class="stat"><div class="stat-value stat-success">R 2.0M</div><div class="stat-label">Total received</div></div>
+        <div class="stat"><div class="stat-value stat-warning">R 1.2M</div><div class="stat-label">Outstanding</div></div>
+      </div>
+      <div class="section-label">Invoice history</div>
+      <table class="table">
+        <thead><tr><th>Invoice</th><th>Project</th><th>Amount</th><th>Paid</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="link">INV-112</td><td>Upper Primrose</td><td>R 565,720</td><td>R 565,720</td><td><span class="badge b-success">Paid</span></td></tr>
+          <tr><td class="link">INV-109</td><td>House Sissou</td><td>R 178,000</td><td>R 178,000</td><td><span class="badge b-success">Paid</span></td></tr>
+          <tr><td class="link">INV-104</td><td>Villa Z</td><td>R 218,363</td><td>R 218,363</td><td><span class="badge b-success">Paid</span></td></tr>
+          <tr><td class="link">INV-098</td><td>Upper Primrose</td><td>R 473,543</td><td>R 0</td><td><span class="badge b-danger">Overdue</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tab-panel" data-tab-group="client" data-tab="log">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="section-label" style="margin:0">Activity log</div><button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> Add note</button></div>
+      <div style="border-left:2px solid var(--border);padding-left:14px;margin-left:6px">
+        <div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px">Stage 2 layouts sent for client review — Upper Primrose</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">8 May 2026 · Lerato M.</div></div>
+        <div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px">Deposit received R 565,720 — Upper Primrose</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">29 Apr 2026 · Dani M.</div></div>
+        <div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px">Proposal approved — Upper Primrose. Converted to project.</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">29 Apr 2026 · System</div></div>
+        <div style="padding:10px 0;border-bottom:0.5px solid var(--border)"><div style="font-size:12px">Proposal sent — Upper Primrose R 1,888,225</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">28 Apr 2026 · Dani M.</div></div>
+        <div style="padding:10px 0"><div style="font-size:12px">Phone call — Greg confirmed scope. 3,700m² confirmed.</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:3px">15 Apr 2026 · Dani M.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SALES PIPELINE ============ -->
+<div class="page" id="page-pipeline">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">Sales pipeline</div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New lead</button>
+  </div>
+  <div class="pipeline">
+    <div class="pipe-col">
+      <div class="pipe-head">Enquiry <span>2</span></div>
+      <div class="pipe-card"><div class="pipe-title">Clifton villa</div><div class="pipe-val">Signature · R est. 280k</div></div>
+      <div class="pipe-card"><div class="pipe-title">Waterfall retail</div><div class="pipe-val">Modus · R est. 95k</div></div>
+    </div>
+    <div class="pipe-col">
+      <div class="pipe-head">Brief received <span>1</span></div>
+      <div class="pipe-card"><div class="pipe-title">Franschhoek lodge</div><div class="pipe-val">Signature · 2,400m²</div></div>
+    </div>
+    <div class="pipe-col">
+      <div class="pipe-head">Proposal sent <span>3</span></div>
+      <div class="pipe-card"><div class="pipe-title">Nando's exterior</div><div class="pipe-val">Modus · R 68,640</div></div>
+      <div class="pipe-card"><div class="pipe-title">Omoyo Hospitality</div><div class="pipe-val">Portfolio · R 90,613</div></div>
+      <div class="pipe-card"><div class="pipe-title">Waters Edge 61</div><div class="pipe-val">Professional · R 74,000</div></div>
+    </div>
+    <div class="pipe-col">
+      <div class="pipe-head">Approved <span>2</span></div>
+      <div class="pipe-card" style="border-color:var(--border-success)"><div class="pipe-title">Upper Primrose</div><div class="pipe-val" style="color:var(--text-success)">R 1.88M · Convert →</div></div>
+      <div class="pipe-card" style="border-color:var(--border-success)"><div class="pipe-title">Nando's Stlbsch ext</div><div class="pipe-val" style="color:var(--text-success)">R 171,600 · Convert →</div></div>
+    </div>
+    <div class="pipe-col">
+      <div class="pipe-head">Won <span>14</span></div>
+      <div class="pipe-card"><div class="pipe-title">Singita Elela</div><div class="pipe-val">R 1.0M</div></div>
+      <div class="pipe-card"><div class="pipe-title">Villa Z</div><div class="pipe-val">R 436,727</div></div>
+    </div>
+    <div class="pipe-col">
+      <div class="pipe-head">Lost <span>12</span></div>
+      <div class="pipe-card" style="opacity:0.6"><div class="pipe-title">Hyde Park penthouse</div><div class="pipe-val" style="color:var(--text-danger)">Price</div></div>
+      <div class="pipe-card" style="opacity:0.6"><div class="pipe-title">Bali resort</div><div class="pipe-val" style="color:var(--text-danger)">Budget cut</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DESIGN TRACKER ============ -->
+<div class="page" id="page-tracker">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div>
+      <div class="section-label" style="margin:0">Design tracker</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">Edit inline or open a project — changes sync both ways instantly</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All PMs</option><option>Martin</option><option>Dani</option></select>
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All status</option><option>On track</option><option>Off track</option></select>
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All offerings</option><option>Signature</option><option>Modus</option><option>Professional</option></select>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New project</button>
+    </div>
+  </div>
+  <div class="tracker-wrap">
+    <table class="tracker-table" id="tracker-table">
+      <thead><tr>
+        <th class="sticky-col" style="min-width:160px">Project</th>
+        <th>Offering</th><th>SQM</th><th>PM</th><th>Stage</th><th>Status</th><th>Delay reason</th>
+        <th>Design start</th><th>Deadline</th><th>Days left</th>
+        <th>Fee excl. VAT</th><th>Fee paid</th><th>Outstanding</th>
+        <th>Product approved</th><th>Complete/Ongoing</th>
+        <th>S1</th><th>S2</th><th>S3</th><th>S4</th><th>S5</th>
+      </tr></thead>
+      <tbody id="tracker-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============ PROJECTS LIST ============ -->
+<div class="page" id="page-projects">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">All projects</div>
+    <div style="display:flex;gap:6px">
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All PMs</option><option>Martin</option><option>Dani</option></select>
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All status</option></select>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New project</button>
+    </div>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>Project</th><th>Offering</th><th>PM</th><th>Stage</th><th>Deadline</th><th>Status</th><th>Design fee</th><th>Outstanding</th></tr></thead>
+    <tbody id="projects-list"></tbody>
+  </table></div>
+</div>
+
+<!-- ============ PROJECT DETAIL ============ -->
+<div class="page" id="page-project-detail">
+  <button class="back-btn" onclick="navTo(document.querySelectorAll('.nav-item')[4],'projects')"><i class="ti ti-arrow-left"></i> All projects</button>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><i class="ti ti-bulb" style="font-size:15px"></i><span id="proj-name">Upper Primrose</span><span class="badge b-info" id="proj-badge">On track</span></div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)">
+        <div class="av" style="width:24px;height:24px;font-size:10px">DM</div><span id="proj-pm">Dani</span>
+        <span class="badge b-warning" id="proj-stage-badge">Stage 1</span>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab(this,'project','overview')">Overview</button>
+      <button class="tab" onclick="switchTab(this,'project','design')">Design stages</button>
+      <button class="tab" onclick="switchTab(this,'project','boq')">BOQ & products</button>
+      <button class="tab" onclick="switchTab(this,'project','docs')">Documents</button>
+      <button class="tab" onclick="switchTab(this,'project','team')">Team & time</button>
+      <button class="tab" onclick="switchTab(this,'project','fin')">Financials</button>
+    </div>
+    <div class="tab-panel active" data-tab-group="project" data-tab="overview">
+      <div style="background:var(--bg-info);border-radius:var(--radius-md);padding:9px 13px;margin-bottom:14px;font-size:11px;color:var(--text-info);display:flex;align-items:center;gap:6px">
+        <i class="ti ti-refresh"></i> Changes made here sync live to the Design tracker and dashboard
+      </div>
+      <div class="stat-grid stat-grid-4">
+        <div class="stat"><div class="stat-value" id="ov-stage">Stage 1</div><div class="stat-label">Current stage</div></div>
+        <div class="stat"><div class="stat-value" id="ov-sqm">3,700 m²</div><div class="stat-label">Area</div></div>
+        <div class="stat"><div class="stat-value" id="ov-deadline">12 May</div><div class="stat-label">Next deadline</div></div>
+        <div class="stat"><div class="stat-value stat-warning" id="ov-out">R 848,961</div><div class="stat-label">Outstanding</div></div>
+      </div>
+      <div class="row-2">
+        <div>
+          <div class="section-label">Project details</div>
+          <div class="kv"><span class="kv-key">Client</span><span class="kv-val link" id="ov-client" onclick="openClient('saota')">SAOTA</span></div>
+          <div class="kv"><span class="kv-key">Offering</span><span class="kv-val" id="ov-offer">Signature</span></div>
+          <div class="kv"><span class="kv-key">SQM</span><span class="kv-val" id="ov-sqm2">3,700 m²</span></div>
+          <div class="kv"><span class="kv-key">Design start</span><span class="kv-val" id="ov-start">29 Apr 2026</span></div>
+          <div class="kv"><span class="kv-key">Hours logged</span><span class="kv-val">81 hrs</span></div>
+        </div>
+        <div>
+          <div class="section-label">Update project status</div>
+          <div class="form-row">
+            <label class="form-label">Current stage</label>
+            <select class="form-control" id="proj-stage-sel" onchange="updateFromProject('stage',this.value)">
+              <option>Stage 1</option><option>Stage 2</option><option>Stage 3</option><option>Stage 4</option><option>Stage 5</option><option>Snags/Site visit</option><option>Ongoing</option><option>Complete</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Status</label>
+            <select class="form-control" id="proj-status-sel" onchange="updateFromProject('status',this.value)">
+              <option>On track</option><option>Off track</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Delay reason</label>
+            <select class="form-control" id="proj-delay-sel" onchange="updateFromProject('delay',this.value)">
+              <option>—</option><option>Awaiting feedback/approval</option><option>Complex design iteration/rework required</option><option>Unforeseen technical challenges</option><option>Incomplete/pending initial project requirements</option><option>Snags/Site visit</option><option>Other</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Complete/Ongoing</label>
+            <select class="form-control" id="proj-complete-sel" onchange="updateFromProject('complete',this.value)">
+              <option>Ongoing</option><option>Complete</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="project" data-tab="design">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="section-label" style="margin:0">Design stages</div>
+        <button class="btn btn-primary btn-sm"><i class="ti ti-upload"></i> Upload deliverable</button>
+      </div>
+      <div class="stage-card">
+        <div class="stage-head">
+          <div class="stage-ico" style="background:var(--bg-success);color:var(--text-success)"><i class="ti ti-circle-check"></i></div>
+          <div style="flex:1"><div class="stage-name">Stage 1 — Concept design</div><div class="stage-sub">Client approved 10 May 2026</div></div>
+          <span class="badge b-success">Approved</span>
+        </div>
+        <div class="stage-body">
+          <div class="deliv-row"><i class="ti ti-file" style="color:var(--text-tertiary)"></i><span style="flex:1">Mood board v1.pdf</span><span class="badge b-success">Approved</span></div>
+          <div class="deliv-row"><i class="ti ti-file" style="color:var(--text-tertiary)"></i><span style="flex:1">Space-by-space lux analysis.pdf</span><span class="badge b-success">Approved</span></div>
+        </div>
+      </div>
+      <div class="stage-card" style="border-color:var(--border-info)">
+        <div class="stage-head">
+          <div class="stage-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-clock"></i></div>
+          <div style="flex:1"><div class="stage-name">Stage 2 — Schematic design</div><div class="stage-sub">Sent for review 8 May 2026</div></div>
+          <span class="badge b-warning">Awaiting client</span>
+        </div>
+        <div class="stage-body">
+          <div class="deliv-row"><i class="ti ti-file" style="color:var(--text-tertiary)"></i><span style="flex:1">RCP lighting plan all floors v1.dwg</span><span class="badge b-warning">In review</span></div>
+          <div class="deliv-row"><i class="ti ti-file" style="color:var(--text-tertiary)"></i><span style="flex:1">Luminaire specification v1.pdf</span><span class="badge b-warning">In review</span></div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="btn btn-sm"><i class="ti ti-upload"></i> Upload revision</button>
+            <button class="btn btn-sm"><i class="ti ti-send"></i> Chase client</button>
+          </div>
+        </div>
+      </div>
+      <div class="stage-card" style="opacity:0.5">
+        <div class="stage-head">
+          <div class="stage-ico" style="background:var(--bg-secondary);color:var(--text-tertiary)"><i class="ti ti-lock"></i></div>
+          <div style="flex:1"><div class="stage-name">Stage 3 — Schematic 100%</div><div class="stage-sub">Locked until Stage 2 approved</div></div>
+          <span class="badge b-default">Not started</span>
+        </div>
+      </div>
+      <div class="stage-card" style="opacity:0.35">
+        <div class="stage-head">
+          <div class="stage-ico" style="background:var(--bg-secondary);color:var(--text-tertiary)"><i class="ti ti-lock"></i></div>
+          <div style="flex:1"><div class="stage-name">Stage 4 — Final design</div></div>
+          <span class="badge b-default">Not started</span>
+        </div>
+      </div>
+      <div class="stage-card" style="opacity:0.25">
+        <div class="stage-head">
+          <div class="stage-ico" style="background:var(--bg-secondary);color:var(--text-tertiary)"><i class="ti ti-lock"></i></div>
+          <div style="flex:1"><div class="stage-name">Stage 5 — Snags / site visit</div></div>
+          <span class="badge b-default">Not started</span>
+        </div>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="project" data-tab="boq">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="section-label" style="margin:0">Bill of Quantities</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm"><i class="ti ti-file-export"></i> Generate client quote</button>
+          <button class="btn btn-sm"><i class="ti ti-truck"></i> Create PO</button>
+          <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> Add product</button>
+        </div>
+      </div>
+      <div class="card"><div class="card-body">
+        <div class="boq-line header">
+          <div>Product</div><div>Area</div><div>Qty</div><div>Cost</div><div>Retail</div><div></div>
+        </div>
+        <div class="boq-line">
+          <div style="font-weight:500">ERCO Parscan 50W LED</div>
+          <input class="boq-input" value="Lobby">
+          <input class="boq-input" type="number" value="24">
+          <div>R 1,950</div>
+          <div>R 3,200</div>
+          <button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="boq-line">
+          <div style="font-weight:500">Flos Aim pendant</div>
+          <input class="boq-input" value="Reception">
+          <input class="boq-input" type="number" value="8">
+          <div>R 1,100</div>
+          <div>R 1,850</div>
+          <button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="boq-line">
+          <div style="font-weight:500">Vibia Guise wall</div>
+          <input class="boq-input" value="Corridors">
+          <input class="boq-input" type="number" value="12">
+          <div>R 1,250</div>
+          <div>R 2,100</div>
+          <button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button>
+        </div>
+      </div></div>
+      <div class="stat-grid stat-grid-3" style="margin-top:14px">
+        <div class="stat"><div class="stat-value">R 88,400</div><div class="stat-label">Total cost (internal)</div></div>
+        <div class="stat"><div class="stat-value stat-info">R 148,000</div><div class="stat-label">Total retail (client)</div></div>
+        <div class="stat"><div class="stat-value stat-success">R 59,600</div><div class="stat-label">Gross margin</div></div>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="project" data-tab="docs">
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary">All</button>
+        <button class="btn btn-sm">Design files</button>
+        <button class="btn btn-sm">Proposals</button>
+        <button class="btn btn-sm">Invoices</button>
+        <button class="btn btn-sm">Orders</button>
+        <button class="btn btn-sm">Contracts</button>
+        <button class="btn btn-primary btn-sm" style="margin-left:auto"><i class="ti ti-upload"></i> Upload</button>
+      </div>
+      <div class="card"><div class="card-body">
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">RCP lighting plan v1.dwg</div><div class="doc-meta">Design · Stage 2 · 8 May · Client visible</div></div><span class="badge b-warning">In review</span></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-success);color:var(--text-success)"><i class="ti ti-file-text"></i></div><div style="flex:1"><div class="doc-name">Proposal P-2026-031.pdf</div><div class="doc-meta">Proposal · 29 Apr · Client visible</div></div><span class="badge b-success">Approved</span></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-warning);color:var(--text-warning)"><i class="ti ti-receipt"></i></div><div style="flex:1"><div class="doc-name">INV-112 — Deposit.pdf</div><div class="doc-meta">Invoice · 29 Apr · Client visible</div></div><span class="badge b-success">Paid</span></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-secondary);color:var(--text-tertiary)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">Internal working notes.docx</div><div class="doc-meta">Other · Internal only</div></div><span class="badge b-default">Internal</span></div>
+      </div></div>
+    </div>
+    <div class="tab-panel" data-tab-group="project" data-tab="team">
+      <div class="section-label">Team</div>
+      <div class="card"><div class="card-body">
+        <div class="hr-row"><div class="av-md" style="background:var(--bg-info);color:var(--text-info)">DM</div><div style="flex:1"><div style="font-weight:500">Dani Muller</div><div style="font-size:11px;color:var(--text-tertiary)">Project manager</div></div><div style="font-size:12px;color:var(--text-secondary)">22 hrs</div></div>
+        <div class="hr-row"><div class="av-md" style="background:var(--bg-success);color:var(--text-success)">LM</div><div style="flex:1"><div style="font-weight:500">Lerato Mokoena</div><div style="font-size:11px;color:var(--text-tertiary)">Senior designer</div></div><div style="font-size:12px;color:var(--text-secondary)">41 hrs</div></div>
+        <div class="hr-row"><div class="av-md" style="background:var(--bg-warning);color:var(--text-warning)">TK</div><div style="flex:1"><div style="font-weight:500">Tanya Kruger</div><div style="font-size:11px;color:var(--text-tertiary)">Junior designer</div></div><div style="font-size:12px;color:var(--text-secondary)">18 hrs</div></div>
+      </div></div>
+      <div style="margin-top:14px;display:flex;gap:6px"><button class="btn btn-sm"><i class="ti ti-plus"></i> Add member</button><button class="btn btn-primary btn-sm"><i class="ti ti-player-play"></i> Log time</button></div>
+    </div>
+    <div class="tab-panel" data-tab-group="project" data-tab="fin">
+      <div class="stat-grid stat-grid-3">
+        <div class="stat"><div class="stat-value">R 1,888,225</div><div class="stat-label">Total fee (excl.)</div></div>
+        <div class="stat"><div class="stat-value stat-success">R 1,039,264</div><div class="stat-label">Received</div></div>
+        <div class="stat"><div class="stat-value stat-warning">R 848,961</div><div class="stat-label">Outstanding</div></div>
+      </div>
+      <div class="section-label">Payment schedule</div>
+      <div class="card" style="margin-bottom:12px"><table class="table">
+        <thead><tr><th>Milestone</th><th style="text-align:right">Amount</th><th>Invoice</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Deposit</td><td style="text-align:right;font-weight:500;color:var(--text-primary)">R 565,720</td><td style="color:var(--text-info)">INV-112</td><td><span class="badge b-success">Paid</span></td></tr>
+          <tr><td>Stage 2 completion</td><td style="text-align:right;font-weight:500;color:var(--text-primary)">R 473,543</td><td style="color:var(--text-tertiary)">Not raised</td><td><span class="badge b-default">Queued</span></td></tr>
+          <tr><td>Final balance</td><td style="text-align:right;font-weight:500;color:var(--text-primary)">R 848,961</td><td style="color:var(--text-tertiary)">Not raised</td><td><span class="badge b-default">Queued</span></td></tr>
+        </tbody>
+      </table></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary btn-sm"><i class="ti ti-receipt"></i> Raise next invoice</button>
+        <button class="btn btn-sm"><i class="ti ti-plus"></i> Record payment</button>
+        <button class="btn btn-sm"><i class="ti ti-refresh"></i> Issue refund</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DESIGN FEE CALCULATOR ============ -->
+<div class="page" id="page-designfee">
+  <div class="section-label">Design fee calculator</div>
+  <div class="card"><div class="card-body">
+    <div class="row-2">
+      <div class="form-row">
+        <label class="form-label">Interior area (m²)</label>
+        <input type="number" class="form-control" id="calc-interior" value="250" onchange="calcFee()">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Landscape area (m²)</label>
+        <input type="number" class="form-control" id="calc-landscape" value="0" onchange="calcFee()">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Fee type</label>
+      <select class="form-control" id="calc-feetype" onchange="calcFee()">
+        <option>Signature</option><option>Modus Signature</option><option>Modus Projects</option><option>Professional</option><option>Portfolio</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Stages</label>
+      <div class="calc-toggle">
+        <label><input type="checkbox" id="stg-concept" checked onchange="calcFee()"> Concept</label>
+        <label><input type="checkbox" id="stg-schematic" checked onchange="calcFee()"> Schematic</label>
+        <label><input type="checkbox" id="stg-final" onchange="calcFee()"> Final design</label>
+        <label><input type="checkbox" id="stg-site" onchange="calcFee()"> Site support</label>
+        <label><input type="checkbox" id="stg-comm" onchange="calcFee()"> Commissioning</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Discount (%)</label>
+      <input type="number" class="form-control" id="calc-discount" value="0" onchange="calcFee()">
+    </div>
+  </div></div>
+  <div class="calc-total">
+    <div>
+      <div class="calc-total-label">Design fee total (excl. VAT)</div>
+      <div class="calc-total-val" id="calc-result">R 50,850</div>
+    </div>
+    <button class="btn btn-primary"><i class="ti ti-file-text"></i> Generate proposal</button>
+  </div>
+  <div class="section-label">Payment schedule</div>
+  <div class="card"><div class="card-body" id="payment-schedule">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.04em;font-weight:500">
+      <div>Milestone</div><div>%</div><div>Amount</div><div></div>
+    </div>
+    <div id="payment-rows"></div>
+    <button class="btn btn-sm" style="margin-top:10px" onclick="addPayment()"><i class="ti ti-plus"></i> Add milestone</button>
+  </div></div>
+</div>
+
+<!-- ============ TIME TRACKING ============ -->
+<div class="page" id="page-time">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div>
+      <div class="section-label" style="margin:0">Time tracking</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:3px">Hours logged per project — for internal profitability analysis only (not billable)</div>
+    </div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-player-play"></i> Start timer</button>
+  </div>
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">128.5</div><div class="stat-label">Hours this week</div></div>
+    <div class="stat"><div class="stat-value">543</div><div class="stat-label">Hours this month</div></div>
+    <div class="stat"><div class="stat-value">12</div><div class="stat-label">Active projects logged</div></div>
+    <div class="stat"><div class="stat-value">6</div><div class="stat-label">Staff logging time</div></div>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>Staff</th><th>Project</th><th>Task</th><th>Date</th><th>Hours</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>Lerato M.</td><td class="link">Upper Primrose</td><td>Stage 2 layouts</td><td>14 May</td><td>6.5 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      <tr><td>Dani M.</td><td class="link">Villa Z</td><td>Client meeting</td><td>14 May</td><td>1.5 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      <tr><td>Tanya K.</td><td class="link">Singita Elela</td><td>Spec update</td><td>13 May</td><td>4.0 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      <tr><td>Martin R.</td><td class="link">Tambor 9</td><td>Internal review</td><td>13 May</td><td>2.0 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      <tr><td>Sipho D.</td><td class="link">House Sissou</td><td>RCP drawings</td><td>12 May</td><td>5.5 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      <tr><td>Lerato M.</td><td class="link">Upper Primrose</td><td>Concept revision</td><td>12 May</td><td>3.0 hrs</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ PRODUCTS ============ -->
+<div class="page" id="page-products">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">Product catalog</div>
+    <div style="display:flex;gap:6px">
+      <input class="form-control" placeholder="Search products..." style="width:200px">
+      <select class="form-control" style="width:auto;padding:5px 9px;font-size:11px"><option>All brands</option></select>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> Add product</button>
+    </div>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>Product</th><th>Brand</th><th>SKU</th><th>Cost</th><th>Trade</th><th>Retail</th><th>Stock</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="link">Parscan 50W LED</td><td>ERCO</td><td>ERO-4821</td><td>R 1,950</td><td>R 2,550</td><td>R 3,200</td><td>24</td><td><span class="badge b-success">In stock</span></td></tr>
+      <tr><td class="link">Aim pendant</td><td>Flos</td><td>FLO-0892</td><td>R 1,100</td><td>R 1,450</td><td>R 1,850</td><td>8</td><td><span class="badge b-success">In stock</span></td></tr>
+      <tr><td class="link">Guise wall light</td><td>Vibia</td><td>VIB-3341</td><td>R 1,250</td><td>R 1,650</td><td>R 2,100</td><td>0</td><td><span class="badge b-danger">Out of stock</span></td></tr>
+      <tr><td class="link">Pivot track 30W</td><td>iGuzzini</td><td>IGU-9912</td><td>R 890</td><td>R 1,150</td><td>R 1,450</td><td>16</td><td><span class="badge b-success">In stock</span></td></tr>
+      <tr><td class="link">Bamboo pendant</td><td>Foscarini</td><td>FOS-2241</td><td>R 4,200</td><td>R 5,400</td><td>R 6,800</td><td>3</td><td><span class="badge b-warning">Low stock</span></td></tr>
+      <tr><td class="link">Wireflow chandelier</td><td>Vibia</td><td>VIB-7752</td><td>R 18,500</td><td>R 23,800</td><td>R 32,000</td><td>2</td><td><span class="badge b-warning">Low stock</span></td></tr>
+      <tr><td class="link">Compendium floor</td><td>Luceplan</td><td>LUC-8821</td><td>R 12,400</td><td>R 16,200</td><td>R 21,500</td><td>5</td><td><span class="badge b-success">In stock</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ BOQ MAKER ============ -->
+<div class="page" id="page-boq">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">BOQ Maker</div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New BOQ</button>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>BOQ #</th><th>Project</th><th>Client</th><th>Items</th><th>Total retail</th><th>Margin</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr class="clickable" onclick="openProject('upper')"><td class="link">BOQ-031</td><td>Upper Primrose</td><td>SAOTA</td><td>14 lines</td><td>R 148,000</td><td>R 59,600</td><td><span class="badge b-success">Approved</span></td></tr>
+      <tr><td class="link">BOQ-030</td><td>Singita Elela</td><td>Singita</td><td>22 lines</td><td>R 388,000</td><td>R 142,000</td><td><span class="badge b-warning">Pending approval</span></td></tr>
+      <tr><td class="link">BOQ-029</td><td>House Sissou</td><td>SAOTA</td><td>8 lines</td><td>R 175,200</td><td>R 68,400</td><td><span class="badge b-success">Approved</span></td></tr>
+      <tr><td class="link">BOQ-028</td><td>Tambor 9</td><td>Private</td><td>11 lines</td><td>R 89,500</td><td>R 32,100</td><td><span class="badge b-default">Draft</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ ORDERS ============ -->
+<div class="page" id="page-orders">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">Purchase orders</div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New order</button>
+  </div>
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">7</div><div class="stat-label">Active orders</div></div>
+    <div class="stat"><div class="stat-value stat-warning">2</div><div class="stat-label">Partial delivery</div></div>
+    <div class="stat"><div class="stat-value stat-info">3</div><div class="stat-label">In transit</div></div>
+    <div class="stat"><div class="stat-value">R 1.2M</div><div class="stat-label">Value in flight</div></div>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>Order #</th><th>Project</th><th>Supplier</th><th>Items</th><th>Value</th><th>Expected</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="link">PO-083</td><td class="link">Upper Primrose</td><td>ERCO SA</td><td>3 lines</td><td>R 198,750</td><td>28 May</td><td><span class="badge b-info">Ordered</span></td></tr>
+      <tr><td class="link">PO-082</td><td class="link">Singita Elela</td><td>Flos SA</td><td>6 lines</td><td>R 314,000</td><td>15 May</td><td><span class="badge b-warning">Partial</span></td></tr>
+      <tr><td class="link">PO-081</td><td class="link">Tambor 9</td><td>iGuzzini</td><td>2 lines</td><td>R 87,400</td><td>—</td><td><span class="badge b-default">Draft</span></td></tr>
+      <tr><td class="link">PO-080</td><td class="link">Villa Z</td><td>Multiple</td><td>8 lines</td><td>R 412,000</td><td>Delivered</td><td><span class="badge b-success">Received</span></td></tr>
+      <tr><td class="link">PO-079</td><td class="link">House Sissou</td><td>Vibia SA</td><td>4 lines</td><td>R 145,200</td><td>22 May</td><td><span class="badge b-info">Ordered</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ INVOICES ============ -->
+<div class="page" id="page-invoices">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">All invoices</div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm"><i class="ti ti-refresh"></i> Sync to Xero</button>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New invoice</button>
+    </div>
+  </div>
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">R 4.8M</div><div class="stat-label">Issued YTD</div></div>
+    <div class="stat"><div class="stat-value stat-success">R 2.9M</div><div class="stat-label">Collected</div></div>
+    <div class="stat"><div class="stat-value stat-warning">R 1.9M</div><div class="stat-label">Outstanding</div></div>
+    <div class="stat"><div class="stat-value stat-danger">R 350k</div><div class="stat-label">Overdue</div></div>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>Invoice</th><th>Project</th><th>Type</th><th>Issued</th><th>Amount</th><th>Paid</th><th>Outstanding</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="link">INV-112</td><td class="link">Upper Primrose</td><td>Design fee</td><td>29 Apr</td><td>R 565,720</td><td>R 565,720</td><td>R 0</td><td><span class="badge b-success">Paid</span></td></tr>
+      <tr><td class="link">INV-111</td><td class="link">Singita Elela</td><td>Design fee</td><td>18 Apr</td><td>R 350,794</td><td>R 0</td><td>R 350,794</td><td><span class="badge b-danger">Overdue</span></td></tr>
+      <tr><td class="link">INV-110</td><td class="link">Tambor 9</td><td>Design fee</td><td>10 Apr</td><td>R 122,439</td><td>R 60,000</td><td>R 62,439</td><td><span class="badge b-warning">Partial</span></td></tr>
+      <tr><td class="link">INV-109</td><td class="link">House Sissou</td><td>Product supply</td><td>5 Apr</td><td>R 178,000</td><td>R 178,000</td><td>R 0</td><td><span class="badge b-success">Paid</span></td></tr>
+      <tr><td class="link">INV-108</td><td class="link">Kalahari</td><td>Design fee</td><td>28 Mar</td><td>R 35,000</td><td>R 35,000</td><td>R 0</td><td><span class="badge b-success">Paid</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ DOCUMENTS ============ -->
+<div class="page" id="page-docs">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">All documents</div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-upload"></i> Upload</button>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="btn btn-primary btn-sm">All</button>
+    <button class="btn btn-sm">Design files</button>
+    <button class="btn btn-sm">Proposals</button>
+    <button class="btn btn-sm">Invoices</button>
+    <button class="btn btn-sm">Orders</button>
+    <button class="btn btn-sm">Contracts</button>
+    <button class="btn btn-sm">Other</button>
+  </div>
+  <div class="card"><div class="card-body">
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">RCP plan v1 — Upper Primrose.dwg</div><div class="doc-meta">Design · Upper Primrose · 8 May · Client visible</div></div><span class="badge b-warning">In review</span></div>
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">Luminaire spec v2 — Villa Z.pdf</div><div class="doc-meta">Design · Villa Z · 2 May · Client visible</div></div><span class="badge b-success">Approved</span></div>
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-success);color:var(--text-success)"><i class="ti ti-file-text"></i></div><div style="flex:1"><div class="doc-name">Proposal P-2026-031 — Upper Primrose.pdf</div><div class="doc-meta">Proposal · Upper Primrose · 29 Apr 2026</div></div><span class="badge b-success">Approved</span></div>
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-warning);color:var(--text-warning)"><i class="ti ti-receipt"></i></div><div style="flex:1"><div class="doc-name">INV-112 — Upper Primrose deposit.pdf</div><div class="doc-meta">Invoice · Upper Primrose · 29 Apr 2026</div></div><span class="badge b-success">Paid</span></div>
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-warning);color:var(--text-warning)"><i class="ti ti-truck"></i></div><div style="flex:1"><div class="doc-name">PO-083 ERCO supply.pdf</div><div class="doc-meta">Order · Upper Primrose · 30 Apr 2026</div></div><span class="badge b-info">Ordered</span></div>
+    <div class="doc-row"><div class="doc-ico" style="background:var(--bg-secondary);color:var(--text-tertiary)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">T&Cs — 1-to-1 World standard.pdf</div><div class="doc-meta">Contract · General · Internal</div></div><span class="badge b-default">Internal</span></div>
+  </div></div>
+</div>
+
+<!-- ============ HR ============ -->
+<div class="page" id="page-hr">
+  <div class="tabs" style="margin-bottom:18px">
+    <button class="tab active" onclick="switchTab(this,'hr','staff')">Staff directory</button>
+    <button class="tab" onclick="switchTab(this,'hr','leave-requests')">Leave requests</button>
+    <button class="tab" onclick="switchTab(this,'hr','balances')">Leave balances</button>
+    <button class="tab" onclick="switchTab(this,'hr','calendar')">Leave calendar</button>
+    <button class="tab" onclick="switchTab(this,'hr','types')">Leave types</button>
+  </div>
+  <div class="tab-panel active" data-tab-group="hr" data-tab="staff">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="section-label" style="margin:0">Staff directory (20 people)</div>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> Add staff</button>
+    </div>
+    <div class="card"><div class="card-body">
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-info);color:var(--text-info)">MR</div><div style="flex:1"><div style="font-weight:500">Martin Ryan</div><div style="font-size:11px;color:var(--text-tertiary)">Project manager · 6 active projects · joined Mar 2022</div></div><span class="badge b-info">Active</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-success);color:var(--text-success)">DM</div><div style="flex:1"><div style="font-weight:500">Dani Muller</div><div style="font-size:11px;color:var(--text-tertiary)">Project manager · 7 active projects · joined Jul 2022</div></div><span class="badge b-info">Active</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-warning);color:var(--text-warning)">LM</div><div style="flex:1"><div style="font-weight:500">Lerato Mokoena</div><div style="font-size:11px;color:var(--text-tertiary)">Senior designer · 3 projects · joined Jan 2023</div></div><span class="badge b-info">Active</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-danger);color:var(--text-danger)">SD</div><div style="flex:1"><div style="font-weight:500">Sipho Dlamini</div><div style="font-size:11px;color:var(--text-tertiary)">Senior designer · 2 projects · joined Nov 2023</div></div><span class="badge b-warning">On leave today</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-secondary);color:var(--text-secondary)">TK</div><div style="flex:1"><div style="font-weight:500">Tanya Kruger</div><div style="font-size:11px;color:var(--text-tertiary)">Junior designer · 4 projects · joined Feb 2024</div></div><span class="badge b-info">Active</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-info);color:var(--text-info)">JV</div><div style="flex:1"><div style="font-weight:500">Jen van der Walt</div><div style="font-size:11px;color:var(--text-tertiary)">Sales rep · 5 active leads · joined Jun 2023</div></div><span class="badge b-info">Active</span></div>
+      <div class="hr-row"><div class="av-md" style="background:var(--bg-success);color:var(--text-success)">PN</div><div style="flex:1"><div style="font-weight:500">Pieter Nel</div><div style="font-size:11px;color:var(--text-tertiary)">Warehouse manager · joined Apr 2022</div></div><span class="badge b-info">Active</span></div>
+    </div></div>
+  </div>
+  <div class="tab-panel" data-tab-group="hr" data-tab="leave-requests">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="section-label" style="margin:0">Pending leave requests</div>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New request</button>
+    </div>
+    <div class="card"><table class="table">
+      <thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Lerato Mokoena</td><td>Annual</td><td>22 May</td><td>26 May</td><td>5</td><td>14 May</td><td><span class="badge b-warning">Pending</span></td><td><button class="btn btn-sm btn-primary">Approve</button> <button class="btn btn-sm btn-danger">Reject</button></td></tr>
+        <tr><td>Tanya Kruger</td><td>Sick</td><td>13 May</td><td>13 May</td><td>1</td><td>13 May</td><td><span class="badge b-warning">Pending</span></td><td><button class="btn btn-sm btn-primary">Approve</button> <button class="btn btn-sm btn-danger">Reject</button></td></tr>
+        <tr><td>Sipho Dlamini</td><td>Annual</td><td>14 May</td><td>14 May</td><td>1</td><td>10 May</td><td><span class="badge b-success">Approved</span></td><td></td></tr>
+        <tr><td>Martin Ryan</td><td>Family</td><td>3 Jun</td><td>5 Jun</td><td>3</td><td>9 May</td><td><span class="badge b-success">Approved</span></td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="tab-panel" data-tab-group="hr" data-tab="balances">
+    <div class="section-label">Leave balances 2026</div>
+    <div class="card"><table class="table">
+      <thead><tr><th>Employee</th><th>Annual</th><th>Sick</th><th>Family</th><th>Study</th></tr></thead>
+      <tbody>
+        <tr><td>Martin Ryan</td><td>15 / 21</td><td>8 / 10</td><td>3 / 3</td><td>0 / 5</td></tr>
+        <tr><td>Dani Muller</td><td>12 / 21</td><td>10 / 10</td><td>3 / 3</td><td>2 / 5</td></tr>
+        <tr><td>Lerato Mokoena</td><td>18 / 21</td><td>9 / 10</td><td>3 / 3</td><td>5 / 5</td></tr>
+        <tr><td>Sipho Dlamini</td><td>14 / 21</td><td>7 / 10</td><td>3 / 3</td><td>0 / 5</td></tr>
+        <tr><td>Tanya Kruger</td><td>16 / 21</td><td>8 / 10</td><td>3 / 3</td><td>0 / 5</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="tab-panel" data-tab-group="hr" data-tab="calendar">
+    <div class="section-label">Leave calendar — May 2026</div>
+    <div class="cal-grid">
+      <div class="cal-day-head">Mon</div><div class="cal-day-head">Tue</div><div class="cal-day-head">Wed</div><div class="cal-day-head">Thu</div><div class="cal-day-head">Fri</div><div class="cal-day-head">Sat</div><div class="cal-day-head">Sun</div>
+      <div class="cal-day other-month">28</div><div class="cal-day other-month">29</div><div class="cal-day other-month">30</div><div class="cal-day">1</div><div class="cal-day">2</div><div class="cal-day other-month">3</div><div class="cal-day other-month">4</div>
+      <div class="cal-day">5</div><div class="cal-day">6</div><div class="cal-day">7</div><div class="cal-day">8</div><div class="cal-day">9</div><div class="cal-day other-month">10</div><div class="cal-day other-month">11</div>
+      <div class="cal-day">12</div><div class="cal-day">13<div class="cal-leave" style="background:var(--bg-warning);color:var(--text-warning)">TK sick</div></div><div class="cal-day">14<div class="cal-leave" style="background:var(--bg-info);color:var(--text-info)">SD annual</div></div><div class="cal-day">15</div><div class="cal-day">16</div><div class="cal-day other-month">17</div><div class="cal-day other-month">18</div>
+      <div class="cal-day">19</div><div class="cal-day">20</div><div class="cal-day">21</div><div class="cal-day">22<div class="cal-leave" style="background:var(--bg-info);color:var(--text-info)">LM annual</div></div><div class="cal-day">23<div class="cal-leave" style="background:var(--bg-info);color:var(--text-info)">LM annual</div></div><div class="cal-day other-month">24</div><div class="cal-day other-month">25</div>
+      <div class="cal-day">26<div class="cal-leave" style="background:var(--bg-info);color:var(--text-info)">LM annual</div></div><div class="cal-day">27</div><div class="cal-day">28</div><div class="cal-day">29</div><div class="cal-day">30</div><div class="cal-day other-month">31</div><div class="cal-day other-month"></div>
+    </div>
+  </div>
+  <div class="tab-panel" data-tab-group="hr" data-tab="types">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="section-label" style="margin:0">Leave types</div>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> Add leave type</button>
+    </div>
+    <div class="card"><table class="table">
+      <thead><tr><th>Leave type</th><th>Days per year</th><th>Carry over max</th><th>Requires docs</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Annual</td><td>21</td><td>10</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+        <tr><td>Sick</td><td>10</td><td>0</td><td>Yes (3+ days)</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+        <tr><td>Family responsibility</td><td>3</td><td>0</td><td>Yes</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+        <tr><td>Study</td><td>5</td><td>0</td><td>Yes</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+        <tr><td>Unpaid</td><td>Unlimited</td><td>—</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ============ REPORTS ============ -->
+<div class="page" id="page-reports">
+  <div class="stat-grid stat-grid-4">
+    <div class="stat"><div class="stat-value">R 4.8M</div><div class="stat-label">Fees issued YTD</div></div>
+    <div class="stat"><div class="stat-value stat-success">R 2.9M</div><div class="stat-label">Collected</div></div>
+    <div class="stat"><div class="stat-value stat-warning">R 1.9M</div><div class="stat-label">Outstanding</div></div>
+    <div class="stat"><div class="stat-value">12</div><div class="stat-label">Active projects</div></div>
+  </div>
+  <div class="row-2">
+    <div class="card"><div class="card-head"><div class="card-title">Performance by PM</div></div><div class="card-body">
+      <div class="kv"><span class="kv-key">Martin Ryan</span><span class="kv-val">R 2.1M issued · 6 projects</span></div>
+      <div class="kv"><span class="kv-key">Dani Muller</span><span class="kv-val">R 2.7M issued · 7 projects</span></div>
+    </div></div>
+    <div class="card"><div class="card-head"><div class="card-title">Revenue by offering</div></div><div class="card-body">
+      <div class="kv"><span class="kv-key">Signature</span><span class="kv-val">R 3.8M · 8 projects</span></div>
+      <div class="kv"><span class="kv-key">Modus</span><span class="kv-val">R 680k · 4 projects</span></div>
+      <div class="kv"><span class="kv-key">Professional</span><span class="kv-val">R 194k · 2 projects</span></div>
+      <div class="kv"><span class="kv-key">Portfolio</span><span class="kv-val">R 90k · 1 project</span></div>
+    </div></div>
+  </div>
+  <div class="row-2">
+    <div class="card"><div class="card-head"><div class="card-title">Project profitability</div></div><div class="card-body">
+      <div class="kv"><span class="kv-key">Singita Elela</span><span class="kv-val">68% margin</span></div>
+      <div class="kv"><span class="kv-key">Upper Primrose</span><span class="kv-val">72% margin</span></div>
+      <div class="kv"><span class="kv-key">Villa Z</span><span class="kv-val" style="color:var(--text-danger)">42% margin (over-budget hours)</span></div>
+    </div></div>
+    <div class="card"><div class="card-head"><div class="card-title">Lost deals analysis</div></div><div class="card-body">
+      <div class="kv"><span class="kv-key">Price</span><span class="kv-val">5 deals · R 890k</span></div>
+      <div class="kv"><span class="kv-key">Went elsewhere</span><span class="kv-val">4 deals · R 1.1M</span></div>
+      <div class="kv"><span class="kv-key">Budget cut</span><span class="kv-val">3 deals · R 1.4M</span></div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ============ SUPPORT ============ -->
+<div class="page" id="page-support">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="section-label" style="margin:0">Support tickets</div>
+    <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New ticket</button>
+  </div>
+  <div class="card"><table class="table">
+    <thead><tr><th>#</th><th>Subject</th><th>Project</th><th>Raised by</th><th>Assigned</th><th>Raised</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="link">#041</td><td>Fitting spec query — floor 2</td><td class="link">Upper Primrose</td><td>Client</td><td>Lerato M.</td><td>13 May</td><td><span class="badge b-info">Open</span></td></tr>
+      <tr><td class="link">#040</td><td>Revision request Stage 3</td><td class="link">Villa Z</td><td>Client</td><td>Martin R.</td><td>12 May</td><td><span class="badge b-warning">In progress</span></td></tr>
+      <tr><td class="link">#039</td><td>Invoice correction needed</td><td class="link">Singita Elela</td><td>Internal</td><td>Dani M.</td><td>10 May</td><td><span class="badge b-success">Resolved</span></td></tr>
+      <tr><td class="link">#038</td><td>Damaged fitting on delivery</td><td class="link">Tambor 9</td><td>Client</td><td>Pieter N.</td><td>8 May</td><td><span class="badge b-warning">In progress</span></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div class="page" id="page-settings">
+  <div class="tabs" style="margin-bottom:18px">
+    <button class="tab active" onclick="switchTab(this,'settings','general')">General</button>
+    <button class="tab" onclick="switchTab(this,'settings','permissions')">Roles & permissions</button>
+    <button class="tab" onclick="switchTab(this,'settings','templates')">Project templates</button>
+    <button class="tab" onclick="switchTab(this,'settings','rates')">Fee rate card</button>
+    <button class="tab" onclick="switchTab(this,'settings','integrations')">Integrations</button>
+  </div>
+  <div class="tab-panel active" data-tab-group="settings" data-tab="general">
+    <div class="card"><div class="card-body">
+      <div class="form-row">
+        <label class="form-label">Company name</label>
+        <input class="form-control" value="1-to-1 World">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Trading currency</label>
+        <select class="form-control"><option>ZAR (R)</option></select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">VAT number</label>
+        <input class="form-control" value="4500123456">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Default VAT rate (%)</label>
+        <input type="number" class="form-control" value="15">
+      </div>
+    </div></div>
+  </div>
+  <div class="tab-panel" data-tab-group="settings" data-tab="permissions">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px">Create your own roles with any name. For each role, set what they can do per section. Staff only see sections they have access to.</div>
+    <div class="perm-roles">
+      <span style="font-size:12px;color:var(--text-tertiary)">Roles:</span>
+      <button class="perm-role-chip active" onclick="setRole(this,'Senior designer')">Senior designer</button>
+      <button class="perm-role-chip" onclick="setRole(this,'Estimator')">Estimator</button>
+      <button class="perm-role-chip" onclick="setRole(this,'Project manager')">Project manager</button>
+      <button class="perm-role-chip" onclick="setRole(this,'Warehouse')">Warehouse</button>
+      <button class="perm-role-chip" onclick="setRole(this,'Sales rep')">Sales rep</button>
+      <button class="btn btn-sm" style="border-style:dashed"><i class="ti ti-plus"></i> New role</button>
+    </div>
+    <div class="card"><div class="card-head">
+      <div class="card-title" id="role-title">Senior designer</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm">Duplicate</button>
+        <button class="btn btn-sm btn-danger">Delete</button>
+        <button class="btn btn-primary btn-sm">Save</button>
+      </div>
+    </div><div class="card-body">
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-home"></i> Dashboard</div><select class="form-control" style="width:140px"><option>Full access</option><option>View only</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-address-book"></i> CRM</div><select class="form-control" style="width:140px"><option>View only</option><option>Full access</option><option>Can edit</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-trending-up"></i> Sales pipeline</div><select class="form-control" style="width:140px"><option>No access</option><option>View only</option><option>Full access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-table"></i> Design tracker</div><select class="form-control" style="width:140px"><option>Can edit</option><option>View only</option><option>Full access</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-layout-kanban"></i> Projects</div><select class="form-control" style="width:140px"><option>Full access</option><option>Can edit</option><option>View only</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-calculator"></i> Design fee calc</div><select class="form-control" style="width:140px"><option>No access</option><option>View only</option><option>Full access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-clock"></i> Time tracking</div><select class="form-control" style="width:140px"><option>Can edit (own)</option><option>Full access</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-package"></i> Products</div><select class="form-control" style="width:140px"><option>View only</option><option>Full access</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-list-numbers"></i> BOQ maker</div><select class="form-control" style="width:140px"><option>Can edit</option><option>View only</option><option>Full access</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-truck-delivery"></i> Orders</div><select class="form-control" style="width:140px"><option>No access</option><option>View only</option><option>Full access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-receipt"></i> Invoices</div><select class="form-control" style="width:140px"><option>No access</option><option>View only</option><option>Full access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-folder"></i> Documents</div><select class="form-control" style="width:140px"><option>Full access</option><option>Can edit</option><option>View only</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-id-badge"></i> HR & people</div><select class="form-control" style="width:140px"><option>No access</option><option>View only</option><option>Full access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-chart-bar"></i> Reports</div><select class="form-control" style="width:140px"><option>View only</option><option>Full access</option><option>No access</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-headset"></i> Support</div><select class="form-control" style="width:140px"><option>Can edit</option><option>Full access</option><option>View only</option></select></div>
+      <div class="perm-row"><div class="perm-section"><i class="ti ti-settings"></i> Settings</div><select class="form-control" style="width:140px"><option>No access</option><option>Full access</option></select></div>
+    </div></div>
+    <div style="font-size:11px;color:var(--text-tertiary);margin-top:12px;background:var(--bg-secondary);padding:10px 12px;border-radius:var(--radius-md);line-height:1.6"><strong style="color:var(--text-primary)">Full access</strong> — create, edit, delete. <strong style="color:var(--text-primary)">Can edit</strong> — create and edit, no delete. <strong style="color:var(--text-primary)">View only</strong> — read-only. <strong style="color:var(--text-primary)">No access</strong> — section hidden from this role's navigation.</div>
+  </div>
+  <div class="tab-panel" data-tab-group="settings" data-tab="templates">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px">Project templates define phases and custom fields. Add, remove, and reorder columns — changes apply to new projects.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="section-label" style="margin:0">Available templates</div>
+      <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New template</button>
+    </div>
+    <div class="card" style="margin-bottom:14px"><table class="table">
+      <thead><tr><th>Template name</th><th>Type</th><th>Phases</th><th>Custom fields</th><th>Projects using</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>Design only (Signature)</td><td>Design</td><td>5 phases</td><td>8 fields</td><td>14</td><td><button class="btn btn-sm">Edit</button></td></tr>
+        <tr><td>Design + Supply</td><td>Hybrid</td><td>6 phases</td><td>12 fields</td><td>8</td><td><button class="btn btn-sm">Edit</button></td></tr>
+        <tr><td>Supply only</td><td>Supply</td><td>3 phases</td><td>4 fields</td><td>3</td><td><button class="btn btn-sm">Edit</button></td></tr>
+        <tr><td>Modus standard</td><td>Hybrid</td><td>5 phases</td><td>10 fields</td><td>6</td><td><button class="btn btn-sm">Edit</button></td></tr>
+      </tbody>
+    </table></div>
+    <div class="card"><div class="card-head"><div class="card-title">Editing: Design only (Signature)</div></div><div class="card-body">
+      <div class="section-label">Phases (drag to reorder)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius-md)"><i class="ti ti-grip-vertical" style="color:var(--text-tertiary);cursor:grab"></i><span style="flex:1;font-weight:500">Stage 1 — Concept design</span><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Requires approval</label><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox"> Triggers invoice</label><button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius-md)"><i class="ti ti-grip-vertical" style="color:var(--text-tertiary);cursor:grab"></i><span style="flex:1;font-weight:500">Stage 2 — Schematic design</span><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Requires approval</label><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Triggers invoice</label><button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius-md)"><i class="ti ti-grip-vertical" style="color:var(--text-tertiary);cursor:grab"></i><span style="flex:1;font-weight:500">Stage 3 — Schematic 100%</span><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Requires approval</label><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox"> Triggers invoice</label><button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius-md)"><i class="ti ti-grip-vertical" style="color:var(--text-tertiary);cursor:grab"></i><span style="flex:1;font-weight:500">Stage 4 — Final design</span><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Requires approval</label><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Triggers invoice</label><button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:0.5px solid var(--border);border-radius:var(--radius-md)"><i class="ti ti-grip-vertical" style="color:var(--text-tertiary);cursor:grab"></i><span style="flex:1;font-weight:500">Stage 5 — Snags / site visit</span><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox"> Requires approval</label><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)"><input type="checkbox" checked> Triggers invoice</label><button class="btn btn-sm btn-ghost"><i class="ti ti-x"></i></button></div>
+      </div>
+      <button class="btn btn-sm" style="margin-bottom:18px"><i class="ti ti-plus"></i> Add phase</button>
+      <div class="section-label">Custom fields (tracker columns)</div>
+      <div class="card" style="margin-bottom:12px"><table class="table">
+        <thead><tr><th>Field name</th><th>Type</th><th>Required</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>SQM</td><td>Number</td><td>Yes</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+          <tr><td>Offering</td><td>Dropdown</td><td>Yes</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+          <tr><td>Delay reason</td><td>Dropdown</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+          <tr><td>Product approved</td><td>Yes/No</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+          <tr><td>Site visit date</td><td>Date</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+          <tr><td>Electrical sign-off</td><td>Yes/No</td><td>No</td><td><button class="btn btn-sm btn-ghost"><i class="ti ti-edit"></i></button></td></tr>
+        </tbody>
+      </table></div>
+      <button class="btn btn-sm"><i class="ti ti-plus"></i> Add field</button>
+      <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:6px"><button class="btn">Cancel</button><button class="btn btn-primary"><i class="ti ti-check"></i> Save template</button></div>
+    </div></div>
+  </div>
+  <div class="tab-panel" data-tab-group="settings" data-tab="rates">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:14px">Per-m² rates feeding the design fee calculator. Edit and save to update all future quotes.</div>
+    <div class="card"><table class="table">
+      <thead><tr><th>Zone</th><th>Concept</th><th>Schematic</th><th>Final design</th><th>Product budget</th></tr></thead>
+      <tbody>
+        <tr><td>Experiential living (30%)</td><td>R 180</td><td>R 144</td><td>R 117</td><td>R 1,050</td></tr>
+        <tr><td>Secondary living (60%)</td><td>R 105</td><td>R 84</td><td>R 68.25</td><td>R 750</td></tr>
+        <tr><td>Non-experiential (10%)</td><td>R 30</td><td>R 24</td><td>R 19.50</td><td>R 300</td></tr>
+        <tr><td>Experiential landscape (40%)</td><td>R 140</td><td>R 112</td><td>R 91</td><td>R 825</td></tr>
+        <tr><td>Secondary landscape (60%)</td><td>R 55</td><td>R 44</td><td>R 35.75</td><td>R 525</td></tr>
+      </tbody>
+    </table></div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:6px"><button class="btn btn-primary"><i class="ti ti-check"></i> Save rate card</button></div>
+  </div>
+  <div class="tab-panel" data-tab-group="settings" data-tab="integrations">
+    <div class="card" style="margin-bottom:10px"><div class="card-body" style="display:flex;align-items:center;gap:14px"><div style="width:42px;height:42px;background:var(--bg-info);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;color:var(--text-info);font-weight:500">X</div><div style="flex:1"><div style="font-weight:500">Xero</div><div style="font-size:11px;color:var(--text-tertiary)">Sync invoices and payments to accounting</div></div><span class="badge b-success">Connected</span><button class="btn btn-sm">Configure</button></div></div>
+    <div class="card" style="margin-bottom:10px"><div class="card-body" style="display:flex;align-items:center;gap:14px"><div style="width:42px;height:42px;background:var(--bg-secondary);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-weight:500">S</div><div style="flex:1"><div style="font-weight:500">SAGE</div><div style="font-size:11px;color:var(--text-tertiary)">Alternative accounting integration</div></div><button class="btn btn-sm">Connect</button></div></div>
+    <div class="card"><div class="card-body" style="display:flex;align-items:center;gap:14px"><div style="width:42px;height:42px;background:var(--bg-info);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;color:var(--text-info)"><i class="ti ti-mail" style="font-size:20px"></i></div><div style="flex:1"><div style="font-weight:500">Resend</div><div style="font-size:11px;color:var(--text-tertiary)">Transactional email delivery</div></div><span class="badge b-success">Connected</span><button class="btn btn-sm">Configure</button></div></div>
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ CLIENT PORTAL ═══════════════════════════════════════ -->
+<div id="client-portal" style="display:none">
+  <div class="cp-header">
+    <div class="cp-logo"><i class="ti ti-bulb"></i> 1-to-1 World <span style="font-size:10px;color:var(--text-tertiary);background:var(--bg-secondary);padding:3px 9px;border-radius:100px;margin-left:6px">client portal</span></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:12px;color:var(--text-secondary)">Apex Corporation</span>
+      <div class="av-md" style="background:var(--bg-success);color:var(--text-success);width:32px;height:32px">AC</div>
+    </div>
+  </div>
+  <div class="cp-nav">
+    <button class="cp-nav-item active" onclick="switchTab(this,'cp','projects')">My projects</button>
+    <button class="cp-nav-item" onclick="switchTab(this,'cp','documents')">Documents</button>
+    <button class="cp-nav-item" onclick="switchTab(this,'cp','orders')">Orders</button>
+    <button class="cp-nav-item" onclick="switchTab(this,'cp','invoices')">Invoices</button>
+    <button class="cp-nav-item" onclick="switchTab(this,'cp','messages')">Messages</button>
+    <button class="cp-nav-item" onclick="switchTab(this,'cp','support')">Support</button>
+  </div>
+  <div class="cp-content">
+    <div class="tab-panel active" data-tab-group="cp" data-tab="projects">
+      <div class="action-card">
+        <div>
+          <div class="action-card-title"><i class="ti ti-alert-circle"></i> Action needed</div>
+          <div class="action-card-desc">Stage 2 schematic design is ready for your review — Sandton HQ lobby</div>
+        </div>
+        <button class="btn btn-primary btn-sm">Review design</button>
+      </div>
+      <div class="action-card" style="background:var(--bg-info);border-color:var(--border-info)">
+        <div>
+          <div class="action-card-title" style="color:var(--text-info)"><i class="ti ti-receipt"></i> Quote awaiting approval</div>
+          <div class="action-card-desc">Product supply quote Q-2026-031 — R 148,000</div>
+        </div>
+        <button class="btn btn-primary btn-sm">Review quote</button>
+      </div>
+      <div class="section-label">Your active projects</div>
+      <div class="project-card">
+        <div class="pc-head">
+          <div><div class="pc-title">Sandton HQ lobby</div><div class="pc-sub">Designer: Lerato Mokoena · Stage 2 — Schematic design</div></div>
+          <span class="badge b-info">Active</span>
+        </div>
+        <div class="pc-progress"><div class="progress-bar"><div class="progress-fill" style="width:55%"></div></div></div>
+        <div class="pc-meta"><span>55% complete</span><span>Est. completion: Aug 2026</span></div>
+      </div>
+      <div class="project-card">
+        <div class="pc-head">
+          <div><div class="pc-title">Boardroom — level 4</div><div class="pc-sub">Designer: Sipho Dlamini · Delivery in progress</div></div>
+          <span class="badge b-success">Nearly done</span>
+        </div>
+        <div class="pc-progress"><div class="progress-bar"><div class="progress-fill" style="width:88%;background:var(--text-success)"></div></div></div>
+        <div class="pc-meta"><span>88% complete</span><span>Delivery: 28 May 2026</span></div>
+      </div>
+      <div class="project-card">
+        <div class="pc-head">
+          <div><div class="pc-title">Executive offices — level 8</div><div class="pc-sub">Designer: Dani Muller · Concept phase</div></div>
+          <span class="badge b-info">Active</span>
+        </div>
+        <div class="pc-progress"><div class="progress-bar"><div class="progress-fill" style="width:25%"></div></div></div>
+        <div class="pc-meta"><span>25% complete</span><span>Est. completion: Nov 2026</span></div>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="cp" data-tab="documents">
+      <div class="section-label">Documents shared with you</div>
+      <div style="display:flex;gap:6px;margin-bottom:14px"><button class="btn btn-primary btn-sm">All</button><button class="btn btn-sm">Designs</button><button class="btn btn-sm">Proposals</button><button class="btn btn-sm">Other</button></div>
+      <div class="card"><div class="card-body">
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">Sandton_Layout_v3.pdf</div><div class="doc-meta">Sandton HQ lobby · 12 May 2026</div></div><button class="btn btn-sm"><i class="ti ti-download"></i> Download</button></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">Fitting_Schedule_v2.xlsx</div><div class="doc-meta">Sandton HQ lobby · 10 May 2026</div></div><button class="btn btn-sm"><i class="ti ti-download"></i> Download</button></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-info);color:var(--text-info)"><i class="ti ti-file"></i></div><div style="flex:1"><div class="doc-name">Boardroom_Approval.pdf</div><div class="doc-meta">Boardroom — level 4 · 8 May 2026</div></div><button class="btn btn-sm"><i class="ti ti-download"></i> Download</button></div>
+        <div class="doc-row"><div class="doc-ico" style="background:var(--bg-success);color:var(--text-success)"><i class="ti ti-file-text"></i></div><div style="flex:1"><div class="doc-name">Proposal_P-2026-031.pdf</div><div class="doc-meta">Design fee proposal · 29 Apr 2026</div></div><button class="btn btn-sm"><i class="ti ti-download"></i> Download</button></div>
+      </div></div>
+    </div>
+    <div class="tab-panel" data-tab-group="cp" data-tab="orders">
+      <div class="section-label">Your product orders</div>
+      <div class="card"><table class="table">
+        <thead><tr><th>Order #</th><th>Project</th><th>Items</th><th>Value</th><th>Expected</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>PO-083</td><td>Sandton HQ lobby</td><td>3 lines</td><td>R 198,750</td><td>28 May 2026</td><td><span class="badge b-info">In transit</span></td></tr>
+          <tr><td>PO-076</td><td>Boardroom — level 4</td><td>5 lines</td><td>R 87,400</td><td>Delivered</td><td><span class="badge b-success">Received</span></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" data-tab-group="cp" data-tab="invoices">
+      <div class="section-label">Your invoices</div>
+      <div class="card"><table class="table">
+        <thead><tr><th>Invoice</th><th>Project</th><th>Issued</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>INV-112</td><td>Sandton HQ lobby</td><td>29 Apr</td><td>R 565,720</td><td><span class="badge b-success">Paid</span></td><td><button class="btn btn-sm"><i class="ti ti-download"></i></button></td></tr>
+          <tr><td>INV-098</td><td>Boardroom — level 4</td><td>15 Mar</td><td>R 145,000</td><td><span class="badge b-success">Paid</span></td><td><button class="btn btn-sm"><i class="ti ti-download"></i></button></td></tr>
+          <tr><td>INV-087</td><td>Sandton HQ lobby</td><td>1 Feb</td><td>R 95,500</td><td><span class="badge b-success">Paid</span></td><td><button class="btn btn-sm"><i class="ti ti-download"></i></button></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" data-tab-group="cp" data-tab="messages">
+      <div class="section-label">Messages with your team</div>
+      <div class="card"><div class="card-body">
+        <div style="display:flex;gap:10px;padding:11px 0;border-bottom:0.5px solid var(--border)">
+          <div class="av-md" style="background:var(--bg-info);color:var(--text-info)">LM</div>
+          <div style="flex:1"><div style="font-size:12px"><strong>Lerato Mokoena</strong> · <span style="color:var(--text-tertiary)">Today 10:42</span></div><div style="font-size:12px;color:var(--text-secondary);margin-top:3px">The Stage 2 schematic plans are uploaded for your review. Let me know if you'd like to schedule a walkthrough.</div></div>
+        </div>
+        <div style="display:flex;gap:10px;padding:11px 0;border-bottom:0.5px solid var(--border)">
+          <div class="av-md" style="background:var(--bg-success);color:var(--text-success)">AC</div>
+          <div style="flex:1"><div style="font-size:12px"><strong>You</strong> · <span style="color:var(--text-tertiary)">Yesterday 16:15</span></div><div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Thanks Lerato. We're meeting tomorrow with the architects, will revert after.</div></div>
+        </div>
+        <div style="display:flex;gap:10px;padding:11px 0">
+          <div class="av-md" style="background:var(--bg-info);color:var(--text-info)">DM</div>
+          <div style="flex:1"><div style="font-size:12px"><strong>Dani Muller</strong> · <span style="color:var(--text-tertiary)">2 days ago</span></div><div style="font-size:12px;color:var(--text-secondary);margin-top:3px">PO-083 has been placed with ERCO. Expected delivery 28 May.</div></div>
+        </div>
+      </div></div>
+      <div style="margin-top:14px;display:flex;gap:8px">
+        <input class="form-control" placeholder="Type a message..." style="flex:1">
+        <button class="btn btn-primary"><i class="ti ti-send"></i> Send</button>
+      </div>
+    </div>
+    <div class="tab-panel" data-tab-group="cp" data-tab="support">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="section-label" style="margin:0">Your support tickets</div>
+        <button class="btn btn-primary btn-sm"><i class="ti ti-plus"></i> New ticket</button>
+      </div>
+      <div class="card"><table class="table">
+        <thead><tr><th>#</th><th>Subject</th><th>Project</th><th>Raised</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>#041</td><td>Fitting spec query — floor 2</td><td>Sandton HQ lobby</td><td>13 May</td><td><span class="badge b-info">Open</span></td></tr>
+          <tr><td>#038</td><td>Damaged fitting on delivery</td><td>Boardroom — level 4</td><td>8 May</td><td><span class="badge b-warning">In progress</span></td></tr>
+          <tr><td>#035</td><td>Color temperature question</td><td>Sandton HQ lobby</td><td>2 May</td><td><span class="badge b-success">Resolved</span></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><i class="ti ti-check"></i> <span id="toast-msg">Updated</span></div>
+
+<script>
+// ============ DATA STORE ============
+const projectStore = {
+  upper:   {name:'Upper Primrose', offering:'Signature', sqm:'3,700', pm:'Dani',   stage:'Stage 1',  status:'On track',  delay:'Awaiting feedback/approval', start:'29 Apr 2026', deadline:'12 May', daysLeft:'-2',   feeExcl:'R 1,888,225', paid:'R 1,039,264', outstanding:'R 848,961', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', client:'SAOTA', clientKey:'saota'},
+  villa:   {name:'Villa Z',         offering:'Signature', sqm:'1,580', pm:'Martin', stage:'Stage 3',  status:'Off track', delay:'Complex design iteration/rework required', start:'22 Nov 2023', deadline:'Overdue', daysLeft:'-864',feeExcl:'R 436,727', paid:'R 436,727', outstanding:'R 0', prodApproved:'No', complete:'Ongoing', s1:'✓',s2:'✓',s3:'',s4:'',s5:'', client:'SAOTA', clientKey:'saota'},
+  tambor:  {name:'Tambor 9',        offering:'Signature', sqm:'1,915', pm:'Martin', stage:'Ongoing',  status:'On track',  delay:'—', start:'23 Jun 2026', deadline:'12 Aug', daysLeft:'90', feeExcl:'R 306,415', paid:'R 183,976', outstanding:'R 122,439', prodApproved:'No', complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', client:'Private', clientKey:''},
+  singita: {name:'Singita Elela',   offering:'Signature', sqm:'4,065', pm:'Dani',   stage:'Snags/Site visit', status:'On track', delay:'Ongoing', start:'18 Aug 2025', deadline:'1 Oct', daysLeft:'-225', feeExcl:'R 1,002,268', paid:'R 651,474', outstanding:'R 350,794', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'✓',s3:'✓',s4:'',s5:'', client:'Singita', clientKey:'singita'},
+  sissou:  {name:'House Sissou',    offering:'Signature', sqm:'—', pm:'Dani', stage:'Stage 2', status:'On track', delay:'Unforeseen technical challenges', start:'12 Mar 2024', deadline:'1 Jun', daysLeft:'18', feeExcl:'R 618,190', paid:'R 355,459', outstanding:'R 355,459', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', client:'SAOTA', clientKey:'saota'},
+  nandos:  {name:"Nando's Stlbsch", offering:'Modus', sqm:'480', pm:'Dani', stage:'Complete', status:'On track', delay:'—', start:'3 Feb 2025', deadline:'20 Apr', daysLeft:'—', feeExcl:'R 180,460', paid:'R 180,460', outstanding:'R 0', prodApproved:'Yes', complete:'Complete', s1:'✓',s2:'✓',s3:'✓',s4:'✓',s5:'✓', client:'Modus', clientKey:'modus'},
+  kalahari:{name:'Kalahari',        offering:'Signature', sqm:'—', pm:'Martin', stage:'Snags/Site visit', status:'On track', delay:'Snags/Site visit', start:'6 Feb 2024', deadline:'1 Jun', daysLeft:'18', feeExcl:'R 113,500', paid:'R 89,700', outstanding:'R 5,325', prodApproved:'Yes', complete:'Complete', s1:'✓',s2:'✓',s3:'✓',s4:'✓',s5:'', client:'Private', clientKey:''},
+  nettleton:{name:'Nettleton 16',   offering:'Signature', sqm:'576', pm:'Dani', stage:'Snags/Site visit', status:'On track', delay:'Complex design iteration', start:'25 Oct 2024', deadline:'1 Dec', daysLeft:'-551', feeExcl:'R 958,897', paid:'R 237,605', outstanding:'-R 405,664', prodApproved:'Yes', complete:'Complete', s1:'✓',s2:'✓',s3:'✓',s4:'✓',s5:'✓', client:'SAOTA', clientKey:'saota'},
+};
+
+const clientStore = {
+  saota:   {name:'SAOTA', sub:'Architecture · Cape Town', avatar:'SA', avBg:'var(--bg-info)', avC:'var(--text-info)'},
+  singita: {name:'Singita', sub:'Hospitality · Multiple locations', avatar:'SI', avBg:'var(--bg-success)', avC:'var(--text-success)'},
+  modus:   {name:'Modus Projects', sub:'Property development · Cape Town', avatar:'MP', avBg:'var(--bg-warning)', avC:'var(--text-warning)'},
+  delaire: {name:'Delaire Graff', sub:'Wine estate · Stellenbosch', avatar:'DG', avBg:'var(--bg-secondary)', avC:'var(--text-tertiary)'},
+};
+
+const topClients = [
+  {key:'saota', name:'SAOTA', sub:'8 projects · 4 active', fee:'R 3.2M', out:'R 1.2M out', pct:85, avatar:'SA', avBg:'var(--bg-info)', avC:'var(--text-info)'},
+  {key:'singita', name:'Singita', sub:'2 projects · 1 active', fee:'R 1.9M', out:'R 350k out', pct:65, avatar:'SI', avBg:'var(--bg-success)', avC:'var(--text-success)'},
+  {key:'modus', name:'Modus Projects', sub:'6 projects · 3 active', fee:'R 680k', out:'R 195k out', pct:50, avatar:'MP', avBg:'var(--bg-warning)', avC:'var(--text-warning)'},
+  {key:'delaire', name:'Delaire Graff', sub:'1 project · snags', fee:'R 373k', out:'R 274k out', pct:72, avatar:'DG', avBg:'var(--bg-secondary)', avC:'var(--text-tertiary)'},
+];
+
+const RATES = {
+  expLiv:   {concept:180, schematic:144, final:117},
+  secLiv:   {concept:105, schematic:84,  final:68.25},
+  nonLiv:   {concept:30,  schematic:24,  final:19.5},
+  expLand:  {concept:140, schematic:112, final:91},
+  secLand:  {concept:55,  schematic:44,  final:35.75},
+};
+
+let payments = [{label:'Deposit', pct:50},{label:'Stage 2 completion', pct:30},{label:'Final balance', pct:20}];
+let currentProject = 'upper';
+
+// ============ NAVIGATION ============
+const pageTitles = {dashboard:'Dashboard',crm:'CRM',pipeline:'Sales pipeline',tracker:'Design tracker',projects:'Projects',designfee:'Design fee calculator',time:'Time tracking',products:'Product catalog',boq:'BOQ Maker',orders:'Orders',invoices:'Invoices',docs:'Documents',hr:'HR & people',reports:'Reports',support:'Support',settings:'Settings'};
+
+function navTo(btn, page) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const target = document.getElementById('page-' + page);
+  if (target) target.classList.add('active');
+  document.getElementById('page-title').textContent = pageTitles[page] || page;
+  if (page === 'tracker') buildTracker();
+  if (page === 'dashboard') buildDashboard();
+  if (page === 'projects') buildProjectsList();
+  if (page === 'crm') buildTopClients();
+}
+
+function switchPortal(which) {
+  document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('staff-portal').style.display = which === 'staff' ? 'flex' : 'none';
+  document.getElementById('client-portal').style.display = which === 'client' ? 'block' : 'none';
+}
+
+function switchTab(btn, group, tab) {
+  const tabs = btn.parentElement.querySelectorAll('.tab, .cp-nav-item');
+  tabs.forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll(`[data-tab-group="${group}"]`).forEach(p => p.classList.remove('active'));
+  document.querySelector(`[data-tab-group="${group}"][data-tab="${tab}"]`).classList.add('active');
+}
+
+// ============ BUILDERS ============
+function buildDashboard() {
+  const tb = document.getElementById('dash-projects');
+  if (!tb) return;
+  tb.innerHTML = '';
+  ['upper','villa','singita','sissou','tambor'].forEach(key => {
+    const p = projectStore[key];
+    const badgeClass = p.status === 'On track' ? 'b-info' : 'b-danger';
+    const outColor = p.outstanding === 'R 0' ? 'var(--text-success)' : 'var(--text-warning)';
+    tb.innerHTML += `<tr class="clickable" onclick="openProject('${key}')"><td class="link">${p.name}</td><td>${p.offering}</td><td>${p.pm}</td><td>${p.stage}</td><td>${p.deadline}</td><td><span class="badge ${badgeClass}">${p.status}</span></td><td style="color:${outColor};font-weight:500">${p.outstanding}</td></tr>`;
+  });
+}
+
+function buildProjectsList() {
+  const tb = document.getElementById('projects-list');
+  if (!tb) return;
+  tb.innerHTML = '';
+  Object.keys(projectStore).forEach(key => {
+    const p = projectStore[key];
+    const badgeClass = p.status === 'On track' ? 'b-info' : 'b-danger';
+    const outColor = p.outstanding === 'R 0' || p.outstanding.startsWith('-') ? 'var(--text-success)' : 'var(--text-warning)';
+    tb.innerHTML += `<tr class="clickable" onclick="openProject('${key}')"><td class="link">${p.name}</td><td>${p.offering}</td><td>${p.pm}</td><td>${p.stage}</td><td>${p.deadline}</td><td><span class="badge ${badgeClass}">${p.status}</span></td><td>${p.feeExcl}</td><td style="color:${outColor};font-weight:500">${p.outstanding}</td></tr>`;
+  });
+}
+
+function buildTopClients() {
+  const c = document.getElementById('top-clients');
+  if (!c) return;
+  c.innerHTML = '';
+  topClients.forEach(cl => {
+    c.innerHTML += `<div onclick="openClient('${cl.key}')" style="border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:8px;cursor:pointer">
+      <div class="av-md" style="background:${cl.avBg};color:${cl.avC}">${cl.avatar}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500">${cl.name}</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${cl.sub}</div>
+        <div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:${cl.pct}%"></div></div>
+      </div>
+      <div style="text-align:right"><div style="font-weight:500">${cl.fee}</div><div style="font-size:10px;color:var(--text-warning);margin-top:2px">${cl.out}</div></div>
+    </div>`;
+  });
+}
+
+function buildTracker() {
+  const tb = document.getElementById('tracker-body');
+  if (!tb) return;
+  tb.innerHTML = '';
+  Object.keys(projectStore).forEach(key => {
+    const p = projectStore[key];
+    const dayColor = p.daysLeft.startsWith('-') ? 'var(--text-danger)' : 'var(--text-primary)';
+    tb.innerHTML += `<tr>
+      <td class="sticky-col"><span class="link" onclick="openProject('${key}')">${p.name}</span></td>
+      <td>${p.offering}</td><td>${p.sqm}</td><td>${p.pm}</td>
+      <td><select class="tracker-select" onchange="updateFromTracker('${key}','stage',this.value)">
+        ${['Stage 1','Stage 2','Stage 3','Stage 4','Stage 5','Snags/Site visit','Ongoing','Complete'].map(s=>`<option ${s===p.stage?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td><select class="tracker-select" onchange="updateFromTracker('${key}','status',this.value)">
+        ${['On track','Off track'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td><select class="tracker-select" style="max-width:140px" onchange="updateFromTracker('${key}','delay',this.value)">
+        ${['—','Awaiting feedback/approval','Complex design iteration/rework required','Unforeseen technical challenges','Incomplete/pending initial project requirements','Snags/Site visit','Ongoing','Other'].map(s=>`<option ${s===p.delay?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td>${p.start}</td><td>${p.deadline}</td>
+      <td style="color:${dayColor};text-align:center">${p.daysLeft}</td>
+      <td style="font-weight:500;color:var(--text-primary)">${p.feeExcl}</td>
+      <td style="color:var(--text-success)">${p.paid}</td>
+      <td style="color:var(--text-warning)">${p.outstanding}</td>
+      <td><select class="tracker-select" onchange="updateFromTracker('${key}','prodApproved',this.value)">
+        ${['Yes','No','TBC'].map(s=>`<option ${s===p.prodApproved?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td><select class="tracker-select" onchange="updateFromTracker('${key}','complete',this.value)">
+        ${['Ongoing','Complete'].map(s=>`<option ${s===p.complete?'selected':''}>${s}</option>`).join('')}
+      </select></td>
+      <td style="text-align:center;color:var(--text-success)">${p.s1}</td>
+      <td style="text-align:center;color:var(--text-success)">${p.s2}</td>
+      <td style="text-align:center;color:var(--text-success)">${p.s3}</td>
+      <td style="text-align:center;color:var(--text-success)">${p.s4}</td>
+      <td style="text-align:center;color:var(--text-success)">${p.s5}</td>
+    </tr>`;
+  });
+}
+
+// ============ TWO-WAY SYNC ============
+function updateFromTracker(key, field, value) {
+  projectStore[key][field] = value;
+  showToast(`${projectStore[key].name} — ${field} updated`);
+  if (currentProject === key) syncProjectDetail(key);
+}
+
+function updateFromProject(field, value) {
+  projectStore[currentProject][field] = value;
+  showToast(`Synced to design tracker`);
+  const tb = document.getElementById('tracker-body');
+  if (tb && tb.innerHTML) buildTracker();
+  const detailBadge = document.getElementById('proj-badge');
+  if (field === 'status') {
+    detailBadge.textContent = value;
+    detailBadge.className = 'badge ' + (value === 'On track' ? 'b-info' : 'b-danger');
+  }
+  if (field === 'stage') document.getElementById('proj-stage-badge').textContent = value;
+}
+
+function syncProjectDetail(key) {
+  const p = projectStore[key];
+  document.getElementById('proj-stage-sel').value = p.stage;
+  document.getElementById('proj-status-sel').value = p.status;
+  document.getElementById('proj-delay-sel').value = p.delay;
+  document.getElementById('proj-complete-sel').value = p.complete;
+}
+
+// ============ OPEN PROJECT / CLIENT ============
+function openProject(key) {
+  currentProject = key;
+  const p = projectStore[key];
+  document.getElementById('proj-name').textContent = p.name;
+  document.getElementById('proj-pm').textContent = p.pm;
+  document.getElementById('proj-badge').textContent = p.status;
+  document.getElementById('proj-badge').className = 'badge ' + (p.status === 'On track' ? 'b-info' : 'b-danger');
+  document.getElementById('proj-stage-badge').textContent = p.stage;
+  document.getElementById('ov-stage').textContent = p.stage;
+  document.getElementById('ov-sqm').textContent = p.sqm + ' m²';
+  document.getElementById('ov-deadline').textContent = p.deadline;
+  document.getElementById('ov-out').textContent = p.outstanding;
+  document.getElementById('ov-client').textContent = p.client;
+  document.getElementById('ov-client').onclick = p.clientKey ? () => openClient(p.clientKey) : null;
+  document.getElementById('ov-offer').textContent = p.offering;
+  document.getElementById('ov-sqm2').textContent = p.sqm + ' m²';
+  document.getElementById('ov-start').textContent = p.start;
+  document.getElementById('proj-stage-sel').value = p.stage;
+  document.getElementById('proj-status-sel').value = p.status;
+  document.getElementById('proj-delay-sel').value = p.delay;
+  document.getElementById('proj-complete-sel').value = p.complete;
+  document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+  document.getElementById('page-project-detail').classList.add('active');
+  document.getElementById('page-title').textContent = p.name;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item')[4].classList.add('active');
+  const firstTab = document.querySelector('#page-project-detail .tab');
+  if (firstTab) {
+    document.querySelectorAll('#page-project-detail .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('[data-tab-group="project"]').forEach(p => p.classList.remove('active'));
+    firstTab.classList.add('active');
+    document.querySelector('[data-tab-group="project"][data-tab="overview"]').classList.add('active');
+  }
+}
+
+function openClient(key) {
+  const c = clientStore[key];
+  if (!c) return;
+  const av = document.getElementById('client-avatar');
+  av.textContent = c.avatar;
+  av.style.background = c.avBg;
+  av.style.color = c.avC;
+  document.getElementById('client-name').textContent = c.name;
+  document.getElementById('client-sub').textContent = c.sub;
+  document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+  document.getElementById('page-client-detail').classList.add('active');
+  document.getElementById('page-title').textContent = c.name;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item')[1].classList.add('active');
+}
+
+// ============ TOAST ============
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ============ FEE CALCULATOR ============
+function calcFee() {
+  const interior = parseFloat(document.getElementById('calc-interior').value) || 0;
+  const landscape = parseFloat(document.getElementById('calc-landscape').value) || 0;
+  const discount = (parseFloat(document.getElementById('calc-discount').value) || 0) / 100;
+  const stages = {
+    concept: document.getElementById('stg-concept').checked,
+    schematic: document.getElementById('stg-schematic').checked,
+    final: document.getElementById('stg-final').checked,
+    site: document.getElementById('stg-site').checked,
+    comm: document.getElementById('stg-comm').checked,
+  };
+  const expLiv = interior * 0.30;
+  const secLiv = interior * 0.60;
+  const nonLiv = interior * 0.10;
+  const expLand = landscape * 0.40;
+  const secLand = landscape * 0.60;
+  let total = 0;
+  if (stages.concept) total += expLiv*RATES.expLiv.concept + secLiv*RATES.secLiv.concept + nonLiv*RATES.nonLiv.concept + expLand*RATES.expLand.concept + secLand*RATES.secLand.concept;
+  if (stages.schematic) total += expLiv*RATES.expLiv.schematic + secLiv*RATES.secLiv.schematic + nonLiv*RATES.nonLiv.schematic + expLand*RATES.expLand.schematic + secLand*RATES.secLand.schematic;
+  if (stages.final) total += expLiv*RATES.expLiv.final + secLiv*RATES.secLiv.final + nonLiv*RATES.nonLiv.final + expLand*RATES.expLand.final + secLand*RATES.secLand.final;
+  if (stages.site) total *= 1.2272;
+  if (stages.comm) total *= 1.107;
+  total *= (1 - discount);
+  document.getElementById('calc-result').textContent = 'R ' + Math.round(total).toLocaleString('en-ZA');
+  buildPayments(total);
+}
+
+function buildPayments(total) {
+  const rows = document.getElementById('payment-rows');
+  if (!rows) return;
+  rows.innerHTML = '';
+  payments.forEach((p, i) => {
+    const amt = total * (p.pct / 100);
+    rows.innerHTML += `<div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border);align-items:center">
+      <input class="form-control" value="${p.label}" oninput="payments[${i}].label=this.value" style="padding:5px 8px;font-size:12px">
+      <div style="display:flex;align-items:center;gap:4px"><input class="form-control" type="number" value="${p.pct}" oninput="payments[${i}].pct=parseFloat(this.value)||0;calcFee()" style="padding:5px 8px;font-size:12px;width:60px">%</div>
+      <div style="font-weight:500">R ${Math.round(amt).toLocaleString('en-ZA')}</div>
+      <button class="btn btn-sm btn-ghost" onclick="removePayment(${i})"><i class="ti ti-x"></i></button>
+    </div>`;
+  });
+}
+
+function addPayment() {
+  const used = payments.reduce((s, p) => s + p.pct, 0);
+  payments.push({label: 'Milestone ' + (payments.length + 1), pct: Math.max(0, 100 - used)});
+  calcFee();
+}
+
+function removePayment(i) {
+  payments.splice(i, 1);
+  calcFee();
+}
+
+// ============ PERMISSIONS BUILDER ============
+function setRole(btn, name) {
+  document.querySelectorAll('.perm-role-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('role-title').textContent = name;
+}
+
+// ============ INIT ============
+buildDashboard();
+calcFee();
+</script>
+
+</body>
+</html>
