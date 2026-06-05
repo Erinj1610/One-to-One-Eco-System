@@ -1,16 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
 export default function AppLayout() {
   const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
+
+  const toggleCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const newVal = !prev;
+      localStorage.setItem('sidebar_collapsed', String(newVal));
+      return newVal;
+    });
+  };
+
   const pathTitles = {
     '/dashboard': 'Dashboard',
     '/crm': 'CRM',
     '/pipeline': 'Sales pipeline',
     '/sales-tracker': 'Sales tracker',
-    '/tracker': 'Design tracker',
+    '/tracker': 'Design Fee Tracker',
     '/projects': 'Projects',
     '/designfee': 'Design fee calculator',
     '/time': 'Time tracking',
@@ -27,8 +39,8 @@ export default function AppLayout() {
   const currentTitle = pathTitles[location.pathname] || 'Dashboard';
 
   return (
-    <div className="portal">
-      <Sidebar />
+    <div className={`portal ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <Sidebar isCollapsed={isSidebarCollapsed} toggleCollapse={toggleCollapse} />
       <div className="main">
         <Topbar title={currentTitle} />
         <div className="content">
@@ -38,3 +50,4 @@ export default function AppLayout() {
     </div>
   );
 }
+

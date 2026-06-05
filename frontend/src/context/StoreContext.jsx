@@ -341,18 +341,69 @@ const initialStore = {
     actualMargin: 20,
     designFees: [
       { 
-        id: 'DF-UPPER-01', 
-        name: 'Main Residence Design Fee', 
+        id: 'DF-2025-001', 
+        name: 'Molecule Dist. Design Fee', 
+        company: 'Venter Architects',
+        projectName: 'Upper Primrose',
+        leadDesigner: 'Merlyn',
+        feeType: 'Fixed Phase',
+        feeTerms: '30 days',
         sqm: 995, 
-        feeValue: 1888225, 
-        paid: 1039264, 
-        outstanding: 848961, 
+        feeValue: 148750, 
+        amountInvoiced: 133150,
+        paid: 117550, 
+        outstanding: 15600, 
         margin: 20, 
-        status: 'Approved', 
+        status: 'WIP',
+        feeStatus: 'Concept Phase',
         proposalPdf: 'DFP-UPPER-MAIN-2026.pdf',
         files: [
           { id: 'F-UPPER-001', name: 'DFP-UPPER-MAIN-2026.pdf', category: 'Proposal PDF', date: '2 May 2026', size: '2.4 MB' },
           { id: 'F-UPPER-002', name: 'ConceptLayout_v1.dwg', category: 'Drawing', date: '5 May 2026', size: '14.8 MB' }
+        ],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 15,
+            hourlyRate: 1800,
+            phaseFee: 27000,
+            actHours: 12,
+            totalValue: 21600,
+            billedFee: 27000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          },
+          {
+            phase: 'PHASE 2 DEVELOP',
+            serviceCode: 'DS-002',
+            description: 'Custom Joinery Detail Drawing Set',
+            estHours: 40,
+            hourlyRate: 1950,
+            phaseFee: 78000,
+            actHours: 32,
+            totalValue: 62400,
+            billedFee: 62400,
+            unbilledFee: 15600,
+            progress: 80,
+            nextMilestone: 'Development (Ground)'
+          },
+          {
+            phase: 'PHASE 3 DOCS',
+            serviceCode: 'DS-003.2',
+            description: 'Finishes & Fixture Schedule Update',
+            estHours: 25,
+            hourlyRate: 1750,
+            phaseFee: 43750,
+            actHours: 25,
+            totalValue: 43750,
+            billedFee: 43750,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Documentation'
+          }
         ]
       }
     ],
@@ -447,17 +498,54 @@ const initialStore = {
     actualMargin: 12,
     designFees: [
       { 
-        id: 'DF-VILLA-01', 
-        name: 'Villa Z Master Design Proposal', 
+        id: 'DF-2025-002', 
+        name: 'Modus Lighting Design Fee', 
+        company: 'Esteves Design',
+        projectName: 'Villa Z',
+        leadDesigner: 'Alex',
+        feeType: 'Hourly WIP',
+        feeTerms: '15 days',
         sqm: 1580, 
-        feeValue: 400187, 
-        paid: 400187, 
+        feeValue: 94500, 
+        amountInvoiced: 65250,
+        paid: 65250, 
         outstanding: 0, 
         margin: 12, 
-        status: 'Approved', 
+        status: 'WIP', 
+        feeStatus: 'Detail Design',
         proposalPdf: 'DFP-VILLA-MAIN.pdf',
         files: [
           { id: 'F-VILLA-001', name: 'DFP-VILLA-MAIN.pdf', category: 'Proposal PDF', date: '24 Nov 2023', size: '1.9 MB' }
+        ],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 20,
+            hourlyRate: 1800,
+            phaseFee: 36000,
+            actHours: 20,
+            totalValue: 36000,
+            billedFee: 36000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          },
+          {
+            phase: 'PHASE 2 DEVELOP',
+            serviceCode: 'DS-002',
+            description: 'Custom Joinery Detail Drawing Set',
+            estHours: 30,
+            hourlyRate: 1950,
+            phaseFee: 58500,
+            actHours: 15,
+            totalValue: 29250,
+            billedFee: 29250,
+            unbilledFee: 0,
+            progress: 50,
+            nextMilestone: 'Development (Ground)'
+          }
         ]
       }
     ],
@@ -535,17 +623,54 @@ const initialStore = {
     actualMargin: 18,
     designFees: [
       { 
-        id: 'DF-TAMBOR-01', 
-        name: 'Concept Scope Costing', 
+        id: 'DF-2025-003', 
+        name: 'Philips Advance Design Fee', 
+        company: 'Private Client',
+        projectName: 'Tambor 9',
+        leadDesigner: 'Sarah',
+        feeType: 'Hourly WIP',
+        feeTerms: '30 days',
         sqm: 1915, 
-        feeValue: 292215, 
-        paid: 183976, 
-        outstanding: 108239, 
+        feeValue: 66750, 
+        amountInvoiced: 57000,
+        paid: 57000, 
+        outstanding: 0, 
         margin: 18, 
-        status: 'Approved', 
+        status: 'WIP', 
+        feeStatus: 'Documentation',
         proposalPdf: 'DFP-TAMBOR-MAIN.pdf',
         files: [
           { id: 'F-TAMBOR-001', name: 'DFP-TAMBOR-MAIN.pdf', category: 'Proposal PDF', date: '25 Jun 2026', size: '1.5 MB' }
+        ],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 10,
+            hourlyRate: 1800,
+            phaseFee: 18000,
+            actHours: 10,
+            totalValue: 18000,
+            billedFee: 18000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          },
+          {
+            phase: 'PHASE 2 DEVELOP',
+            serviceCode: 'DS-002',
+            description: 'Custom Joinery Detail Drawing Set',
+            estHours: 25,
+            hourlyRate: 1950,
+            phaseFee: 48750,
+            actHours: 20,
+            totalValue: 39000,
+            billedFee: 39000,
+            unbilledFee: 0,
+            progress: 80,
+            nextMilestone: 'Development (Ground)'
+          }
         ]
       }
     ],
@@ -625,15 +750,37 @@ const initialStore = {
       { 
         id: 'DF-SINGITA-01', 
         name: 'Safari Lodge Main Proposal', 
+        company: 'DM Properties',
+        projectName: 'Singita Elela',
+        leadDesigner: 'Sarah',
+        feeType: 'Fixed Phase',
+        feeTerms: '30 days',
         sqm: 4065, 
         feeValue: 1002268, 
         paid: 651474, 
         outstanding: 350794, 
         margin: 18, 
         status: 'Approved', 
+        feeStatus: 'Completed',
         proposalPdf: 'DFP-SINGITA-MAIN.pdf',
         files: [
           { id: 'F-SINGITA-001', name: 'DFP-SINGITA-MAIN.pdf', category: 'Proposal PDF', date: '20 Aug 2025', size: '3.1 MB' }
+        ],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 100,
+            hourlyRate: 1800,
+            phaseFee: 180000,
+            actHours: 100,
+            totalValue: 180000,
+            billedFee: 180000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          }
         ]
       }
     ],
@@ -661,15 +808,37 @@ const initialStore = {
       { 
         id: 'DF-SISSOU-01', 
         name: 'Concept & Schematic Design Fee', 
+        company: 'LdT Interiors',
+        projectName: 'House Sissou',
+        leadDesigner: 'Dani',
+        feeType: 'Hourly WIP',
+        feeTerms: '30 days',
         sqm: 1200, 
         feeValue: 618190, 
         paid: 355459, 
         outstanding: 262731, 
         margin: 19, 
         status: 'Approved', 
+        feeStatus: 'Detail Design',
         proposalPdf: 'DFP-SISSOU-MAIN.pdf',
         files: [
           { id: 'F-SISSOU-001', name: 'DFP-SISSOU-MAIN.pdf', category: 'Proposal PDF', date: '15 Mar 2024', size: '2.0 MB' }
+        ],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 50,
+            hourlyRate: 1800,
+            phaseFee: 90000,
+            actHours: 50,
+            totalValue: 90000,
+            billedFee: 90000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          }
         ]
       }
     ],
@@ -695,7 +864,56 @@ const initialStore = {
     actualMargin: 18,
     completedDate: '2025-04-20',
     nps: 7,
-    designFees: [],
+    designFees: [
+      { 
+        id: 'DF-2025-004', 
+        name: 'Made by 1-to-1 Design Fee', 
+        company: 'Greenfields Dev',
+        projectName: "Nando's Stlbsch",
+        leadDesigner: 'Dani',
+        feeType: 'Fixed Phase',
+        feeTerms: 'COD',
+        sqm: 480, 
+        feeValue: 132000, 
+        amountInvoiced: 132000,
+        paid: 132000, 
+        outstanding: 0, 
+        margin: 18, 
+        status: 'Completed', 
+        feeStatus: 'Completed',
+        files: [],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 30,
+            hourlyRate: 1800,
+            phaseFee: 54000,
+            actHours: 30,
+            totalValue: 54000,
+            billedFee: 54000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          },
+          {
+            phase: 'PHASE 2 DEVELOP',
+            serviceCode: 'DS-002',
+            description: 'Custom Joinery Detail Drawing Set',
+            estHours: 40,
+            hourlyRate: 1950,
+            phaseFee: 78000,
+            actHours: 40,
+            totalValue: 78000,
+            billedFee: 78000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Development (Ground)'
+          }
+        ]
+      }
+    ],
     orders: [
       {
         id: 'PO-2025-010',
@@ -770,7 +988,42 @@ const initialStore = {
     actualMargin: 19,
     completedDate: '2025-06-01',
     nps: 9,
-    designFees: [],
+    designFees: [
+      { 
+        id: 'DF-2025-005', 
+        name: 'Modus Lighting Design Fee', 
+        company: 'Venter Architects',
+        projectName: 'Kalahari',
+        leadDesigner: 'Merlyn',
+        feeType: 'Percentage of BOQ',
+        feeTerms: '30 days',
+        sqm: 1000, 
+        feeValue: 45000, 
+        amountInvoiced: 45000,
+        paid: 45000, 
+        outstanding: 0, 
+        margin: 19, 
+        status: 'Completed', 
+        feeStatus: 'Completed',
+        files: [],
+        phases: [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 25,
+            hourlyRate: 1800,
+            phaseFee: 45000,
+            actHours: 25,
+            totalValue: 45000,
+            billedFee: 45000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          }
+        ]
+      }
+    ],
     orders: [
       {
         id: 'PO-2025-011',

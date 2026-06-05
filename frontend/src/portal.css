@@ -37,7 +37,9 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
 
 /* PORTAL LAYOUT */
 .portal { display: flex; height: 100vh; background: var(--bg-primary); }
-.sidebar { width: 200px; background: var(--bg-secondary); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.sidebar { width: 200px; background: var(--bg-secondary); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; transition: width 0.15s ease-in-out; }
+.sidebar.collapsed { width: 60px; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
 .sb-logo { padding: 14px 14px; border-bottom: 0.5px solid var(--border); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
 .sb-logo i { font-size: 17px; color: var(--text-info); }
 .sb-sec-label { font-size: 9px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); padding: 12px 12px 4px; }
