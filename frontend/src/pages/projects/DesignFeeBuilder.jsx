@@ -91,10 +91,10 @@ function PreviewModal({ url, onClose }) {
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-function DesignFeeBuilder({ isLocked, updateFee }) {
+function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initialLandscapeArea = 0 }) {
   // --- Section 1: Scope & Meterage ---
-  const [livingArea, setLivingArea] = useState(995);
-  const [landscapeArea, setLandscapeArea] = useState(0);
+  const [livingArea, setLivingArea] = useState(initialLivingArea);
+  const [landscapeArea, setLandscapeArea] = useState(initialLandscapeArea);
   
   const [expLiving, setExpLiving] = useState(30);
   const [secLiving, setSecLiving] = useState(60);
@@ -422,10 +422,21 @@ function DesignFeeBuilder({ isLocked, updateFee }) {
                 {loadingPreview ? '⏳ Generating PDF...' : '📄 Preview & Print Proposal'}
               </button>
               <button
-                style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem' }}
-                onClick={() => {}}
+                style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#10b981', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease' }}
+                onClick={() => {
+                  if (updateFee) {
+                    updateFee({
+                      feeValue: absoluteProjectBudget,
+                      deposit: depositValue,
+                      fittings: archSubtotalRaw,
+                      livingArea,
+                      landscapeArea,
+                      sigConsult
+                    });
+                  }
+                }}
               >
-                💾 Save to Database
+                💾 Save & Sync Project Financials
               </button>
             </div>
           </div>

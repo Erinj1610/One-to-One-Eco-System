@@ -1,26 +1,36 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useNavigate } from 'react-router-dom';
+import PipelinePage from './PipelinePage';
 import { 
   User, Building2, Briefcase, TrendingUp, ArrowLeft, Mail, Phone, 
   ExternalLink, FileText, CheckCircle, Clock, Search, Bell, 
   MoreVertical, Calendar, DollarSign, MessageSquare, Send, ChevronRight,
   TrendingDown, Star, Filter, Plus, AlertTriangle, ShieldAlert, Heart, Target,
-  X, HelpCircle, Activity, Award
+  X, HelpCircle, Activity, Award, Edit3, Users
 } from 'lucide-react';
 
 const typeColors = { Architect: 'b-info', Developer: 'b-success', Interior: 'b-warning', Private: 'b-default' };
+
+// Date anchor and comparison helpers
+const today = new Date('2026-05-19');
+
+const getDaysDiff = (dateStr) => {
+  if (!dateStr) return 9999;
+  const d = new Date(dateStr);
+  return (today - d) / (1000 * 60 * 60 * 24);
+};
 
 export default function CrmPage() {
   const { 
     contacts, 
     setContacts, 
     projects, 
-    leads, 
-    setLeads,
     attritionLogs, 
-    logAttrition,
-    moveLead 
+    logAttrition
   } = useStore();
+
+  const navigate = useNavigate();
 
   // Page States
   const [selectedClient, setSelectedClient] = useState(null);
@@ -31,6 +41,54 @@ export default function CrmPage() {
   const [showAi, setShowAi] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
   const [form, setForm] = useState({ name: '', company: '', type: 'Architect', email: '', phone: '' });
+
+  // Edit Client Profile States
+  const [isEditingClient, setIsEditingClient] = useState(false);
+  const [editClientData, setEditClientData] = useState(null);
+
+  useEffect(() => {
+    if (selectedClient) {
+      setEditClientData({
+        name: selectedClient.name || '',
+        company: selectedClient.company || '',
+        type: selectedClient.type || 'Private',
+        email: selectedClient.email || '',
+        phone: selectedClient.phone || '',
+        statedGoal: selectedClient.statedGoal || '',
+        nps: selectedClient.nps || 8,
+        totalValue: selectedClient.totalValue || 0,
+        annualRevenue: selectedClient.annualRevenue || 0
+      });
+    }
+  }, [selectedClient]);
+
+  const handleSaveClient = () => {
+    if (!editClientData.name.trim()) {
+      showToast("Client name is required!");
+      return;
+    }
+    setContacts(prev => prev.map(c => {
+      if (c.id === selectedClient.id) {
+        const updated = {
+          ...c,
+          name: editClientData.name,
+          company: editClientData.company,
+          type: editClientData.type,
+          email: editClientData.email,
+          phone: editClientData.phone,
+          statedGoal: editClientData.statedGoal,
+          nps: Number(editClientData.nps),
+          totalValue: Number(editClientData.totalValue),
+          annualRevenue: Number(editClientData.annualRevenue)
+        };
+        setSelectedClient(updated);
+        return updated;
+      }
+      return c;
+    }));
+    setIsEditingClient(false);
+    showToast("Client profile updated successfully!");
+  };
 
   // Global Date Filters (Pipeline Aligned)
   const [datePreset, setDatePreset] = useState('All Time'); // 'All Time', 'Last Week', 'Last 30 Days', 'Financial Year', 'Custom'
@@ -60,15 +118,6 @@ export default function CrmPage() {
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);
-  };
-
-  // Date anchor and comparison helpers
-  const today = new Date('2026-05-19');
-  
-  const getDaysDiff = (dateStr) => {
-    if (!dateStr) return 9999;
-    const d = new Date(dateStr);
-    return (today - d) / (1000 * 60 * 60 * 24);
   };
 
   // Date filter range calculation
@@ -317,7 +366,8 @@ export default function CrmPage() {
   // GLOBAL VIEW
   if (!selectedClient) {
     return (
-      <div className="animation-fade-in" style={{ position: 'relative' }}>
+      <>
+        <div className="animation-fade-in" style={{ position: 'relative' }}>
         {/* Success Toasts container */}
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {toasts.map(t => (
@@ -328,89 +378,138 @@ export default function CrmPage() {
           ))}
         </div>
 
-        {/* Global Date & Period Filter Bar */}
-        <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Filter size={16} color="var(--text-secondary)" />
-              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-secondary)' }}>Filter Period:</span>
-              <div className="toggle-group" style={{ background: 'var(--bg-secondary)', padding: '2px' }}>
-                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year', 'Custom'].map(preset => (
+        {/* Title & Filter Bar Header */}
+        <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
+          <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
+                <Users size={18} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Global CRM Dashboard</h2>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Client directory, retention analytics, and behavioral triggers.</div>
+              </div>
+            </div>
+
+            {/* Date presets & Toggle buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              
+              {/* Date Filters */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
                   <button 
                     key={preset} 
-                    className={`toggle-btn ${datePreset === preset ? 'active' : ''}`}
-                    style={{ fontSize: '12px', padding: '6px 12px', border: 'none', background: 'none', color: datePreset === preset ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
+                    style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
                     onClick={() => setDatePreset(preset)}
                   >
                     {preset}
                   </button>
                 ))}
               </div>
-            </div>
 
-            {datePreset === 'Custom' && (
-              <div className="animation-fade-in" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                <Calendar size={13} color="var(--text-tertiary)" />
                 <input 
                   type="date" 
                   className="form-control" 
-                  style={{ width: '130px', padding: '4px 8px', fontSize: '12px', height: '30px' }} 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
                   value={customStart} 
-                  onChange={e => setCustomStart(e.target.value)} 
+                  onChange={e => { setCustomStart(e.target.value); setDatePreset('Custom'); }}
                 />
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>to</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
                 <input 
                   type="date" 
                   className="form-control" 
-                  style={{ width: '130px', padding: '4px 8px', fontSize: '12px', height: '30px' }} 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
                   value={customEnd} 
-                  onChange={e => setCustomEnd(e.target.value)} 
+                  onChange={e => { setCustomEnd(e.target.value); setDatePreset('Custom'); }}
                 />
               </div>
-            )}
-            
-            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-              Current Date Anchor: <strong>19 May 2026</strong>
             </div>
           </div>
         </div>
 
-        {/* Clickable Intelligent KPI Funnel Cards */}
-        <div className="stat-grid stat-grid-6">
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Total Clients', clientIds: funnels.vipClients.concat(funnels.importantClients, funnels.inactiveClients, funnels.activeClients).map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(24,95,165,0.01) 100%)', border: '1px solid rgba(24,95,165,0.12)' }}>
-            <div className="stat-label">Total Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px' }}>{funnels.totalCount}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>All-Time directory</div>
+        {/* Clickable Intelligent KPI Funnel Cards - MATCHING PIPELINE HEIGHT AND STRUCTURE */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '18px' }}>
+          
+          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Total Clients', clientIds: funnels.vipClients.concat(funnels.importantClients, funnels.inactiveClients, funnels.activeClients).map(c => c.id) })} style={{ borderLeft: '3.5px solid var(--text-secondary)', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Clients</span>
+              <Users size={14} color="var(--text-secondary)" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700 }}>{funnels.totalCount} Clients</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>Active: <strong>{funnels.activeClients.length}</strong></span>
+              <span>Inactive: <strong>{funnels.inactiveClients.length}</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Users size={11} /> All-Time directory
+            </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Active Clients', clientIds: funnels.activeClients.map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.06) 0%, rgba(34,197,94,0.01) 100%)', border: '1px solid rgba(34,197,94,0.12)' }}>
-            <div className="stat-label">Active Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px', color: '#22c55e' }}>{funnels.activeClients.length}</div>
-            <div style={{ fontSize: '10px', color: '#22c55e', marginTop: '4px' }}>Currently engaged</div>
+          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Active Clients', clientIds: funnels.activeClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #22c55e', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Clients</span>
+              <Activity size={14} color="#22c55e" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#22c55e' }}>{funnels.activeClients.length} Engaged</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>LTV: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>YTD: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Activity size={11} /> Active in pipeline
+            </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'VIP Clients', clientIds: funnels.vipClients.map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(234,179,8,0.06) 0%, rgba(234,179,8,0.01) 100%)', border: '1px solid rgba(234,179,8,0.12)' }}>
-            <div className="stat-label">VIP Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px', color: '#eab308' }}>{funnels.vipClients.length}</div>
-            <div style={{ fontSize: '10px', color: '#eab308', marginTop: '4px' }}>&gt;3 projects, Active/Recent</div>
+          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'VIP Clients', clientIds: funnels.vipClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #eab308', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#eab308', textTransform: 'uppercase', letterSpacing: '0.5px' }}>VIP Clients</span>
+              <Star size={14} color="#eab308" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#eab308' }}>{funnels.vipClients.length} Core</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>LTV: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>YTD: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Star size={11} /> &gt;3 projects, Active
+            </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Important Clients', clientIds: funnels.importantClients.map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(239,68,68,0.01) 100%)', border: '1px solid rgba(239,68,68,0.12)' }}>
-            <div className="stat-label">Important Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px', color: '#ef4444' }}>{funnels.importantClients.length}</div>
-            <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>Dormant loyalists</div>
+          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Important Clients', clientIds: funnels.importantClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #ef4444', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Important Clients</span>
+              <Heart size={14} color="#ef4444" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>{funnels.importantClients.length} Dormant</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>LTV: <strong>R {(funnels.importantClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Status: <strong>Yellow (Aging)</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Heart size={11} /> Needs urgent outreach
+            </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Inactive Clients', clientIds: funnels.inactiveClients.map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(100,116,139,0.06) 0%, rgba(100,116,139,0.01) 100%)', border: '1px solid rgba(100,116,139,0.12)' }}>
-            <div className="stat-label">Inactive Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px' }}>{funnels.inactiveClients.length}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>At-risk churns</div>
+          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Inactive Clients', clientIds: funnels.inactiveClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #64748b', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inactive Clients</span>
+              <User size={14} color="#64748b" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700 }}>{funnels.inactiveClients.length} Churned</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>LTV Lost: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Status: <strong>Red (Churn)</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <User size={11} /> &gt;12 months inactive
+            </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Top Clients by Revenue', clientIds: funnels.topRevenueClients.map(c => c.id) })} style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.06) 0%, rgba(168,85,247,0.01) 100%)', border: '1px solid rgba(168,85,247,0.12)' }}>
-            <div className="stat-label">Top Clients</div>
-            <div className="stat-value" style={{ fontSize: '24px', color: '#a855f7' }}>{funnels.topRevenueClients.length}</div>
-            <div style={{ fontSize: '10px', color: '#a855f7', marginTop: '4px' }}>Ranked by lifetime value</div>
-          </div>
+
         </div>
 
         <div className="crm-grid" style={{ marginTop: '20px' }}>
@@ -456,8 +555,38 @@ export default function CrmPage() {
                       <td style={{ fontWeight: 600, textAlign: 'center' }}>{c.projects}</td>
                       <td style={{ fontWeight: 600 }}>R {c.lifetimeRevenue?.toLocaleString()}</td>
                       <td>{renderHealthBadge(c.health)}</td>
-                      <td style={{ fontWeight: 500, color: c.activeProjectName !== '—' ? 'var(--text-info)' : 'var(--text-secondary)' }}>{c.activeProjectName}</td>
-                      <td>{c.lastCompletedProjectName}</td>
+                      <td 
+                        style={{ 
+                          fontWeight: 500, 
+                          color: c.activeProjectName !== '—' ? 'var(--text-info)' : 'var(--text-secondary)',
+                          cursor: c.activeProjectName !== '—' ? 'pointer' : 'default'
+                        }}
+                        onClick={(e) => {
+                          if (c.activeProjectName !== '—') {
+                            e.stopPropagation();
+                            const proj = Object.values(projects).find(pr => pr.name === c.activeProjectName);
+                            if (proj) navigate(`/projects/${proj.key || proj.id || proj.name.toLowerCase().replace(/\s+/g, '-')}`);
+                          }
+                        }}
+                      >
+                        {c.activeProjectName}
+                      </td>
+                      <td
+                        style={{
+                          fontWeight: 500,
+                          color: c.lastCompletedProjectName !== '—' ? 'var(--text-info)' : 'var(--text-secondary)',
+                          cursor: c.lastCompletedProjectName !== '—' ? 'pointer' : 'default'
+                        }}
+                        onClick={(e) => {
+                          if (c.lastCompletedProjectName !== '—') {
+                            e.stopPropagation();
+                            const proj = Object.values(projects).find(pr => pr.name === c.lastCompletedProjectName);
+                            if (proj) navigate(`/projects/${proj.key}`);
+                          }
+                        }}
+                      >
+                        {c.lastCompletedProjectName}
+                      </td>
                       <td>{c.lastCompletedProjectDate !== '—' ? new Date(c.lastCompletedProjectDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     </tr>
                   ))}
@@ -715,7 +844,9 @@ export default function CrmPage() {
           </div>
         </div>
 
-        {/* Dynamic KPI summary modal list */}
+      </div>
+
+      {/* Dynamic KPI summary modal list */}
         {kpiModal && (
           <div className="modal-bg active" onClick={() => setKpiModal(null)}>
             <div className="modal" style={{ width: '550px' }} onClick={e => e.stopPropagation()}>
@@ -726,37 +857,55 @@ export default function CrmPage() {
                 </div>
                 <button className="modal-close" onClick={() => setKpiModal(null)}>✕</button>
               </div>
-              <div className="modal-body" style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {kpiModal.clientIds.map(id => {
-                    const c = contacts.find(con => con.id === id);
-                    if (!c) return null;
-                    return (
-                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{c.name}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.company} • {c.type}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontWeight: 600, fontSize: '13px' }}>R {c.lifetimeRevenue?.toLocaleString()}</span>
-                          <button 
-                            className="btn btn-primary" 
-                            style={{ padding: '4px 8px', fontSize: '11px' }}
-                            onClick={() => {
-                              setSelectedClient(c);
-                              setKpiModal(null);
-                            }}
-                          >
-                            View Profile
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {kpiModal.clientIds.length === 0 && (
-                    <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12px', padding: '20px' }}>No clients found in this segment.</div>
-                  )}
-                </div>
+              <div className="modal-body" style={{ padding: '0', overflowX: 'auto' }}>
+                <table className="table" style={{ fontSize: '13px', margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ paddingLeft: '16px' }}>Client Name</th>
+                      <th>Total Revenue</th>
+                      <th>Lead Owner</th>
+                      <th style={{ paddingRight: '16px' }}>Last Contact Date</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpiModal.clientIds.map(id => {
+                      const c = contacts.find(con => con.id === id);
+                      if (!c) return null;
+                      return (
+                        <tr key={c.id} className="hover-row">
+                          <td style={{ paddingLeft: '16px' }}>
+                            <div style={{ fontWeight: 600 }}>{c.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.company} • {c.type}</div>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>R {c.lifetimeRevenue?.toLocaleString()}</td>
+                          <td>{c.leadOwner || 'Unassigned'}</td>
+                          <td style={{ paddingRight: '16px' }}>{c.lastContactDate ? new Date(c.lastContactDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown'}</td>
+                          <td style={{ textAlign: 'right', paddingRight: '16px' }}>
+                            <button 
+                              className="btn btn-primary" 
+                              style={{ padding: '4px 8px', fontSize: '11px' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedClient(c);
+                                setKpiModal(null);
+                              }}
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {kpiModal.clientIds.length === 0 && (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12px', padding: '20px' }}>
+                          No clients found in this segment.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
               <div className="modal-footer">
                 <button className="btn btn-primary" onClick={() => setKpiModal(null)}>Close</button>
@@ -936,13 +1085,13 @@ export default function CrmPage() {
             </div>
           </div>
         )}
-      </div>
+      </>
     );
   }
 
   // INDIVIDUAL DRILL-DOWN CLIENT PROFILE
   const clientProjects = Object.values(projects).filter(p => p.client === selectedClient.name);
-  const clientLeads = Object.values(leads).flat().filter(l => l.client === selectedClient.name);
+
 
   // Spend calculations for selectedClient
   const clientLtv = selectedClient.totalValue || 0;
@@ -950,7 +1099,8 @@ export default function CrmPage() {
   const client2025Spend = clientLtv - clientYtd;
 
   return (
-    <div className="animation-fade-in" style={{ position: 'relative' }}>
+    <>
+      <div className="animation-fade-in" style={{ position: 'relative' }}>
       {/* Dynamic Nudges Toast panel */}
       <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {toasts.map(t => (
@@ -971,6 +1121,21 @@ export default function CrmPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 700 }}>{selectedClient.name}</h1>
             <span className={`badge ${typeColors[selectedClient.type]}`} style={{ padding: '4px 12px' }}>{selectedClient.type}</span>
+            <button 
+              className="btn btn-secondary" 
+              style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                padding: '4px 10px', 
+                fontSize: '11px', 
+                height: '24px', 
+                cursor: 'pointer' 
+              }}
+              onClick={() => setIsEditingClient(true)}
+            >
+              <Edit3 size={11} /> Edit Profile
+            </button>
           </div>
           <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color="var(--text-tertiary)" /> {selectedClient.company}</span>
@@ -1034,7 +1199,12 @@ export default function CrmPage() {
 
               {/* Client Details block */}
               <div className="card">
-                <div className="card-head"><div className="card-title">Client Profile Details</div></div>
+                <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="card-title">Client Profile Details</div>
+                  <button className="btn btn-sm btn-ghost" onClick={() => setIsEditingClient(true)} style={{ color: 'var(--text-info)' }}>
+                    <Edit3 size={12} style={{ marginRight: '4px' }} /> Edit
+                  </button>
+                </div>
                 <div className="card-body">
                   <div className="kv"><span className="kv-key">Full Name</span><span className="kv-val">{selectedClient.name}</span></div>
                   <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{selectedClient.company}</span></div>
@@ -1055,7 +1225,23 @@ export default function CrmPage() {
                     <div className="kv"><span className="kv-key">YTD Spend</span><span className="kv-val" style={{ fontWeight: 700, color: '#22c55e' }}>R {clientYtd.toLocaleString()}</span></div>
                     <div className="kv"><span className="kv-key">All-Time Spend</span><span className="kv-val" style={{ fontWeight: 700 }}>R {clientLtv.toLocaleString()}</span></div>
                     <div className="kv"><span className="kv-key">Velocity Rhythm</span><span className="kv-val">Averages every {selectedClient.orderGapMonths || 8} months</span></div>
-                    <div className="kv"><span className="kv-key">Last Completed Project</span><span className="kv-val">{selectedClient.lastCompletedProjectName}</span></div>
+                    <div className="kv">
+                      <span className="kv-key">Last Completed Project</span>
+                      <span 
+                        className="kv-val" 
+                        onClick={() => {
+                          const proj = Object.values(projects).find(pr => pr.name === selectedClient.lastCompletedProjectName);
+                          if (proj) navigate(`/projects/${proj.key || proj.id || proj.name.toLowerCase().replace(/\s+/g, '-')}`);
+                        }}
+                        style={{ 
+                          fontWeight: 600, 
+                          color: Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'var(--text-info)' : 'inherit',
+                          cursor: Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'pointer' : 'default'
+                        }}
+                      >
+                        {selectedClient.lastCompletedProjectName}
+                      </span>
+                    </div>
                     <div className="kv"><span className="kv-key">Relationship Status</span><span>{renderHealthBadge(selectedClient.health)}</span></div>
                   </div>
                 </div>
@@ -1116,8 +1302,13 @@ export default function CrmPage() {
               </thead>
               <tbody>
                 {clientProjects.map(p => (
-                  <tr key={p.key}>
-                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                  <tr 
+                    key={p.key || p.id || p.name} 
+                    className="clickable hover-row" 
+                    onClick={() => navigate(`/projects/${p.key || p.id || p.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</td>
                     <td>{p.offering}</td>
                     <td>{p.stage}</td>
                     <td>
@@ -1146,82 +1337,8 @@ export default function CrmPage() {
 
         {/* TAB 3: PIPELINE (Bi-Directional Synced Opportunities Kanban) */}
         {activeTab === 'pipeline' && (
-          <div>
-            <div style={{ background: 'rgba(24,95,165,0.03)', border: '1px solid rgba(24,95,165,0.1)', padding: '12px', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', lineHeight: 1.4 }}>
-              <strong>Bi-Directional Opportunities Sync:</strong> This Kanban shows leads and opportunities *specifically* for {selectedClient.name}. Any status change here instantly synchronizes with the global Sales Pipeline page!
-            </div>
-            
-            <div className="kanban-board">
-              {['Lead Qualification', 'Proposal Stage', 'Negotiation', 'Closed Won', 'Closed Lost'].map(colTitle => {
-                const stageMap = {
-                  'Lead Qualification': 'Enquiry',
-                  'Proposal Stage': 'Proposal',
-                  'Negotiation': 'Negotiation',
-                  'Closed Won': 'Signed',
-                  'Closed Lost': 'Lost'
-                };
-                const stageKey = stageMap[colTitle];
-                const stageLeads = leads[stageKey]?.filter(l => l.client === selectedClient.name) || [];
-
-                return (
-                  <div key={colTitle} className="kanban-col">
-                    <div className="kanban-col-head">
-                      <div className="kanban-col-title">{colTitle}</div>
-                      <span className="kanban-count">{stageLeads.length}</span>
-                    </div>
-                    
-                    <div style={{ minHeight: '120px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {stageLeads.map(lead => (
-                        <div key={lead.id} className="kanban-card hover-scale" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
-                          <div style={{ fontWeight: 600, fontSize: '13px' }}>{lead.title}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Value: R {lead.value?.toLocaleString()}</div>
-                          
-                          {/* Mini Drag/Move simulation arrows for 100% interactive bi-directional context updates */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', borderTop: '0.5px solid var(--border)', paddingTop: '6px' }}>
-                            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Move Lead:</span>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              {stageKey !== 'Enquiry' && (
-                                <button 
-                                  className="btn" 
-                                  style={{ padding: '2px 4px', fontSize: '9px', height: '18px' }}
-                                  onClick={() => {
-                                    const prevStages = ['Enquiry', 'Proposal', 'Negotiation', 'Signed', 'Lost'];
-                                    const idx = prevStages.indexOf(stageKey);
-                                    moveLead(lead.id, stageKey, prevStages[idx - 1]);
-                                    showToast(`Pipeline Sync: Moved "${lead.title}" back!`);
-                                  }}
-                                >
-                                  ←
-                                </button>
-                              )}
-                              {stageKey !== 'Lost' && (
-                                <button 
-                                  className="btn" 
-                                  style={{ padding: '2px 4px', fontSize: '9px', height: '18px' }}
-                                  onClick={() => {
-                                    const nextStages = ['Enquiry', 'Proposal', 'Negotiation', 'Signed', 'Lost'];
-                                    const idx = nextStages.indexOf(stageKey);
-                                    moveLead(lead.id, stageKey, nextStages[idx + 1]);
-                                    showToast(`Pipeline Sync: Moved "${lead.title}" forward!`);
-                                  }}
-                                >
-                                  →
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {stageLeads.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '16px', fontSize: '11px', color: 'var(--text-tertiary)', border: '1px dashed var(--border)', borderRadius: '8px' }}>
-                          No leads in stage
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          <div style={{ marginLeft: '-24px', marginRight: '-24px', marginTop: '-16px' }}>
+            <PipelinePage clientFilter={selectedClient.name} />
           </div>
         )}
 
@@ -1330,5 +1447,112 @@ export default function CrmPage() {
         )}
       </div>
     </div>
-  );
+
+    {isEditingClient && editClientData && (
+      <div className="modal-bg active" style={{ zIndex: 1100 }}>
+        <div className="modal" style={{ width: '550px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-head">
+            <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Edit3 size={16} />
+              <span>Edit Client Profile</span>
+            </div>
+            <button className="modal-close" onClick={() => setIsEditingClient(false)}>✕</button>
+          </div>
+          <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', padding: '16px' }}>
+            <div className="form-row">
+              <label className="form-label" style={{ fontWeight: 600 }}>Client Name *</label>
+              <input 
+                className="form-control" 
+                value={editClientData.name} 
+                onChange={e => setEditClientData(d => ({ ...d, name: e.target.value }))} 
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label" style={{ fontWeight: 600 }}>Company</label>
+              <input 
+                className="form-control" 
+                value={editClientData.company} 
+                onChange={e => setEditClientData(d => ({ ...d, company: e.target.value }))} 
+              />
+            </div>
+            <div className="form-row">
+              <label className="form-label" style={{ fontWeight: 600 }}>Category / Type</label>
+              <select 
+                className="form-control" 
+                value={editClientData.type} 
+                onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
+              >
+                <option value="Architect">Architect</option>
+                <option value="Developer">Developer</option>
+                <option value="Interior">Interior</option>
+                <option value="Private">Private</option>
+              </select>
+            </div>
+            <div className="row-2">
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Email</label>
+                <input 
+                  className="form-control" 
+                  value={editClientData.email} 
+                  onChange={e => setEditClientData(d => ({ ...d, email: e.target.value }))} 
+                />
+              </div>
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Phone</label>
+                <input 
+                  className="form-control" 
+                  value={editClientData.phone} 
+                  onChange={e => setEditClientData(d => ({ ...d, phone: e.target.value }))} 
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <label className="form-label" style={{ fontWeight: 600 }}>Stated Long-Term Objective / Goal</label>
+              <input 
+                className="form-control" 
+                value={editClientData.statedGoal} 
+                onChange={e => setEditClientData(d => ({ ...d, statedGoal: e.target.value }))} 
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '15px' }}>
+              <div className="form-row" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>NPS (1-10)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="10" 
+                  className="form-control" 
+                  value={editClientData.nps} 
+                  onChange={e => setEditClientData(d => ({ ...d, nps: Number(e.target.value) }))} 
+                />
+              </div>
+              <div className="form-row" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>Lifetime Spend (R)</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={editClientData.totalValue} 
+                  onChange={e => setEditClientData(d => ({ ...d, totalValue: Number(e.target.value) }))} 
+                />
+              </div>
+              <div className="form-row" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>YTD Spend (R)</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={editClientData.annualRevenue} 
+                  onChange={e => setEditClientData(d => ({ ...d, annualRevenue: Number(e.target.value) }))} 
+                />
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn" onClick={() => setIsEditingClient(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleSaveClient}>Save Changes</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+);
 }

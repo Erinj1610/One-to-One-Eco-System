@@ -22,11 +22,17 @@ start "ECO - Backend" cmd /k "cd backend && .\venv\Scripts\python.exe main.py"
 echo [3/3] Starting Frontend (React on Port 5173)...
 start "ECO - Frontend" cmd /k "cd frontend && npm run dev"
 
+:: Step 4: Launch Web Browser
+echo.
+echo Launching your default web browser...
+timeout /t 2 /nobreak >nul
+start http://localhost:5173
+
 echo.
 echo ===================================================
-echo   SYSTEM LAUNCHING! 
-echo   Please keep the two new windows open.
-echo   Open your browser to: http://localhost:5173
+echo   SYSTEM LAUNCHED SUCCESSFULLY!
+echo   Please keep the two terminal windows open.
+echo   Your browser has been opened to: http://localhost:5173
 echo ===================================================
 echo.
 pause

@@ -4,6 +4,7 @@ import { auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider } from './context/StoreContext';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 import Login from './Login';
 import AppLayout from './components/layout/AppLayout';
@@ -12,7 +13,9 @@ import DesignTracker from './pages/DesignTracker';
 import ProjectList from './pages/projects/ProjectList';
 import ProjectManagement from './pages/projects/ProjectManagement';
 import DesignFeePage from './pages/DesignFeePage';
+import DesignPage from './pages/DesignPage';
 import TemplateEditor from './pages/admin/TemplateEditor';
+import SalesTracker from './pages/SalesTracker';
 
 // All portal modules
 import CrmPage from './pages/CrmPage';
@@ -36,10 +39,9 @@ function AdminRoute({ children }) {
   return children;
 }
 
-function AppInner() {
+function AppInner({ devBypass, setDevBypass }) {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [devBypass, setDevBypass] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -63,40 +65,48 @@ function AppInner() {
 
   return (
     <BrowserRouter>
-      <AuthProvider devBypass={devBypass}>
-        <StoreProvider>
-          <Routes>
-            <Route path="/" element={<AppLayout />}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard"  element={<Dashboard />} />
-              <Route path="tracker"    element={<DesignTracker />} />
-              <Route path="projects"   element={<ProjectList />} />
-              <Route path="projects/:id" element={<ProjectManagement />} />
-              <Route path="designfee"   element={<DesignFeePage />} />
-              <Route path="crm"        element={<CrmPage />} />
-              <Route path="pipeline"   element={<PipelinePage />} />
-              <Route path="time"       element={<TimePage />} />
-              <Route path="products"   element={<ProductsPage />} />
-              <Route path="boq"        element={<BoqPage />} />
-              <Route path="orders"     element={<OrdersPage />} />
-              <Route path="invoices"   element={<InvoicesPage />} />
-              <Route path="docs"       element={<DocsPage />} />
-              <Route path="hr"         element={<HrPage />} />
-              <Route path="reports"    element={<ReportsPage />} />
-              <Route path="support"    element={<SupportPage />} />
-              <Route path="settings"   element={<SettingsPage />} />
-              <Route path="admin/template-editor" element={
-                <AdminRoute><TemplateEditor /></AdminRoute>
-              } />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Route>
-          </Routes>
-        </StoreProvider>
-      </AuthProvider>
+      <Routes>
+        <Route path="/" element={<AppLayout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard"  element={<Dashboard />} />
+          <Route path="tracker"    element={<DesignTracker />} />
+          <Route path="projects"   element={<ProjectList />} />
+          <Route path="projects/:id" element={<ProjectManagement />} />
+          <Route path="designfee"   element={<DesignFeePage />} />
+          <Route path="design"      element={<DesignPage />} />
+          <Route path="crm"        element={<CrmPage />} />
+          <Route path="pipeline"   element={<PipelinePage />} />
+          <Route path="sales-tracker" element={<SalesTracker />} />
+          <Route path="time"       element={<TimePage />} />
+          <Route path="products"   element={<ProductsPage />} />
+          <Route path="boq"        element={<BoqPage />} />
+          <Route path="orders"     element={<OrdersPage />} />
+          <Route path="invoices"   element={<InvoicesPage />} />
+          <Route path="docs"       element={<DocsPage />} />
+          <Route path="hr"         element={<HrPage />} />
+          <Route path="reports"    element={<ReportsPage />} />
+          <Route path="support"    element={<SupportPage />} />
+          <Route path="settings"   element={<SettingsPage />} />
+          <Route path="admin/template-editor" element={
+            <AdminRoute><TemplateEditor /></AdminRoute>
+          } />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }
 
 export default function App() {
-  return <AppInner />;
+  const [devBypass, setDevBypass] = useState(false);
+
+  return (
+    <ErrorBoundary>
+      <AuthProvider devBypass={devBypass}>
+        <StoreProvider>
+          <AppInner devBypass={devBypass} setDevBypass={setDevBypass} />
+        </StoreProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
 }

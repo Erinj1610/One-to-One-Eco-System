@@ -321,13 +321,510 @@ const initialLeads = {
 };
 
 const initialStore = {
-  upper:  {key: 'upper', client: 'Sarah Venter', name:'Upper Primrose', offering:'Signature', sqm:'3,700', pm:'Dani',    stage:'Stage 1',   status:'On track',  delay:'Awaiting feedback/approval',             start:'29 Apr 2026', deadline:'12 May', daysLeft:'−2',  feeExcl:'R 1,888,225', feeValue: 1888225, paid:'R 1,039,264', outstanding:'R 848,961', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', targetMargin: 18, actualMargin: 20},
-  villa:  {key: 'villa', client: 'Marco Esteves', name:'Villa Z',        offering:'Signature', sqm:'1,580', pm:'Martin',  stage:'Stage 3',   status:'Off track', delay:'Complex design iteration/rework required', start:'22 Nov 2023', deadline:'Overdue', daysLeft:'−864',feeExcl:'R 436,727',   feeValue: 436727, paid:'R 436,727',   outstanding:'R 0',       prodApproved:'No',  complete:'Ongoing', s1:'✓',s2:'✓',s3:'',s4:'',s5:'', targetMargin: 18, actualMargin: 12},
-  tambor: {key: 'tambor', client: 'Nina Stroebel', name:'Tambor 9',       offering:'Signature', sqm:'1,915', pm:'Martin',  stage:'Ongoing',   status:'On track',  delay:'—',                                       start:'23 Jun 2026', deadline:'12 Aug',  daysLeft:'90',  feeExcl:'R 306,415',   feeValue: 306415, paid:'R 183,976',   outstanding:'R 122,439', prodApproved:'No',  complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', targetMargin: 18, actualMargin: 18},
-  singita:{key: 'singita', client: 'James Motloung', name:'Singita Elela',   offering:'Signature', sqm:'4,065', pm:'Dani',    stage:'Snags',     status:'On track',  delay:'Ongoing',                                 start:'18 Aug 2025', deadline:'1 Oct',   daysLeft:'−225',feeExcl:'R 1,002,268', feeValue: 1002268, paid:'R 651,474',   outstanding:'R 350,794', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'✓',s3:'✓',s4:'',s5:'', targetMargin: 18, actualMargin: 18},
-  sissou: {key: 'sissou', client: 'Liezel du Toit', name:'House Sissou',    offering:'Signature', sqm:'—',     pm:'Dani',    stage:'Stage 2',   status:'On track',  delay:'Unforeseen technical challenges',          start:'12 Mar 2024', deadline:'1 Jun',   daysLeft:'18',  feeExcl:'R 618,190',   feeValue: 618190, paid:'R 355,459',   outstanding:'R 355,459', prodApproved:'Yes', complete:'Ongoing', s1:'✓',s2:'',s3:'',s4:'',s5:'', targetMargin: 18, actualMargin: 19},
-  nandos: {key: 'nandos', client: 'Thabo Khumalo', name:"Nando's Stlbsch", offering:'Modus',     sqm:'480',   pm:'Dani',    stage:'Complete',  status:'On track',  delay:'—',                                       start:'3 Feb 2025',  deadline:'20 Apr',  daysLeft:'—',   feeExcl:'R 180,460',   feeValue: 180460, paid:'R 180,460',   outstanding:'R 0',       prodApproved:'Yes', complete:'Complete', s1:'✓',s2:'✓',s3:'✓',s4:'✓',s5:'✓', targetMargin: 18, actualMargin: 18, completedDate: '2025-04-20', nps: 7},
-  kalahari:{key: 'kalahari', client: 'Sarah Venter', name:'Kalahari',       offering:'Signature', sqm:'—',     pm:'Martin',  stage:'Snags',     status:'On track',  delay:'Snags/Site visit',                        start:'6 Feb 2024',  deadline:'1 Jun',   daysLeft:'18',  feeExcl:'R 113,500',   feeValue: 113500, paid:'R 89,700',    outstanding:'R 5,325',   prodApproved:'Yes', complete:'Complete', s1:'✓',s2:'✓',s3:'✓',s4:'✓',s5:'', targetMargin: 18, actualMargin: 19, completedDate: '2025-06-01', nps: 9},
+  upper: {
+    key: 'upper',
+    client: 'Sarah Venter',
+    name: 'Upper Primrose',
+    projectType: 'Design & Orders',
+    offering: 'Signature',
+    sqm: '3,700',
+    pm: 'Dani',
+    stage: 'Stage 1',
+    status: 'On track',
+    delay: 'Awaiting feedback/approval',
+    start: '29 Apr 2026',
+    deadline: '12 May',
+    daysLeft: '−2',
+    complete: 'Ongoing',
+    s1: '✓', s2: '', s3: '', s4: '', s5: '',
+    targetMargin: 18,
+    actualMargin: 20,
+    designFees: [
+      { 
+        id: 'DF-UPPER-01', 
+        name: 'Main Residence Design Fee', 
+        sqm: 995, 
+        feeValue: 1888225, 
+        paid: 1039264, 
+        outstanding: 848961, 
+        margin: 20, 
+        status: 'Approved', 
+        proposalPdf: 'DFP-UPPER-MAIN-2026.pdf',
+        files: [
+          { id: 'F-UPPER-001', name: 'DFP-UPPER-MAIN-2026.pdf', category: 'Proposal PDF', date: '2 May 2026', size: '2.4 MB' },
+          { id: 'F-UPPER-002', name: 'ConceptLayout_v1.dwg', category: 'Drawing', date: '5 May 2026', size: '14.8 MB' }
+        ]
+      }
+    ],
+    orders: [
+      { 
+        id: 'PO-2025-042', 
+        supplier: 'Molecule Dist.', 
+        items: 73, 
+        value: 21385, 
+        paid: 21385, 
+        outstanding: 0, 
+        status: 'In transit', 
+        eta: '16 May',
+        costValue: 14616,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-1',
+            qty: 3,
+            type: 'DL-01A',
+            code: '28402 9240 W',
+            description: 'Downlight - Entero RD-S 14W 2700K 30° White',
+            clientDescription: 'Downlight - 14W 2700K 30° LED IP20 White',
+            floor: 'Ground',
+            area: 'Passage Way',
+            dimming: 'Non-dim',
+            brand: 'Delta Light',
+            supplier: 'Molecule Dist.',
+            unitCost: 2238.63,
+            unitTrade: 2695.00,
+            unitRetail: 2995.00,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          },
+          {
+            id: 'I-2',
+            qty: 20,
+            type: 'DL-01A',
+            code: 'TA8-WWW',
+            description: 'Downlight - Club Series TA8 GU10 White',
+            clientDescription: 'Downlight - GU10/Module IP20 White',
+            floor: 'Ground',
+            area: 'Suite 04',
+            dimming: 'Phase',
+            brand: 'NEKO',
+            supplier: 'Molecule Dist.',
+            unitCost: 243.64,
+            unitTrade: 295.00,
+            unitRetail: 395.00,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          },
+          {
+            id: 'I-3',
+            qty: 50,
+            type: 'DL-01A.2',
+            code: 'LA.42059030',
+            description: 'Lamp - Classic 230V GU10 5W 36° Clear',
+            clientDescription: 'Lamp - Classic 230V GU10 5W 36° 3000K Clear',
+            floor: 'NA',
+            area: 'NA',
+            dimming: 'Non-dim',
+            brand: 'Spazio',
+            supplier: 'Molecule Dist.',
+            unitCost: 60.55,
+            unitTrade: 80.00,
+            unitRetail: 90.00,
+            selection: 'Non-Selection',
+            stockStatus: 'In Stock'
+          }
+        ]
+      }
+    ]
+  },
+  villa: {
+    key: 'villa',
+    client: 'Marco Esteves',
+    name: 'Villa Z',
+    projectType: 'Design & Orders',
+    offering: 'Signature',
+    sqm: '1,580',
+    pm: 'Martin',
+    stage: 'Stage 3',
+    status: 'Off track',
+    delay: 'Complex design iteration/rework required',
+    start: '22 Nov 2023',
+    deadline: 'Overdue',
+    daysLeft: '−864',
+    complete: 'Ongoing',
+    s1: '✓', s2: '✓', s3: '', s4: '', s5: '',
+    targetMargin: 18,
+    actualMargin: 12,
+    designFees: [
+      { 
+        id: 'DF-VILLA-01', 
+        name: 'Villa Z Master Design Proposal', 
+        sqm: 1580, 
+        feeValue: 400187, 
+        paid: 400187, 
+        outstanding: 0, 
+        margin: 12, 
+        status: 'Approved', 
+        proposalPdf: 'DFP-VILLA-MAIN.pdf',
+        files: [
+          { id: 'F-VILLA-001', name: 'DFP-VILLA-MAIN.pdf', category: 'Proposal PDF', date: '24 Nov 2023', size: '1.9 MB' }
+        ]
+      }
+    ],
+    orders: [
+      {
+        id: 'PO-2025-045',
+        supplier: 'Modus Lighting',
+        items: 18,
+        value: 36540,
+        paid: 36540,
+        outstanding: 0,
+        status: 'Pending',
+        eta: '22 May',
+        costValue: 24360,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-V1',
+            qty: 10,
+            type: 'DL-01',
+            code: 'MOD-LED-001',
+            description: 'Recessed LED Downlight 10W',
+            clientDescription: 'Recessed LED Downlight 10W IP20',
+            floor: 'Ground',
+            area: 'Lounge',
+            dimming: 'Non-dim',
+            brand: 'Modus',
+            supplier: 'Modus Lighting',
+            unitCost: 590.00,
+            unitTrade: 800.00,
+            unitRetail: 890.00,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          },
+          {
+            id: 'I-V2',
+            qty: 8,
+            type: 'STR-03',
+            code: 'MOD-STR-003',
+            description: 'Surface Strip 2700K 1200mm',
+            clientDescription: 'LED Surface Strip Light 1200mm Warm White',
+            floor: 'Ground',
+            area: 'Kitchen',
+            dimming: 'Phase',
+            brand: 'Modus',
+            supplier: 'Modus Lighting',
+            unitCost: 2307.50,
+            unitTrade: 3100.00,
+            unitRetail: 3455.00,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          }
+        ],
+        documents: []
+      }
+    ]
+  },
+  tambor: {
+    key: 'tambor',
+    client: 'Nina Stroebel',
+    name: 'Tambor 9',
+    projectType: 'Design & Orders',
+    offering: 'Signature',
+    sqm: '1,915',
+    pm: 'Martin',
+    stage: 'Ongoing',
+    status: 'On track',
+    delay: '—',
+    start: '23 Jun 2026',
+    deadline: '12 Aug',
+    daysLeft: '90',
+    complete: 'Ongoing',
+    s1: '✓', s2: '', s3: '', s4: '', s5: '',
+    targetMargin: 18,
+    actualMargin: 18,
+    designFees: [
+      { 
+        id: 'DF-TAMBOR-01', 
+        name: 'Concept Scope Costing', 
+        sqm: 1915, 
+        feeValue: 292215, 
+        paid: 183976, 
+        outstanding: 108239, 
+        margin: 18, 
+        status: 'Approved', 
+        proposalPdf: 'DFP-TAMBOR-MAIN.pdf',
+        files: [
+          { id: 'F-TAMBOR-001', name: 'DFP-TAMBOR-MAIN.pdf', category: 'Proposal PDF', date: '25 Jun 2026', size: '1.5 MB' }
+        ]
+      }
+    ],
+    orders: [
+      {
+        id: 'PO-2025-043',
+        supplier: 'Philips Advance',
+        items: 30,
+        value: 14200,
+        paid: 0,
+        outstanding: 14200,
+        status: 'Pending',
+        eta: '20 May',
+        costValue: 9300,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-T1',
+            qty: 20,
+            type: 'LP-01',
+            code: 'LA_12859898',
+            description: 'Lamp - Classic LED GU10 5.5W 2700K 36°',
+            clientDescription: 'Classic LED GU10 5.5W Warm White',
+            floor: 'First',
+            area: 'Bedrooms',
+            dimming: 'Non-dim',
+            brand: 'Spazio',
+            supplier: 'Philips Advance',
+            unitCost: 65.00,
+            unitTrade: 95.00,
+            unitRetail: 110.00,
+            selection: 'Non-Selection',
+            stockStatus: 'In Stock'
+          },
+          {
+            id: 'I-T2',
+            qty: 10,
+            type: 'DL-02',
+            code: 'MOD-LED-001',
+            description: 'Recessed LED Downlight 10W',
+            clientDescription: 'Recessed LED Downlight 10W IP20',
+            floor: 'First',
+            area: 'Hallway',
+            dimming: 'Non-dim',
+            brand: 'Modus',
+            supplier: 'Philips Advance',
+            unitCost: 800.00,
+            unitTrade: 1100.00,
+            unitRetail: 1200.00,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          }
+        ],
+        documents: []
+      }
+    ]
+  },
+  singita: {
+    key: 'singita',
+    client: 'James Motloung',
+    name: 'Singita Elela',
+    projectType: 'Design-Only',
+    offering: 'Signature',
+    sqm: '4,065',
+    pm: 'Dani',
+    stage: 'Snags',
+    status: 'On track',
+    delay: 'Ongoing',
+    start: '18 Aug 2025',
+    deadline: '1 Oct',
+    daysLeft: '−225',
+    complete: 'Ongoing',
+    s1: '✓', s2: '✓', s3: '✓', s4: '', s5: '',
+    targetMargin: 18,
+    actualMargin: 18,
+    designFees: [
+      { 
+        id: 'DF-SINGITA-01', 
+        name: 'Safari Lodge Main Proposal', 
+        sqm: 4065, 
+        feeValue: 1002268, 
+        paid: 651474, 
+        outstanding: 350794, 
+        margin: 18, 
+        status: 'Approved', 
+        proposalPdf: 'DFP-SINGITA-MAIN.pdf',
+        files: [
+          { id: 'F-SINGITA-001', name: 'DFP-SINGITA-MAIN.pdf', category: 'Proposal PDF', date: '20 Aug 2025', size: '3.1 MB' }
+        ]
+      }
+    ],
+    orders: []
+  },
+  sissou: {
+    key: 'sissou',
+    client: 'Liezel du Toit',
+    name: 'House Sissou',
+    projectType: 'Design-Only',
+    offering: 'Signature',
+    sqm: '—',
+    pm: 'Dani',
+    stage: 'Stage 2',
+    status: 'On track',
+    delay: 'Unforeseen technical challenges',
+    start: '12 Mar 2024',
+    deadline: '1 Jun',
+    daysLeft: '18',
+    complete: 'Ongoing',
+    s1: '✓', s2: '', s3: '', s4: '', s5: '',
+    targetMargin: 18,
+    actualMargin: 19,
+    designFees: [
+      { 
+        id: 'DF-SISSOU-01', 
+        name: 'Concept & Schematic Design Fee', 
+        sqm: 1200, 
+        feeValue: 618190, 
+        paid: 355459, 
+        outstanding: 262731, 
+        margin: 19, 
+        status: 'Approved', 
+        proposalPdf: 'DFP-SISSOU-MAIN.pdf',
+        files: [
+          { id: 'F-SISSOU-001', name: 'DFP-SISSOU-MAIN.pdf', category: 'Proposal PDF', date: '15 Mar 2024', size: '2.0 MB' }
+        ]
+      }
+    ],
+    orders: []
+  },
+  nandos: {
+    key: 'nandos',
+    client: 'Thabo Khumalo',
+    name: "Nando's Stlbsch",
+    projectType: 'Orders-Only',
+    offering: 'Modus',
+    sqm: '480',
+    pm: 'Dani',
+    stage: 'Complete',
+    status: 'On track',
+    delay: '—',
+    start: '3 Feb 2025',
+    deadline: '20 Apr',
+    daysLeft: '—',
+    complete: 'Complete',
+    s1: '✓', s2: '✓', s3: '✓', s4: '✓', s5: '✓',
+    targetMargin: 18,
+    actualMargin: 18,
+    completedDate: '2025-04-20',
+    nps: 7,
+    designFees: [],
+    orders: [
+      {
+        id: 'PO-2025-010',
+        supplier: 'Made by 1-to-1',
+        items: 120,
+        value: 180460,
+        paid: 180460,
+        outstanding: 0,
+        status: 'Delivered',
+        eta: '—',
+        costValue: 120000,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-N1',
+            qty: 80,
+            type: 'DL-M01',
+            code: 'MOD-LED-001',
+            description: 'Recessed LED Downlight 10W',
+            clientDescription: 'Nando Spec Recessed LED Downlight 10W',
+            floor: 'Ground',
+            area: 'Dining Area',
+            dimming: 'Non-dim',
+            brand: 'Modus',
+            supplier: 'Made by 1-to-1',
+            unitCost: 1000.00,
+            unitTrade: 1350.00,
+            unitRetail: 1500.00,
+            selection: 'Selection',
+            stockStatus: 'In Stock'
+          },
+          {
+            id: 'I-N2',
+            qty: 40,
+            type: 'STR-M02',
+            code: 'MOD-STR-003',
+            description: 'Surface Strip 2700K 1200mm',
+            clientDescription: 'Nando Spec LED Surface Strip 1200mm',
+            floor: 'Ground',
+            area: 'Kitchen & Counters',
+            dimming: 'Phase',
+            brand: 'Modus',
+            supplier: 'Made by 1-to-1',
+            unitCost: 1000.00,
+            unitTrade: 1350.00,
+            unitRetail: 1511.50,
+            selection: 'Selection',
+            stockStatus: 'In Stock'
+          }
+        ],
+        documents: []
+      }
+    ]
+  },
+  kalahari: {
+    key: 'kalahari',
+    client: 'Sarah Venter',
+    name: 'Kalahari',
+    projectType: 'Orders-Only',
+    offering: 'Signature',
+    sqm: '—',
+    pm: 'Martin',
+    stage: 'Snags',
+    status: 'On track',
+    delay: 'Snags/Site visit',
+    start: '6 Feb 2024',
+    deadline: '1 Jun',
+    daysLeft: '18',
+    complete: 'Complete',
+    s1: '✓', s2: '✓', s3: '✓', s4: '✓', s5: '',
+    targetMargin: 18,
+    actualMargin: 19,
+    completedDate: '2025-06-01',
+    nps: 9,
+    designFees: [],
+    orders: [
+      {
+        id: 'PO-2025-011',
+        supplier: 'Modus Lighting',
+        items: 40,
+        value: 113500,
+        paid: 108175,
+        outstanding: 5325,
+        status: 'Delivered',
+        eta: '—',
+        costValue: 74000,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-K1',
+            qty: 30,
+            type: 'DL-K01',
+            code: 'MOD-LED-001',
+            description: 'Recessed LED Downlight 10W',
+            clientDescription: 'Kalahari Spec Recessed LED Downlight 10W',
+            floor: 'Ground',
+            area: 'Lobby & Reception',
+            dimming: 'Non-dim',
+            brand: 'Modus',
+            supplier: 'Modus Lighting',
+            unitCost: 1300.00,
+            unitTrade: 1800.00,
+            unitRetail: 2000.00,
+            selection: 'Selection',
+            stockStatus: 'In Stock'
+          },
+          {
+            id: 'I-K2',
+            qty: 10,
+            type: 'STR-K02',
+            code: 'MOD-STR-003',
+            description: 'Surface Strip 2700K 1200mm',
+            clientDescription: 'Kalahari Spec LED Surface Strip 1200mm',
+            floor: 'Ground',
+            area: 'Conference Rooms',
+            dimming: 'Non-dim',
+            brand: 'Modus',
+            supplier: 'Modus Lighting',
+            unitCost: 3500.00,
+            unitTrade: 4800.00,
+            unitRetail: 5350.00,
+            selection: 'Selection',
+            stockStatus: 'In Stock'
+          }
+        ],
+        documents: []
+      }
+    ]
+  }
 };
 
 export function StoreProvider({ children }) {
@@ -349,17 +846,15 @@ export function StoreProvider({ children }) {
       [key]: { 
         key,
         ...project,
+        projectType: project.projectType || 'Design & Orders',
+        designFees: project.designFees || [],
+        orders: project.orders || [],
         stage: 'Stage 1',
         status: 'On track',
         delay: '—',
         start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
         deadline: 'TBD',
         daysLeft: '—',
-        feeExcl: 'R 0',
-        feeValue: 0,
-        paid: 'R 0',
-        outstanding: 'R 0',
-        prodApproved: 'No',
         complete: 'Ongoing',
         s1:'',s2:'',s3:'',s4:'',s5:''
       }

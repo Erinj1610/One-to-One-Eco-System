@@ -9,6 +9,7 @@ export default function AppLayout() {
     '/dashboard': 'Dashboard',
     '/crm': 'CRM',
     '/pipeline': 'Sales pipeline',
+    '/sales-tracker': 'Sales tracker',
     '/tracker': 'Design tracker',
     '/projects': 'Projects',
     '/designfee': 'Design fee calculator',

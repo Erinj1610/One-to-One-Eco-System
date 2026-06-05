@@ -26,7 +26,7 @@ const stageBorderColors = {
 
 const todayStr = '2026-05-18'; // Mocked local current date
 
-export default function PipelinePage() {
+export default function PipelinePage({ clientFilter = null }) {
   const { addProject, leads, setLeads, moveLead, updateLead, contacts, setContacts } = useStore();
   const navigate = useNavigate();
 
@@ -188,6 +188,10 @@ export default function PipelinePage() {
     const res = {};
     Object.keys(leads).forEach(stage => {
       let stageList = leads[stage] || [];
+      // Filter by Client
+      if (clientFilter) {
+        stageList = stageList.filter(l => l.client === clientFilter);
+      }
       // Filter by Date
       stageList = stageList.filter(l => isDateInRange(l.createdDate));
       // Filter by Needs Attention
@@ -197,7 +201,7 @@ export default function PipelinePage() {
       res[stage] = stageList;
     });
     return res;
-  }, [leads, startDate, endDate, isNeedsAttention]);
+  }, [leads, startDate, endDate, isNeedsAttention, clientFilter, isDateInRange]);
 
   const stages = ['Enquiry', 'Proposal', 'Negotiation', 'Signed', 'Lost'];
 
@@ -1122,7 +1126,6 @@ export default function PipelinePage() {
               {/* Monthly Column Cards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '380px' }}>
                 {col.leads.map(lead => {
-                  const rankInfo = getLeadRank(lead.probability, lead.priority);
                   const stagnantCheck = isStagnant(lead, lead.stage);
                   
                   return (
