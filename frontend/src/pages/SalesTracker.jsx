@@ -173,22 +173,9 @@ export default function SalesTracker() {
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
 
-  const [collapsedSections, setCollapsedSections] = useState({
-    costs: false,
-    procurement: false,
-    receiving: false,
-    invoicing: false,
-    delivery: false
-  });
+  const [activeTab, setActiveTab] = useState('order'); // 'order' | 'purchasing' | 'invoicing' | 'delivery'
   const [showHeaderDetails, setShowHeaderDetails] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
-
-  const toggleSection = (sectionName) => {
-    setCollapsedSections(prev => ({
-      ...prev,
-      [sectionName]: !prev[sectionName]
-    }));
-  };
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -300,20 +287,16 @@ export default function SalesTracker() {
   }, [activeOrderItems]);
 
   const getVisibleCols = () => {
-    const cols = [];
-    if (!collapsedSections.procurement) {
-      cols.push('poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta');
+    if (activeTab === 'purchasing') {
+      return ['poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
     }
-    if (!collapsedSections.receiving) {
-      cols.push('receivedQty', 'receivedDate');
+    if (activeTab === 'invoicing') {
+      return ['invoiceQty', 'invoiceRef', 'invoiceDate', 'invoiceValue'];
     }
-    if (!collapsedSections.invoicing) {
-      cols.push('invoiceQty', 'invoiceRef', 'invoiceDate', 'invoiceValue');
+    if (activeTab === 'delivery') {
+      return ['deliveryQty', 'deliveryDate', 'deliveryStatus', 'deliveryNotes'];
     }
-    if (!collapsedSections.delivery) {
-      cols.push('deliveryQty', 'deliveryDate', 'deliveryStatus', 'deliveryNotes');
-    }
-    return cols;
+    return [];
   };
 
   const handleSpreadsheetKeyDown = (e) => {
@@ -1115,7 +1098,7 @@ export default function SalesTracker() {
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
       
-      {/* STYLE INJECTION FOR PREMIUM CLEAN DOCUMENT PRINTING */}
+      {/* STYLE INJECTION FOR PREMIUM CLEAN DOCUMENT PRINTING & GS-CELLS */}
       <style>{`
         @media print {
           body * {
@@ -1135,6 +1118,45 @@ export default function SalesTracker() {
             background: white !important;
             color: #0f172a !important;
           }
+        }
+        .gs-cell-input {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 32px !important;
+          border: none !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          color: var(--text-primary) !important;
+          padding: 6px 8px !important;
+          margin: 0 !important;
+          font-size: 11.5px !important;
+          font-family: inherit !important;
+          outline: none !important;
+          text-align: inherit !important;
+          transition: box-shadow 0.1s ease, background-color 0.1s ease !important;
+        }
+        .gs-cell-input:focus {
+          background-color: var(--bg-secondary) !important;
+          box-shadow: inset 0 0 0 2px var(--text-info) !important;
+        }
+        .gs-cell-select {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 32px !important;
+          border: none !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          color: var(--text-primary) !important;
+          padding: 4px 8px !important;
+          margin: 0 !important;
+          font-size: 11.5px !important;
+          font-family: inherit !important;
+          outline: none !important;
+          transition: box-shadow 0.1s ease, background-color 0.1s ease !important;
+        }
+        .gs-cell-select:focus {
+          background-color: var(--bg-secondary) !important;
+          box-shadow: inset 0 0 0 2px var(--text-info) !important;
         }
       `}</style>
 
@@ -1691,65 +1713,86 @@ export default function SalesTracker() {
                     <>
                       {/* ITEM-BY-ITEM TRACKING SHEET */}
                       <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                            📋 Hardware Item Ledger & Fulfillment Tracking
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                          <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            📋 Hardware Item Ledger & Fulfillment
                           </h4>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            Click section headers (e.g. ▾ COSTS & SPEC DETAILS) to collapse/expand sections
-                          </span>
+                          
+                          {/* Phase tabs */}
+                          <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            {[
+                              { id: 'order', label: 'Order Spec', color: 'var(--text-primary)', bg: 'rgba(255, 255, 255, 0.05)' },
+                              { id: 'purchasing', label: 'Purchasing & Receiving', color: 'var(--text-info)', bg: 'rgba(59, 130, 246, 0.15)' },
+                              { id: 'invoicing', label: 'Invoicing', color: 'var(--text-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
+                              { id: 'delivery', label: 'Delivery Logistics', color: 'var(--text-danger)', bg: 'rgba(236, 72, 153, 0.15)' }
+                            ].map(tab => {
+                              const isActive = activeTab === tab.id;
+                              return (
+                                <button
+                                  key={tab.id}
+                                  type="button"
+                                  onClick={() => setActiveTab(tab.id)}
+                                  className="btn btn-sm"
+                                  style={{
+                                    padding: '6px 14px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: isActive ? tab.bg : 'transparent',
+                                    color: isActive ? tab.color : 'var(--text-secondary)',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                  }}
+                                >
+                                  {tab.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                         
                         <div style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                          <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: '1500px' }}>
+                          <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1350px' : activeTab === 'order' ? '1100px' : activeTab === 'invoicing' ? '1100px' : '1200px' }}>
                             <thead>
                               <tr style={{ background: 'var(--bg-secondary)' }}>
                                 <th colSpan={6} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
                                 
-                                <th 
-                                  colSpan={collapsedSections.costs ? 1 : 6} 
-                                  onClick={() => toggleSection('costs')}
-                                  style={{ background: 'rgba(255, 255, 255, 0.02)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', cursor: 'pointer', transition: 'background 0.2s' }}
-                                  className="hover-bg-light"
-                                >
-                                  {collapsedSections.costs ? '▶ COST' : '▼ COSTS & SPEC DETAILS'}
-                                </th>
+                                {activeTab === 'order' && (
+                                  <th 
+                                    colSpan={6} 
+                                    style={{ background: 'rgba(255, 255, 255, 0.02)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}
+                                  >
+                                    COSTS & SPEC DETAILS
+                                  </th>
+                                )}
 
-                                <th 
-                                  colSpan={collapsedSections.procurement ? 1 : 5} 
-                                  onClick={() => toggleSection('procurement')}
-                                  style={{ background: 'rgba(59, 130, 246, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-info)', cursor: 'pointer' }}
-                                  className="hover-bg-light"
-                                >
-                                  {collapsedSections.procurement ? '▶ PROC' : '▼ PHASE 1: PROCUREMENT (PO)'}
-                                </th>
+                                {activeTab === 'purchasing' && (
+                                  <th 
+                                    colSpan={8} 
+                                    style={{ background: 'rgba(59, 130, 246, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-info)' }}
+                                  >
+                                    PHASE 1: PROCUREMENT & RECEIVING
+                                  </th>
+                                )}
 
-                                <th 
-                                  colSpan={collapsedSections.receiving ? 1 : 3} 
-                                  onClick={() => toggleSection('receiving')}
-                                  style={{ background: 'rgba(16, 185, 129, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-success)', cursor: 'pointer' }}
-                                  className="hover-bg-light"
-                                >
-                                  {collapsedSections.receiving ? '▶ REC' : '▼ PHASE 2: RECEIVING'}
-                                </th>
+                                {activeTab === 'invoicing' && (
+                                  <th 
+                                    colSpan={5} 
+                                    style={{ background: 'rgba(245, 158, 11, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-warning)' }}
+                                  >
+                                    PHASE 2: INVOICING
+                                  </th>
+                                )}
 
-                                <th 
-                                  colSpan={collapsedSections.invoicing ? 1 : 5} 
-                                  onClick={() => toggleSection('invoicing')}
-                                  style={{ background: 'rgba(245, 158, 11, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-warning)', cursor: 'pointer' }}
-                                  className="hover-bg-light"
-                                >
-                                  {collapsedSections.invoicing ? '▶ INV' : '▼ PHASE 3: INVOICING'}
-                                </th>
-
-                                <th 
-                                  colSpan={collapsedSections.delivery ? 1 : 4} 
-                                  onClick={() => toggleSection('delivery')}
-                                  style={{ background: 'rgba(236, 72, 153, 0.1)', textAlign: 'center', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)', cursor: 'pointer' }}
-                                  className="hover-bg-light"
-                                >
-                                  {collapsedSections.delivery ? '▶ DEL' : '▼ PHASE 4: DELIVERY LOGISTICS'}
-                                </th>
+                                {activeTab === 'delivery' && (
+                                  <th 
+                                    colSpan={4} 
+                                    style={{ background: 'rgba(236, 72, 153, 0.1)', textAlign: 'center', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}
+                                  >
+                                    PHASE 3: DELIVERY LOGISTICS
+                                  </th>
+                                )}
                               </tr>
                               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
                                 <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
@@ -1759,9 +1802,7 @@ export default function SalesTracker() {
                                 <th style={{ width: '90px', textAlign: 'right' }}>Unit Retail</th>
                                 <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)' }}>Total Retail</th>
                                 
-                                {collapsedSections.costs ? (
-                                  <th style={{ width: '40px', textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}>—</th>
-                                ) : (
+                                {activeTab === 'order' && (
                                   <>
                                     <th style={{ width: '90px', textAlign: 'right' }}>Cost</th>
                                     <th style={{ width: '90px', textAlign: 'right' }}>Total Cost</th>
@@ -1772,31 +1813,20 @@ export default function SalesTracker() {
                                   </>
                                 )}
 
-                                {collapsedSections.procurement ? (
-                                  <th style={{ width: '40px', textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}>—</th>
-                                ) : (
+                                {activeTab === 'purchasing' && (
                                   <>
                                     <th style={{ width: '100px' }}>PO Reference</th>
                                     <th style={{ width: '120px' }}>Supplier</th>
                                     <th style={{ width: '100px' }}>Date Ordered</th>
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Ord</th>
                                     <th style={{ width: '100px', borderRight: '1px solid var(--border-strong)' }}>Delivery ETA</th>
-                                  </>
-                                )}
-
-                                {collapsedSections.receiving ? (
-                                  <th style={{ width: '40px', textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}>—</th>
-                                ) : (
-                                  <>
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Rec</th>
                                     <th style={{ width: '100px' }}>Date Rec</th>
                                     <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)' }}>Rec Value</th>
                                   </>
                                 )}
 
-                                {collapsedSections.invoicing ? (
-                                  <th style={{ width: '40px', textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}>—</th>
-                                ) : (
+                                {activeTab === 'invoicing' && (
                                   <>
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Inv</th>
                                     <th style={{ width: '100px' }}>Invoice Ref</th>
@@ -1806,9 +1836,7 @@ export default function SalesTracker() {
                                   </>
                                 )}
 
-                                {collapsedSections.delivery ? (
-                                  <th style={{ width: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>—</th>
-                                ) : (
+                                {activeTab === 'delivery' && (
                                   <>
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Del</th>
                                     <th style={{ width: '100px' }}>Date Del</th>
@@ -1858,9 +1886,7 @@ export default function SalesTracker() {
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)' }}>R {Math.round(item.qty * (item.unitRetail || 0)).toLocaleString()}</td>
 
-                                    {collapsedSections.costs ? (
-                                      <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)' }}>…</td>
-                                    ) : (
+                                    {activeTab === 'order' && (
                                       <>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitCost || 0).toLocaleString()}</td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.qty * (item.unitCost || 0)).toLocaleString()}</td>
@@ -1875,88 +1901,74 @@ export default function SalesTracker() {
                                       </>
                                     )}
 
-                                    {collapsedSections.procurement ? (
-                                      <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)' }}>…</td>
-                                    ) : (
+                                    {activeTab === 'purchasing' && (
                                       <>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="text" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '90px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={poRefVal}
                                             data-row={rowIndex}
                                             data-col="poRef"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poRef', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="text" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '110px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={poSupplierVal}
                                             data-row={rowIndex}
                                             data-col="poSupplier"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poSupplier', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="date" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '100px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
+                                            style={{ colorScheme: 'dark' }}
                                             value={toInputDate(poDateVal)}
                                             data-row={rowIndex}
                                             data-col="poDate"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poDate', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0, textAlign: 'center' }}>
                                           <input 
                                             type="number" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '55px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={poQtyOrderedVal}
                                             data-row={rowIndex}
                                             data-col="poQtyOrdered"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poQtyOrdered', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
-                                        <td style={{ borderRight: '1px solid var(--border-strong)' }}>
+                                        <td style={{ padding: 0, borderRight: '1px solid var(--border-strong)' }}>
                                           <input 
                                             type="text" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '90px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={poEtaVal}
                                             data-row={rowIndex}
                                             data-col="poEta"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poEta', e.target.value)}
                                           />
                                         </td>
-                                      </>
-                                    )}
-
-                                    {collapsedSections.receiving ? (
-                                      <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)' }}>…</td>
-                                    ) : (
-                                      <>
-                                        <td>
+                                        <td style={{ padding: 0, textAlign: 'center' }}>
                                           <input 
                                             type="number" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '55px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={receivedQtyVal}
                                             data-row={rowIndex}
                                             data-col="receivedQty"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'receivedQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="date" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '100px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
+                                            style={{ colorScheme: 'dark' }}
                                             value={toInputDate(receivedDateVal)}
                                             data-row={rowIndex}
                                             data-col="receivedDate"
@@ -1969,48 +1981,43 @@ export default function SalesTracker() {
                                       </>
                                     )}
 
-                                    {collapsedSections.invoicing ? (
-                                      <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)' }}>…</td>
-                                    ) : (
+                                    {activeTab === 'invoicing' && (
                                       <>
-                                        <td>
+                                        <td style={{ padding: 0, textAlign: 'center' }}>
                                           <input 
                                             type="number" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '55px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={invoiceQtyVal}
                                             data-row={rowIndex}
                                             data-col="invoiceQty"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="text" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '90px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={invoiceRefVal}
                                             data-row={rowIndex}
                                             data-col="invoiceRef"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceRef', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="date" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '100px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
+                                            style={{ colorScheme: 'dark' }}
                                             value={toInputDate(invoiceDateVal)}
                                             data-row={rowIndex}
                                             data-col="invoiceDate"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceDate', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0, textAlign: 'right' }}>
                                           <input 
                                             type="number" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '90px', textAlign: 'right', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={invoiceValueVal}
                                             data-row={rowIndex}
                                             data-col="invoiceValue"
@@ -2023,36 +2030,32 @@ export default function SalesTracker() {
                                       </>
                                     )}
 
-                                    {collapsedSections.delivery ? (
-                                      <td style={{ textAlign: 'center', color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.05)' }}>…</td>
-                                    ) : (
+                                    {activeTab === 'delivery' && (
                                       <>
-                                        <td>
+                                        <td style={{ padding: 0, textAlign: 'center' }}>
                                           <input 
                                             type="number" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '55px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
                                             value={deliveryQtyVal}
                                             data-row={rowIndex}
                                             data-col="deliveryQty"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="date" 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '100px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-input" 
+                                            style={{ colorScheme: 'dark' }}
                                             value={toInputDate(deliveryDateVal)}
                                             data-row={rowIndex}
                                             data-col="deliveryDate"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryDate', e.target.value)}
                                           />
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <select 
-                                            className="form-control" 
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 4px', width: '90px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                            className="gs-cell-select" 
                                             value={deliveryStatusVal}
                                             data-row={rowIndex}
                                             data-col="deliveryStatus"
@@ -2063,12 +2066,11 @@ export default function SalesTracker() {
                                             <option>Delivered</option>
                                           </select>
                                         </td>
-                                        <td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="text" 
-                                            className="form-control" 
+                                            className="gs-cell-input" 
                                             placeholder="e.g. waybills, collectors..."
-                                            style={{ height: '24px', fontSize: '11px', padding: '2px 6px', minWidth: '350px', width: '380px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                                             value={deliveryNotesVal}
                                             data-row={rowIndex}
                                             data-col="deliveryNotes"
