@@ -7,7 +7,7 @@ import {
   ExternalLink, FileText, CheckCircle, Clock, Search, Bell, 
   MoreVertical, Calendar, DollarSign, MessageSquare, Send, ChevronRight,
   TrendingDown, Star, Filter, Plus, AlertTriangle, ShieldAlert, Heart, Target,
-  X, HelpCircle, Activity, Award, Edit3, Users
+  X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList
 } from 'lucide-react';
 
 const typeColors = { Architect: 'b-info', Developer: 'b-success', Interior: 'b-warning', Private: 'b-default' };
@@ -46,6 +46,10 @@ export default function CrmPage() {
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [editClientData, setEditClientData] = useState(null);
 
+  // Activity Log States
+  const [newActivityText, setNewActivityText] = useState('');
+  const [clientActivities, setClientActivities] = useState([]);
+
   useEffect(() => {
     if (selectedClient) {
       setEditClientData({
@@ -59,6 +63,9 @@ export default function CrmPage() {
         totalValue: selectedClient.totalValue || 0,
         annualRevenue: selectedClient.annualRevenue || 0
       });
+      // Load activities from contact record
+      setClientActivities(selectedClient.activities || []);
+      setNewActivityText('');
     }
   }, [selectedClient]);
 
@@ -1152,9 +1159,9 @@ export default function CrmPage() {
       {/* Tabs */}
       <div className="card" style={{ marginBottom: '24px' }}>
         <div className="tabs" style={{ borderBottom: 'none', padding: '0 8px' }}>
-          {['overview', 'projects', 'pipeline', 'financials'].map(tab => (
+          {['overview', 'projects', 'pipeline', 'activity', 'financials'].map(tab => (
             <button key={tab} className={`tab-btn ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'activity' ? 'Activity Log' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -1338,7 +1345,105 @@ export default function CrmPage() {
         {/* TAB 3: PIPELINE (Bi-Directional Synced Opportunities Kanban) */}
         {activeTab === 'pipeline' && (
           <div style={{ marginLeft: '-24px', marginRight: '-24px', marginTop: '-16px' }}>
-            <PipelinePage clientFilter={selectedClient.name} />
+            <PipelinePage clientFilter={selectedClient.name} isEmbedded={true} />
+          </div>
+        )}
+
+        {/* TAB 4: ACTIVITY LOG */}
+        {activeTab === 'activity' && (
+          <div className="animation-fade-in">
+            {/* Log a new activity */}
+            <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-info)' }}>
+              <div className="card-head">
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={16} color="var(--text-info)" /> Log Interaction
+                </div>
+              </div>
+              <div className="card-body" style={{ padding: '16px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                  <textarea
+                    className="form-control"
+                    rows={2}
+                    placeholder="Describe the interaction (e.g. 'Call with Sarah — confirmed Phase 2 brief')..."
+                    value={newActivityText}
+                    onChange={e => setNewActivityText(e.target.value)}
+                    style={{ flex: 1, resize: 'vertical', fontSize: '13px', fontFamily: 'inherit' }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                    onClick={() => {
+                      if (!newActivityText.trim()) return;
+                      const now = new Date();
+                      const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
+                        ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+                      const newEntry = {
+                        id: Date.now(),
+                        text: newActivityText.trim(),
+                        date: timestamp,
+                        staff: 'You'
+                      };
+                      const updated = [...clientActivities, newEntry];
+                      setClientActivities(updated);
+                      setNewActivityText('');
+                      // Persist to contacts store
+                      setContacts(prev => prev.map(c =>
+                        c.id === selectedClient.id ? { ...c, activities: updated } : c
+                      ));
+                    }}
+                  >
+                    <Send size={14} /> Log Activity
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="card">
+              <div className="card-head">
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Activity size={16} color="var(--text-secondary)" /> Interaction History for {selectedClient.name}
+                </div>
+              </div>
+              <div className="card-body" style={{ padding: '16px' }}>
+                {clientActivities.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                    <Activity size={28} style={{ marginBottom: '10px', opacity: 0.4 }} />
+                    <div>No interactions logged yet.</div>
+                    <div style={{ fontSize: '11px', marginTop: '4px' }}>Use the form above to record calls, meetings, emails, and follow-ups.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {[...clientActivities].reverse().map((entry, idx, arr) => (
+                      <div key={entry.id} style={{ display: 'flex', gap: '14px', paddingBottom: idx < arr.length - 1 ? '16px' : 0 }}>
+                        {/* Timeline dot + line */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                          <div style={{
+                            width: '10px', height: '10px', borderRadius: '50%',
+                            background: idx === 0 ? 'var(--text-info)' : 'var(--border)',
+                            border: idx === 0 ? '2px solid var(--text-info)' : '2px solid var(--text-tertiary)',
+                            marginTop: '3px', flexShrink: 0
+                          }} />
+                          {idx < arr.length - 1 && (
+                            <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '4px' }} />
+                          )}
+                        </div>
+                        {/* Entry content */}
+                        <div style={{ flex: 1, paddingBottom: idx < arr.length - 1 ? '4px' : 0 }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                            {entry.text}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px', display: 'flex', gap: '10px' }}>
+                            <span>{entry.date}</span>
+                            {entry.staff && <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>— {entry.staff}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

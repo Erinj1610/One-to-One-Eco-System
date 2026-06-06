@@ -26,7 +26,7 @@ const stageBorderColors = {
 
 const todayStr = '2026-05-18'; // Mocked local current date
 
-export default function PipelinePage({ clientFilter = null }) {
+export default function PipelinePage({ clientFilter = null, isEmbedded = false }) {
   const { addProject, leads, setLeads, moveLead, updateLead, contacts, setContacts } = useStore();
   const navigate = useNavigate();
 
@@ -771,92 +771,95 @@ export default function PipelinePage({ clientFilter = null }) {
         <span style={{ fontSize: '12px' }}>{toastMsg}</span>
       </div>
 
-      {/* Title & Filter Bar Header */}
-      <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
-        <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="av-md" style={{ background: 'var(--bg-info)', color: 'var(--text-info)' }}>
-              <Layout size={18} />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Sales Pipeline (CRM Coach)</h2>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Weighted forecasts, Visual decay, Action gates, and PM notifications.</div>
-            </div>
-          </div>
-
-          {/* Date presets & Toggle buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      {/* Title & Filter Bar Header — hidden when embedded in CRM */}
+      {!isEmbedded && (
+        <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
+          <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             
-            {/* View Toggles (Forecast & Needs Attention filters) */}
-            <div style={{ display: 'flex', gap: '4px', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
-              <button 
-                className={`btn btn-sm ${isForecastView ? 'btn-primary' : 'btn-ghost'}`} 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '4px',
-                  background: isForecastView ? 'var(--text-info)' : 'none',
-                  color: isForecastView ? 'white' : 'var(--text-secondary)'
-                }}
-                onClick={() => setIsForecastView(!isForecastView)}
-              >
-                <Eye size={12} /> View Forecast
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="av-md" style={{ background: 'var(--bg-info)', color: 'var(--text-info)' }}>
+                <Layout size={18} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Sales Pipeline (CRM Coach)</h2>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Weighted forecasts, Visual decay, Action gates, and PM notifications.</div>
+              </div>
+            </div>
+
+            {/* Date presets & Toggle buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               
-              <button 
-                className={`btn btn-sm ${isNeedsAttention ? 'btn-danger' : 'btn-ghost'}`} 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '4px',
-                  background: isNeedsAttention ? 'var(--text-danger)' : 'none',
-                  color: isNeedsAttention ? 'white' : 'var(--text-secondary)'
-                }}
-                onClick={() => setIsNeedsAttention(!isNeedsAttention)}
-              >
-                <Target size={12} /> Needs Attention
-              </button>
-            </div>
-
-            {/* Date Filters */}
-            <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
-              {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
+              {/* View Toggles (Forecast & Needs Attention filters) */}
+              <div style={{ display: 'flex', gap: '4px', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
                 <button 
-                  key={preset} 
-                  className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
-                  style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
-                  onClick={() => applyPreset(preset)}
+                  className={`btn btn-sm ${isForecastView ? 'btn-primary' : 'btn-ghost'}`} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px',
+                    background: isForecastView ? 'var(--text-info)' : 'none',
+                    color: isForecastView ? 'white' : 'var(--text-secondary)'
+                  }}
+                  onClick={() => setIsForecastView(!isForecastView)}
                 >
-                  {preset}
+                  <Eye size={12} /> View Forecast
                 </button>
-              ))}
-            </div>
+                
+                <button 
+                  className={`btn btn-sm ${isNeedsAttention ? 'btn-danger' : 'btn-ghost'}`} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '4px',
+                    background: isNeedsAttention ? 'var(--text-danger)' : 'none',
+                    color: isNeedsAttention ? 'white' : 'var(--text-secondary)'
+                  }}
+                  onClick={() => setIsNeedsAttention(!isNeedsAttention)}
+                >
+                  <Target size={12} /> Needs Attention
+                </button>
+              </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-              <Calendar size={13} color="var(--text-tertiary)" />
-              <input 
-                type="date" 
-                className="form-control" 
-                style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-                value={startDate} 
-                onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
-              />
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
-              <input 
-                type="date" 
-                className="form-control" 
-                style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-                value={endDate} 
-                onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
-              />
-            </div>
+              {/* Date Filters */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
+                  <button 
+                    key={preset} 
+                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
+                    style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
+                    onClick={() => applyPreset(preset)}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                <Calendar size={13} color="var(--text-tertiary)" />
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
+                  value={startDate} 
+                  onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
+                  value={endDate} 
+                  onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
+                />
+              </div>
+
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* SECTION 1 & 2: Advanced KPI Cards (Updated Total Pipeline Card splits) */}
+      {/* SECTION 1 & 2: Advanced KPI Cards — hidden when embedded in CRM */}
+      {!isEmbedded && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '18px' }}>
         
         {/* KPI 1: Active Enquiries */}
@@ -948,25 +951,28 @@ export default function PipelinePage({ clientFilter = null }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Button & Automations Control Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button 
-            className={`btn btn-sm ${showAutomationsPanel ? 'btn-primary' : 'btn-ghost'}`} 
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            onClick={() => setShowAutomationsPanel(!showAutomationsPanel)}
-          >
-            <Settings size={13} /> Admin settings & Durations limits
-          </button>
-        </div>
-        <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+        {!isEmbedded && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+              className={`btn btn-sm ${showAutomationsPanel ? 'btn-primary' : 'btn-ghost'}`} 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => setShowAutomationsPanel(!showAutomationsPanel)}
+            >
+              <Settings size={13} /> Admin settings & Durations limits
+            </button>
+          </div>
+        )}
+        <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setShowCreateModal(true)}>
           <Plus size={14} /> + New Lead (Coaching Gated)
         </button>
       </div>
 
-      {/* ADMIN CONFIGURATION & AUTOMATION RULES PANEL */}
-      {showAutomationsPanel && (
+      {/* ADMIN CONFIGURATION & AUTOMATION RULES PANEL — hidden when embedded */}
+      {!isEmbedded && showAutomationsPanel && (
         <div className="card animation-fade-in" style={{ marginBottom: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-info)' }}>
           <div className="card-head" style={{ padding: '10px 16px' }}>
             <div className="card-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>

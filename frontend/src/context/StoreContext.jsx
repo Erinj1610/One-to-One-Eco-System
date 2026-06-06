@@ -21,7 +21,13 @@ const initialContacts = [
     orderGapMonths: 4,
     nps: 9,
     dateStarted: '2024-01-15',
-    avgPaymentDelayDays: 4
+    avgPaymentDelayDays: 4,
+    activities: [
+      { id: 1, text: 'Initial meeting at Venter Architects office — discussed Clifton Villa brief and scope.', date: '15 Jan 2024', staff: 'Dani' },
+      { id: 2, text: 'Proposal sent for Kalahari Retreat lighting package. Sarah requested revisions on zone 3.', date: '3 Jun 2024', staff: 'Dani' },
+      { id: 3, text: 'Site visit — confirmed organic glass layout details for Phase 1.', date: '12 Feb 2026', staff: 'Martin' },
+      { id: 4, text: 'Call with JV regarding Kalahari snag list — client satisfied, final sign-off expected next week.', date: '12 May 2026', staff: 'Dani' }
+    ]
   },
   { 
     id: 2, 
@@ -41,7 +47,12 @@ const initialContacts = [
     orderGapMonths: 6,
     nps: 8,
     dateStarted: '2023-08-10',
-    avgPaymentDelayDays: 14
+    avgPaymentDelayDays: 14,
+    activities: [
+      { id: 1, text: 'First project briefing at DM Properties HQ — agreed on Sandton retail scope and timeline.', date: '10 Aug 2023', staff: 'Alex' },
+      { id: 2, text: 'Proposal sent for Steyn City Estate lighting design.', date: '5 May 2026', staff: 'Alex' },
+      { id: 3, text: 'Signed closure of Sandton retail project — client very satisfied with outcome.', date: '15 Oct 2025', staff: 'Dani' }
+    ]
   },
   { 
     id: 3, 
@@ -61,7 +72,11 @@ const initialContacts = [
     orderGapMonths: 12,
     nps: 9,
     dateStarted: '2024-03-12',
-    avgPaymentDelayDays: 2
+    avgPaymentDelayDays: 2,
+    activities: [
+      { id: 1, text: 'Intro call — Liezel referred by Venter Architects. Interested in holiday home renovations.', date: '12 Mar 2024', staff: 'Dani' },
+      { id: 2, text: 'Email follow up on fee calculation for Home 2 renovation.', date: '1 Apr 2026', staff: 'Martin' }
+    ]
   },
   { 
     id: 4, 
@@ -81,7 +96,12 @@ const initialContacts = [
     orderGapMonths: 18,
     nps: 4,
     dateStarted: '2022-11-20',
-    avgPaymentDelayDays: 30
+    avgPaymentDelayDays: 30,
+    activities: [
+      { id: 1, text: 'First engagement — Marco reached out regarding Villa Z bespoke fittings.', date: '20 Nov 2022', staff: 'Dani' },
+      { id: 2, text: 'Design review meeting — client raised concerns about lead times on imported fixtures.', date: '8 May 2023', staff: 'Dani' },
+      { id: 3, text: 'Meeting at office regarding Villa Z snag list — unresolved items escalated.', date: '10 May 2024', staff: 'Martin' }
+    ]
   },
   { 
     id: 5, 
@@ -101,7 +121,11 @@ const initialContacts = [
     orderGapMonths: 8,
     nps: 7,
     dateStarted: '2025-02-03',
-    avgPaymentDelayDays: 8
+    avgPaymentDelayDays: 8,
+    activities: [
+      { id: 1, text: 'Project briefing — Thabo confirmed Waterfall retail space layout requirements.', date: '3 Feb 2025', staff: 'Martin' },
+      { id: 2, text: 'Call regarding handover of Nandos Rosebank — client accepted punch list.', date: '10 Feb 2025', staff: 'Dani' }
+    ]
   },
   { 
     id: 6, 
@@ -121,7 +145,11 @@ const initialContacts = [
     orderGapMonths: 8,
     nps: 8,
     dateStarted: '2025-06-23',
-    avgPaymentDelayDays: 5
+    avgPaymentDelayDays: 5,
+    activities: [
+      { id: 1, text: 'Intro meeting — Nina referred via Esteves Design. Coastal holiday home brief discussed.', date: '23 Jun 2025', staff: 'Dani' },
+      { id: 2, text: 'Email follow up on residential layout options and material selections.', date: '1 Jul 2025', staff: 'Martin' }
+    ]
   }
 ];
 

@@ -1323,6 +1323,51 @@ export default function SalesTracker() {
             </div>
           </div>
 
+          {/* EMPTY STATE WORKSPACE PANEL — shown while no order is selected */}
+          <div style={{
+            border: '2px dashed var(--border)',
+            borderRadius: '16px',
+            padding: '36px 24px',
+            marginBottom: '20px',
+            background: 'linear-gradient(135deg, rgba(24,95,165,0.03) 0%, rgba(139,92,246,0.02) 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            gap: '12px'
+          }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '16px',
+              background: 'linear-gradient(135deg, rgba(24,95,165,0.12) 0%, rgba(139,92,246,0.08) 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '1.5px solid rgba(24,95,165,0.2)',
+              marginBottom: '4px'
+            }}>
+              <FileSpreadsheet size={26} color="var(--text-info)" />
+            </div>
+            <div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                Sales Workspace Inactive
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '420px', lineHeight: '1.6' }}>
+                Select any order from the ledger below to open the full specification spreadsheet workspace — including BOQ builder, procurement tracker, and document management.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {['📋 BOQ Specification', '🚚 Procurement Tracker', '📄 Invoice & Documents', '📊 Area-by-Area Breakdown'].map(label => (
+                <span key={label} style={{
+                  fontSize: '11px', padding: '4px 10px',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', color: 'var(--text-secondary)', fontWeight: 500
+                }}>{label}</span>
+              ))}
+            </div>
+            <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ChevronRight size={13} color="var(--text-info)" />
+              Click any row in the table below to activate the workspace
+            </div>
+          </div>
+
           {/* SEARCH, FILTER & LEDGER GRID */}
           <div className="card" style={{ border: '1.5px solid var(--border)' }}>
             <div className="card-body" style={{ padding: '20px' }}>
