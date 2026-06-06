@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext';
 import DesignFeeBuilder from './DesignFeeBuilder';
 import { 
@@ -28,17 +28,29 @@ const PHI_ADVISORIES = {
     advice: 'Logistical Optimization: Track order ETA limits. If product lead times block Stage 4/5 wiring, use alternative supply channels immediately to keep target dates active.'
   },
   summary: {
-    author: 'Sun Tzu (The Art of War)',
-    quote: '"He who wishes to fight must first count the cost. Prudence and preparation are the strategic shields against defeat."',
-    advice: 'Integrated Summary Balance: This represents the client balance sheet. Review blended margins and overall unbilled outstanding values daily to safeguard project health.'
+    author: 'Daniel Kahneman (Thinking, Fast and Slow)',
+    quote: '"Nothing in life is as important as you think it is, while you are thinking about it."',
+    advice: 'Weighted Statements: PMs often focus on individual line invoicing. Tracking the combined Outstanding value balances visual progress with cashflow realities.'
   }
 };
 
 export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { projects, updateProject } = useStore();
   const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (location.state) {
+      if (location.state.activeTab) {
+        setActiveTab(location.state.activeTab);
+      }
+      if (location.state.selectedDesignFeeId) {
+        setSelectedDesignFeeId(location.state.selectedDesignFeeId);
+      }
+    }
+  }, [location.state]);
 
   const p = projects[id];
 
