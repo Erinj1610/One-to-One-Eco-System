@@ -10,10 +10,11 @@ echo WARNING: Restoring a checkpoint will overwrite all uncommitted
 echo changes and revert your files to the selected checkpoint.
 echo.
 
-echo Available checkpoints:
-echo ---------------------------------------------------
-git tag -l "checkpoint-*"
-echo ---------------------------------------------------
+echo Available Checkpoints & Commit History:
+echo ----------------------------------------------------------------------
+git log -n 15 --oneline --decorate
+echo ----------------------------------------------------------------------
+echo (You can enter a checkpoint name like "happy" or a commit hash like "f2195f0")
 echo.
 
 set /p CP_NAME="Enter the checkpoint name to restore (e.g. happy, latest): "
