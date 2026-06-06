@@ -1086,10 +1086,18 @@ export function StoreProvider({ children }) {
   const [leads, setLeads] = useState(initialLeads);
 
   const updateProject = (key, field, value) => {
-    setProjects(prev => ({
-      ...prev,
-      [key]: { ...prev[key], [field]: value }
-    }));
+    setProjects(prev => {
+      if (typeof field === 'object' && field !== null) {
+        return {
+          ...prev,
+          [key]: { ...prev[key], ...field }
+        };
+      }
+      return {
+        ...prev,
+        [key]: { ...prev[key], [field]: value }
+      };
+    });
   };
 
   const addProject = (project) => {

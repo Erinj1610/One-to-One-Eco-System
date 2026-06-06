@@ -3,13 +3,13 @@ import { useStore } from '../context/StoreContext';
 import { 
   Calendar, Clock, Play, CheckCircle, Search, ArrowLeft, Save, Plus, 
   Layers, ChevronDown, ChevronUp, Edit3, Trash2, HelpCircle, 
-  Sparkles, FileSpreadsheet, FileText, BarChart
+  Sparkles, FileSpreadsheet, FileText, BarChart, Compass
 } from 'lucide-react';
 
 export default function DesignTracker() {
   const { projects, updateProject } = useStore();
 
-  // Selected fee state
+  // Selected fee workspace state
   const [selectedFeeId, setSelectedFeeId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
 
@@ -18,7 +18,7 @@ export default function DesignTracker() {
   const [isEditingRegDetails, setIsEditingRegDetails] = useState(false);
 
   // Active Workspace Tab state
-  const [activeTab, setActiveTab] = useState('breakdown'); // 'breakdown' | 'time' | 'invoicing' | 'milestones'
+  const [activeTab, setActiveTab] = useState('identity'); // 'identity' | 'timeline' | 'financials' | 'products'
 
   // Modal create state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -30,35 +30,56 @@ export default function DesignTracker() {
   const [newFeeSqm, setNewFeeSqm] = useState(1000);
   const [newFeeMargin, setNewFeeMargin] = useState(18);
 
-  // Filters state
+  // Dashboard Filters state
   const [searchQuery, setSearchQuery] = useState('');
+  const [pmFilter, setPmFilter] = useState('All PMs');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [projectFilter, setProjectFilter] = useState('All Linked Projects');
+  const [offeringFilter, setOfferingFilter] = useState('All Offerings');
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [activeKpiFilter, setActiveKpiFilter] = useState(null); // null | 'all' | 'pending' | 'active' | 'collected'
 
-  // Load all design fees from store context
-  const allFees = useMemo(() => {
-    const list = [];
-    Object.values(projects).forEach(proj => {
-      if (proj.designFees) {
-        proj.designFees.forEach(fee => {
-          list.push({
-            ...fee,
-            projectKey: proj.key,
-            projectClientName: proj.client,
-            projectPMName: proj.pm,
-            projectStartStr: proj.start
-          });
-        });
-      }
+  // Aggregate project data for the tracker ledger
+  const projectRows = useMemo(() => {
+    return Object.values(projects).map(p => {
+      // Dynamic financial summaries
+      const designFeeExcl = p.designFees ? p.designFees.reduce((sum, f) => sum + (f.feeValue || 0), 0) : 0;
+      const designFeeIncl = Math.round(designFeeExcl * 1.15);
+      const designFeePaid = p.designFees ? p.designFees.reduce((sum, f) => sum + (f.paid || 0), 0) : 0;
+      const designFeeOutstanding = Math.max(0, designFeeExcl - designFeePaid);
+
+      const productTotalExcl = p.orders ? p.orders.reduce((sum, o) => sum + (o.costValue || 0), 0) : 0;
+      const productTotalOutstanding = p.orders ? p.orders.reduce((sum, o) => sum + (o.outstanding || 0), 0) : 0;
+
+      // Sent date from first fee
+      const feeSentDate = p.designFeeSentDate || (p.designFees && p.designFees[0]?.feeTermsDate) || '—';
+      const completedDateVal = p.completedDate || '—';
+      const completionDaysVal = p.completionDays || '—';
+      const refundVal = p.refundAmount || 0;
+      const isPaidInFull = p.paidInFull || ((designFeeOutstanding === 0 && productTotalOutstanding === 0) ? 'Yes' : 'No');
+      const stillToReceiveVal = p.stillToReceive || `R ${productTotalOutstanding.toLocaleString()}`;
+      const prodApprovedVal = p.prodApproved || (p.orders && p.orders.length > 0 ? 'Yes' : 'No');
+
+      return {
+        ...p,
+        designFeeExcl,
+        designFeeIncl,
+        designFeePaid,
+        designFeeOutstanding,
+        productTotalExcl,
+        feeSentDate,
+        completedDateVal,
+        completionDaysVal,
+        refundVal,
+        isPaidInFull,
+        stillToReceiveVal,
+        prodApprovedVal
+      };
     });
-    return list;
   }, [projects]);
 
-  // Parse date string to helper date object
+  // Parse date string helper
   const parseDate = (dateStr) => {
     if (!dateStr || dateStr === '—') return null;
     const d = new Date(dateStr);
@@ -66,9 +87,9 @@ export default function DesignTracker() {
   };
 
   // Date range checker
-  const isFeeInDateRange = (fee) => {
+  const isRowInDateRange = (row) => {
     if (!startDate && !endDate) return true;
-    const dateStr = fee.date || fee.projectStartStr;
+    const dateStr = row.start;
     if (!dateStr) return false;
     const pDate = parseDate(dateStr);
     if (!pDate) return false;
@@ -102,53 +123,50 @@ export default function DesignTracker() {
       setStartDate(formatDate(lastMonth));
       setEndDate(formatDate(today));
     } else if (preset === 'Financial Year') {
-      // Localized FY: March 1st to Feb 28th
       const currentYear = today.getFullYear();
       setStartDate(`${currentYear}-03-01`);
       setEndDate(`${currentYear + 1}-02-28`);
     }
   };
 
-  // Filter design fees matching search + status + project + date
-  const filteredFees = useMemo(() => {
-    return allFees.filter(fee => {
+  // Filter project rows based on inputs
+  const filteredRows = useMemo(() => {
+    return projectRows.filter(row => {
       // Date Check
-      if (!isFeeInDateRange(fee)) return false;
+      if (!isRowInDateRange(row)) return false;
 
-      // Project Filter
-      if (projectFilter !== 'All Linked Projects' && fee.projectKey !== projectFilter) return false;
+      // PM Filter
+      if (pmFilter !== 'All PMs' && row.pm !== pmFilter) return false;
 
       // Status Filter
       if (statusFilter !== 'All Statuses') {
-        const currentStatus = fee.feeStatus || fee.status || 'Concept Phase';
-        if (currentStatus !== statusFilter) return false;
+        if (row.status !== statusFilter) return false;
       }
+
+      // Offering Filter
+      if (offeringFilter !== 'All Offerings' && row.offering !== offeringFilter) return false;
 
       // KPI interactive filter matching
       if (activeKpiFilter) {
-        const currentStatus = fee.feeStatus || fee.status || 'Concept Phase';
-        const outstanding = (fee.feeValue || 0) - (fee.paid || 0);
-
-        if (activeKpiFilter === 'pending' && currentStatus !== 'Concept Phase' && currentStatus !== 'Detail Design') return false;
-        if (activeKpiFilter === 'active' && currentStatus !== 'Documentation' && currentStatus !== 'Concept Phase' && currentStatus !== 'Detail Design') return false;
-        if (activeKpiFilter === 'collected' && currentStatus !== 'Completed') return false;
+        if (activeKpiFilter === 'pending' && row.status !== 'Off track' && row.delay === '—') return false;
+        if (activeKpiFilter === 'active' && row.complete === 'Complete') return false;
+        if (activeKpiFilter === 'collected' && row.isPaidInFull !== 'Yes') return false;
       }
 
-      // Search Query Matching
+      // Search Query
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matches = 
-          fee.id.toLowerCase().includes(q) ||
-          fee.name.toLowerCase().includes(q) ||
-          fee.projectClientName.toLowerCase().includes(q) ||
-          (fee.company && fee.company.toLowerCase().includes(q)) ||
-          (fee.feeType && fee.feeType.toLowerCase().includes(q));
+          row.name.toLowerCase().includes(q) ||
+          row.client.toLowerCase().includes(q) ||
+          row.pm.toLowerCase().includes(q) ||
+          row.offering.toLowerCase().includes(q);
         if (!matches) return false;
       }
 
       return true;
     });
-  }, [allFees, projectFilter, statusFilter, activeKpiFilter, searchQuery, startDate, endDate]);
+  }, [projectRows, pmFilter, statusFilter, offeringFilter, activeKpiFilter, searchQuery, startDate, endDate]);
 
   // Compute KPI summaries dynamically
   const kpiData = useMemo(() => {
@@ -170,39 +188,36 @@ export default function DesignTracker() {
     let collectedCount = 0;
     let collectedVal = 0;
 
-    allFees.forEach(fee => {
-      // Dynamic totals
-      if (!isFeeInDateRange(fee)) return;
+    projectRows.forEach(row => {
+      if (!isRowInDateRange(row)) return;
 
-      const val = fee.feeValue || 0;
-      const paid = fee.paid || 0;
-      const out = Math.max(0, val - paid);
+      const val = row.designFeeExcl || 0;
+      const paid = row.designFeePaid || 0;
+      const out = row.designFeeOutstanding || 0;
 
       totalCount++;
       totalExVAT += val;
       totalPaid += paid;
       totalOutstanding += out;
 
-      const currentStatus = fee.feeStatus || fee.status || 'Concept Phase';
-
-      // Pending (Concept Phase & Detail Design)
-      if (currentStatus === 'Concept Phase' || currentStatus === 'Detail Design') {
+      // Pending (if project is off track or awaiting approval)
+      if (row.status === 'Off track' || row.delay !== '—') {
         pendingCount++;
         pendingVal += val;
         pendingPaid += paid;
         pendingOutstanding += out;
       }
 
-      // Active (Documentation, and anything WIP outstanding > 0)
-      if (currentStatus === 'Documentation' || (currentStatus !== 'Completed' && out > 0)) {
+      // Active (Ongoing projects)
+      if (row.complete !== 'Complete') {
         activeCount++;
         activeVal += val;
         activePaid += paid;
         activeOutstanding += out;
       }
 
-      // Collected (Completed)
-      if (currentStatus === 'Completed') {
+      // Collected (Completed and Paid in Full)
+      if (row.isPaidInFull === 'Yes' || row.complete === 'Complete') {
         collectedCount++;
         collectedVal += paid;
       }
@@ -214,35 +229,67 @@ export default function DesignTracker() {
       active: { qty: activeCount, val: activeVal, paid: activePaid, out: activeOutstanding },
       collected: { qty: collectedCount, val: collectedVal }
     };
-  }, [allFees, startDate, endDate]);
+  }, [projectRows, startDate, endDate]);
 
   // Handle open workspace row click
-  const handleOpenWorkspace = (fee) => {
-    setSelectedFeeId(fee.id);
-    setSelectedProjectKey(fee.projectKey);
-    setIsEditingRegDetails(false);
-    setActiveTab('breakdown');
+  const handleRowClick = (project) => {
+    if (project.designFees && project.designFees.length > 0) {
+      const mainFee = project.designFees[0];
+      setSelectedFeeId(mainFee.id);
+      setSelectedProjectKey(project.key);
+      setIsEditingRegDetails(false);
+      setActiveTab('identity');
 
-    // Create a deep copy of fee for local edits
-    setLocalFee({
-      ...fee,
-      phases: fee.phases ? fee.phases.map(p => ({ ...p })) : [
-        {
-          phase: 'PHASE 1 CONCEPT',
-          serviceCode: 'DS-001A',
-          description: 'Moodboards & Space Planning Layout',
-          estHours: 10,
-          hourlyRate: 1800,
-          phaseFee: 18000,
-          actHours: 0,
-          totalValue: 0,
-          billedFee: 0,
-          unbilledFee: 18000,
-          progress: 0,
-          nextMilestone: 'Concept Design'
-        }
-      ]
-    });
+      // Create a deep copy of fee for local edits
+      setLocalFee({
+        ...mainFee,
+        projectKey: project.key,
+        projectName: project.name,
+        projectClientName: project.client,
+        projectPMName: project.pm,
+        projectStartStr: project.start,
+        // All 23 project properties
+        pm: project.pm || '',
+        offering: project.offering || 'Signature',
+        sqm: project.sqm || 1000,
+        complete: project.complete || 'Ongoing',
+        stage: project.stage || 'Stage 1',
+        status: project.status || 'On track',
+        delay: project.delay || '—',
+        start: project.start || '',
+        deadline: project.deadline || '',
+        completedDate: project.completedDate || '—',
+        completionDays: project.completionDays || '—',
+        refundAmount: project.refundAmount || 0,
+        paidInFull: project.paidInFull || 'No',
+        stillToReceive: project.stillToReceive || '—',
+        prodApproved: project.prodApproved || 'No',
+        designFeeSentDate: project.designFeeSentDate || mainFee.feeTermsDate || '—',
+        productTotalExcl: project.orders ? project.orders.reduce((sum, o) => sum + (o.costValue || 0), 0) : 0,
+        phases: mainFee.phases ? mainFee.phases.map(p => ({ ...p })) : [
+          {
+            phase: 'PHASE 1 CONCEPT',
+            serviceCode: 'DS-001A',
+            description: 'Moodboards & Space Planning Layout',
+            estHours: 15,
+            hourlyRate: 1800,
+            phaseFee: 27000,
+            actHours: 12,
+            totalValue: 21600,
+            billedFee: 27000,
+            unbilledFee: 0,
+            progress: 100,
+            nextMilestone: 'Concept Design'
+          }
+        ]
+      });
+    } else {
+      // Auto-initialize design fee structure if none exists
+      alert(`No Design Fee structure exists for "${project.name}" yet. Linking a new structure…`);
+      setNewFeeProject(project.key);
+      setNewFeeName(`${project.name} Design Fee`);
+      setShowCreateModal(true);
+    }
   };
 
   // Keyboard navigation handler in spreadsheet table cells
@@ -272,13 +319,11 @@ export default function DesignTracker() {
       e.preventDefault();
       nextRow = Math.min(localFee.phases.length - 1, row + 1);
     } else if (e.key === 'ArrowLeft') {
-      // Only navigate left if cursor is at the beginning of the text or input type is number
       if (target.selectionStart === 0 || target.type === 'number') {
         e.preventDefault();
         nextColIndex = Math.max(0, colIndex - 1);
       }
     } else if (e.key === 'ArrowRight') {
-      // Only navigate right if cursor is at the end of the text or input type is number
       if (target.selectionStart === target.value.length || target.type === 'number') {
         e.preventDefault();
         nextColIndex = Math.min(visibleCols.length - 1, colIndex + 1);
@@ -340,7 +385,6 @@ export default function DesignTracker() {
           const currentPhase = { ...updatedPhases[targetRowIdx] };
 
           if (['estHours', 'hourlyRate', 'actHours', 'billedFee', 'progress'].includes(targetCol)) {
-            // Remove R or commas for numbers
             const cleanedVal = String(cellValue).replace(/[R\s,%]/g, '');
             currentPhase[targetCol] = Math.max(0, parseFloat(cleanedVal) || 0);
           } else {
@@ -475,7 +519,6 @@ export default function DesignTracker() {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
-    // Save and recalculate
     const updatedFees = (proj.designFees || []).map(fee => {
       if (fee.id === selectedFeeId) {
         return {
@@ -498,8 +541,6 @@ export default function DesignTracker() {
       return fee;
     });
 
-    updateProject(selectedProjectKey, 'designFees', updatedFees);
-
     // Dynamic actual project profit margin blender recalculation
     const totalDesignValue = updatedFees.reduce((s, f) => s + (f.feeValue || 0), 0);
     const totalOrdersValue = (proj.orders || []).reduce((s, o) => s + (o.value || 0), 0);
@@ -510,7 +551,29 @@ export default function DesignTracker() {
     const totalBlendedProfit = designProfit + ordersProfit;
 
     const newBlendedMargin = totalContract > 0 ? Math.round((totalBlendedProfit / totalContract) * 100) : proj.targetMargin || 18;
-    updateProject(selectedProjectKey, 'actualMargin', newBlendedMargin);
+
+    const updatedProjectFields = {
+      pm: localFee.pm,
+      offering: localFee.offering,
+      sqm: localFee.sqm,
+      complete: localFee.complete,
+      stage: localFee.stage,
+      status: localFee.status,
+      delay: localFee.delay,
+      start: localFee.start,
+      deadline: localFee.deadline,
+      completedDate: localFee.completedDate,
+      completionDays: localFee.completionDays,
+      refundAmount: Number(localFee.refundAmount) || 0,
+      paidInFull: localFee.paidInFull,
+      stillToReceive: localFee.stillToReceive,
+      prodApproved: localFee.prodApproved,
+      designFeeSentDate: localFee.designFeeSentDate,
+      designFees: updatedFees,
+      actualMargin: newBlendedMargin
+    };
+
+    updateProject(selectedProjectKey, updatedProjectFields);
 
     alert(`Design Fee Spec DF-2025-${selectedFeeId.split('-').pop()} Saved & Synchronized Successfully!\n- Blended project actual profit margin updated to ${newBlendedMargin}%.`);
     
@@ -523,7 +586,6 @@ export default function DesignTracker() {
   const handleUpdateRegDetails = (field, value) => {
     setLocalFee(prev => {
       let extra = {};
-      // Sync client name dynamically if project changes
       if (field === 'projectKey') {
         const targetProj = projects[value] || {};
         extra = {
@@ -550,8 +612,7 @@ export default function DesignTracker() {
     const selectedProj = projects[newFeeProject];
     if (!selectedProj) return;
 
-    // Generate reference code
-    const baseNum = allFees.length + 1;
+    const baseNum = projectRows.reduce((acc, p) => acc + (p.designFees ? p.designFees.length : 0), 0) + 1;
     const newId = `DF-2025-00${baseNum}`;
 
     const newFeeObj = {
@@ -585,20 +646,6 @@ export default function DesignTracker() {
           unbilledFee: 0,
           progress: 100,
           nextMilestone: 'Concept Design'
-        },
-        {
-          phase: 'PHASE 2 DEVELOP',
-          serviceCode: 'DS-002',
-          description: 'Custom Joinery Detail Drawing Set',
-          estHours: 10,
-          hourlyRate: 1800,
-          phaseFee: 18000,
-          actHours: 0,
-          totalValue: 0,
-          billedFee: 0,
-          unbilledFee: 18000,
-          progress: 0,
-          nextMilestone: 'Development (Ground)'
         }
       ]
     };
@@ -606,14 +653,10 @@ export default function DesignTracker() {
     const existingFees = selectedProj.designFees || [];
     updateProject(newFeeProject, 'designFees', [...existingFees, newFeeObj]);
 
-    // Close Modal and open Workspace directly on the newly created fee
     setShowCreateModal(false);
-    
-    // Clear inputs
     setNewFeeName('');
     setNewFeeProject('');
     
-    // Auto-open workspace
     setTimeout(() => {
       handleOpenWorkspace({
         ...newFeeObj,
@@ -628,10 +671,8 @@ export default function DesignTracker() {
   // Status mapping colors matching mockups
   const getStatusBadgeClass = (statusStr) => {
     switch (statusStr) {
-      case 'Concept Phase': return 'b-info';
-      case 'Detail Design': return 'b-warning';
-      case 'Documentation': return 'b-default';
-      case 'Completed': return 'b-success';
+      case 'On track': return 'b-success';
+      case 'Off track': return 'b-danger';
       default: return 'b-default';
     }
   };
@@ -668,7 +709,7 @@ export default function DesignTracker() {
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
       
-      {/* STYLE INJECTIONS FOR SPREADSHEET FOCUS CELLS */}
+      {/* STYLE INJECTIONS FOR STICKY FIRST COLUMN AND SPREADSHEET INPUTS */}
       <style>{`
         .gs-cell-input {
           width: 100% !important;
@@ -711,6 +752,22 @@ export default function DesignTracker() {
         .active-kpi-card {
           border: 2px solid var(--text-info) !important;
           box-shadow: 0 4px 12px rgba(24,95,165,0.08) !important;
+        }
+        .tracker-table th.sticky-project,
+        .tracker-table td.sticky-project {
+          position: sticky;
+          left: 0;
+          background: var(--bg-primary);
+          z-index: 10;
+          border-right: 1.5px solid var(--border) !important;
+          box-shadow: 2px 0 5px rgba(0,0,0,0.04);
+        }
+        .tracker-table th.sticky-project {
+          background: var(--bg-secondary) !important;
+          z-index: 11;
+        }
+        .tracker-table tr:hover td.sticky-project {
+          background: var(--bg-secondary) !important;
         }
       `}</style>
 
@@ -804,7 +861,7 @@ export default function DesignTracker() {
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'pending' ? null : 'pending')}
               style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.15s ease' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Pending Invoices</span>
                 <Clock size={15} color="var(--text-warning)" />
               </div>
@@ -826,7 +883,7 @@ export default function DesignTracker() {
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
               style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.15s ease' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Active Project Fees</span>
                 <Play size={15} color="var(--text-success)" />
               </div>
@@ -848,7 +905,7 @@ export default function DesignTracker() {
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'collected' ? null : 'collected')}
               style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.15s ease' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Collected Fees</span>
                 <CheckCircle size={15} color="var(--text-success)" style={{ stroke: 'var(--text-success)' }} />
               </div>
@@ -865,7 +922,7 @@ export default function DesignTracker() {
             </div>
           </div>
 
-          {/* FILTER AND DATA CONTROL BAR */}
+          {/* FILTER AND CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '320px', flexWrap: 'wrap' }}>
@@ -873,7 +930,7 @@ export default function DesignTracker() {
                   <Search size={14} style={{ position: 'absolute', left: '12px', top: '10px', color: 'var(--text-tertiary)' }} />
                   <input 
                     type="text"
-                    placeholder="Search by quotation ref, client, or fee title..."
+                    placeholder="Search by project name, client, or PM..."
                     className="form-control"
                     style={{ paddingLeft: '34px', height: '34px', fontSize: '12.5px' }}
                     value={searchQuery}
@@ -883,90 +940,182 @@ export default function DesignTracker() {
 
                 <select
                   className="form-control"
-                  style={{ width: '160px', height: '34px', fontSize: '12.5px' }}
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
+                  style={{ width: '130px', height: '34px', fontSize: '12.5px' }}
+                  value={pmFilter}
+                  onChange={e => setPmFilter(e.target.value)}
                 >
-                  <option>All Statuses</option>
-                  <option>Concept Phase</option>
-                  <option>Detail Design</option>
-                  <option>Documentation</option>
-                  <option>Completed</option>
+                  <option>All PMs</option>
+                  <option>Dani</option>
+                  <option>Martin</option>
+                  <option>Alex</option>
+                  <option>Sarah</option>
                 </select>
 
                 <select
                   className="form-control"
-                  style={{ width: '200px', height: '34px', fontSize: '12.5px' }}
-                  value={projectFilter}
-                  onChange={e => setProjectFilter(e.target.value)}
+                  style={{ width: '140px', height: '34px', fontSize: '12.5px' }}
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
                 >
-                  <option>All Linked Projects</option>
-                  {Object.values(projects).map(p => (
-                    <option key={p.key} value={p.key}>{p.name}</option>
-                  ))}
+                  <option>All Statuses</option>
+                  <option>On track</option>
+                  <option>Off track</option>
+                </select>
+
+                <select
+                  className="form-control"
+                  style={{ width: '160px', height: '34px', fontSize: '12.5px' }}
+                  value={offeringFilter}
+                  onChange={e => setOfferingFilter(e.target.value)}
+                >
+                  <option>All Offerings</option>
+                  <option>Signature</option>
+                  <option>Modus</option>
+                  <option>Professional</option>
                 </select>
               </div>
 
               <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                Showing <strong>{filteredFees.length}</strong> active design fee records
+                Showing <strong>{filteredRows.length}</strong> active project records
               </div>
             </div>
 
             {/* LEDGER TABLE */}
-            <div style={{ overflowX: 'auto', marginTop: '16px' }}>
-              <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+              <table className="table tracker-table" style={{ margin: 0, fontSize: '11.5px', borderCollapse: 'collapse', width: '100%', minWidth: '2200px' }}>
                 <thead>
-                  <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px' }}>Fee Reference</th>
-                    <th>Project Name</th>
-                    <th>Client Name</th>
-                    <th>Fee Type</th>
-                    <th style={{ textAlign: 'right' }}>Fee Value Ex VAT</th>
-                    <th style={{ textAlign: 'right' }}>Amount Invoiced</th>
-                    <th style={{ textAlign: 'right' }}>Amount Paid</th>
-                    <th style={{ textAlign: 'right' }}>Outstanding Balance</th>
-                    <th style={{ textAlign: 'center' }}>Fee Status</th>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-strong)' }}>
+                    <th className="sticky-project" style={{ padding: '10px 12px', width: '160px' }}>Project</th>
+                    <th>PM</th>
+                    <th>Offering</th>
+                    <th style={{ textAlign: 'right' }}>SQM</th>
+                    <th style={{ textAlign: 'center' }}>Complete/Ongoing</th>
+                    <th>Stage</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                    <th>Delay Reason</th>
+                    <th>Design Start</th>
+                    <th>Deadline</th>
+                    <th style={{ textAlign: 'center' }}>Days left to deadline</th>
+                    <th>Actual Date Completed</th>
+                    <th style={{ textAlign: 'right' }}>Completion Days</th>
+                    <th>Design Fee Sent Date</th>
+                    <th style={{ textAlign: 'right' }}>Design Fee Total EXCL. VAT</th>
+                    <th style={{ textAlign: 'right' }}>Design Fee Total INCL. VAT</th>
+                    <th style={{ textAlign: 'right' }}>Design Fee Paid</th>
+                    <th style={{ textAlign: 'right' }}>Refund Amount EXCL. VAT</th>
+                    <th style={{ textAlign: 'right' }}>Design Fee Outstanding</th>
+                    <th style={{ textAlign: 'right' }}>Estimated Product Total EXCL. VAT</th>
+                    <th style={{ textAlign: 'center' }}>Product Approved</th>
+                    <th style={{ textAlign: 'right' }}>Still to receive</th>
+                    <th style={{ textAlign: 'center' }}>Project Paid in Full</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFees.map(fee => {
-                    const statusStr = fee.feeStatus || fee.status || 'Concept Phase';
-                    const valueExVAT = fee.feeValue || 0;
-                    const invoiced = fee.amountInvoiced !== undefined ? fee.amountInvoiced : (fee.feeValue || 0);
-                    const paid = fee.paid || 0;
-                    const outstanding = Math.max(0, invoiced - paid);
-
+                  {filteredRows.map(row => {
                     return (
                       <tr 
-                        key={fee.id} 
+                        key={row.key} 
                         className="clickable"
-                        onClick={() => handleOpenWorkspace(fee)}
+                        onClick={() => handleRowClick(row)}
                         style={{ cursor: 'pointer' }}
                       >
-                        <td style={{ padding: '10px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                          {fee.id}
+                        <td className="sticky-project" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)' }}>
+                          {row.name}
                         </td>
-                        <td style={{ fontWeight: 500 }}>{fee.name}</td>
-                        <td>{fee.projectClientName}</td>
-                        <td>{fee.feeType || 'Fixed Phase'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>R {valueExVAT.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right' }}>R {invoiced.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--text-success)', fontWeight: 500 }}>R {paid.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', color: outstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                          R {outstanding.toLocaleString()}
+                        <td>{row.pm}</td>
+                        <td>{row.offering}</td>
+                        <td style={{ textAlign: 'right' }}>{row.sqm}</td>
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <select
+                            className="tracker-select"
+                            value={row.complete}
+                            onChange={e => {
+                              updateProject(row.key, 'complete', e.target.value);
+                            }}
+                          >
+                            <option value="Ongoing">Ongoing</option>
+                            <option value="Complete">Complete</option>
+                          </select>
                         </td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <select
+                            className="tracker-select"
+                            value={row.stage}
+                            onChange={e => {
+                              updateProject(row.key, 'stage', e.target.value);
+                            }}
+                          >
+                            {['Stage 1','Stage 2','Stage 3','Stage 4','Stage 5','Snags/Site visit','Ongoing','Complete'].map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <select
+                            className="tracker-select"
+                            value={row.status}
+                            onChange={e => {
+                              updateProject(row.key, 'status', e.target.value);
+                            }}
+                          >
+                            <option value="On track">On track</option>
+                            <option value="Off track">Off track</option>
+                          </select>
+                        </td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <select
+                            className="tracker-select"
+                            style={{ maxWidth: '130px' }}
+                            value={row.delay}
+                            onChange={e => {
+                              updateProject(row.key, 'delay', e.target.value);
+                            }}
+                          >
+                            {['—','Awaiting feedback/approval','Complex design iteration/rework required','Unforeseen technical challenges','Incomplete project requirements','Snags/Site visit','Other'].map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td>{row.start}</td>
+                        <td>{row.deadline}</td>
+                        <td style={{ textAlign: 'center', color: row.daysLeft.startsWith('−') || row.daysLeft.startsWith('-') ? 'var(--text-danger)' : 'var(--text-primary)', fontWeight: 500 }}>
+                          {row.daysLeft}
+                        </td>
+                        <td>{row.completedDateVal}</td>
+                        <td style={{ textAlign: 'right' }}>{row.completionDaysVal}</td>
+                        <td>{row.feeSentDate}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>R {row.designFeeExcl.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>R {row.designFeeIncl.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {row.designFeePaid.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', color: row.refundVal > 0 ? 'var(--text-danger)' : 'var(--text-tertiary)' }}>
+                          R {row.refundVal.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right', color: row.designFeeOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                          R {row.designFeeOutstanding.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>R {row.productTotalExcl.toLocaleString()}</td>
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <select
+                            className="tracker-select"
+                            value={row.prodApprovedVal}
+                            onChange={e => {
+                              updateProject(row.key, 'prodApproved', e.target.value);
+                            }}
+                          >
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="TBC">TBC</option>
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{row.stillToReceiveVal}</td>
                         <td style={{ textAlign: 'center' }}>
-                          <span className={`badge ${getStatusBadgeClass(statusStr)}`} style={{ minWidth: '95px', textAlign: 'center' }}>
-                            {statusStr}
+                          <span className={`badge ${row.isPaidInFull === 'Yes' ? 'b-success' : 'b-warning'}`}>
+                            {row.isPaidInFull}
                           </span>
                         </td>
                       </tr>
                     );
                   })}
-                  {filteredFees.length === 0 && (
+                  {filteredRows.length === 0 && (
                     <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                        No active design fee structures match your filter criteria.
+                      <td colSpan={23} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                        No projects found matching the filter criteria.
                       </td>
                     </tr>
                   )}
@@ -1035,120 +1184,26 @@ export default function DesignTracker() {
             Design Fee Specification — <span style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{selectedFeeId}</span>
           </h2>
 
-          {/* PROJECT REGISTRATION DETAILS (MIRROR VIEW) */}
-          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-secondary)', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  /* DESIGN TRACKER MIRROR VIEW */
-                </div>
-                
-                {isEditingRegDetails ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Company</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '30px', fontSize: '11.5px' }}
-                        value={localFee.company || ''} 
-                        onChange={e => handleUpdateRegDetails('company', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Linked Project</label>
-                      <select 
-                        className="form-control" 
-                        style={{ height: '30px', fontSize: '11.5px' }}
-                        value={localFee.projectKey || ''} 
-                        onChange={e => handleUpdateRegDetails('projectKey', e.target.value)}
-                      >
-                        {Object.values(projects).map(p => (
-                          <option key={p.key} value={p.key}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Lead Designer</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '30px', fontSize: '11.5px' }}
-                        value={localFee.leadDesigner || ''} 
-                        onChange={e => handleUpdateRegDetails('leadDesigner', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Fee Type</label>
-                      <select 
-                        className="form-control" 
-                        style={{ height: '30px', fontSize: '11.5px' }}
-                        value={localFee.feeType || ''} 
-                        onChange={e => handleUpdateRegDetails('feeType', e.target.value)}
-                      >
-                        <option>Fixed Phase</option>
-                        <option>Fixed-Fee (by Phase)</option>
-                        <option>Hourly WIP</option>
-                        <option>Percentage of BOQ</option>
-                        <option>Retainer</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Fee Terms</label>
-                      <select 
-                        className="form-control" 
-                        style={{ height: '30px', fontSize: '11.5px' }}
-                        value={localFee.feeTerms || ''} 
-                        onChange={e => handleUpdateRegDetails('feeTerms', e.target.value)}
-                      >
-                        <option>30 days</option>
-                        <option>15 days</option>
-                        <option>COD</option>
-                        <option>Immediate</option>
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '14px' }}>📋</span> 
-                      <strong>Project Registration Details</strong>
-                    </div>
-                    <div style={{ borderLeft: '1px solid var(--border)', height: '16px' }}></div>
-                    <div>Company: <strong>{localFee.company || 'Venter Architects'}</strong></div>
-                    <div>Project: <strong>{localFee.projectName || 'Upper Primrose'}</strong></div>
-                    <div>Lead Designer: <strong>{localFee.leadDesigner || 'Merlyn'}</strong></div>
-                    <div>FEE TYPE: <strong>{localFee.feeType || 'Fixed-Fee (by Phase)'}</strong></div>
-                    <div>FEE TERMS: <strong>{localFee.feeTerms || '30 days'}</strong></div>
-                  </div>
-                )}
-              </div>
-              
-              <button 
-                className="btn btn-ghost btn-sm"
-                onClick={() => setIsEditingRegDetails(!isEditingRegDetails)}
-                style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)' }}
-              >
-                {isEditingRegDetails ? 'Close Editing' : 'Edit Details ▾'}
-              </button>
-            </div>
-          </div>
-
           {/* MAIN TABS CONTAINER */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-primary)', padding: '16px 20px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700 }}>
                 <FileSpreadsheet size={15} color="var(--text-info)" />
-                <span>Fee Breakdown</span>
+                <span>
+                  {activeTab === 'identity' && '1. Project Identity (Who & What)'}
+                  {activeTab === 'timeline' && '2. Progress & Timeline (When & Where)'}
+                  {activeTab === 'financials' && '3. Design Fee Financials (Design Billing)'}
+                  {activeTab === 'products' && '4. Product Procurement & Clearance (Order Status)'}
+                </span>
               </div>
 
               {/* TAB BUTTONS */}
               <div style={{ display: 'flex', gap: '4px' }}>
                 {[
-                  { key: 'breakdown', label: 'Fee Breakdown' },
-                  { key: 'time', label: 'Time Tracking' },
-                  { key: 'invoicing', label: 'Invoicing' },
-                  { key: 'milestones', label: 'Client Milestones' }
+                  { key: 'identity', label: '1. Project Identity' },
+                  { key: 'timeline', label: '2. Progress & Timeline' },
+                  { key: 'financials', label: '3. Design Fee Financials' },
+                  { key: 'products', label: '4. Product Procurement & Clearance' }
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -1163,8 +1218,279 @@ export default function DesignTracker() {
             </div>
 
             {/* TAB PANELS */}
-            {activeTab === 'breakdown' && (
+            {activeTab === 'identity' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', padding: '8px 0' }}>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Project Name</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.projectName || ''}
+                    onChange={e => handleUpdateRegDetails('projectName', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Client Company</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.company || ''}
+                    onChange={e => handleUpdateRegDetails('company', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Project PM</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.pm || ''}
+                    onChange={e => handleUpdateRegDetails('pm', e.target.value)}
+                  >
+                    <option value="Dani">Dani</option>
+                    <option value="Martin">Martin</option>
+                    <option value="Alex">Alex</option>
+                    <option value="Sarah">Sarah</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Offering Type</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.offering || ''}
+                    onChange={e => handleUpdateRegDetails('offering', e.target.value)}
+                  >
+                    <option value="Signature">Signature</option>
+                    <option value="Modus">Modus</option>
+                    <option value="Professional">Professional</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Project Size (SQM)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.sqm || ''}
+                    onChange={e => handleUpdateRegDetails('sqm', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Lead Designer</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.leadDesigner || ''}
+                    onChange={e => handleUpdateRegDetails('leadDesigner', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Fee Type</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.feeType || ''}
+                    onChange={e => handleUpdateRegDetails('feeType', e.target.value)}
+                  >
+                    <option>Fixed Phase</option>
+                    <option>Fixed-Fee (by Phase)</option>
+                    <option>Hourly WIP</option>
+                    <option>Percentage of BOQ</option>
+                    <option>Retainer</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Fee Terms</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.feeTerms || ''}
+                    onChange={e => handleUpdateRegDetails('feeTerms', e.target.value)}
+                  >
+                    <option>30 days</option>
+                    <option>15 days</option>
+                    <option>COD</option>
+                    <option>Immediate</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'timeline' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', padding: '8px 0' }}>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Complete / Ongoing</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.complete || ''}
+                    onChange={e => handleUpdateRegDetails('complete', e.target.value)}
+                  >
+                    <option value="Ongoing">Ongoing</option>
+                    <option value="Complete">Complete</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Project Stage</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.stage || ''}
+                    onChange={e => handleUpdateRegDetails('stage', e.target.value)}
+                  >
+                    <option value="Stage 1">Stage 1</option>
+                    <option value="Stage 2">Stage 2</option>
+                    <option value="Stage 3">Stage 3</option>
+                    <option value="Stage 4">Stage 4</option>
+                    <option value="Stage 5">Stage 5</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.status || ''}
+                    onChange={e => handleUpdateRegDetails('status', e.target.value)}
+                  >
+                    <option value="On track">On track</option>
+                    <option value="Off track">Off track</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Delay Reason</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.delay || ''}
+                    onChange={e => handleUpdateRegDetails('delay', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Start</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 29 Apr 2026"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.start || ''}
+                    onChange={e => handleUpdateRegDetails('start', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Deadline</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 12 May"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.deadline || ''}
+                    onChange={e => handleUpdateRegDetails('deadline', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Days Left to Deadline</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.daysLeft || ''}
+                    onChange={e => handleUpdateRegDetails('daysLeft', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Actual Date Completed</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.completedDate || ''}
+                    onChange={e => handleUpdateRegDetails('completedDate', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Completion Days</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.completionDays || ''}
+                    onChange={e => handleUpdateRegDetails('completionDays', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'financials' && (
               <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', padding: '8px 0', borderBottom: '1px solid var(--border)', marginBottom: '16px', paddingBottom: '16px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Fee Sent Date</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      style={{ fontSize: '12px', height: '34px' }}
+                      value={localFee.designFeeSentDate || ''}
+                      onChange={e => handleUpdateRegDetails('designFeeSentDate', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Fee Paid</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      style={{ fontSize: '12px', height: '34px' }}
+                      value={localFee.paid || 0}
+                      onChange={e => handleUpdateRegDetails('paid', Math.max(0, parseFloat(e.target.value) || 0))}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Refund Amount EXCL. VAT</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      style={{ fontSize: '12px', height: '34px' }}
+                      value={localFee.refundAmount || 0}
+                      onChange={e => handleUpdateRegDetails('refundAmount', Math.max(0, parseFloat(e.target.value) || 0))}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Fee Total EXCL. VAT</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      readOnly
+                      style={{ fontSize: '12px', height: '34px', background: 'var(--bg-secondary)', fontWeight: 600 }}
+                      value={`R ${(phaseTotals?.phaseFee || 0).toLocaleString()}`}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Fee Total INCL. VAT</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      readOnly
+                      style={{ fontSize: '12px', height: '34px', background: 'var(--bg-secondary)', fontWeight: 600 }}
+                      value={`R ${Math.round((phaseTotals?.phaseFee || 0) * 1.15).toLocaleString()}`}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Design Fee Outstanding</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      readOnly
+                      style={{ fontSize: '12px', height: '34px', background: 'var(--bg-secondary)', fontWeight: 600, color: 'var(--text-warning)' }}
+                      value={`R ${Math.max(0, (phaseTotals?.phaseFee || 0) - (localFee.paid || 0) - (localFee.refundAmount || 0)).toLocaleString()}`}
+                    />
+                  </div>
+                </div>
+
+                {/* SPREADSHEET TABLE */}
                 <div style={{ overflowX: 'auto' }}>
                   <table className="table" style={{ width: '100%', minWidth: '1100px', borderCollapse: 'collapse', fontSize: '12px' }}>
                     <thead>
@@ -1374,79 +1700,51 @@ export default function DesignTracker() {
               </>
             )}
 
-            {activeTab === 'time' && (
-              <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <Clock size={40} color="var(--text-tertiary)" style={{ marginBottom: '12px' }} />
-                <h4>Employee Time Sheets Integration Logs</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                  Weekly timesheets automatically logged by designers matching design service code: <strong>{localFee.phases[0]?.serviceCode}</strong>.
-                </p>
-                <div style={{ maxWidth: '400px', margin: '20px auto 0', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 12px', textAlign: 'left', background: 'var(--bg-secondary)', fontSize: '11.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '4px', fontWeight: 600 }}>
-                    <span>Designer Name</span>
-                    <span>Date logged</span>
-                    <span>Hours</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Merlyn V.</span>
-                    <span>2026-05-12</span>
-                    <span>6.5 hrs</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Dani P.</span>
-                    <span>2026-05-13</span>
-                    <span>4.0 hrs</span>
-                  </div>
+            {activeTab === 'products' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', padding: '8px 0' }}>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Estimated Product Total EXCL. VAT</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.productTotalExcl || 0}
+                    onChange={e => handleUpdateRegDetails('productTotalExcl', Math.max(0, parseFloat(e.target.value) || 0))}
+                  />
                 </div>
-              </div>
-            )}
-
-            {activeTab === 'invoicing' && (
-              <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <FileText size={40} color="var(--text-tertiary)" style={{ marginBottom: '12px' }} />
-                <h4>Invoicing Schedules & Payment Receipts</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                  Outstanding invoices associated with Design Fee Reference <strong>{selectedFeeId}</strong>.
-                </p>
-                <div style={{ maxWidth: '500px', margin: '20px auto 0', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 12px', textAlign: 'left', background: 'var(--bg-secondary)', fontSize: '11.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '4px', fontWeight: 600 }}>
-                    <span>Invoice Ref</span>
-                    <span>Amount</span>
-                    <span>Issued</span>
-                    <span>Status</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>INV-DF-2026-102</span>
-                    <span>R 27,000</span>
-                    <span>02 May 2026</span>
-                    <span className="badge b-success">Paid</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                    <span>INV-DF-2026-144</span>
-                    <span>R 15,600</span>
-                    <span>12 May 2026</span>
-                    <span className="badge b-warning">Awaiting Pay</span>
-                  </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Product Approved</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.prodApproved || ''}
+                    onChange={e => handleUpdateRegDetails('prodApproved', e.target.value)}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
                 </div>
-              </div>
-            )}
-
-            {activeTab === 'milestones' && (
-              <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <BarChart size={40} color="var(--text-tertiary)" style={{ marginBottom: '12px' }} />
-                <h4>Client Sign-Offs & Deliverable Milestones</h4>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                  Documented sign-off history for specific design deliverables.
-                </p>
-                <div style={{ maxWidth: '450px', margin: '20px auto 0', textAlign: 'left', fontSize: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--text-success)', fontWeight: 'bold' }}>✓</span>
-                    <span>Phase 1 Space Layout Concept approval signed off by <strong>Sarah Venter</strong> (2026-05-04)</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>
-                    <span style={{ fontWeight: 'bold' }}>○</span>
-                    <span>Phase 2 Custom Joinery Detail Drawing Set sign-off (Pending completion)</span>
-                  </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Still to Receive</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.stillToReceive || ''}
+                    onChange={e => handleUpdateRegDetails('stillToReceive', e.target.value)}
+                  />
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Project Paid in Full</label>
+                  <select
+                    className="form-control"
+                    style={{ fontSize: '12px', height: '34px' }}
+                    value={localFee.paidInFull || ''}
+                    onChange={e => handleUpdateRegDetails('paidInFull', e.target.value)}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
                 </div>
               </div>
             )}
