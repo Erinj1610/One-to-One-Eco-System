@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
-
-const initialInvoices = [
-  { id: 'INV-2025-087', project: 'Upper Primrose', client: 'Venter Architects', amount: 'R 524,120', due: '30 May 2025', issued: '1 May 2025',  status: 'Overdue',  paid: false },
-  { id: 'INV-2025-088', project: 'Singita Elela',  client: 'Singita Lodges',   amount: 'R 248,600', due: '15 Jun 2025', issued: '15 May 2025', status: 'Unpaid',   paid: false },
-  { id: 'INV-2025-089', project: 'Tambor 9',       client: 'T. Esteves',       amount: 'R 122,439', due: '22 Jun 2025', issued: '22 May 2025', status: 'Draft',    paid: false },
-  { id: 'INV-2025-084', project: 'Nando\'s',        client: 'Nando\'s Group',   amount: 'R 180,460', due: '10 Apr 2025', issued: '10 Mar 2025', status: 'Paid',     paid: true },
-  { id: 'INV-2025-083', project: 'Kalahari',       client: 'Kalahari Dev.',    amount: 'R 89,700',  due: '2 Apr 2025',  issued: '2 Mar 2025',  status: 'Paid',     paid: true },
-];
+import { useStore } from '../context/StoreContext';
 
 const statusColor = { Paid: 'b-success', Unpaid: 'b-warning', Overdue: 'b-danger', Draft: 'b-default' };
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState(initialInvoices);
+  const { invoices, setInvoices } = useStore();
   const [filter, setFilter] = useState('All');
 
   const filtered = filter === 'All' ? invoices : invoices.filter(i => i.status === filter);

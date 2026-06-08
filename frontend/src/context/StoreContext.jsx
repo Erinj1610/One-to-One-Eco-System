@@ -1108,10 +1108,23 @@ const initialStore = {
   }
 };
 
+const defaultInvoices = [
+  { id: 'INV-2025-087', project: 'Upper Primrose', client: 'Sarah Venter', amount: 'R 524,120', due: '30 May 2025', issued: '1 May 2025',  status: 'Overdue',  paid: false },
+  { id: 'INV-2025-088', project: 'Singita Elela',  client: 'James Motloung',   amount: 'R 248,600', due: '15 Jun 2025', issued: '15 May 2025', status: 'Unpaid',   paid: false },
+  { id: 'INV-2025-089', project: 'Tambor 9',       client: 'Nina Stroebel',       amount: 'R 122,439', due: '22 Jun 2025', issued: '22 May 2025', status: 'Draft',    paid: false },
+  { id: 'INV-2025-084', project: 'Nando\'s Rosebank', client: 'Thabo Khumalo',   amount: 'R 180,460', due: '10 Apr 2025', issued: '10 Mar 2025', status: 'Paid',     paid: true },
+  { id: 'INV-2025-083', project: 'Kalahari',       client: 'Sarah Venter',    amount: 'R 89,700',  due: '2 Apr 2025',  issued: '2 Mar 2025',  status: 'Paid',     paid: true },
+];
+
 export function StoreProvider({ children }) {
   const [projects, setProjects] = useState(initialStore);
   const [contacts, setContacts] = useState(initialContacts);
   const [leads, setLeads] = useState(initialLeads);
+  const [invoices, setInvoices] = useState(defaultInvoices);
+
+  const addInvoice = (invoice) => {
+    setInvoices(prev => [invoice, ...prev]);
+  };
 
   const updateProject = (key, field, value) => {
     setProjects(prev => {
@@ -1230,7 +1243,7 @@ export function StoreProvider({ children }) {
   };
 
   return (
-    <StoreContext.Provider value={{ projects, updateProject, addProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition }}>
+    <StoreContext.Provider value={{ projects, updateProject, addProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
       {children}
     </StoreContext.Provider>
   );

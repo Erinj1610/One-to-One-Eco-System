@@ -32,7 +32,7 @@ const RATE_CARD = {
 };
 
 export default function DesignPage() {
-  const { projects, updateProject, contacts } = useStore();
+  const { projects, updateProject, contacts, addInvoice, invoices } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -140,6 +140,56 @@ export default function DesignPage() {
   }, [projects]);
 
   // Sync state from project context or direct navigation
+  const handleOpenWorkspace = (fee) => {
+    setSelectedFeeId(fee.id);
+    setSelectedProjectKey(fee.projectKey);
+    setActiveFeeName(fee.name || 'Main Residence Design Fee');
+    setActiveFeeSqm(fee.sqm || 1000);
+    setActiveLandscapeSqm(fee.landscapeSqm || 500);
+    setFeeType(fee.feeType || 'Signature');
+    setFlatBaseFee(fee.flatBaseFee || 50000);
+    setFeeStatus(fee.status || 'Draft');
+    setFeePaidAmount(fee.paid || 0);
+
+    setIncludeConcept(fee.includeConcept !== undefined ? fee.includeConcept : true);
+    setIncludeSchematic(fee.includeSchematic !== undefined ? fee.includeSchematic : true);
+    setIncludeFinal(fee.includeFinal !== undefined ? fee.includeFinal : true);
+    setIncludeSite(fee.includeSite !== undefined ? fee.includeSite : false);
+    setIncludeCommissioning(fee.includeCommissioning !== undefined ? fee.includeCommissioning : false);
+    
+    setAdjustmentPercent(fee.adjustmentPercent || 0);
+    setProcurementDiscountActive(fee.procurementDiscountActive || false);
+    
+    if (fee.milestones && fee.milestones.length > 0) {
+      setMilestones(fee.milestones.map(m => ({
+        label: m.label,
+        percent: m.percent,
+        invoicedAmount: m.invoicedAmount || 0,
+        paidAmount: m.paidAmount || 0,
+        invoiceRef: m.invoiceRef || '',
+        isBilled: m.isBilled !== undefined ? m.isBilled : (!!m.invoiceRef || (m.invoicedAmount || 0) > 0)
+      })));
+    } else {
+      setMilestones([
+        { label: 'Deposit / Commitment Fee', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Concept Design Approval', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Schematic Layout Approval', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Final Delivery & Sign-off', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false }
+      ]);
+    }
+
+    const proj = projects[fee.projectKey] || {};
+    setClientCompany(proj.client || '');
+    setClientContact(proj.client || '');
+    setProjectFullName(proj.name || '');
+    setProjectTier(proj.offering || 'Signature');
+    setTargetMargin(proj.targetMargin || 18);
+    setActualMargin(fee.margin || 18);
+    setPmName(proj.pm || 'Dani');
+    setWorkspaceSubTab('calculator');
+    setShowCalculatorBuilder(false);
+  };
+
   useEffect(() => {
     if (location.state?.projectKey) {
       setProjectFilterKey(location.state.projectKey);
@@ -310,49 +360,6 @@ export default function DesignPage() {
     }
   };
 
-  const handleOpenWorkspace = (fee) => {
-    setSelectedFeeId(fee.id);
-    setSelectedProjectKey(fee.projectKey);
-    setActiveFeeName(fee.name || 'Main Residence Design Fee');
-    setActiveFeeSqm(fee.sqm || 1000);
-    setActiveLandscapeSqm(fee.landscapeSqm || 500);
-    setFeeType(fee.feeType || 'Signature');
-    setFlatBaseFee(fee.flatBaseFee || 50000);
-    setFeeStatus(fee.status || 'Draft');
-    setFeePaidAmount(fee.paid || 0);
-
-    setIncludeConcept(fee.includeConcept !== undefined ? fee.includeConcept : true);
-    setIncludeSchematic(fee.includeSchematic !== undefined ? fee.includeSchematic : true);
-    setIncludeFinal(fee.includeFinal !== undefined ? fee.includeFinal : true);
-    setIncludeSite(fee.includeSite !== undefined ? fee.includeSite : false);
-    setIncludeCommissioning(fee.includeCommissioning !== undefined ? fee.includeCommissioning : false);
-    
-    setAdjustmentPercent(fee.adjustmentPercent || 0);
-    setProcurementDiscountActive(fee.procurementDiscountActive || false);
-    
-    if (fee.milestones && fee.milestones.length > 0) {
-      setMilestones(fee.milestones);
-    } else {
-      setMilestones([
-        { label: 'Deposit / Commitment Fee', percent: 30 },
-        { label: 'Concept Design Approval', percent: 30 },
-        { label: 'Schematic Layout Approval', percent: 20 },
-        { label: 'Final Delivery & Sign-off', percent: 20 }
-      ]);
-    }
-
-    const proj = projects[fee.projectKey] || {};
-    setClientCompany(proj.client || '');
-    setClientContact(proj.client || '');
-    setProjectFullName(proj.name || '');
-    setProjectTier(proj.offering || 'Signature');
-    setTargetMargin(proj.targetMargin || 18);
-    setActualMargin(fee.margin || 18);
-    setPmName(proj.pm || 'Dani');
-    setWorkspaceSubTab('calculator');
-    setShowCalculatorBuilder(false);
-  };
-
   const [feeType, setFeeType] = useState('Signature');
   const [activeLandscapeSqm, setActiveLandscapeSqm] = useState(500);
   const [flatBaseFee, setFlatBaseFee] = useState(50000);
@@ -360,11 +367,13 @@ export default function DesignPage() {
   const [includeCommissioning, setIncludeCommissioning] = useState(false);
   const [adjustmentPercent, setAdjustmentPercent] = useState(0);
   const [procurementDiscountActive, setProcurementDiscountActive] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState('proposal'); // 'proposal' | 'statement' | 'invoice'
+  const [activePreviewInvoiceId, setActivePreviewInvoiceId] = useState('');
   const [milestones, setMilestones] = useState([
-    { label: 'Deposit / Commitment Fee', percent: 30 },
-    { label: 'Concept Design Approval', percent: 30 },
-    { label: 'Schematic Layout Approval', percent: 20 },
-    { label: 'Final Delivery & Sign-off', percent: 20 }
+    { label: 'Deposit / Commitment Fee', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+    { label: 'Concept Design Approval', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+    { label: 'Schematic Layout Approval', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+    { label: 'Final Delivery & Sign-off', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false }
   ]);
 
   // Dynamic calculation block for the fee statement builder
@@ -480,12 +489,75 @@ export default function DesignPage() {
     adjustmentPercent
   ]);
 
+  const syncGlobalInvoice = (invoiceId, amountVal, milestoneName) => {
+    if (!invoiceId) return;
+    const exists = invoices.some(inv => inv.id.trim().toLowerCase() === invoiceId.trim().toLowerCase());
+    if (!exists) {
+      const newInvoice = {
+        id: invoiceId,
+        project: projectFullName || 'Upper Primrose',
+        client: clientCompany || 'Sarah Venter',
+        amount: `${calculatorBreakdown.symbol} ${amountVal.toLocaleString()}`,
+        due: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+        issued: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: 'Unpaid',
+        paid: false,
+        description: `Design Fee Milestone: ${milestoneName || 'Stage Payment'}`
+      };
+      addInvoice(newInvoice);
+    }
+  };
+
+  const handleRaiseInvoice = (idx) => {
+    const m = milestones[idx];
+    if (!m.invoiceRef || !m.invoiceRef.trim()) {
+      alert("Please enter the Invoice ID from your accounting system first.");
+      return;
+    }
+
+    const totalBase = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
+    const milestoneVal = Math.round((totalBase * m.percent) / 100);
+    const invoiceId = m.invoiceRef.trim();
+
+    // Check if this invoice ID is already used globally
+    const alreadyExists = invoices.some(inv => inv.id.trim().toLowerCase() === invoiceId.toLowerCase());
+    if (alreadyExists) {
+      alert(`Invoice ID "${invoiceId}" already exists in the system. Linking this milestone to the existing invoice.`);
+    } else {
+      const newInvoice = {
+        id: invoiceId,
+        project: projectFullName || 'Upper Primrose',
+        client: clientCompany || 'Sarah Venter',
+        amount: `${calculatorBreakdown.symbol} ${milestoneVal.toLocaleString()}`,
+        due: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+        issued: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: 'Unpaid',
+        paid: false,
+        description: `Design Fee Milestone: ${m.label}`
+      };
+      addInvoice(newInvoice);
+      alert(`Success: Created and linked global invoice "${invoiceId}" for ${calculatorBreakdown.symbol} ${milestoneVal.toLocaleString()}!`);
+    }
+
+    // Update milestone state
+    const next = [...milestones];
+    next[idx].invoiceRef = invoiceId;
+    next[idx].invoicedAmount = milestoneVal;
+    next[idx].isBilled = true;
+    setMilestones(next);
+
+    // Switch to the invoice tab so they can see the invoice immediately
+    setActivePreviewInvoiceId(invoiceId);
+    setRightPanelTab('invoice');
+  };
+
   const handleSaveFeeWorkspace = () => {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
     const newCalculatedValue = calculatorBreakdown.standardTotal;
-    const balanceOutstanding = Math.max(0, newCalculatedValue - feePaidAmount);
+    const totalPaidAmount = milestones.reduce((sum, m) => sum + (Number(m.paidAmount) || 0), 0);
+    const balanceOutstanding = Math.max(0, newCalculatedValue - totalPaidAmount);
 
     const updatedFees = (proj.designFees || []).map(f => {
       if (f.id === selectedFeeId) {
@@ -505,7 +577,7 @@ export default function DesignPage() {
           procurementDiscountActive,
           milestones,
           feeValue: newCalculatedValue,
-          paid: feePaidAmount,
+          paid: totalPaidAmount,
           outstanding: balanceOutstanding,
           margin: actualMargin,
           status: feeStatus
@@ -528,7 +600,7 @@ export default function DesignPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    alert(`Design Fee Workspace Synced!\n- Adjusted Design Value: ${calculatorBreakdown.symbol} ${newCalculatedValue.toLocaleString()}\n- Paid Amount: ${calculatorBreakdown.symbol} ${feePaidAmount.toLocaleString()}\n- Project blended margin recalculated to ${blendedMargin}%.`);
+    alert(`Design Fee Workspace Synced!\n- Adjusted Design Value: ${calculatorBreakdown.symbol} ${newCalculatedValue.toLocaleString()}\n- Sum of Milestones Paid: ${calculatorBreakdown.symbol} ${totalPaidAmount.toLocaleString()}\n- Project blended margin recalculated to ${blendedMargin}%.`);
     setSelectedFeeId(null);
   };
 
@@ -1013,50 +1085,158 @@ export default function DesignPage() {
                 <button 
                   className="btn btn-ghost btn-sm"
                   style={{ height: 'auto', padding: '2px 6px', fontSize: '10.5px', border: '1px solid var(--border)' }}
-                  onClick={() => setMilestones([...milestones, { label: 'New Milestone', percent: 10 }])}
+                  onClick={() => setMilestones([...milestones, { label: 'New Milestone', percent: 10, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false }])}
                 >
                   + Add Row
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 {milestones.map((m, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input 
-                      type="text"
-                      className="form-control"
-                      style={{ flex: 3, height: '30px', fontSize: '12px', padding: '2px 8px' }}
-                      value={m.label}
-                      onChange={e => {
-                        const next = [...milestones];
-                        next[idx].label = e.target.value;
-                        setMilestones(next);
-                      }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1.2 }}>
+                  <div key={idx} style={{ 
+                    borderBottom: idx < milestones.length - 1 ? '1.5px solid var(--border)' : 'none', 
+                    paddingBottom: '12px',
+                    marginBottom: '6px'
+                  }}>
+                    {/* Top Row: Title, Percent, Delete */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
                       <input 
-                        type="number"
+                        type="text"
                         className="form-control"
-                        style={{ height: '30px', fontSize: '12px', padding: '2px 4px', textAlign: 'center' }}
-                        value={m.percent}
+                        style={{ flex: 3, height: '30px', fontSize: '12px', padding: '2px 8px' }}
+                        value={m.label}
                         onChange={e => {
                           const next = [...milestones];
-                          next[idx].percent = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                          next[idx].label = e.target.value;
                           setMilestones(next);
                         }}
                       />
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>%</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1.2 }}>
+                        <input 
+                          type="number"
+                          className="form-control"
+                          style={{ height: '30px', fontSize: '12px', padding: '2px 4px', textAlign: 'center' }}
+                          value={m.percent}
+                          onChange={e => {
+                            const next = [...milestones];
+                            next[idx].percent = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                            setMilestones(next);
+                          }}
+                        />
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>%</span>
+                      </div>
+                      <button 
+                        className="btn btn-ghost"
+                        style={{ color: 'var(--text-warning)', padding: '4px 8px', height: 'auto', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}
+                        onClick={() => {
+                          const next = milestones.filter((_, i) => i !== idx);
+                          setMilestones(next);
+                        }}
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <button 
-                      className="btn btn-ghost"
-                      style={{ color: 'var(--text-warning)', padding: '4px 8px', height: 'auto', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}
-                      onClick={() => {
-                        const next = milestones.filter((_, i) => i !== idx);
-                        setMilestones(next);
-                      }}
-                    >
-                      ✕
-                    </button>
+
+                    {/* Bottom Row: Invoiced, Paid, Invoice Ref, Raise Invoice Button */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', paddingLeft: '4px' }}>
+                      {/* Billed (Ticked if Sent/Billed) */}
+                      {(() => {
+                        const totalBase = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
+                        const milestoneVal = Math.round((totalBase * m.percent) / 100);
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <input 
+                              type="checkbox"
+                              checked={!!m.isBilled}
+                              onChange={e => {
+                                const next = [...milestones];
+                                const checked = e.target.checked;
+                                next[idx].isBilled = checked;
+                                next[idx].invoicedAmount = checked ? milestoneVal : 0;
+                                
+                                // If they checked it and there is an invoice ID, link it to the store
+                                if (checked && m.invoiceRef) {
+                                  syncGlobalInvoice(m.invoiceRef, milestoneVal, m.label);
+                                }
+                                setMilestones(next);
+                              }}
+                            />
+                            <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Billed:</span>
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: m.isBilled ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                              {calculatorBreakdown.symbol} {milestoneVal.toLocaleString()}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Paid Input */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Paid:</span>
+                        <input 
+                          type="number"
+                          className="form-control"
+                          placeholder="0"
+                          style={{ width: '70px', height: '26px', fontSize: '11px', padding: '2px 4px' }}
+                          value={m.paidAmount || ''}
+                          onChange={e => {
+                            const next = [...milestones];
+                            next[idx].paidAmount = Number(e.target.value) || 0;
+                            setMilestones(next);
+                          }}
+                        />
+                      </div>
+
+                      {/* Invoice ID input (comes from accounting system) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Invoice ID:</span>
+                        <input 
+                          type="text"
+                          className="form-control"
+                          placeholder="e.g. INV-087"
+                          style={{ width: '80px', height: '26px', fontSize: '11px', padding: '2px 4px' }}
+                          value={m.invoiceRef || ''}
+                          onChange={e => {
+                            const next = [...milestones];
+                            next[idx].invoiceRef = e.target.value;
+                            setMilestones(next);
+                          }}
+                        />
+                      </div>
+
+                      {/* Raise or View Button */}
+                      {!m.isBilled ? (
+                        <button 
+                          className="btn btn-sm btn-ghost"
+                          style={{ 
+                            height: '24px', 
+                            fontSize: '9.5px', 
+                            padding: '2px 6px', 
+                            borderColor: 'var(--border-info)',
+                            color: 'var(--text-info)'
+                          }}
+                          onClick={() => handleRaiseInvoice(idx)}
+                        >
+                          Invoice
+                        </button>
+                      ) : (
+                        <button 
+                          className="btn btn-sm btn-ghost"
+                          style={{ 
+                            height: '24px', 
+                            fontSize: '9.5px', 
+                            padding: '2px 6px', 
+                            borderColor: 'var(--border-success)',
+                            color: 'var(--text-success)'
+                          }}
+                          onClick={() => {
+                            setActivePreviewInvoiceId(m.invoiceRef);
+                            setRightPanelTab('invoice');
+                          }}
+                        >
+                          View
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
 
@@ -1087,233 +1267,620 @@ export default function DesignPage() {
 
           </div>
 
-          {/* RIGHT PANEL: LIVE PROPOSAL PREVIEW SHEET */}
+          {/* RIGHT PANEL: LIVE PROPOSAL & STATEMENT PREVIEW SHEET */}
           <div style={{ position: 'sticky', top: '20px' }}>
-            <div style={{ 
-              background: '#FAF9F6', 
-              color: '#1a1a1a', 
-              padding: '40px', 
-              borderRadius: '8px', 
-              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-              border: '1px solid #e0ddd5',
-              fontFamily: '"Outfit", "Inter", sans-serif'
-            }}>
-              {/* Proposal Header Banner */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a1a1a', paddingBottom: '24px', marginBottom: '24px' }}>
-                <div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '2px', color: '#000' }}>1-TO-1 WORLD</div>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#666', letterSpacing: '1px', marginTop: '2px' }}>LIGHTING DESIGN & SPECIFICATION SERVICES</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#1a1a1a', background: '#e0ddd5', padding: '4px 10px', borderRadius: '4px', display: 'inline-block' }}>
-                    PROPOSAL STATEMENT
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#666', marginTop: '6px', fontFamily: 'monospace' }}>REF: {selectedFeeId}</div>
-                  <div style={{ fontSize: '11px', color: '#666' }}>Date: {new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                </div>
-              </div>
+            
+            {/* Document Tab Selector */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <button 
+                className={`btn btn-sm ${rightPanelTab === 'proposal' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ flex: 1, height: '32px', fontSize: '12px', borderRadius: '6px' }}
+                onClick={() => setRightPanelTab('proposal')}
+              >
+                📄 Proposal Statement
+              </button>
+              <button 
+                className={`btn btn-sm ${rightPanelTab === 'statement' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ flex: 1, height: '32px', fontSize: '12px', borderRadius: '6px' }}
+                onClick={() => setRightPanelTab('statement')}
+              >
+                🧾 Statement of Account
+              </button>
+              {activePreviewInvoiceId && (
+                <button 
+                  className={`btn btn-sm ${rightPanelTab === 'invoice' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1, height: '32px', fontSize: '12px', borderRadius: '6px' }}
+                  onClick={() => setRightPanelTab('invoice')}
+                >
+                  🧾 Invoice {activePreviewInvoiceId}
+                </button>
+              )}
+            </div>
 
-              {/* Proposal Metadata */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px', fontSize: '12.5px' }}>
-                <div>
-                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>CLIENT DETAILS</div>
-                  <div style={{ fontWeight: 700, color: '#111' }}>{clientCompany || 'Direct Client'}</div>
-                  <div style={{ color: '#444' }}>Attn: {clientContact || 'Representative'}</div>
-                  <div style={{ color: '#666', fontSize: '11.5px', marginTop: '2px' }}>Studio PM: {pmName}</div>
+            {rightPanelTab === 'proposal' ? (
+              <div style={{ 
+                background: '#FAF9F6', 
+                color: '#1a1a1a', 
+                padding: '40px', 
+                borderRadius: '8px', 
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                border: '1px solid #e0ddd5',
+                fontFamily: '"Outfit", "Inter", sans-serif'
+              }}>
+                {/* Proposal Header Banner */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a1a1a', paddingBottom: '24px', marginBottom: '24px' }}>
+                  <div>
+                    <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '2px', color: '#000' }}>1-TO-1 WORLD</div>
+                    <div style={{ fontSize: '10px', fontWeight: 600, color: '#666', letterSpacing: '1px', marginTop: '2px' }}>LIGHTING DESIGN & SPECIFICATION SERVICES</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1a1a1a', background: '#e0ddd5', padding: '4px 10px', borderRadius: '4px', display: 'inline-block' }}>
+                      PROPOSAL STATEMENT
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#666', marginTop: '6px', fontFamily: 'monospace' }}>REF: {selectedFeeId}</div>
+                    <div style={{ fontSize: '11px', color: '#666' }}>Date: {new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>PROJECT SCOPE</div>
-                  <div style={{ fontWeight: 700, color: '#111' }}>{projectFullName || 'Project Overview'}</div>
-                  <div style={{ color: '#444' }}>Billing Preset: {FEE_PRESETS[feeType]?.name}</div>
-                  {FEE_PRESETS[feeType]?.type === 'sqm' && (
-                    <div style={{ color: '#555', marginTop: '2px' }}>
-                      <strong>{activeFeeSqm} m²</strong> Interior • <strong>{activeLandscapeSqm} m²</strong> Landscape
+
+                {/* Proposal Metadata */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px', fontSize: '12.5px' }}>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>CLIENT DETAILS</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{clientCompany || 'Direct Client'}</div>
+                    <div style={{ color: '#444' }}>Attn: {clientContact || 'Representative'}</div>
+                    <div style={{ color: '#666', fontSize: '11.5px', marginTop: '2px' }}>Studio PM: {pmName}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>PROJECT SCOPE</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{projectFullName || 'Project Overview'}</div>
+                    <div style={{ color: '#444' }}>Billing Preset: {FEE_PRESETS[feeType]?.name}</div>
+                    {FEE_PRESETS[feeType]?.type === 'sqm' && (
+                      <div style={{ color: '#555', marginTop: '2px' }}>
+                        <strong>{activeFeeSqm} m²</strong> Interior • <strong>{activeLandscapeSqm} m²</strong> Landscape
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Scope/Items Breakdown Table */}
+                <div style={{ marginBottom: '28px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>PROFESSIONAL FEES BREAKDOWN</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #1a1a1a', textAlign: 'left', fontWeight: 700 }}>
+                        <th style={{ padding: '8px 0', color: '#1a1a1a' }}>Stage / Deliverable Phase Description</th>
+                        <th style={{ padding: '8px 0', textAlign: 'right', width: '120px', color: '#1a1a1a' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {includeConcept && (
+                        <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                          <td style={{ padding: '10px 0', color: '#333' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 1: Concept Lighting Design</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>Initial architectural space analysis, load estimates, mood board layouts.</span>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                            {calculatorBreakdown.symbol} {calculatorBreakdown.conceptSum.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                      {includeSchematic && (
+                        <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                          <td style={{ padding: '10px 0', color: '#333' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 2: Schematic Layouts</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>AutoCAD layout drawings, circuit maps, load configurations.</span>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                            {calculatorBreakdown.symbol} {calculatorBreakdown.schematicSum.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                      {includeFinal && (
+                        <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                          <td style={{ padding: '10px 0', color: '#333' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 3: Final Specification Layout & Schedule</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>Detailed fitting lists, supplier order schedules, datasheet packaging.</span>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                            {calculatorBreakdown.symbol} {calculatorBreakdown.finalSum.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                      {includeSite && (
+                        <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                          <td style={{ padding: '10px 0', color: '#333' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 4: Site Support & Snagging Coordination</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>On-site electrical consultations, installation snags, supplier audits.</span>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                            {calculatorBreakdown.symbol} {calculatorBreakdown.siteSum.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                      {includeCommissioning && (
+                        <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                          <td style={{ padding: '10px 0', color: '#333' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 5: Technical Commissioning & Sign-off</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>Final lighting levels inspection, testing, and official certificate issue.</span>
+                          </td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                            {calculatorBreakdown.symbol} {calculatorBreakdown.commSum.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Subtotal & Adjustment breakdown */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', fontSize: '12.5px', marginBottom: '24px', borderBottom: '1px solid #eee', paddingBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: '#666' }}>
+                    <span>Stages Subtotal:</span>
+                    <span>{calculatorBreakdown.symbol} {calculatorBreakdown.subTotal.toLocaleString()}</span>
+                  </div>
+                  {adjustmentPercent !== 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: adjustmentPercent >= 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
+                      <span>Adjustment ({adjustmentPercent}%):</span>
+                      <span>{adjustmentPercent >= 0 ? '+' : ''}{calculatorBreakdown.symbol} {calculatorBreakdown.modifierAmount.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Scope/Items Breakdown Table */}
-              <div style={{ marginBottom: '28px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>PROFESSIONAL FEES BREAKDOWN</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #1a1a1a', textAlign: 'left', fontWeight: 700 }}>
-                      <th style={{ padding: '8px 0', color: '#1a1a1a' }}>Stage / Deliverable Phase Description</th>
-                      <th style={{ padding: '8px 0', textAlign: 'right', width: '120px', color: '#1a1a1a' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {includeConcept && (
-                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
-                        <td style={{ padding: '10px 0', color: '#333' }}>
-                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 1: Concept Lighting Design</span>
-                          <span style={{ fontSize: '11px', color: '#666' }}>Initial architectural space analysis, load estimates, mood board layouts.</span>
-                        </td>
-                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
-                          {calculatorBreakdown.symbol} {calculatorBreakdown.conceptSum.toLocaleString()}
-                        </td>
-                      </tr>
-                    )}
-                    {includeSchematic && (
-                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
-                        <td style={{ padding: '10px 0', color: '#333' }}>
-                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 2: Schematic Layouts</span>
-                          <span style={{ fontSize: '11px', color: '#666' }}>AutoCAD layout drawings, circuit maps, load configurations.</span>
-                        </td>
-                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
-                          {calculatorBreakdown.symbol} {calculatorBreakdown.schematicSum.toLocaleString()}
-                        </td>
-                      </tr>
-                    )}
-                    {includeFinal && (
-                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
-                        <td style={{ padding: '10px 0', color: '#333' }}>
-                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 3: Final Specification Layout & Schedule</span>
-                          <span style={{ fontSize: '11px', color: '#666' }}>Detailed fitting lists, supplier order schedules, datasheet packaging.</span>
-                        </td>
-                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
-                          {calculatorBreakdown.symbol} {calculatorBreakdown.finalSum.toLocaleString()}
-                        </td>
-                      </tr>
-                    )}
-                    {includeSite && (
-                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
-                        <td style={{ padding: '10px 0', color: '#333' }}>
-                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 4: Site Support & Snagging Coordination</span>
-                          <span style={{ fontSize: '11px', color: '#666' }}>On-site electrical consultations, installation snags, supplier audits.</span>
-                        </td>
-                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
-                          {calculatorBreakdown.symbol} {calculatorBreakdown.siteSum.toLocaleString()}
-                        </td>
-                      </tr>
-                    )}
-                    {includeCommissioning && (
-                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
-                        <td style={{ padding: '10px 0', color: '#333' }}>
-                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 5: Technical Commissioning & Sign-off</span>
-                          <span style={{ fontSize: '11px', color: '#666' }}>Final lighting levels inspection, testing, and official certificate issue.</span>
-                        </td>
-                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
-                          {calculatorBreakdown.symbol} {calculatorBreakdown.commSum.toLocaleString()}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                {/* DUAL-STATE TOTAL PRICING DISPLAY OR STANDARD TOTAL */}
+                {procurementDiscountActive ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+                    
+                    {/* Standard Option */}
+                    <div style={{ 
+                      border: '1.5px solid #ccc', 
+                      borderRadius: '6px', 
+                      padding: '16px',
+                      background: '#fcfcfc',
+                      textAlign: 'center'
+                    }}>
+                      <span style={{ fontSize: '10px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Standard Design Fee</span>
+                      <strong style={{ fontSize: '20px', color: '#333', fontWeight: 800 }}>
+                        {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
+                      </strong>
+                      <span style={{ display: 'block', fontSize: '9px', color: '#888', marginTop: '4px' }}>Billed if lights are purchased externally.</span>
+                    </div>
 
-              {/* Subtotal & Adjustment breakdown */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', fontSize: '12.5px', marginBottom: '24px', borderBottom: '1px solid #eee', paddingBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: '#666' }}>
-                  <span>Stages Subtotal:</span>
-                  <span>{calculatorBreakdown.symbol} {calculatorBreakdown.subTotal.toLocaleString()}</span>
-                </div>
-                {adjustmentPercent !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: adjustmentPercent >= 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
-                    <span>Adjustment ({adjustmentPercent}%):</span>
-                    <span>{adjustmentPercent >= 0 ? '+' : ''}{calculatorBreakdown.symbol} {calculatorBreakdown.modifierAmount.toLocaleString()}</span>
+                    {/* Reduced Option */}
+                    <div style={{ 
+                      border: '2px solid #185fa5', 
+                      borderRadius: '6px', 
+                      padding: '16px',
+                      background: '#edf5fd',
+                      textAlign: 'center',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: '0', 
+                        right: '0', 
+                        background: '#185fa5', 
+                        color: '#fff', 
+                        fontSize: '8px', 
+                        fontWeight: 700, 
+                        padding: '2px 8px', 
+                        borderBottomLeftRadius: '4px',
+                        textTransform: 'uppercase'
+                      }}>
+                        Incentive
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#185fa5', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Reduced Design Fee</span>
+                      <strong style={{ fontSize: '20px', color: '#185fa5', fontWeight: 900 }}>
+                        {calculatorBreakdown.symbol} {calculatorBreakdown.reducedTotal.toLocaleString()}
+                      </strong>
+                      <span style={{ display: 'block', fontSize: '9px', color: '#555', marginTop: '4px', fontWeight: 600 }}>Applied if product supply is procured from 1-to-1.</span>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div style={{ 
+                    background: '#1a1a1a', 
+                    color: '#fff', 
+                    padding: '20px', 
+                    borderRadius: '6px', 
+                    textAlign: 'center', 
+                    marginBottom: '32px' 
+                  }}>
+                    <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: '#aaa', letterSpacing: '0.5px' }}>Total Design Fee Ex. VAT</span>
+                    <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '4px' }}>
+                      {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
+                    </div>
                   </div>
                 )}
+
+                {/* Payment Schedule Table */}
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>ESTIMATED PAYMENT SCHEDULE</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', color: '#444' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #666', textAlign: 'left', fontWeight: 700 }}>
+                        <th style={{ padding: '6px 0' }}>Milestone Target Description</th>
+                        <th style={{ padding: '6px 0', textAlign: 'center', width: '60px' }}>Split</th>
+                        <th style={{ padding: '6px 0', textAlign: 'right', width: '100px' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {milestones.map((m, i) => {
+                        const totalBase = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
+                        const milestoneVal = Math.round((totalBase * m.percent) / 100);
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid #e2dfd7' }}>
+                            <td style={{ padding: '8px 0', fontWeight: 500 }}>{m.label}</td>
+                            <td style={{ padding: '8px 0', textAlign: 'center', fontWeight: 600 }}>{m.percent}%</td>
+                            <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#111' }}>
+                              {calculatorBreakdown.symbol} {milestoneVal.toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
               </div>
-
-              {/* DUAL-STATE TOTAL PRICING DISPLAY OR STANDARD TOTAL */}
-              {procurementDiscountActive ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
-                  
-                  {/* Standard Option */}
-                  <div style={{ 
-                    border: '1.5px solid #ccc', 
-                    borderRadius: '6px', 
-                    padding: '16px',
-                    background: '#fcfcfc',
-                    textAlign: 'center'
-                  }}>
-                    <span style={{ fontSize: '10px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Standard Design Fee</span>
-                    <strong style={{ fontSize: '20px', color: '#333', fontWeight: 800 }}>
-                      {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
-                    </strong>
-                    <span style={{ display: 'block', fontSize: '9px', color: '#888', marginTop: '4px' }}>Billed if lights are purchased externally.</span>
+            ) : (
+              /* STATEMENT OF ACCOUNT CLIENT-FACING SHEET */
+              <div style={{ 
+                background: '#FAF9F6', 
+                color: '#1a1a1a', 
+                padding: '40px', 
+                borderRadius: '8px', 
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                border: '1px solid #e0ddd5',
+                fontFamily: '"Outfit", "Inter", sans-serif'
+              }}>
+                {/* Statement Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a1a1a', paddingBottom: '24px', marginBottom: '24px' }}>
+                  <div>
+                    <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '2px', color: '#000' }}>1-TO-1 WORLD</div>
+                    <div style={{ fontSize: '10px', fontWeight: 600, color: '#666', letterSpacing: '1px', marginTop: '2px' }}>STATEMENT OF ACCOUNT</div>
                   </div>
-
-                  {/* Reduced Option */}
-                  <div style={{ 
-                    border: '2px solid #185fa5', 
-                    borderRadius: '6px', 
-                    padding: '16px',
-                    background: '#edf5fd',
-                    textAlign: 'center',
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{ 
-                      position: 'absolute', 
-                      top: '0', 
-                      right: '0', 
-                      background: '#185fa5', 
-                      color: '#fff', 
-                      fontSize: '8px', 
-                      fontWeight: 700, 
-                      padding: '2px 8px', 
-                      borderBottomLeftRadius: '4px',
-                      textTransform: 'uppercase'
-                    }}>
-                      Incentive
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff', background: '#185fa5', padding: '4px 10px', borderRadius: '4px', display: 'inline-block' }}>
+                      FINANCIAL STATEMENT
                     </div>
-                    <span style={{ fontSize: '10px', color: '#185fa5', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Reduced Design Fee</span>
-                    <strong style={{ fontSize: '20px', color: '#185fa5', fontWeight: 900 }}>
-                      {calculatorBreakdown.symbol} {calculatorBreakdown.reducedTotal.toLocaleString()}
-                    </strong>
-                    <span style={{ display: 'block', fontSize: '9px', color: '#555', marginTop: '4px', fontWeight: 600 }}>Applied if product supply is procured from 1-to-1.</span>
-                  </div>
-
-                </div>
-              ) : (
-                <div style={{ 
-                  background: '#1a1a1a', 
-                  color: '#fff', 
-                  padding: '20px', 
-                  borderRadius: '6px', 
-                  textAlign: 'center', 
-                  marginBottom: '32px' 
-                }}>
-                  <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: '#aaa', letterSpacing: '0.5px' }}>Total Design Fee Ex. VAT</span>
-                  <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '4px' }}>
-                    {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
+                    <div style={{ fontSize: '11px', color: '#666', marginTop: '6px', fontFamily: 'monospace' }}>REF: {selectedFeeId}</div>
+                    <div style={{ fontSize: '11px', color: '#666' }}>As of: {new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                   </div>
                 </div>
-              )}
 
-              {/* Payment Schedule Table */}
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>ESTIMATED PAYMENT SCHEDULE</div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', color: '#444' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1.5px solid #666', textAlign: 'left', fontWeight: 700 }}>
-                      <th style={{ padding: '6px 0' }}>Milestone Target Description</th>
-                      <th style={{ padding: '6px 0', textAlign: 'center', width: '60px' }}>Split</th>
-                      <th style={{ padding: '6px 0', textAlign: 'right', width: '100px' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {milestones.map((m, i) => {
-                      const totalBase = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
-                      const milestoneVal = Math.round((totalBase * m.percent) / 100);
-                      return (
+                {/* Statement Metadata */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px', fontSize: '12.5px' }}>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>PREPARED FOR</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{clientCompany || 'Direct Client'}</div>
+                    <div style={{ color: '#444' }}>Attn: {clientContact || 'Representative'}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>PROJECT DETAILS</div>
+                    <div style={{ fontWeight: 700, color: '#111' }}>{projectFullName || 'Project Overview'}</div>
+                    <div style={{ color: '#555' }}>Design Fee Structure: {FEE_PRESETS[feeType]?.name}</div>
+                  </div>
+                </div>
+
+                {/* Account Balances Grid */}
+                {(() => {
+                  const targetTotalFee = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
+                  const totalBilled = milestones.reduce((s, m) => s + (Number(m.invoicedAmount) || 0), 0);
+                  const totalPaid = milestones.reduce((s, m) => s + (Number(m.paidAmount) || 0), 0);
+                  const outstandingBalance = Math.max(0, targetTotalFee - totalPaid);
+                  
+                  return (
+                    <>
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(4, 1fr)', 
+                        gap: '12px', 
+                        marginBottom: '32px',
+                        background: '#f4f2eb',
+                        padding: '16px',
+                        borderRadius: '6px',
+                        border: '1px solid #dcdad0',
+                        textAlign: 'center'
+                      }}>
+                        <div>
+                          <span style={{ fontSize: '9px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>Contract Value</span>
+                          <strong style={{ fontSize: '15px', color: '#111', fontWeight: 800 }}>
+                            {calculatorBreakdown.symbol} {targetTotalFee.toLocaleString()}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '9px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>Total Billed</span>
+                          <strong style={{ fontSize: '15px', color: '#185fa5', fontWeight: 800 }}>
+                            {calculatorBreakdown.symbol} {totalBilled.toLocaleString()}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '9px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>Total Paid</span>
+                          <strong style={{ fontSize: '15px', color: '#10b981', fontWeight: 800 }}>
+                            {calculatorBreakdown.symbol} {totalPaid.toLocaleString()}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '9px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>Outstanding</span>
+                          <strong style={{ fontSize: '15px', color: outstandingBalance > 0 ? '#f59e0b' : '#666', fontWeight: 800 }}>
+                            {calculatorBreakdown.symbol} {outstandingBalance.toLocaleString()}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Milestone details table */}
+                      <div style={{ marginBottom: '28px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>MILESTONE PAYMENT LEDGER</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', color: '#333' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1.5px solid #1a1a1a', textAlign: 'left', fontWeight: 700 }}>
+                              <th style={{ padding: '8px 0' }}>Milestone Target Description</th>
+                              <th style={{ padding: '8px 0', textAlign: 'center', width: '50px' }}>Split</th>
+                              <th style={{ padding: '8px 0', textAlign: 'right', width: '90px' }}>Target Val</th>
+                              <th style={{ padding: '8px 0', textAlign: 'right', width: '90px' }}>Billed</th>
+                              <th style={{ padding: '8px 0', textAlign: 'right', width: '90px' }}>Paid</th>
+                              <th style={{ padding: '8px 0', textAlign: 'center', width: '100px' }}>Invoice Ref</th>
+                              <th style={{ padding: '8px 0', textAlign: 'right', width: '80px' }}>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {milestones.map((m, i) => {
+                              const milestoneVal = Math.round((targetTotalFee * m.percent) / 100);
+                              const invoiced = m.invoicedAmount || 0;
+                              const paidVal = m.paidAmount || 0;
+                              
+                              let statusText = 'Unbilled';
+                              let statusBg = '#e0ddd5';
+                              let statusColorText = '#444';
+                              
+                              if (paidVal >= milestoneVal) {
+                                statusText = 'Paid';
+                                statusBg = '#d1fae5';
+                                statusColorText = '#065f46';
+                              } else if (paidVal > 0) {
+                                statusText = 'Part Paid';
+                                statusBg = '#fef3c7';
+                                statusColorText = '#92400e';
+                              } else if (invoiced > 0) {
+                                statusText = 'Billed';
+                                statusBg = '#fee2e2';
+                                statusColorText = '#991b1b';
+                              }
+
+                              return (
+                                <tr key={i} style={{ borderBottom: '1px solid #e2dfd7' }}>
+                                  <td style={{ padding: '10px 0', fontWeight: 600 }}>{m.label}</td>
+                                  <td style={{ padding: '10px 0', textAlign: 'center', color: '#666' }}>{m.percent}%</td>
+                                  <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 500 }}>
+                                    {calculatorBreakdown.symbol} {milestoneVal.toLocaleString()}
+                                  </td>
+                                  <td style={{ padding: '10px 0', textAlign: 'right', color: invoiced > 0 ? '#185fa5' : '#888' }}>
+                                    {calculatorBreakdown.symbol} {invoiced.toLocaleString()}
+                                  </td>
+                                  <td style={{ padding: '10px 0', textAlign: 'right', color: paidVal > 0 ? '#10b981' : '#888', fontWeight: 600 }}>
+                                    {calculatorBreakdown.symbol} {paidVal.toLocaleString()}
+                                  </td>
+                                  <td style={{ padding: '10px 0', textAlign: 'center', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                                    {m.invoiceRef ? (
+                                      <button 
+                                        className="btn-link"
+                                        style={{ 
+                                          background: 'none', 
+                                          border: 'none', 
+                                          color: '#185fa5', 
+                                          textDecoration: 'underline', 
+                                          cursor: 'pointer', 
+                                          fontFamily: 'monospace',
+                                          padding: 0
+                                        }}
+                                        onClick={() => {
+                                          setActivePreviewInvoiceId(m.invoiceRef);
+                                          setRightPanelTab('invoice');
+                                        }}
+                                      >
+                                        {m.invoiceRef}
+                                      </button>
+                                    ) : '—'}
+                                  </td>
+                                  <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                                    <span style={{ 
+                                      fontSize: '9.5px', 
+                                      fontWeight: 700, 
+                                      background: statusBg, 
+                                      color: statusColorText, 
+                                      padding: '2px 8px', 
+                                      borderRadius: '4px',
+                                      textTransform: 'uppercase'
+                                    }}>
+                                      {statusText}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* Raised Invoices list */}
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>LINKED INVOICES LEDGER</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', color: '#444' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid #666', textAlign: 'left', fontWeight: 700 }}>
+                        <th style={{ padding: '6px 0' }}>Invoice ID</th>
+                        <th style={{ padding: '6px 0' }}>Issued Date</th>
+                        <th style={{ padding: '6px 0', textAlign: 'right' }}>Amount</th>
+                        <th style={{ padding: '6px 0', textAlign: 'right' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoices.filter(inv => inv.project === (projectFullName || 'Upper Primrose')).map((inv, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid #e2dfd7' }}>
-                          <td style={{ padding: '8px 0', fontWeight: 500 }}>{m.label}</td>
-                          <td style={{ padding: '8px 0', textAlign: 'center', fontWeight: 600 }}>{m.percent}%</td>
-                          <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#111' }}>
-                            {calculatorBreakdown.symbol} {milestoneVal.toLocaleString()}
+                          <td style={{ padding: '8px 0', fontFamily: 'monospace', fontWeight: 600 }}>
+                            <button 
+                              className="btn-link"
+                              style={{ 
+                                background: 'none', 
+                                border: 'none', 
+                                color: '#185fa5', 
+                                textDecoration: 'underline', 
+                                cursor: 'pointer', 
+                                fontFamily: 'monospace',
+                                padding: 0
+                              }}
+                              onClick={() => {
+                                setActivePreviewInvoiceId(inv.id);
+                                setRightPanelTab('invoice');
+                              }}
+                            >
+                              {inv.id}
+                            </button>
+                          </td>
+                          <td style={{ padding: '8px 0' }}>{inv.issued}</td>
+                          <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600, color: '#111' }}>{inv.amount}</td>
+                          <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: inv.status === 'Paid' ? '#10b981' : '#f59e0b' }}>
+                            {inv.status}
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      ))}
+                      {invoices.filter(inv => inv.project === (projectFullName || 'Upper Primrose')).length === 0 && (
+                        <tr>
+                          <td colSpan={4} style={{ padding: '12px 0', color: '#888', fontStyle: 'italic', textAlign: 'center' }}>
+                            No invoice records linked to this design fee project.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
-            </div>
+              </div>
+            )}
+
+            {/* INVOICE PREVIEW TAB */}
+            {rightPanelTab === 'invoice' && (
+              <div style={{ 
+                background: '#FAF9F6', 
+                color: '#1a1a1a', 
+                padding: '40px', 
+                borderRadius: '8px', 
+                boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+                border: '1px solid #e0ddd5',
+                fontFamily: '"Outfit", "Inter", sans-serif',
+                position: 'relative'
+              }}>
+                <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
+                  <button 
+                    className="btn btn-sm btn-ghost"
+                    style={{ border: '1px solid #e0ddd5', borderRadius: '4px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={() => window.print()}
+                  >
+                    <Printer size={12} /> Print Invoice
+                  </button>
+                </div>
+
+                {(() => {
+                  const inv = invoices.find(i => i.id.trim().toLowerCase() === activePreviewInvoiceId.trim().toLowerCase()) || {
+                    id: activePreviewInvoiceId,
+                    project: projectFullName || 'Upper Primrose',
+                    client: clientCompany || 'Sarah Venter',
+                    amount: `${calculatorBreakdown.symbol} 0`,
+                    issued: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+                    due: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+                    status: 'Unpaid',
+                    description: 'Design Fee Milestone stage payment'
+                  };
+
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a1a1a', paddingBottom: '24px', marginBottom: '24px', marginTop: '16px' }}>
+                        <div>
+                          <div style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '2px', color: '#000' }}>1-TO-1 WORLD</div>
+                          <div style={{ fontSize: '9px', fontWeight: 600, color: '#666', letterSpacing: '1px', marginTop: '2px' }}>LIGHTING DESIGN & SPECIFICATION SERVICES</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a1a', letterSpacing: '1px' }}>INVOICE</div>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#185fa5', marginTop: '4px', fontFamily: 'monospace' }}>#{inv.id}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px', fontSize: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>FROM:</div>
+                          <div style={{ fontWeight: 700, color: '#111' }}>1-to-1 World (Pty) Ltd</div>
+                          <div style={{ color: '#555' }}>Studio 102, The Foundry, Green Point</div>
+                          <div style={{ color: '#555' }}>Cape Town, 8005</div>
+                          <div style={{ color: '#555' }}>VAT: 45202919382</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>BILLED TO:</div>
+                          <div style={{ fontWeight: 700, color: '#111' }}>{inv.client || 'Direct Client'}</div>
+                          <div style={{ color: '#555' }}>Project: {inv.project || 'Project Overview'}</div>
+                          <div style={{ color: '#555' }}>Issued Date: {inv.issued}</div>
+                          <div style={{ color: '#555' }}>Due Date: {inv.due}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '36px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', color: '#333' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1.5px solid #1a1a1a', textAlign: 'left', fontWeight: 700 }}>
+                              <th style={{ padding: '8px 0' }}>Description</th>
+                              <th style={{ padding: '8px 0', textAlign: 'right', width: '120px' }}>Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr style={{ borderBottom: '1px solid #e0ddd5' }}>
+                              <td style={{ padding: '12px 0' }}>
+                                <div style={{ fontWeight: 600, color: '#111' }}>{inv.description}</div>
+                                <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>Professional lighting design services, layout calculations, and specifications.</div>
+                              </td>
+                              <td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 700, fontSize: '13px', color: '#111' }}>{inv.amount}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', borderTop: '1px solid #e0ddd5', paddingTop: '24px', fontSize: '11px' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#444', marginBottom: '4px', textTransform: 'uppercase', fontSize: '9px' }}>Bank Payment Details</div>
+                          <div style={{ color: '#666', lineHeight: '1.5' }}>
+                            Bank: <strong>Standard Bank</strong><br />
+                            Account Name: <strong>1-to-1 World Operations</strong><br />
+                            Account Number: <strong>0712 9492 10</strong><br />
+                            Branch Code: <strong>025009</strong><br />
+                            Reference: <strong>{inv.id}</strong>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                          <div style={{ fontSize: '10px', color: '#666', fontWeight: 600 }}>Total Due</div>
+                          <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a1a', marginTop: '2px' }}>{inv.amount}</div>
+                          <div style={{ marginTop: '6px' }}>
+                            <span style={{ 
+                              fontSize: '9.5px', 
+                              fontWeight: 700, 
+                              background: inv.status === 'Paid' ? '#d1fae5' : '#fee2e2', 
+                              color: inv.status === 'Paid' ? '#065f46' : '#991b1b', 
+                              padding: '2px 8px', 
+                              borderRadius: '4px',
+                              textTransform: 'uppercase'
+                            }}>
+                              {inv.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
           </div>
 
         </div>
