@@ -320,3 +320,14 @@ class Quote(Base):
     
     # Parent relationship
     project = relationship("Project", back_populates="quotes")
+
+class ProjectFolder(Base):
+    __tablename__ = "project_folders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    gdrive_folder_id = Column(String, nullable=False)
+    parent_id = Column(Integer, ForeignKey("project_folders.id"), nullable=True)
+    sort_order = Column(Integer, default=0)
+    name = Column(String, nullable=False)
+

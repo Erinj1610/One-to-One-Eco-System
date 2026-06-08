@@ -1,0 +1,158 @@
+[
+  {
+    "id": "mock-file-1",
+    "name": "Concept Sketch Layout.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 4200000,
+    "createdTime": "2026-05-15T14:30:00Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-concept-sketch",
+    "parents": [
+      "gdrive-fld-design-1"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-2",
+    "name": "Supplier Invoice ELDC.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 1250000,
+    "createdTime": "2026-05-20T10:15:00Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-supplier-invoice",
+    "parents": [
+      "gdrive-fld-supply-1"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-3",
+    "name": "Lighting Spec sheet.xlsx",
+    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sizeBytes": 850000,
+    "createdTime": "2026-05-22T16:45:00Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-spec-sheet",
+    "parents": [
+      "gdrive-fld-design-1"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-design-1-gdrive-fld-design-2",
+    "name": "Lighting Concept Moodboard.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 8900000,
+    "createdTime": "2026-06-06T15:44:48.816240Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-moodboard",
+    "parents": [
+      "gdrive-fld-design-2"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-design-2-gdrive-fld-design-2",
+    "name": "Design Proposal Review.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 2200000,
+    "createdTime": "2026-06-06T15:44:48.816280Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-proposal",
+    "parents": [
+      "gdrive-fld-design-2"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-design-1-gdrive-fld-design-4",
+    "name": "Lighting Concept Moodboard.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 8900000,
+    "createdTime": "2026-06-06T15:44:51.604216Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-moodboard",
+    "parents": [
+      "gdrive-fld-design-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-design-2-gdrive-fld-design-4",
+    "name": "Design Proposal Review.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 2200000,
+    "createdTime": "2026-06-06T15:44:51.604230Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-proposal",
+    "parents": [
+      "gdrive-fld-design-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-supply-1-gdrive-fld-supply-4",
+    "name": "Product Order List.xlsx",
+    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "sizeBytes": 1100000,
+    "createdTime": "2026-06-06T15:44:54.913546Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-order-list",
+    "parents": [
+      "gdrive-fld-supply-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-supply-2-gdrive-fld-supply-4",
+    "name": "Supplier Invoice ELDC.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 1250000,
+    "createdTime": "2026-06-06T15:44:54.913559Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-supplier-invoice",
+    "parents": [
+      "gdrive-fld-supply-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-cad-1-gdrive-fld-cad-4",
+    "name": "Electrical Layout Refined.dwg",
+    "mimeType": "application/acad",
+    "sizeBytes": 5200000,
+    "createdTime": "2026-06-06T15:45:01.238388Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-electrical-layout",
+    "parents": [
+      "gdrive-fld-cad-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-cad-2-gdrive-fld-cad-4",
+    "name": "Ceiling Detail Section.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 1400000,
+    "createdTime": "2026-06-06T15:45:01.238416Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-ceiling-detail",
+    "parents": [
+      "gdrive-fld-cad-4"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-cad-1-gdrive-fld-cad-1",
+    "name": "Electrical Layout Refined.dwg",
+    "mimeType": "application/acad",
+    "sizeBytes": 5200000,
+    "createdTime": "2026-06-06T15:45:26.924568Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-electrical-layout",
+    "parents": [
+      "gdrive-fld-cad-1"
+    ],
+    "trashed": false
+  },
+  {
+    "id": "mock-file-cad-2-gdrive-fld-cad-1",
+    "name": "Ceiling Detail Section.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 1400000,
+    "createdTime": "2026-06-06T15:45:26.924579Z",
+    "webViewLink": "https://docs.google.com/viewer?url=mock-ceiling-detail",
+    "parents": [
+      "gdrive-fld-cad-1"
+    ],
+    "trashed": false
+  }
+]

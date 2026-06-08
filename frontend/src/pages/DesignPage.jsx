@@ -229,13 +229,117 @@ export default function DesignPage() {
     };
   }, [allFees]);
 
+  // Dynamic rates setup
+  const FEE_PRESETS = {
+    Signature: {
+      name: 'Signature (ZAR Sqm)',
+      type: 'sqm',
+      currency: 'ZAR',
+      symbol: 'R',
+      description: 'Premium multi-tier sqm-based design rate card.',
+      rates: {
+        ExperientialLiving: { concept: 180, schematic: 144, final: 117 },
+        SecondaryLiving: { concept: 105, schematic: 84, final: 68.25 },
+        NonExperiential: { concept: 30, schematic: 24, final: 19.50 },
+        ExperientialLandscape: { concept: 140, schematic: 112, final: 91 },
+        SecondaryLandscape: { concept: 55, schematic: 44, final: 35.75 }
+      },
+      siteSupportBase: 15000,
+      commissioningBase: 8000
+    },
+    ModusProjects: {
+      name: 'Modus Projects (ZAR Sqm)',
+      type: 'sqm',
+      currency: 'ZAR',
+      symbol: 'R',
+      description: 'Budget-optimized sqm-based design rate card.',
+      rates: {
+        ExperientialLiving: { concept: 126, schematic: 100.8, final: 81.9 },
+        SecondaryLiving: { concept: 73.5, schematic: 58.8, final: 47.78 },
+        NonExperiential: { concept: 21, schematic: 16.8, final: 13.65 },
+        ExperientialLandscape: { concept: 98, schematic: 78.4, final: 63.7 },
+        SecondaryLandscape: { concept: 38.5, schematic: 30.8, final: 25.03 }
+      },
+      siteSupportBase: 10000,
+      commissioningBase: 5000
+    },
+    InternationalPortfolio: {
+      name: 'International (USD Flat)',
+      type: 'flat',
+      currency: 'USD',
+      symbol: '$',
+      description: 'Flat fee billed in USD for international clients.',
+      baseFee: 12500,
+      stagesRatio: {
+        concept: 0.3,
+        schematic: 0.3,
+        final: 0.2,
+        site: 0.1,
+        commissioning: 0.1
+      }
+    },
+    CustomZAR: {
+      name: 'Custom Flat (ZAR)',
+      type: 'flat-custom',
+      currency: 'ZAR',
+      symbol: 'R',
+      description: 'Customizable flat fee in ZAR.',
+      baseFee: 50000,
+      stagesRatio: {
+        concept: 0.3,
+        schematic: 0.3,
+        final: 0.2,
+        site: 0.1,
+        commissioning: 0.1
+      }
+    },
+    CustomUSD: {
+      name: 'Custom Flat (USD)',
+      type: 'flat-custom',
+      currency: 'USD',
+      symbol: '$',
+      description: 'Customizable flat fee in USD.',
+      baseFee: 5000,
+      stagesRatio: {
+        concept: 0.3,
+        schematic: 0.3,
+        final: 0.2,
+        site: 0.1,
+        commissioning: 0.1
+      }
+    }
+  };
+
   const handleOpenWorkspace = (fee) => {
     setSelectedFeeId(fee.id);
     setSelectedProjectKey(fee.projectKey);
     setActiveFeeName(fee.name || 'Main Residence Design Fee');
     setActiveFeeSqm(fee.sqm || 1000);
+    setActiveLandscapeSqm(fee.landscapeSqm || 500);
+    setFeeType(fee.feeType || 'Signature');
+    setFlatBaseFee(fee.flatBaseFee || 50000);
     setFeeStatus(fee.status || 'Draft');
     setFeePaidAmount(fee.paid || 0);
+
+    setIncludeConcept(fee.includeConcept !== undefined ? fee.includeConcept : true);
+    setIncludeSchematic(fee.includeSchematic !== undefined ? fee.includeSchematic : true);
+    setIncludeFinal(fee.includeFinal !== undefined ? fee.includeFinal : true);
+    setIncludeSite(fee.includeSite !== undefined ? fee.includeSite : false);
+    setIncludeCommissioning(fee.includeCommissioning !== undefined ? fee.includeCommissioning : false);
+    
+    setAdjustmentPercent(fee.adjustmentPercent || 0);
+    setProcurementDiscountActive(fee.procurementDiscountActive || false);
+    
+    if (fee.milestones && fee.milestones.length > 0) {
+      setMilestones(fee.milestones);
+    } else {
+      setMilestones([
+        { label: 'Deposit / Commitment Fee', percent: 30 },
+        { label: 'Concept Design Approval', percent: 30 },
+        { label: 'Schematic Layout Approval', percent: 20 },
+        { label: 'Final Delivery & Sign-off', percent: 20 }
+      ]);
+    }
 
     const proj = projects[fee.projectKey] || {};
     setClientCompany(proj.client || '');
@@ -249,54 +353,138 @@ export default function DesignPage() {
     setShowCalculatorBuilder(false);
   };
 
+  const [feeType, setFeeType] = useState('Signature');
+  const [activeLandscapeSqm, setActiveLandscapeSqm] = useState(500);
+  const [flatBaseFee, setFlatBaseFee] = useState(50000);
+  const [includeSite, setIncludeSite] = useState(false);
+  const [includeCommissioning, setIncludeCommissioning] = useState(false);
+  const [adjustmentPercent, setAdjustmentPercent] = useState(0);
+  const [procurementDiscountActive, setProcurementDiscountActive] = useState(false);
+  const [milestones, setMilestones] = useState([
+    { label: 'Deposit / Commitment Fee', percent: 30 },
+    { label: 'Concept Design Approval', percent: 30 },
+    { label: 'Schematic Layout Approval', percent: 20 },
+    { label: 'Final Delivery & Sign-off', percent: 20 }
+  ]);
+
   // Dynamic calculation block for the fee statement builder
   const calculatorBreakdown = useMemo(() => {
-    const sqm = Number(activeFeeSqm) || 0;
-    
-    // Living areas zoning metric breakdown
-    const expLiving = Math.round(sqm * 0.3);
-    const secLiving = Math.round(sqm * 0.6);
-    const nonExp = Math.round(sqm * 0.1);
+    const preset = FEE_PRESETS[feeType] || FEE_PRESETS.Signature;
+    const isSqm = preset.type === 'sqm';
+    const symbol = preset.symbol;
 
-    // Concept stage
-    const conceptSum = includeConcept ? (
-      (expLiving * RATE_CARD.ExperientialLiving.concept) +
-      (secLiving * RATE_CARD.SecondaryLiving.concept) +
-      (nonExp * RATE_CARD.NonExperiential.concept)
-    ) : 0;
+    let conceptSum = 0;
+    let schematicSum = 0;
+    let finalSum = 0;
+    let siteSum = 0;
+    let commSum = 0;
 
-    // Schematic stage
-    const schematicSum = includeSchematic ? (
-      (expLiving * RATE_CARD.ExperientialLiving.schematic) +
-      (secLiving * RATE_CARD.SecondaryLiving.schematic) +
-      (nonExp * RATE_CARD.NonExperiential.schematic)
-    ) : 0;
+    let expLiving = 0;
+    let secLiving = 0;
+    let nonExp = 0;
+    let expLandscape = 0;
+    let secLandscape = 0;
 
-    // Final design stage
-    const finalSum = includeFinal ? (
-      (expLiving * RATE_CARD.ExperientialLiving.final) +
-      (secLiving * RATE_CARD.SecondaryLiving.final) +
-      (nonExp * RATE_CARD.NonExperiential.final)
-    ) : 0;
+    if (isSqm) {
+      const interiorSqm = Number(activeFeeSqm) || 0;
+      const landscapeSqm = Number(activeLandscapeSqm) || 0;
 
-    const subTotal = conceptSum + schematicSum + finalSum;
+      // Splits
+      expLiving = Math.round(interiorSqm * 0.3);
+      secLiving = Math.round(interiorSqm * 0.6);
+      nonExp = Math.round(interiorSqm * 0.1);
+
+      expLandscape = Math.round(landscapeSqm * 0.4);
+      secLandscape = Math.round(landscapeSqm * 0.6);
+
+      const rates = preset.rates;
+
+      if (includeConcept) {
+        conceptSum = 
+          (expLiving * rates.ExperientialLiving.concept) +
+          (secLiving * rates.SecondaryLiving.concept) +
+          (nonExp * rates.NonExperiential.concept) +
+          (expLandscape * rates.ExperientialLandscape.concept) +
+          (secLandscape * rates.SecondaryLandscape.concept);
+      }
+
+      if (includeSchematic) {
+        schematicSum = 
+          (expLiving * rates.ExperientialLiving.schematic) +
+          (secLiving * rates.SecondaryLiving.schematic) +
+          (nonExp * rates.NonExperiential.schematic) +
+          (expLandscape * rates.ExperientialLandscape.schematic) +
+          (secLandscape * rates.SecondaryLandscape.schematic);
+      }
+
+      if (includeFinal) {
+        finalSum = 
+          (expLiving * rates.ExperientialLiving.final) +
+          (secLiving * rates.SecondaryLiving.final) +
+          (nonExp * rates.NonExperiential.final) +
+          (expLandscape * rates.ExperientialLandscape.final) +
+          (secLandscape * rates.SecondaryLandscape.final);
+      }
+
+      if (includeSite) {
+        siteSum = preset.siteSupportBase || 0;
+      }
+      if (includeCommissioning) {
+        commSum = preset.commissioningBase || 0;
+      }
+    } else {
+      // Flat fee types
+      const base = preset.type === 'flat-custom' ? Number(flatBaseFee) || 0 : preset.baseFee;
+      const ratios = preset.stagesRatio;
+
+      if (includeConcept) conceptSum = base * ratios.concept;
+      if (includeSchematic) schematicSum = base * ratios.schematic;
+      if (includeFinal) finalSum = base * ratios.final;
+      if (includeSite) siteSum = base * ratios.site;
+      if (includeCommissioning) commSum = base * ratios.commissioning;
+    }
+
+    const subTotal = conceptSum + schematicSum + finalSum + siteSum + commSum;
+    const modifierAmount = (subTotal * (Number(adjustmentPercent) || 0)) / 100;
+    const standardTotal = subTotal + modifierAmount;
+
+    // Reduced total (applying standard 15% discount if product supply is procured from 1-to-1)
+    const discountAmount = standardTotal * 0.15;
+    const reducedTotal = standardTotal - discountAmount;
+
+    // Output final total (depends on whether the discount checkbox is active, or if we want to sync standard total)
+    const finalTotal = standardTotal;
 
     return {
       expLiving,
       secLiving,
       nonExp,
-      conceptSum,
-      schematicSum,
-      finalSum,
-      subTotal
+      expLandscape,
+      secLandscape,
+      conceptSum: Math.round(conceptSum),
+      schematicSum: Math.round(schematicSum),
+      finalSum: Math.round(finalSum),
+      siteSum: Math.round(siteSum),
+      commSum: Math.round(commSum),
+      subTotal: Math.round(subTotal),
+      modifierAmount: Math.round(modifierAmount),
+      standardTotal: Math.round(standardTotal),
+      reducedTotal: Math.round(reducedTotal),
+      finalTotal: Math.round(finalTotal),
+      symbol,
+      preset
     };
-  }, [activeFeeSqm, includeConcept, includeSchematic, includeFinal]);
+  }, [
+    feeType, activeFeeSqm, activeLandscapeSqm, flatBaseFee,
+    includeConcept, includeSchematic, includeFinal, includeSite, includeCommissioning,
+    adjustmentPercent
+  ]);
 
   const handleSaveFeeWorkspace = () => {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
-    const newCalculatedValue = calculatorBreakdown.subTotal;
+    const newCalculatedValue = calculatorBreakdown.standardTotal;
     const balanceOutstanding = Math.max(0, newCalculatedValue - feePaidAmount);
 
     const updatedFees = (proj.designFees || []).map(f => {
@@ -305,6 +493,17 @@ export default function DesignPage() {
           ...f,
           name: activeFeeName,
           sqm: activeFeeSqm,
+          landscapeSqm: activeLandscapeSqm,
+          feeType,
+          flatBaseFee,
+          includeConcept,
+          includeSchematic,
+          includeFinal,
+          includeSite,
+          includeCommissioning,
+          adjustmentPercent,
+          procurementDiscountActive,
+          milestones,
           feeValue: newCalculatedValue,
           paid: feePaidAmount,
           outstanding: balanceOutstanding,
@@ -329,7 +528,7 @@ export default function DesignPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    alert(`Design Fee Workspace Synced!\n- Adjusted Design Value: R ${newCalculatedValue.toLocaleString()}\n- Paid Amount: R ${feePaidAmount.toLocaleString()}\n- Project blended margin recalculated to ${blendedMargin}%.`);
+    alert(`Design Fee Workspace Synced!\n- Adjusted Design Value: ${calculatorBreakdown.symbol} ${newCalculatedValue.toLocaleString()}\n- Paid Amount: ${calculatorBreakdown.symbol} ${feePaidAmount.toLocaleString()}\n- Project blended margin recalculated to ${blendedMargin}%.`);
     setSelectedFeeId(null);
   };
 
@@ -574,14 +773,14 @@ export default function DesignPage() {
           </div>
         </>
       ) : (
-        
-        /* DESIGN FEE CALCULATOR & FILES WORKSPACE */
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', alignItems: 'start' }}>
+        /* DESIGN FEE CALCULATOR & PROPOSAL PREVIEW WORKSPACE */
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.3fr', gap: '24px', alignItems: 'start' }}>
           
-          {/* LEFT PANEL: COSTING SUMMARY & OPTIONAL BUILDER */}
-          <div className="card" style={{ border: '1.5px solid var(--border)', padding: '24px' }}>
+          {/* LEFT PANEL: SIDEBAR CONFIGURATION PANEL */}
+          <div className="card" style={{ border: '1.5px solid var(--border)', padding: '24px', background: 'var(--bg-primary)' }}>
+            
             {/* WORKSPACE HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
               <div>
                 <button 
                   className="btn btn-ghost btn-sm" 
@@ -590,190 +789,530 @@ export default function DesignPage() {
                 >
                   <ArrowLeft size={12} /> Back to Ledger
                 </button>
-                <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-primary)' }}>
-                  {activeFeeName} — <span style={{ color: 'var(--text-info)' }}>{selectedFeeId}</span>
-                </h2>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Fee Setup & Options
+                </h3>
               </div>
-
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px' }}>Status:</span>
-                <select 
-                  className="form-control"
-                  style={{ width: '120px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                  value={feeStatus}
-                  onChange={e => setFeeStatus(e.target.value)}
-                >
-                  <option>Draft</option>
-                  <option>In Review</option>
-                  <option>Approved</option>
-                </select>
-
-                <span style={{ fontSize: '12px' }}>Paid:</span>
-                <input 
-                  type="number"
-                  className="form-control"
-                  style={{ width: '100px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                  value={feePaidAmount}
-                  onChange={e => setFeePaidAmount(Math.max(0, Number(e.target.value) || 0))}
-                />
-
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedFeeId(null)}>Cancel</button>
-                <button className="btn btn-primary btn-sm" onClick={handleSaveFeeWorkspace}>
-                  <Save size={14} /> Save & Sync Fee
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-ghost btn-sm" style={{ padding: '4px 10px' }} onClick={() => setSelectedFeeId(null)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={handleSaveFeeWorkspace}>
+                  <Save size={14} /> Save & Sync
                 </button>
               </div>
             </div>
 
-            {/* DESIGN FEE COSTING SUMMARY CARDS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-              {/* Summary Statement */}
-              <div className="card" style={{ padding: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Official Proposal Statement</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Concept Lighting Stage:</span>
-                    <strong>R {calculatorBreakdown.conceptSum.toLocaleString()}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Schematic Layout Stage:</span>
-                    <strong>R {calculatorBreakdown.schematicSum.toLocaleString()}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Final Design Spec Stage:</span>
-                    <strong>R {calculatorBreakdown.finalSum.toLocaleString()}</strong>
-                  </div>
-                  <div style={{ borderTop: '1px solid var(--border-strong)', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 700, color: 'var(--text-info)' }}>
-                    <span>Design Proposal Total:</span>
-                    <span>R {calculatorBreakdown.subTotal.toLocaleString()}</span>
-                  </div>
+            {/* SECTION 1: BASIC INFO */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>1. Basic Details</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Design Fee Title</label>
+                  <input 
+                    type="text"
+                    className="form-control"
+                    style={{ height: '34px', fontSize: '13px' }}
+                    value={activeFeeName}
+                    onChange={e => setActiveFeeName(e.target.value)}
+                    placeholder="e.g. Main Residence Design Fee"
+                  />
                 </div>
-              </div>
 
-              {/* Zoning Area Splits */}
-              <div className="card" style={{ padding: '16px', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Zoning Scope & Area Splits</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Total Scope Area:</span>
-                    <strong>{activeFeeSqm} m²</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Experiential Area (30%):</span>
-                    <strong>{calculatorBreakdown.expLiving} m²</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Secondary Area (60%):</span>
-                    <strong>{calculatorBreakdown.secLiving} m²</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Non-Experiential Area (10%):</span>
-                    <strong>{calculatorBreakdown.nonExp} m²</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* COLLAPSIBLE CALCULATOR BUILDER CONTAINER */}
-            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-              <div 
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '12px 16px', cursor: 'pointer' }}
-                onClick={() => setShowCalculatorBuilder(!showCalculatorBuilder)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileSpreadsheet size={16} color="var(--text-info)" />
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>Interactive Costing & Zoning Area Builder</span>
-                </div>
-                <button 
-                  className="btn btn-ghost btn-sm" 
-                  style={{ height: 'auto', padding: '4px 8px', fontSize: '11px', border: '1px solid var(--border)' }}
-                  onClick={e => { e.stopPropagation(); setShowCalculatorBuilder(!showCalculatorBuilder); }}
-                >
-                  {showCalculatorBuilder ? 'Hide Calculator' : '✏️ Edit Calculator & Zoning Details'}
-                </button>
-              </div>
-
-              {showCalculatorBuilder && (
-                <div style={{ padding: '16px', borderTop: '1px solid var(--border)' }}>
-                  {/* Registration form */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Sub-fee Title</label>
-                      <input 
-                        type="text"
-                        className="form-control"
-                        style={{ height: '30px', fontSize: '12px' }}
-                        value={activeFeeName}
-                        onChange={e => setActiveFeeName(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Zoning Scope Area (m²)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        style={{ height: '30px', fontSize: '12px' }}
-                        value={activeFeeSqm}
-                        onChange={e => setActiveFeeSqm(Math.max(0, Number(e.target.value) || 0))}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Actual Profit Margin (%)</label>
-                      <input 
-                        type="number"
-                        className="form-control"
-                        style={{ height: '30px', fontSize: '12px' }}
-                        value={actualMargin}
-                        onChange={e => setActualMargin(Number(e.target.value) || 18)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Stage switches */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Included Design Stages:</div>
-                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={includeConcept} onChange={e => setIncludeConcept(e.target.checked)} /> Concept Design Stage
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={includeSchematic} onChange={e => setIncludeSchematic(e.target.checked)} /> Schematic Design Stage
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={includeFinal} onChange={e => setIncludeFinal(e.target.checked)} /> Final Spec Layout Stage
-                      </label>
-                    </div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Status</label>
+                    <select 
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '13px' }}
+                      value={feeStatus}
+                      onChange={e => setFeeStatus(e.target.value)}
+                    >
+                      <option>Draft</option>
+                      <option>In Review</option>
+                      <option>Approved</option>
+                    </select>
                   </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      Paid Amount ({calculatorBreakdown.symbol})
+                    </label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '13px' }}
+                      value={feePaidAmount}
+                      onChange={e => setFeePaidAmount(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 2: BILLING TYPE PRESET */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>2. Billing Structure Preset</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {Object.entries(FEE_PRESETS).map(([key, item]) => (
+                  <div 
+                    key={key} 
+                    onClick={() => {
+                      setFeeType(key);
+                      // Adjust default base fee for flat rate options to match default
+                      if (item.type === 'flat') {
+                        setFlatBaseFee(item.baseFee);
+                      }
+                    }}
+                    style={{ 
+                      border: feeType === key ? '2px solid var(--text-info)' : '1px solid var(--border)', 
+                      borderRadius: '8px', 
+                      padding: '10px 14px', 
+                      cursor: 'pointer',
+                      background: feeType === key ? 'rgba(24,95,165,0.06)' : 'var(--bg-secondary)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '13px', color: feeType === key ? 'var(--text-info)' : 'var(--text-primary)' }}>{item.name}</span>
+                      <span className="badge b-info" style={{ fontSize: '9px', textTransform: 'uppercase' }}>{item.currency}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{item.description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION 3: METRICS / base cost input */}
+            <div style={{ marginBottom: '20px', padding: '14px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>3. Area Metrics & Base Pricing</div>
+              
+              {(FEE_PRESETS[feeType]?.type === 'sqm') ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Interior Area (m²)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '13px' }}
+                      value={activeFeeSqm}
+                      onChange={e => setActiveFeeSqm(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Landscape Area (m²)</label>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '13px' }}
+                      value={activeLandscapeSqm}
+                      onChange={e => setActiveLandscapeSqm(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    Flat Base Fee ({calculatorBreakdown.symbol})
+                  </label>
+                  <input 
+                    type="number"
+                    className="form-control"
+                    style={{ height: '34px', fontSize: '13px' }}
+                    disabled={FEE_PRESETS[feeType]?.type === 'flat'}
+                    value={FEE_PRESETS[feeType]?.type === 'flat' ? FEE_PRESETS[feeType]?.baseFee : flatBaseFee}
+                    onChange={e => setFlatBaseFee(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                  {FEE_PRESETS[feeType]?.type === 'flat' && (
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                      Base fee is fixed by preset configuration.
+                    </span>
+                  )}
                 </div>
               )}
             </div>
 
-          </div>
-
-          {/* RIGHT PANEL: DESIGN FILES DRAWER (DESIGN FOLDERS) */}
-          <div className="card" style={{ border: '1.5px solid var(--border)', padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📎 Design Folder Deliverables
+            {/* SECTION 4: INCLUDED STAGES */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>4. Include Design Phases</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={includeConcept} onChange={e => setIncludeConcept(e.target.checked)} />
+                  <span>Concept Stage</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={includeSchematic} onChange={e => setIncludeSchematic(e.target.checked)} />
+                  <span>Schematic Layout Stage</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={includeFinal} onChange={e => setIncludeFinal(e.target.checked)} />
+                  <span>Final Spec Layout Stage</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={includeSite} onChange={e => setIncludeSite(e.target.checked)} />
+                  <span>Site Support & Snags Stage</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={includeCommissioning} onChange={e => setIncludeCommissioning(e.target.checked)} />
+                  <span>Commissioning Stage</span>
+                </label>
               </div>
-              <button className="btn btn-primary btn-sm" style={{ padding: '4px 8px', fontSize: '11px', height: 'auto' }}><Plus size={11} /> Upload Drawing</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>ConceptLayout_v1.dwg</div>
-                  <div style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>CAD Drawing • 14.8 MB • 5 May 2026</div>
+            {/* SECTION 5: MODIFIERS AND SPECIAL DISCOUNTS */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>5. Adjustments & Product Discounts</div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--bg-secondary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                    <span>Percentage Adjustment:</span>
+                    <strong style={{ color: adjustmentPercent >= 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
+                      {adjustmentPercent >= 0 ? '+' : ''}{adjustmentPercent}%
+                    </strong>
+                  </div>
+                  <input 
+                    type="range"
+                    min="-50"
+                    max="50"
+                    step="5"
+                    value={adjustmentPercent}
+                    onChange={e => setAdjustmentPercent(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--text-info)', cursor: 'pointer' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                    <span>-50% Discount</span>
+                    <span>Standard</span>
+                    <span>+50% Premium</span>
+                  </div>
                 </div>
-                <span className="badge b-success" style={{ fontSize: '9px' }}>Approved</span>
+
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ marginTop: '3px' }}
+                      checked={procurementDiscountActive} 
+                      onChange={e => setProcurementDiscountActive(e.target.checked)} 
+                    />
+                    <div>
+                      <span style={{ display: 'block', fontSize: '12.5px', fontWeight: 600 }}>Enable Product Supply Incentive</span>
+                      <span style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                        Shows a dual proposal statement highlighting a 15% discount if fittings are procured from 1-to-1 World.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 6: MILESTONES SCHEDULE BUILDER */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>6. Payment Milestones</span>
+                <button 
+                  className="btn btn-ghost btn-sm"
+                  style={{ height: 'auto', padding: '2px 6px', fontSize: '10.5px', border: '1px solid var(--border)' }}
+                  onClick={() => setMilestones([...milestones, { label: 'New Milestone', percent: 10 }])}
+                >
+                  + Add Row
+                </button>
               </div>
 
-              <div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)' }}>
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>DFP-UPPER-MAIN-2026.pdf</div>
-                  <div style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Proposal PDF • 2.4 MB • 2 May 2026</div>
-                </div>
-                <span className="badge b-success" style={{ fontSize: '9px' }}>Approved</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                {milestones.map((m, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input 
+                      type="text"
+                      className="form-control"
+                      style={{ flex: 3, height: '30px', fontSize: '12px', padding: '2px 8px' }}
+                      value={m.label}
+                      onChange={e => {
+                        const next = [...milestones];
+                        next[idx].label = e.target.value;
+                        setMilestones(next);
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1.2 }}>
+                      <input 
+                        type="number"
+                        className="form-control"
+                        style={{ height: '30px', fontSize: '12px', padding: '2px 4px', textAlign: 'center' }}
+                        value={m.percent}
+                        onChange={e => {
+                          const next = [...milestones];
+                          next[idx].percent = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                          setMilestones(next);
+                        }}
+                      />
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>%</span>
+                    </div>
+                    <button 
+                      className="btn btn-ghost"
+                      style={{ color: 'var(--text-warning)', padding: '4px 8px', height: 'auto', display: 'flex', alignItems: 'center', border: '1px solid var(--border)' }}
+                      onClick={() => {
+                        const next = milestones.filter((_, i) => i !== idx);
+                        setMilestones(next);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                {/* Milestone validation checks */}
+                {(() => {
+                  const sum = milestones.reduce((s, m) => s + m.percent, 0);
+                  const isValid = sum === 100;
+                  return (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '6px 10px', 
+                      borderRadius: '4px', 
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: isValid ? 'rgba(74,222,128,0.1)' : 'rgba(239,68,68,0.1)',
+                      border: isValid ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.3)',
+                      color: isValid ? '#4ade80' : '#ef4444'
+                    }}>
+                      <span>Milestone Target Sum: <strong>{sum}%</strong></span>
+                      <span>{isValid ? '✓ Matches 100%' : '⚠️ Must sum to exactly 100%'}</span>
+                    </div>
+                  );
+                })()}
               </div>
+            </div>
+
+          </div>
+
+          {/* RIGHT PANEL: LIVE PROPOSAL PREVIEW SHEET */}
+          <div style={{ position: 'sticky', top: '20px' }}>
+            <div style={{ 
+              background: '#FAF9F6', 
+              color: '#1a1a1a', 
+              padding: '40px', 
+              borderRadius: '8px', 
+              boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+              border: '1px solid #e0ddd5',
+              fontFamily: '"Outfit", "Inter", sans-serif'
+            }}>
+              {/* Proposal Header Banner */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1a1a1a', paddingBottom: '24px', marginBottom: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '2px', color: '#000' }}>1-TO-1 WORLD</div>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#666', letterSpacing: '1px', marginTop: '2px' }}>LIGHTING DESIGN & SPECIFICATION SERVICES</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#1a1a1a', background: '#e0ddd5', padding: '4px 10px', borderRadius: '4px', display: 'inline-block' }}>
+                    PROPOSAL STATEMENT
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#666', marginTop: '6px', fontFamily: 'monospace' }}>REF: {selectedFeeId}</div>
+                  <div style={{ fontSize: '11px', color: '#666' }}>Date: {new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                </div>
+              </div>
+
+              {/* Proposal Metadata */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '28px', fontSize: '12.5px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>CLIENT DETAILS</div>
+                  <div style={{ fontWeight: 700, color: '#111' }}>{clientCompany || 'Direct Client'}</div>
+                  <div style={{ color: '#444' }}>Attn: {clientContact || 'Representative'}</div>
+                  <div style={{ color: '#666', fontSize: '11.5px', marginTop: '2px' }}>Studio PM: {pmName}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '4px' }}>PROJECT SCOPE</div>
+                  <div style={{ fontWeight: 700, color: '#111' }}>{projectFullName || 'Project Overview'}</div>
+                  <div style={{ color: '#444' }}>Billing Preset: {FEE_PRESETS[feeType]?.name}</div>
+                  {FEE_PRESETS[feeType]?.type === 'sqm' && (
+                    <div style={{ color: '#555', marginTop: '2px' }}>
+                      <strong>{activeFeeSqm} m²</strong> Interior • <strong>{activeLandscapeSqm} m²</strong> Landscape
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Scope/Items Breakdown Table */}
+              <div style={{ marginBottom: '28px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>PROFESSIONAL FEES BREAKDOWN</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #1a1a1a', textAlign: 'left', fontWeight: 700 }}>
+                      <th style={{ padding: '8px 0', color: '#1a1a1a' }}>Stage / Deliverable Phase Description</th>
+                      <th style={{ padding: '8px 0', textAlign: 'right', width: '120px', color: '#1a1a1a' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {includeConcept && (
+                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                        <td style={{ padding: '10px 0', color: '#333' }}>
+                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 1: Concept Lighting Design</span>
+                          <span style={{ fontSize: '11px', color: '#666' }}>Initial architectural space analysis, load estimates, mood board layouts.</span>
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                          {calculatorBreakdown.symbol} {calculatorBreakdown.conceptSum.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                    {includeSchematic && (
+                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                        <td style={{ padding: '10px 0', color: '#333' }}>
+                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 2: Schematic Layouts</span>
+                          <span style={{ fontSize: '11px', color: '#666' }}>AutoCAD layout drawings, circuit maps, load configurations.</span>
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                          {calculatorBreakdown.symbol} {calculatorBreakdown.schematicSum.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                    {includeFinal && (
+                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                        <td style={{ padding: '10px 0', color: '#333' }}>
+                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 3: Final Specification Layout & Schedule</span>
+                          <span style={{ fontSize: '11px', color: '#666' }}>Detailed fitting lists, supplier order schedules, datasheet packaging.</span>
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                          {calculatorBreakdown.symbol} {calculatorBreakdown.finalSum.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                    {includeSite && (
+                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                        <td style={{ padding: '10px 0', color: '#333' }}>
+                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 4: Site Support & Snagging Coordination</span>
+                          <span style={{ fontSize: '11px', color: '#666' }}>On-site electrical consultations, installation snags, supplier audits.</span>
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                          {calculatorBreakdown.symbol} {calculatorBreakdown.siteSum.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                    {includeCommissioning && (
+                      <tr style={{ borderBottom: '1px dotted #ccc' }}>
+                        <td style={{ padding: '10px 0', color: '#333' }}>
+                          <span style={{ fontWeight: 600, display: 'block', color: '#111' }}>Phase 5: Technical Commissioning & Sign-off</span>
+                          <span style={{ fontSize: '11px', color: '#666' }}>Final lighting levels inspection, testing, and official certificate issue.</span>
+                        </td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600 }}>
+                          {calculatorBreakdown.symbol} {calculatorBreakdown.commSum.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Subtotal & Adjustment breakdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', fontSize: '12.5px', marginBottom: '24px', borderBottom: '1px solid #eee', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: '#666' }}>
+                  <span>Stages Subtotal:</span>
+                  <span>{calculatorBreakdown.symbol} {calculatorBreakdown.subTotal.toLocaleString()}</span>
+                </div>
+                {adjustmentPercent !== 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '220px', color: adjustmentPercent >= 0 ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
+                    <span>Adjustment ({adjustmentPercent}%):</span>
+                    <span>{adjustmentPercent >= 0 ? '+' : ''}{calculatorBreakdown.symbol} {calculatorBreakdown.modifierAmount.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* DUAL-STATE TOTAL PRICING DISPLAY OR STANDARD TOTAL */}
+              {procurementDiscountActive ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+                  
+                  {/* Standard Option */}
+                  <div style={{ 
+                    border: '1.5px solid #ccc', 
+                    borderRadius: '6px', 
+                    padding: '16px',
+                    background: '#fcfcfc',
+                    textAlign: 'center'
+                  }}>
+                    <span style={{ fontSize: '10px', color: '#666', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Standard Design Fee</span>
+                    <strong style={{ fontSize: '20px', color: '#333', fontWeight: 800 }}>
+                      {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
+                    </strong>
+                    <span style={{ display: 'block', fontSize: '9px', color: '#888', marginTop: '4px' }}>Billed if lights are purchased externally.</span>
+                  </div>
+
+                  {/* Reduced Option */}
+                  <div style={{ 
+                    border: '2px solid #185fa5', 
+                    borderRadius: '6px', 
+                    padding: '16px',
+                    background: '#edf5fd',
+                    textAlign: 'center',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: '0', 
+                      right: '0', 
+                      background: '#185fa5', 
+                      color: '#fff', 
+                      fontSize: '8px', 
+                      fontWeight: 700, 
+                      padding: '2px 8px', 
+                      borderBottomLeftRadius: '4px',
+                      textTransform: 'uppercase'
+                    }}>
+                      Incentive
+                    </div>
+                    <span style={{ fontSize: '10px', color: '#185fa5', fontWeight: 700, display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>Reduced Design Fee</span>
+                    <strong style={{ fontSize: '20px', color: '#185fa5', fontWeight: 900 }}>
+                      {calculatorBreakdown.symbol} {calculatorBreakdown.reducedTotal.toLocaleString()}
+                    </strong>
+                    <span style={{ display: 'block', fontSize: '9px', color: '#555', marginTop: '4px', fontWeight: 600 }}>Applied if product supply is procured from 1-to-1.</span>
+                  </div>
+
+                </div>
+              ) : (
+                <div style={{ 
+                  background: '#1a1a1a', 
+                  color: '#fff', 
+                  padding: '20px', 
+                  borderRadius: '6px', 
+                  textAlign: 'center', 
+                  marginBottom: '32px' 
+                }}>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: '#aaa', letterSpacing: '0.5px' }}>Total Design Fee Ex. VAT</span>
+                  <div style={{ fontSize: '28px', fontWeight: 800, marginTop: '4px' }}>
+                    {calculatorBreakdown.symbol} {calculatorBreakdown.standardTotal.toLocaleString()}
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Schedule Table */}
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#888', marginBottom: '8px' }}>ESTIMATED PAYMENT SCHEDULE</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', color: '#444' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1.5px solid #666', textAlign: 'left', fontWeight: 700 }}>
+                      <th style={{ padding: '6px 0' }}>Milestone Target Description</th>
+                      <th style={{ padding: '6px 0', textAlign: 'center', width: '60px' }}>Split</th>
+                      <th style={{ padding: '6px 0', textAlign: 'right', width: '100px' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {milestones.map((m, i) => {
+                      const totalBase = procurementDiscountActive ? calculatorBreakdown.reducedTotal : calculatorBreakdown.standardTotal;
+                      const milestoneVal = Math.round((totalBase * m.percent) / 100);
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #e2dfd7' }}>
+                          <td style={{ padding: '8px 0', fontWeight: 500 }}>{m.label}</td>
+                          <td style={{ padding: '8px 0', textAlign: 'center', fontWeight: 600 }}>{m.percent}%</td>
+                          <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#111' }}>
+                            {calculatorBreakdown.symbol} {milestoneVal.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
             </div>
           </div>
 
