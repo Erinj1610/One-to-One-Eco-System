@@ -1350,11 +1350,11 @@ export default function SalesTracker() {
                 Sales Workspace Inactive
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '420px', lineHeight: '1.6' }}>
-                Select any order from the ledger below to open the full specification spreadsheet workspace — including BOQ builder, procurement tracker, and document management.
+                Select any order from the ledger below to open the full specification spreadsheet workspace — including BOQ builder, procurement tracker, and invoicing.
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {['📋 BOQ Specification', '🚚 Procurement Tracker', '📄 Invoice & Documents', '📊 Area-by-Area Breakdown'].map(label => (
+              {['📋 BOQ Specification', '🚚 Procurement Tracker', '📄 Invoicing', '📊 Area-by-Area Breakdown'].map(label => (
                 <span key={label} style={{
                   fontSize: '11px', padding: '4px 10px',
                   background: 'var(--bg-secondary)', border: '1px solid var(--border)',

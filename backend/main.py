@@ -12,6 +12,7 @@ if sys.platform == 'win32':
 from routes.projects import router as projects_router
 from routes.admin import router as admin_router
 from routes.documents import router as documents_router
+from routes.hr import router as hr_router
 
 app = FastAPI(title="One to One Eco System API")
 
@@ -30,11 +31,12 @@ def health_check():
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
+app.include_router(hr_router, prefix="/api/hr", tags=["hr"])
 
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
     try:
-        from models.orm_models import Project, Quote, TemplateConfig, ProjectFolder
+        from models.orm_models import Project, Quote, TemplateConfig, ProjectFolder, Employee, LeaveType, LeaveBalance, LeaveRequest, PulseSurvey
         Base.metadata.create_all(bind=engine)
         
         # Seed default project folders if none exist for each project

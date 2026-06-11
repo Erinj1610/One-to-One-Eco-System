@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import PulseSurveyModal from '../common/PulseSurveyModal';
 
 export default function AppLayout() {
   const location = useLocation();
@@ -47,6 +48,7 @@ export default function AppLayout() {
           <Outlet />
         </div>
       </div>
+      <PulseSurveyModal />
     </div>
   );
 }

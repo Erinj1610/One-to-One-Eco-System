@@ -237,6 +237,7 @@ class Employee(Base):
     department = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
 
 class LeaveType(Base):
     __tablename__ = "leave_types"
@@ -262,10 +263,43 @@ class LeaveRequest(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     leave_type_id = Column(Integer, ForeignKey("leave_types.id"))
     start_date = Column(String, nullable=False)
     end_date = Column(String, nullable=False)
+    reason = Column(String, nullable=True)
     status = Column(String, default="Pending") # Pending, Approved, Rejected
+    manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+
+class PulseSurvey(Base):
+    __tablename__ = "pulse_surveys"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String, nullable=False)
+    stress_score = Column(Integer, nullable=False)
+    comment_text = Column(String, nullable=True)
+
+class WellbeingCheckIn(Base):
+    __tablename__ = "wellbeing_checkins"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"))
+    manager_id = Column(Integer, ForeignKey("employees.id"))
+    date = Column(String, nullable=False)
+    sentiment = Column(String, nullable=False) # e.g. "Healthy", "Stressed", "Burnout Risk"
+    workload_rating = Column(Integer, nullable=False) # 1-5 scale
+    notes = Column(String, nullable=True)
+
+class StaffSelfAssessment(Base):
+    __tablename__ = "staff_self_assessments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"))
+    date = Column(String, nullable=False)
+    happiness = Column(Integer, nullable=False) # 1-5
+    workload_feeling = Column(Integer, nullable=False) # 1-5
+    busyness = Column(String, nullable=False) # e.g. "Underloaded", "Normal", "Overloaded"
+    notes = Column(String, nullable=True)
 
 class TimeLog(Base):
     __tablename__ = "time_logs"
