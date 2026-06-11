@@ -44,31 +44,40 @@ function Login({ onBypass }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(circle at 50% 0%, #151a3a 0%, #070913 70%)',
+      backgroundImage: `linear-gradient(rgba(15, 14, 18, 0.45), rgba(15, 14, 18, 0.75)), url('/project_background.png')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
       padding: '20px',
       color: '#f3f4f6',
       fontFamily: "'Plus Jakarta Sans', sans-serif"
     }}>
       <div style={{
-        background: 'rgba(17, 22, 43, 0.75)',
-        border: '1px solid rgba(0, 242, 254, 0.15)',
+        background: 'rgba(15, 14, 18, 0.85)',
+        border: '1px solid rgba(224, 153, 36, 0.25)',
         borderRadius: '16px',
         padding: '40px',
         maxWidth: '420px',
         width: '100%',
         backdropFilter: 'blur(16px)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 242, 254, 0.05)',
+        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8), 0 0 50px rgba(224, 153, 36, 0.12)',
         textAlign: 'center'
       }}>
-        <div style={{ display: 'inline-flex', padding: '12px', borderRadius: '50%', background: 'rgba(0, 242, 254, 0.1)', marginBottom: '16px' }}>
-          <Shield size={32} color="#00f2fe" style={{ filter: 'drop-shadow(0 0 8px rgba(0, 242, 254, 0.4))' }} />
+        
+        {/* Logo Icon Container */}
+        <div style={{ display: 'inline-flex', padding: '4px', borderRadius: '50%', background: 'rgba(224, 153, 36, 0.15)', marginBottom: '20px', boxShadow: '0 0 15px rgba(224, 153, 36, 0.2)' }}>
+          <img 
+            src="https://static.wixstatic.com/media/4df047_59443c36dca74168856bb30e346ef89c%7Emv2.jpg/v1/fill/w_180%2Ch_180%2Clg_1%2Cusm_0.66_1.00_0.01/4df047_59443c36dca74168856bb30e346ef89c%7Emv2.jpg" 
+            alt="One to One Logo" 
+            style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover' }}
+          />
         </div>
         
-        <h1 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '26px', fontWeight: 700, margin: '0 0 8px 0', background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          1-to-1 World Portal
+        <h1 style={{ fontFamily: "'Outfit', sans-serif", fontSize: '28px', fontWeight: 700, margin: '0 0 4px 0', color: '#ffffff', letterSpacing: '1px' }}>
+          ONE TO ONE
         </h1>
-        <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '24px' }}>
-          Authorized staff and client access dashboard.
+        <p style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '3px', color: '#e09924', fontWeight: 600, marginBottom: '28px' }}>
+          BY MARTIN DÖLLER
         </p>
 
         {error && (
@@ -89,7 +98,9 @@ function Login({ onBypass }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                style={{ width: '100%', padding: '10px 12px 10px 38px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'white', fontSize: '13.5px', outline: 'none' }}
+                style={{ width: '100%', padding: '10px 12px 10px 38px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', color: 'white', fontSize: '13.5px', outline: 'none', transition: 'border-color 0.2s' }}
+                onFocus={(e) => e.target.style.borderColor = '#e09924'}
+                onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
               />
             </div>
           </div>
@@ -104,7 +115,9 @@ function Login({ onBypass }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{ width: '100%', padding: '10px 12px 10px 38px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: 'white', fontSize: '13.5px', outline: 'none' }}
+                style={{ width: '100%', padding: '10px 12px 10px 38px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', color: 'white', fontSize: '13.5px', outline: 'none', transition: 'border-color 0.2s' }}
+                onFocus={(e) => e.target.style.borderColor = '#e09924'}
+                onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
               />
             </div>
           </div>
@@ -112,14 +125,16 @@ function Login({ onBypass }) {
           <button 
             type="submit" 
             disabled={loading}
-            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#070913', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', marginTop: '10px', boxShadow: '0 4px 12px rgba(0, 242, 254, 0.2)' }}
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #e09924 0%, #b8730b 100%)', color: '#ffffff', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', marginTop: '10px', boxShadow: '0 4px 12px rgba(224, 153, 36, 0.15)' }}
+            onMouseEnter={(e) => e.target.style.opacity = '0.9'}
+            onMouseLeave={(e) => e.target.style.opacity = '1'}
           >
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
 
-        <div style={{ marginTop: '24px', background: 'rgba(0, 242, 254, 0.03)', border: '1px solid rgba(0, 242, 254, 0.1)', borderRadius: '8px', padding: '12px', fontSize: '11.5px', color: '#9ca3af', lineHeight: 1.4 }}>
-          <div style={{ fontWeight: 600, color: '#00f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
+        <div style={{ marginTop: '24px', background: 'rgba(224, 153, 36, 0.03)', border: '1px solid rgba(224, 153, 36, 0.08)', borderRadius: '8px', padding: '12px', fontSize: '11.5px', color: '#9ca3af', lineHeight: 1.4 }}>
+          <div style={{ fontWeight: 600, color: '#e09924', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
             <Sparkles size={12} /> Static Demo Sandbox
           </div>
           Use <strong>admin@onetoone.co.za</strong> with password <strong>admin123</strong> to log in.
@@ -128,7 +143,7 @@ function Login({ onBypass }) {
         <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center' }}>
           <button 
             onClick={onBypass} 
-            style={{ background: 'transparent', border: 'none', color: '#4facfe', cursor: 'pointer', fontSize: '11.5px', textDecoration: 'underline' }}
+            style={{ background: 'transparent', border: 'none', color: '#e09924', cursor: 'pointer', fontSize: '11.5px', textDecoration: 'underline' }}
           >
             Direct Developer Bypass
           </button>
