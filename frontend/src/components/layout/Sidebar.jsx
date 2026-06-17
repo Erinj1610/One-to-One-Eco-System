@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   Home, Users, TrendingUp, Table, Layout, Calculator, Clock, 
   Package, Truck, Receipt, Folder, BadgeCheck, BarChart, Headset, 
-  Settings, Lightbulb, ChevronLeft, ChevronRight, Compass
+  Settings, Lightbulb, ChevronLeft, ChevronRight, Compass, ClipboardList
 } from 'lucide-react';
 
 const navItems = [
@@ -14,7 +14,8 @@ const navItems = [
   { section: 'Projects' },
   { path: '/projects', icon: Layout, label: 'Projects' },
   { path: '/design', icon: Calculator, label: 'Design' },
-  { path: '/orders', icon: Truck, label: 'Orders' },
+  { path: '/orders', icon: ClipboardList, label: 'Orders' },
+  { path: '/logistics', icon: Truck, label: 'Logistics' },
   { path: '/sales-tracker', icon: TrendingUp, label: 'Sales tracker' },
   { path: '/tracker', icon: Compass, label: 'Design fee tracker' },
   { section: 'Other modules' },

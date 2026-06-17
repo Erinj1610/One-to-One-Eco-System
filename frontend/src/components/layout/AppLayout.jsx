@@ -29,6 +29,7 @@ export default function AppLayout() {
     '/time': 'Time tracking',
     '/products': 'Product catalog',
     '/orders': 'Orders',
+    '/logistics': 'Logistics',
     '/invoices': 'Invoices',
     '/docs': 'Documents',
     '/hr': 'HR & people',

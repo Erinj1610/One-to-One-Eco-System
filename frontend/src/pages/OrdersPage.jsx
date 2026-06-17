@@ -102,9 +102,9 @@ export default function OrdersPage() {
   const [projectFilterKey, setProjectFilterKey] = useState('All');
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
-  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'docs'
+  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'quote' | 'invoice' | 'schedule' | 'statement'
   const [showRegForm, setShowRegForm] = useState(true);
-  const [activeDocType, setActiveDocType] = useState('quote'); // 'quote' | 'invoice' | 'schedule' | 'delivery' | 'statement'
+  const activeDocType = workspaceSubTab === 'boq' ? 'quote' : workspaceSubTab;
   const [customTerms, setCustomTerms] = useState('Payment: 50% deposit to initiate order, 40% on delivery, 10% post-installation sign-off. Validity: 30 days from date of issue.');
 
   // Pricing consistency assistant modal state
@@ -705,20 +705,41 @@ export default function OrdersPage() {
             </div>
 
             {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '20px', gap: '4px' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '20px', gap: '4px', overflowX: 'auto' }}>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
                 onClick={() => setWorkspaceSubTab('boq')}
               >
-                <FileSpreadsheet size={14} /> 📊 Area BOQ Spreadsheet Builder
+                <FileSpreadsheet size={14} /> 📊 BOQ Spreadsheet
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'docs' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px' }}
-                onClick={() => setWorkspaceSubTab('docs')}
+                className={`btn btn-sm ${workspaceSubTab === 'quote' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('quote')}
               >
-                <Printer size={14} /> 📄 Document Generator & Export Portal
+                <FileText size={14} /> 🧾 Quotation
+              </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'invoice' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('invoice')}
+              >
+                <DollarSign size={14} /> 💳 Invoice
+              </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'schedule' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('schedule')}
+              >
+                <ClipboardList size={14} /> 🔧 Fitting Schedule
+              </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'statement' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('statement')}
+              >
+                <TrendingUp size={14} /> 📊 Progress Statement
               </button>
             </div>
 
@@ -1404,54 +1425,10 @@ export default function OrdersPage() {
               /* SUB-TAB 2: HIGH-FIDELITY DOCUMENT GENERATOR */
               <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
                 
-                {/* DOCUMENT SIDEBAR SELECTORS */}
+                {/* DOCUMENT SIDEBAR UTILITIES */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-tertiary)', fontWeight: 700, paddingLeft: '8px' }}>
-                    Select Document Type
-                  </span>
-                  
-                  <button 
-                    className={`btn btn-sm ${activeDocType === 'quote' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}
-                    onClick={() => setActiveDocType('quote')}
-                  >
-                    <FileText size={14} /> 🧾 Client Quotation
-                  </button>
-
-                  <button 
-                    className={`btn btn-sm ${activeDocType === 'invoice' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}
-                    onClick={() => setActiveDocType('invoice')}
-                  >
-                    <DollarSign size={14} /> 💳 Tax Invoice
-                  </button>
-
-                  <button 
-                    className={`btn btn-sm ${activeDocType === 'schedule' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}
-                    onClick={() => setActiveDocType('schedule')}
-                  >
-                    <ClipboardList size={14} /> 🔧 Fitting Schedule (Technical)
-                  </button>
-
-                  <button 
-                    className={`btn btn-sm ${activeDocType === 'delivery' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}
-                    onClick={() => setActiveDocType('delivery')}
-                  >
-                    <Truck size={14} /> 🚚 Delivery Note
-                  </button>
-
-                  <button 
-                    className={`btn btn-sm ${activeDocType === 'statement' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}
-                    onClick={() => setActiveDocType('statement')}
-                  >
-                    <TrendingUp size={14} /> 📊 Progress Statement
-                  </button>
-
                   {/* EDITABLE TERMS AND CONDITIONS BOX */}
-                  <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.12)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.12)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
                     <label style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
                       Custom Terms & Notes
                     </label>
@@ -1789,61 +1766,7 @@ export default function OrdersPage() {
                           </div>
                         )}
 
-                        {/* 4. WAREHOUSE DELIVERY NOTE */}
-                        {activeDocType === 'delivery' && (
-                          <div>
-                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', marginBottom: '18px', fontSize: '11px', color: '#475569' }}>
-                              <strong>DELIVERY CONFIRMATION NOTE:</strong> Verify hardware totals before signing off. Return one copy to the delivery agent.
-                            </div>
 
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', marginBottom: '40px' }}>
-                              <thead>
-                                <tr style={{ borderBottom: '2px solid #0f172a', color: '#0f172a', textAlign: 'left', fontWeight: 700 }}>
-                                  <th style={{ padding: '8px', width: '50px', textAlign: 'center' }}>Ordered</th>
-                                  <th style={{ padding: '8px', width: '80px', textAlign: 'center' }}>Delivered</th>
-                                  <th style={{ padding: '8px', width: '80px' }}>Type</th>
-                                  <th style={{ padding: '8px' }}>Description of Fixtures</th>
-                                  <th style={{ padding: '8px', width: '110px' }}>Floor</th>
-                                  <th style={{ padding: '8px', width: '120px' }}>Area Space</th>
-                                  <th style={{ padding: '8px', width: '70px', textAlign: 'center' }}>Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {activeOrderItems.map(item => (
-                                  <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                    <td style={{ padding: '10px', textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
-                                    <td style={{ padding: '10px', textAlign: 'center', color: '#94a3b8' }}>[  ]</td>
-                                    <td style={{ padding: '10px', fontFamily: 'monospace' }}>{item.type}</td>
-                                    <td style={{ padding: '10px' }}>
-                                      <strong>{item.brand}</strong> - {item.description}
-                                    </td>
-                                    <td style={{ padding: '10px' }}>{item.floor}</td>
-                                    <td style={{ padding: '10px' }}>{item.area}</td>
-                                    <td style={{ padding: '10px', textAlign: 'center' }}>
-                                      <span style={{ fontSize: '10px', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px' }}>
-                                        {item.stockStatus || 'Ordered'}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-
-                            {/* WAREHOUSE SIGN-OFF FOOTER */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', fontSize: '11.5px', marginTop: '40px', borderTop: '1px dashed #cbd5e1', paddingTop: '20px' }}>
-                              <div>
-                                <span>Dispatched by (Warehouse Manager):</span>
-                                <div style={{ borderBottom: '1px solid #94a3b8', height: '36px', marginTop: '4px' }}></div>
-                                <span style={{ fontSize: '10px', color: '#64748b', display: 'block', marginTop: '4px' }}>Sign & Date</span>
-                              </div>
-                              <div>
-                                <span>Received in good order by (Client):</span>
-                                <div style={{ borderBottom: '1px solid #94a3b8', height: '36px', marginTop: '4px' }}></div>
-                                <span style={{ fontSize: '10px', color: '#64748b', display: 'block', marginTop: '4px' }}>Sign & Date</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
 
                         {/* 5. QUOTATION PROGRESS STATEMENT */}
                         {activeDocType === 'statement' && (

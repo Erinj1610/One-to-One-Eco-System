@@ -24,6 +24,7 @@ import TimePage from './pages/TimePage';
 import ProductsPage from './pages/ProductsPage';
 import BoqPage from './pages/BoqPage';
 import OrdersPage from './pages/OrdersPage';
+import LogisticsPage from './pages/LogisticsPage';
 import InvoicesPage from './pages/InvoicesPage';
 import DocsPage from './pages/DocsPage';
 import HrPage from './pages/HrPage';
@@ -81,6 +82,7 @@ function AppInner({ devBypass, setDevBypass }) {
           <Route path="products"   element={<ProductsPage />} />
           <Route path="boq"        element={<BoqPage />} />
           <Route path="orders"     element={<OrdersPage />} />
+          <Route path="logistics"  element={<LogisticsPage />} />
           <Route path="invoices"   element={<InvoicesPage />} />
           <Route path="docs"       element={<DocsPage />} />
           <Route path="hr"         element={<HrPage />} />

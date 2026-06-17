@@ -1197,6 +1197,14 @@ export function StoreProvider({ children }) {
     return finalKey;
   };
 
+  const deleteProject = (key) => {
+    setProjects(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
   const moveLead = (leadId, fromStage, toStage) => {
     setLeads(prev => {
       const lead = prev[fromStage]?.find(l => l.id === leadId);
@@ -1277,7 +1285,7 @@ export function StoreProvider({ children }) {
   };
 
   return (
-    <StoreContext.Provider value={{ projects, updateProject, addProject, saveDraftProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
+    <StoreContext.Provider value={{ projects, updateProject, addProject, saveDraftProject, deleteProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
       {children}
     </StoreContext.Provider>
   );

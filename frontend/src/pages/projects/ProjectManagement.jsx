@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext';
+import { useAuth } from '../../context/AuthContext';
 import DesignFeeBuilder from './DesignFeeBuilder';
 import { API_BASE } from '../../api_config';
 import { 
@@ -39,7 +40,8 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, saveDraftProject } = useStore();
+  const { projects, updateProject, saveDraftProject, deleteProject } = useStore();
+  const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
 
   const [folders, setFolders] = useState([]);
@@ -407,6 +409,28 @@ export default function ProjectManagement() {
   const grandContractValue = totalDesignVal + totalOrderVal;
   const grandPaidValue = totalDesignPaid + totalOrderPaid;
   const grandOutstandingValue = Math.max(0, grandContractValue - grandPaidValue);
+
+  // Deletion locks
+  const hasDesignFees = designFees.length > 0;
+  const hasOrders = orders.length > 0;
+  const hasFiles = p?.designFees?.some(df => df.files && df.files.length > 0) || files.length > 0;
+  const isLockedForDeletion = hasDesignFees || hasOrders || hasFiles;
+
+  const handleDeleteProject = () => {
+    if (!isAdmin) {
+      alert("Admin Lock: Only administrators can delete projects.");
+      return;
+    }
+    if (isLockedForDeletion) {
+      alert("Deletion Blocked: This project contains active design fees, orders, or files and cannot be deleted.");
+      return;
+    }
+    if (confirm("Are you sure you want to permanently delete this project?")) {
+      deleteProject(id);
+      alert("Project deleted successfully.");
+      navigate('/projects');
+    }
+  };
 
   // Dynamic Blended Profit Margin
   const blendedMargin = useMemo(() => {
@@ -949,8 +973,8 @@ export default function ProjectManagement() {
                         </select>
                       </div>
 
-                      {p.isDraft && (
-                        <div style={{ marginTop: '16px', borderTop: '0.5px solid var(--border)', paddingTop: '16px' }}>
+                      <div style={{ marginTop: '16px', borderTop: '0.5px solid var(--border)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {p.isDraft && (
                           <button 
                             className="btn btn-primary" 
                             style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
@@ -984,8 +1008,29 @@ export default function ProjectManagement() {
                           >
                             Save & Create Project
                           </button>
-                        </div>
-                      )}
+                        )}
+                        
+                        <button 
+                          type="button"
+                          className="btn"
+                          onClick={handleDeleteProject}
+                          style={{ 
+                            width: '100%', 
+                            justifyContent: 'center', 
+                            padding: '10px', 
+                            fontSize: '13px', 
+                            fontWeight: 600,
+                            color: 'var(--text-danger)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            background: 'rgba(239, 68, 68, 0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Trash2 size={14} /> Delete Project {isLockedForDeletion && <Lock size={12} style={{ opacity: 0.6 }} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
