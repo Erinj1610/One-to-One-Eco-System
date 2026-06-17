@@ -44,16 +44,16 @@ const statusColor = {
 
 // Global Product Catalog for Item Code selection
 const PRODUCT_CATALOG = [
-  { code: '28402 9240 W', description: 'Downlight - Entero RD-S 14W 2700K 30° White', brand: 'Delta Light', dimming: 'Non-dim', unitCost: 2238.63, unitRetail: 2995.00 },
-  { code: 'TA8-WWW', description: 'Downlight - Club Series TA8 GU10 White', brand: 'NEKO', dimming: 'Phase', unitCost: 450.00, unitRetail: 690.00 },
-  { code: 'LA_12859898', description: 'Lamp - Classic LED GU10 5.5W 2700K 36°', brand: 'Spazio', dimming: 'Non-dim', unitCost: 65.00, unitRetail: 110.00 },
-  { code: 'MOD-LED-001', description: 'Recessed LED Downlight 10W', brand: 'Modus', dimming: 'Non-dim', unitCost: 590.00, unitRetail: 890.00 },
-  { code: 'MOD-STR-003', description: 'Surface Strip 2700K 1200mm', brand: 'Modus', dimming: 'Phase', unitCost: 820.00, unitRetail: 1240.00 },
-  { code: 'SIG-PND-007', description: 'Bespoke Pendant Cluster', brand: 'Signature', dimming: 'DALI', unitCost: 5400.00, unitRetail: 8400.00 },
-  { code: 'MOL-DRV-012', description: 'DALI Driver 100W', brand: 'Molecule', dimming: 'DALI', unitCost: 1400.00, unitRetail: 2100.00 },
-  { code: 'MOD-WAL-002', description: 'Wall Washer Exterior 20W', brand: 'Modus', dimming: 'Non-dim', unitCost: 1100.00, unitRetail: 1650.00 },
-  { code: 'SIG-FLR-019', description: 'Architectural Floor Uplight', brand: 'Signature', dimming: 'Non-dim', unitCost: 2100.00, unitRetail: 3200.00 },
-  { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00 },
+  { code: '28402 9240 W', description: 'Downlight - Entero RD-S 14W 2700K 30° White', brand: 'Delta Light', dimming: 'Non-dim', unitCost: 2238.63, unitRetail: 2995.00, stockQty: 45 },
+  { code: 'TA8-WWW', description: 'Downlight - Club Series TA8 GU10 White', brand: 'NEKO', dimming: 'Phase', unitCost: 450.00, unitRetail: 690.00, stockQty: 120 },
+  { code: 'LA_12859898', description: 'Lamp - Classic LED GU10 5.5W 2700K 36°', brand: 'Spazio', dimming: 'Non-dim', unitCost: 65.00, unitRetail: 110.00, stockQty: 250 },
+  { code: 'MOD-LED-001', description: 'Recessed LED Downlight 10W', brand: 'Modus', dimming: 'Non-dim', unitCost: 590.00, unitRetail: 890.00, stockQty: 85 },
+  { code: 'MOD-STR-003', description: 'Surface Strip 2700K 1200mm', brand: 'Modus', dimming: 'Phase', unitCost: 820.00, unitRetail: 1240.00, stockQty: 14 },
+  { code: 'SIG-PND-007', description: 'Bespoke Pendant Cluster', brand: 'Signature', dimming: 'DALI', unitCost: 5400.00, unitRetail: 8400.00, stockQty: 3 },
+  { code: 'MOL-DRV-012', description: 'DALI Driver 100W', brand: 'Molecule', dimming: 'DALI', unitCost: 1400.00, unitRetail: 2100.00, stockQty: 60 },
+  { code: 'MOD-WAL-002', description: 'Wall Washer Exterior 20W', brand: 'Modus', dimming: 'Non-dim', unitCost: 1100.00, unitRetail: 1650.00, stockQty: 22 },
+  { code: 'SIG-FLR-019', description: 'Architectural Floor Uplight', brand: 'Signature', dimming: 'Non-dim', unitCost: 2100.00, unitRetail: 3200.00, stockQty: 8 },
+  { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30 },
 ];
 
 export default function OrdersPage() {
@@ -216,8 +216,20 @@ export default function OrdersPage() {
   const handleUpdateSpreadsheetCell = (itemId, field, val) => {
     setActiveOrderItems(prev => prev.map(item => {
       if (item.id === itemId) {
-        const updated = { ...item, [field]: val };
+        let updated = { ...item, [field]: val };
         
+        // Auto-populate details from PRODUCT_CATALOG if code changes
+        if (field === 'code') {
+          const catalogItem = PRODUCT_CATALOG.find(p => p.code === val);
+          if (catalogItem) {
+            updated.description = catalogItem.description;
+            updated.brand = catalogItem.brand;
+            updated.dimming = catalogItem.dimming;
+            updated.unitCost = catalogItem.unitCost;
+            updated.unitRetail = catalogItem.unitRetail;
+          }
+        }
+
         // Parse numbers safely for real-time recalculations
         if (field === 'qty') updated.qty = Math.max(0, parseInt(val) || 0);
         if (field === 'unitCost') updated.unitCost = Math.max(0, parseFloat(val) || 0);
@@ -228,6 +240,174 @@ export default function OrdersPage() {
       }
       return item;
     }));
+  };
+
+  // Google Sheets-style Keyboard Navigation
+  const handleGridKeyDown = (e) => {
+    const target = e.target;
+    if (!target.classList.contains('boq-cell-input')) return;
+
+    const row = parseInt(target.getAttribute('data-row'), 10);
+    const col = parseInt(target.getAttribute('data-col'), 10);
+    const field = target.getAttribute('data-field');
+
+    let nextRow = row;
+    let nextCol = col;
+    const maxCols = 10; // 0 to 10
+
+    if (e.key === 'ArrowUp') {
+      nextRow = Math.max(0, row - 1);
+    } else if (e.key === 'ArrowDown') {
+      nextRow = Math.min(activeOrderItems.length - 1, row + 1);
+    } else if (e.key === 'ArrowLeft') {
+      if (target.tagName === 'SELECT' || target.selectionStart === 0) {
+        nextCol = Math.max(0, col - 1);
+      } else {
+        return;
+      }
+    } else if (e.key === 'ArrowRight') {
+      if (target.tagName === 'SELECT' || target.selectionEnd === target.value.length) {
+        nextCol = Math.min(maxCols, col + 1);
+      } else {
+        return;
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        nextRow = Math.max(0, row - 1);
+      } else {
+        if (row === activeOrderItems.length - 1) {
+          handleAddSpreadsheetRow();
+          setTimeout(() => {
+            const nextInput = document.querySelector(`[data-row="${row + 1}"][data-col="${col}"]`);
+            if (nextInput) {
+              nextInput.focus();
+              if (nextInput.select) nextInput.select();
+            }
+          }, 50);
+          return;
+        } else {
+          nextRow = row + 1;
+        }
+      }
+    } else if (e.key === 'Tab') {
+      const lastRowIdx = activeOrderItems.length - 1;
+      const lastColIdx = 10;
+      if (row === lastRowIdx && col === lastColIdx && !e.shiftKey) {
+        e.preventDefault();
+        handleAddSpreadsheetRow();
+        setTimeout(() => {
+          const nextInput = document.querySelector(`[data-row="${row + 1}"][data-col="0"]`);
+          if (nextInput) {
+            nextInput.focus();
+            if (nextInput.select) nextInput.select();
+          }
+        }, 50);
+        return;
+      } else {
+        return;
+      }
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      if (row > 0) {
+        const prevItem = activeOrderItems[row - 1];
+        if (prevItem) {
+          const valToCopy = prevItem[field];
+          handleUpdateSpreadsheetCell(activeOrderItems[row].id, field, valToCopy);
+        }
+      }
+      return;
+    } else {
+      return;
+    }
+
+    if (nextRow !== row || nextCol !== col) {
+      e.preventDefault();
+      const nextInput = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
+      if (nextInput) {
+        nextInput.focus();
+        if (nextInput.select) nextInput.select();
+      }
+    }
+  };
+
+  // Excel/Google Sheets copy/paste parsing
+  const handleGridPaste = (e) => {
+    const target = e.target;
+    if (!target.classList.contains('boq-cell-input')) return;
+
+    const startRow = parseInt(target.getAttribute('data-row'), 10);
+    const startCol = parseInt(target.getAttribute('data-col'), 10);
+
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+    const pastedText = clipboardData.getData('Text');
+
+    const lines = pastedText.split(/\r?\n/).filter(line => line.length > 0);
+    if (lines.length === 0) return;
+
+    e.preventDefault();
+
+    const fieldsOrder = [
+      'qty',
+      'type',
+      'code',
+      'description',
+      'floor',
+      'area',
+      'dimming',
+      'brand',
+      'unitCost',
+      'unitRetail',
+      'stockStatus'
+    ];
+
+    let updatedItems = [...activeOrderItems];
+
+    lines.forEach((line, rowOffset) => {
+      const cells = line.split('\t');
+      const targetRowIdx = startRow + rowOffset;
+
+      if (targetRowIdx >= updatedItems.length) {
+        const newRow = {
+          id: 'I-' + (Date.now() + rowOffset),
+          qty: 1,
+          type: 'NEW',
+          code: '',
+          description: 'New custom fixture description',
+          floor: 'Ground',
+          area: 'TBD Area',
+          dimming: 'Non-dim',
+          brand: 'Delta Light',
+          supplier: orderSupplier,
+          unitCost: 100,
+          unitTrade: 130,
+          unitRetail: 150,
+          selection: 'Selection',
+          stockStatus: 'Ordered'
+        };
+        updatedItems.push(newRow);
+      }
+
+      const itemToUpdate = { ...updatedItems[targetRowIdx] };
+
+      cells.forEach((cellVal, colOffset) => {
+        const targetColIdx = startCol + colOffset;
+        if (targetColIdx < fieldsOrder.length) {
+          const fieldName = fieldsOrder[targetColIdx];
+          let cleanedVal = cellVal.trim();
+
+          if (['qty', 'unitCost', 'unitRetail'].includes(fieldName)) {
+            cleanedVal = Number(cleanedVal.replace(/[^0-9.-]/g, '')) || 0;
+          }
+          itemToUpdate[fieldName] = cleanedVal;
+        }
+      });
+
+      updatedItems[targetRowIdx] = itemToUpdate;
+    });
+
+    setActiveOrderItems(updatedItems);
   };
 
   // Populate row fields based on selected product from catalog
@@ -1098,19 +1278,21 @@ export default function OrdersPage() {
                         .boq-cell-input {
                           padding: 2px 6px !important;
                           font-size: 11.5px !important;
-                          height: 24px !important;
-                          background: #ffffff !important;
-                          border: 1px solid var(--border-strong) !important;
+                          height: 26px !important;
+                          background: transparent !important;
+                          border: 1px solid transparent !important;
                           color: var(--text-primary) !important;
-                          border-radius: 4px !important;
+                          border-radius: 0px !important;
                           width: 100% !important;
                           outline: none !important;
-                          transition: border-color 0.15s, box-shadow 0.15s;
+                        }
+                        .boq-cell-input:hover {
+                          border: 1px solid var(--border) !important;
                         }
                         .boq-cell-input:focus {
-                          border-color: var(--text-info) !important;
-                          background: #ffffff !important;
-                          box-shadow: 0 0 0 2px rgba(24, 95, 165, 0.15) !important;
+                          border: 2px solid #185fa5 !important;
+                          background: rgba(24, 95, 165, 0.05) !important;
+                          border-radius: 2px !important;
                         }
                         .boq-table th {
                           padding: 8px 10px !important;
@@ -1125,7 +1307,7 @@ export default function OrdersPage() {
                         .boq-table td {
                           padding: 4px 6px !important;
                           vertical-align: middle !important;
-                          border-bottom: 1px solid var(--border) !important;
+                                  border-bottom: 1px solid var(--border) !important;
                         }
                       `}</style>
 
@@ -1133,7 +1315,11 @@ export default function OrdersPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '20px', marginBottom: '20px' }}>
                         
                         {/* LEFT COLUMN: INTERACTIVE HIGH-DENSITY SPREADSHEET */}
-                        <div style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                        <div 
+                          style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+                          onKeyDown={handleGridKeyDown}
+                          onPaste={handleGridPaste}
+                        >
                           <table className="table boq-table" style={{ margin: 0, minWidth: '1300px', fontSize: '12px' }}>
                             <thead>
                               <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
@@ -1154,7 +1340,7 @@ export default function OrdersPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeOrderItems.map((item) => {
+                              {activeOrderItems.map((item, index) => {
                                 const cost = Number(item.unitCost) || 0;
                                 const retail = Number(item.unitRetail) || 0;
                                 const qty = Number(item.qty) || 0;
@@ -1180,6 +1366,9 @@ export default function OrdersPage() {
                                         style={{ textAlign: 'center' }}
                                         value={item.qty}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'qty', e.target.value)}
+                                        data-row={index}
+                                        data-col={0}
+                                        data-field="qty"
                                       />
                                     </td>
                                     
@@ -1190,6 +1379,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.type || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
+                                        data-row={index}
+                                        data-col={1}
+                                        data-field="type"
                                       />
                                     </td>
 
@@ -1204,6 +1396,9 @@ export default function OrdersPage() {
                                             value={item.code || ''}
                                             placeholder="Code..."
                                             onChange={e => handleUpdateSpreadsheetCell(item.id, 'code', e.target.value)}
+                                            data-row={index}
+                                            data-col={2}
+                                            data-field="code"
                                           />
                                           <button 
                                             type="button" 
@@ -1232,6 +1427,9 @@ export default function OrdersPage() {
                                               handleItemCodeChange(item.id, val);
                                             }
                                           }}
+                                          data-row={index}
+                                          data-col={2}
+                                          data-field="code"
                                         >
                                           <option value="">-- Choose Product --</option>
                                           {PRODUCT_CATALOG.map(prod => (
@@ -1249,6 +1447,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.description || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
+                                        data-row={index}
+                                        data-col={3}
+                                        data-field="description"
                                       />
                                     </td>
 
@@ -1259,6 +1460,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.floor || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'floor', e.target.value)}
+                                        data-row={index}
+                                        data-col={4}
+                                        data-field="floor"
                                       />
                                     </td>
 
@@ -1269,6 +1473,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.area || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'area', e.target.value)}
+                                        data-row={index}
+                                        data-col={5}
+                                        data-field="area"
                                       />
                                     </td>
 
@@ -1278,6 +1485,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.dimming || 'Non-dim'}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'dimming', e.target.value)}
+                                        data-row={index}
+                                        data-col={6}
+                                        data-field="dimming"
                                       >
                                         <option>Non-dim</option>
                                         <option>Phase</option>
@@ -1293,6 +1503,9 @@ export default function OrdersPage() {
                                         className="boq-cell-input"
                                         value={item.brand || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'brand', e.target.value)}
+                                        data-row={index}
+                                        data-col={7}
+                                        data-field="brand"
                                       />
                                     </td>
 
@@ -1304,6 +1517,9 @@ export default function OrdersPage() {
                                         style={{ textAlign: 'right' }}
                                         value={item.unitCost}
                                         onChange={e => handlePriceEdit(item.id, 'unitCost', e.target.value, item.code)}
+                                        data-row={index}
+                                        data-col={8}
+                                        data-field="unitCost"
                                       />
                                     </td>
 
@@ -1315,6 +1531,9 @@ export default function OrdersPage() {
                                         style={{ textAlign: 'right' }}
                                         value={item.unitRetail}
                                         onChange={e => handlePriceEdit(item.id, 'unitRetail', e.target.value, item.code)}
+                                        data-row={index}
+                                        data-col={9}
+                                        data-field="unitRetail"
                                       />
                                     </td>
 
@@ -1328,16 +1547,12 @@ export default function OrdersPage() {
                                       {Math.round(lineMargin)}%
                                     </td>
 
-                                    {/* STOCK STATUS */}
-                                    <td>
-                                      <select 
-                                        className="boq-cell-input"
-                                        value={item.stockStatus || 'Ordered'}
-                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'stockStatus', e.target.value)}
-                                      >
-                                        <option>Ordered</option>
-                                        <option>In Stock</option>
-                                      </select>
+                                    {/* STOCK STATUS (Stock on hand) */}
+                                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '11.5px' }}>
+                                      {(() => {
+                                        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+                                        return catalogItem ? `${catalogItem.stockQty} Qty` : '—';
+                                      })()}
                                     </td>
 
                                     {/* ACTIONS */}
