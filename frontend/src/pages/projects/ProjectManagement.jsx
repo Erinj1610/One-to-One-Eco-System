@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext';
 import { useAuth } from '../../context/AuthContext';
+import { useResizableTable } from '../../components/common/ResizableTable';
 import DesignFeeBuilder from './DesignFeeBuilder';
 import { API_BASE } from '../../api_config';
 import { 
@@ -43,6 +44,28 @@ export default function ProjectManagement() {
   const { projects, updateProject, saveDraftProject, deleteProject } = useStore();
   const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+
+  const { widths: designWidths, onResizeStart: onDesignResizeStart } = useResizableTable('pm_design_subfees', {
+    ref: 100,
+    title: 250,
+    sqm: 100,
+    value: 150,
+    paid: 120,
+    outstanding: 150,
+    margin: 100,
+    status: 90
+  });
+
+  const { widths: ordersWidths, onResizeStart: onOrdersResizeStart } = useResizableTable('pm_orders_pipeline', {
+    ref: 120,
+    supplier: 180,
+    items: 100,
+    value: 150,
+    paid: 120,
+    outstanding: 150,
+    eta: 100,
+    status: 90
+  });
 
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -1115,17 +1138,41 @@ export default function ProjectManagement() {
                        </div>
                      ) : (
                        <div style={{ overflowX: 'auto' }}>
-                         <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(designWidths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12.5px' }}>
                            <thead>
                              <tr>
-                               <th>Fee Ref</th>
-                               <th>Fee Title</th>
-                               <th>Scope Size</th>
-                               <th>Fee Value (EX VAT)</th>
-                               <th>Amount Paid</th>
-                               <th>Balance Outstanding</th>
-                               <th>Design Margin</th>
-                               <th>Status</th>
+                               <th style={{ width: designWidths.ref, position: 'relative' }}>
+                                 Fee Ref
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('ref', e)} />
+                               </th>
+                               <th style={{ width: designWidths.title, position: 'relative' }}>
+                                 Fee Title
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('title', e)} />
+                               </th>
+                               <th style={{ width: designWidths.sqm, position: 'relative' }}>
+                                 Scope Size
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('sqm', e)} />
+                               </th>
+                               <th style={{ width: designWidths.value, position: 'relative' }}>
+                                 Fee Value (EX VAT)
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('value', e)} />
+                               </th>
+                               <th style={{ width: designWidths.paid, position: 'relative' }}>
+                                 Amount Paid
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('paid', e)} />
+                               </th>
+                               <th style={{ width: designWidths.outstanding, position: 'relative' }}>
+                                 Balance Outstanding
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('outstanding', e)} />
+                               </th>
+                               <th style={{ width: designWidths.margin, position: 'relative' }}>
+                                 Design Margin
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('margin', e)} />
+                               </th>
+                               <th style={{ width: designWidths.status, position: 'relative' }}>
+                                 Status
+                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('status', e)} />
+                               </th>
                              </tr>
                            </thead>
                            <tbody>
@@ -1212,17 +1259,41 @@ export default function ProjectManagement() {
                        </div>
                      ) : (
                        <div style={{ overflowX: 'auto' }}>
-                         <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(ordersWidths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12.5px' }}>
                            <thead>
                              <tr>
-                               <th>Quote/Order Ref</th>
-                               <th>Hardware Supplier</th>
-                               <th style={{ textAlign: 'center' }}>BOQ Items</th>
-                               <th>Billed Retail (EX VAT)</th>
-                               <th>Amount Paid</th>
-                               <th>Balance Outstanding</th>
-                               <th>ETA</th>
-                               <th>Status</th>
+                               <th style={{ width: ordersWidths.ref, position: 'relative' }}>
+                                 Quote/Order Ref
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('ref', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.supplier, position: 'relative' }}>
+                                 Hardware Supplier
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('supplier', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.items, position: 'relative', textAlign: 'center' }}>
+                                 BOQ Items
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('items', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.value, position: 'relative' }}>
+                                 Billed Retail (EX VAT)
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('value', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.paid, position: 'relative' }}>
+                                 Amount Paid
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('paid', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.outstanding, position: 'relative' }}>
+                                 Balance Outstanding
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('outstanding', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.eta, position: 'relative' }}>
+                                 ETA
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('eta', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.status, position: 'relative' }}>
+                                 Status
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('status', e)} />
+                               </th>
                              </tr>
                            </thead>
                            <tbody>

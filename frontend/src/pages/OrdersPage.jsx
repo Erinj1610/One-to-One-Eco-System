@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useLocation } from 'react-router-dom';
+import { useResizableTable } from '../components/common/ResizableTable';
 import { 
   Save, 
   TrendingUp, 
@@ -59,6 +60,23 @@ const PRODUCT_CATALOG = [
 export default function OrdersPage() {
   const { projects, updateProject, contacts } = useStore();
   const location = useLocation();
+
+  const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
+    qty: 60,
+    type: 80,
+    code: 165,
+    description: 250,
+    floor: 90,
+    area: 120,
+    dimming: 95,
+    brand: 90,
+    cost: 95,
+    retail: 95,
+    totalRetail: 100,
+    margin: 60,
+    stock: 90,
+    actions: 70
+  });
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -1320,23 +1338,65 @@ export default function OrdersPage() {
                           onKeyDown={handleGridKeyDown}
                           onPaste={handleGridPaste}
                         >
-                          <table className="table boq-table" style={{ margin: 0, minWidth: '1300px', fontSize: '12px' }}>
+                          <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(widths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12px' }}>
                             <thead>
                               <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
-                                <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
-                                <th style={{ width: '80px' }}>Type</th>
-                                <th style={{ width: '165px' }}>Item Code</th>
-                                <th>Description</th>
-                                <th style={{ width: '90px' }}>Floor</th>
-                                <th style={{ width: '120px' }}>Area Space</th>
-                                <th style={{ width: '95px' }}>Dimming</th>
-                                <th style={{ width: '90px' }}>Brand</th>
-                                <th style={{ width: '95px', textAlign: 'right' }}>Cost Ex VAT</th>
-                                <th style={{ width: '95px', textAlign: 'right' }}>Retail Price</th>
-                                <th style={{ width: '100px', textAlign: 'right' }}>Total Retail</th>
-                                <th style={{ width: '60px', textAlign: 'center' }}>Margin</th>
-                                <th style={{ width: '90px' }}>Stock</th>
-                                <th style={{ width: '70px', textAlign: 'center' }}>Actions</th>
+                                <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
+                                  Qty
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
+                                </th>
+                                <th style={{ width: widths.type, position: 'relative' }}>
+                                  Type
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
+                                </th>
+                                <th style={{ width: widths.code, position: 'relative' }}>
+                                  Item Code
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
+                                </th>
+                                <th style={{ width: widths.description, position: 'relative' }}>
+                                  Description
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('description', e)} />
+                                </th>
+                                <th style={{ width: widths.floor, position: 'relative' }}>
+                                  Floor
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('floor', e)} />
+                                </th>
+                                <th style={{ width: widths.area, position: 'relative' }}>
+                                  Area Space
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('area', e)} />
+                                </th>
+                                <th style={{ width: widths.dimming, position: 'relative' }}>
+                                  Dimming
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('dimming', e)} />
+                                </th>
+                                <th style={{ width: widths.brand, position: 'relative' }}>
+                                  Brand
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
+                                </th>
+                                <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
+                                  Cost Ex VAT
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
+                                </th>
+                                <th style={{ width: widths.retail, position: 'relative', textAlign: 'right' }}>
+                                  Retail Price
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('retail', e)} />
+                                </th>
+                                <th style={{ width: widths.totalRetail, position: 'relative', textAlign: 'right' }}>
+                                  Total Retail
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('totalRetail', e)} />
+                                </th>
+                                <th style={{ width: widths.margin, position: 'relative', textAlign: 'center' }}>
+                                  Margin
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
+                                </th>
+                                <th style={{ width: widths.stock, position: 'relative' }}>
+                                  Stock
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
+                                </th>
+                                <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
+                                  Actions
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('actions', e)} />
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
