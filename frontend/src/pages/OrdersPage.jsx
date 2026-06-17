@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useLocation } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
@@ -57,6 +57,170 @@ const PRODUCT_CATALOG = [
   { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30 },
 ];
 
+function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKeyDown }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchVal, setSearchVal] = useState(value || '');
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+
+  // Sync internal search value with prop
+  useEffect(() => {
+    setSearchVal(value || '');
+  }, [value]);
+
+  const filtered = useMemo(() => {
+    const query = searchVal.toLowerCase();
+    if (!query) return PRODUCT_CATALOG;
+    return PRODUCT_CATALOG.filter(prod =>
+      prod.code.toLowerCase().includes(query) ||
+      prod.description.toLowerCase().includes(query)
+    );
+  }, [searchVal]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      if (!isOpen) {
+        setIsOpen(true);
+        setHighlightedIndex(0);
+        e.preventDefault();
+        e.stopPropagation();
+      } else {
+        setHighlightedIndex(prev => Math.min(filtered.length - 1, prev + 1));
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (isOpen) {
+        setHighlightedIndex(prev => Math.max(0, prev - 1));
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    } else if (e.key === 'Enter') {
+      if (isOpen && highlightedIndex >= 0 && filtered[highlightedIndex]) {
+        e.preventDefault();
+        e.stopPropagation();
+        const selected = filtered[highlightedIndex];
+        onSelect(selected);
+        setSearchVal(selected.code);
+        setIsOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      e.preventDefault();
+      e.stopPropagation();
+    } else {
+      // Pass other keys to the grid keydown handler
+      if (onKeyDown) {
+        onKeyDown(e);
+      }
+    }
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
+      <input
+        type="text"
+        className="boq-cell-input"
+        style={{ fontFamily: 'monospace', fontSize: '13.5px', width: '100%', border: 'none', background: 'transparent', paddingRight: '20px' }}
+        value={searchVal}
+        placeholder="Type code..."
+        onChange={e => {
+          const val = e.target.value;
+          setSearchVal(val);
+          onChange(val);
+          setIsOpen(true);
+          setHighlightedIndex(0);
+        }}
+        onFocus={() => {
+          setIsOpen(true);
+          setHighlightedIndex(0);
+        }}
+        onBlur={() => {
+          // Slight delay to register mouse downs on options before closing
+          setTimeout(() => setIsOpen(false), 200);
+        }}
+        onKeyDown={handleKeyDown}
+        data-row={rowIdx}
+        data-col={colIdx}
+        data-field="code"
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        onMouseDown={(e) => {
+          e.preventDefault(); // Prevents input focus loss and blur
+          setIsOpen(prev => !prev);
+          setHighlightedIndex(0);
+        }}
+        style={{
+          position: 'absolute',
+          right: '2px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-tertiary)',
+          opacity: 0.6,
+          fontSize: '10px',
+          padding: '4px',
+          zIndex: 5
+        }}
+        title="Toggle Product List"
+      >
+        ▼
+      </button>
+      {isOpen && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          backgroundColor: 'var(--card-bg, #1a1e29)',
+          border: '1px solid var(--border)',
+          borderRadius: '4px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          maxHeight: '250px',
+          overflowY: 'auto',
+          zIndex: 1000,
+          textAlign: 'left'
+        }}>
+          {filtered.map((prod, idx) => {
+            const isHighlighted = idx === highlightedIndex;
+            return (
+              <div
+                key={prod.code}
+                onMouseDown={() => {
+                  onSelect(prod);
+                  setSearchVal(prod.code);
+                  setIsOpen(false);
+                }}
+                onMouseEnter={() => setHighlightedIndex(idx)}
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  backgroundColor: isHighlighted ? 'var(--primary-light, rgba(23, 100, 230, 0.2))' : 'transparent',
+                  borderBottom: '1px solid var(--border)',
+                  color: isHighlighted ? 'var(--primary, #1764e6)' : 'var(--text-main)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '10px'
+                }}
+              >
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{prod.code}</span>
+                <span style={{ opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>
+                  {prod.description}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const { projects, updateProject, contacts } = useStore();
   const location = useLocation();
@@ -88,6 +252,7 @@ export default function OrdersPage() {
   const [orderStatus, setOrderStatus] = useState('');
   const [orderEta, setOrderEta] = useState('');
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
+  const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
 
   // Editable Client & Project Registration details on the order
   const [clientCompany, setClientCompany] = useState('');
@@ -1291,12 +1456,12 @@ export default function OrdersPage() {
                         </div>
                       )}
 
-                      {/* CSS STYLE INJECTIONS FOR MICRO SIZES & HIGH COMPACTNESS */}
+                      {/* CSS STYLE INJECTIONS FOR ENHANCED LEGIBILITY & SPACING */}
                       <style>{`
                         .boq-cell-input {
-                          padding: 2px 6px !important;
-                          font-size: 11.5px !important;
-                          height: 26px !important;
+                          padding: 6px 10px !important;
+                          font-size: 13.5px !important;
+                          height: 36px !important;
                           background: transparent !important;
                           border: 1px solid transparent !important;
                           color: var(--text-primary) !important;
@@ -1313,8 +1478,8 @@ export default function OrdersPage() {
                           border-radius: 2px !important;
                         }
                         .boq-table th {
-                          padding: 8px 10px !important;
-                          font-size: 11px !important;
+                          padding: 12px 14px !important;
+                          font-size: 13px !important;
                           font-weight: 600 !important;
                           text-transform: uppercase !important;
                           letter-spacing: 0.5px !important;
@@ -1323,14 +1488,14 @@ export default function OrdersPage() {
                           border-bottom: 2px solid var(--border-strong) !important;
                         }
                         .boq-table td {
-                          padding: 4px 6px !important;
+                          padding: 6px 8px !important;
                           vertical-align: middle !important;
-                                  border-bottom: 1px solid var(--border) !important;
+                          border-bottom: 1px solid var(--border) !important;
                         }
                       `}</style>
 
                       {/* TWO-COLUMN SPREADSHEET + AREA BREAKDOWN LAYOUT */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '20px', marginBottom: '20px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 280px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
                         {/* LEFT COLUMN: INTERACTIVE HIGH-DENSITY SPREADSHEET */}
                         <div 
@@ -1447,57 +1612,16 @@ export default function OrdersPage() {
 
                                     {/* ITEM CODE SELECTOR / CUSTOM ENTRY */}
                                     <td>
-                                      {item.isCustomCode || (!PRODUCT_CATALOG.some(p => p.code === item.code) && item.code) ? (
-                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-info)', flex: 1 }}
-                                            value={item.code || ''}
-                                            placeholder="Code..."
-                                            onChange={e => handleUpdateSpreadsheetCell(item.id, 'code', e.target.value)}
-                                            data-row={index}
-                                            data-col={2}
-                                            data-field="code"
-                                          />
-                                          <button 
-                                            type="button" 
-                                            className="btn btn-ghost" 
-                                            style={{ padding: '0 4px', height: '22px', fontSize: '9px', border: '1px solid var(--border)' }}
-                                            title="Back to Catalog List"
-                                            onClick={() => {
-                                              handleUpdateSpreadsheetCell(item.id, 'code', '');
-                                              handleUpdateSpreadsheetCell(item.id, 'isCustomCode', false);
-                                            }}
-                                          >
-                                            List
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <select 
-                                          className="boq-cell-input"
-                                          style={{ fontFamily: 'monospace', fontSize: '11px' }}
-                                          value={item.code || ''}
-                                          onChange={e => {
-                                            const val = e.target.value;
-                                            if (val === 'CUSTOM') {
-                                              handleUpdateSpreadsheetCell(item.id, 'isCustomCode', true);
-                                              handleUpdateSpreadsheetCell(item.id, 'code', '');
-                                            } else {
-                                              handleItemCodeChange(item.id, val);
-                                            }
-                                          }}
-                                          data-row={index}
-                                          data-col={2}
-                                          data-field="code"
-                                        >
-                                          <option value="">-- Choose Product --</option>
-                                          {PRODUCT_CATALOG.map(prod => (
-                                            <option key={prod.code} value={prod.code}>{prod.code}</option>
-                                          ))}
-                                          <option value="CUSTOM">✎ Custom SKU...</option>
-                                        </select>
-                                      )}
+                                      <SearchableCodeSelect 
+                                        value={item.code || ''}
+                                        onChange={val => handleUpdateSpreadsheetCell(item.id, 'code', val)}
+                                        onSelect={prod => {
+                                          handleItemCodeChange(item.id, prod.code);
+                                        }}
+                                        rowIdx={index}
+                                        colIdx={2}
+                                        onKeyDown={handleGridKeyDown}
+                                      />
                                     </td>
 
                                     {/* DESCRIPTION */}
@@ -1598,17 +1722,17 @@ export default function OrdersPage() {
                                     </td>
 
                                     {/* LINE TOTAL */}
-                                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)', fontSize: '11px' }}>
+                                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)', fontSize: '13.5px' }}>
                                       R {Math.round(totalRetailLine).toLocaleString()}
                                     </td>
 
                                     {/* MARGIN */}
-                                    <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                    <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13.5px', color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
                                       {Math.round(lineMargin)}%
                                     </td>
 
                                     {/* STOCK STATUS (Stock on hand) */}
-                                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '11.5px' }}>
+                                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '13.5px' }}>
                                       {(() => {
                                         const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
                                         return catalogItem ? `${catalogItem.stockQty} Qty` : '—';
@@ -1646,46 +1770,71 @@ export default function OrdersPage() {
                         </div>
 
                         {/* RIGHT COLUMN: BOQ AREA FINANCIAL SUMMARY */}
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                          <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Layers size={14} color="var(--text-info)" /> Area BOQ Breakdown
-                          </h4>
-                          
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
-                            {Object.entries(areaTotals).map(([areaName, totals]) => {
-                              const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
-                              return (
-                                <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                    <span>Billed Retail:</span>
-                                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
+                        {showAreaBreakdown && (
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Layers size={14} color="var(--text-info)" /> Area BOQ Breakdown
+                              </h4>
+                              <button 
+                                type="button" 
+                                className="btn btn-ghost btn-sm" 
+                                style={{ padding: '2px 6px', fontSize: '10px', height: 'auto', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                                onClick={() => setShowAreaBreakdown(false)}
+                              >
+                                Collapse ✕
+                              </button>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                              {Object.entries(areaTotals).map(([areaName, totals]) => {
+                                const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
+                                return (
+                                  <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      <span>Billed Retail:</span>
+                                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                      <span>Margin:</span>
+                                      <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
+                                    </div>
                                   </div>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                    <span>Margin:</span>
-                                    <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
+                            
+                            <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                              Allows PM to review spacing budgets before output generation.
+                            </div>
                           </div>
-                          
-                          <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                            Allows PM to review spacing budgets before output generation.
-                          </div>
-                        </div>
+                        )}
                       </div>
 
                       {/* ADD ROW CONTROLS */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <button 
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
-                          onClick={handleAddSpreadsheetRow}
-                        >
-                           <Plus size={14} /> Add new fixture row
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                            onClick={handleAddSpreadsheetRow}
+                          >
+                             <Plus size={14} /> Add new fixture row
+                          </button>
+                          
+                          {!showAreaBreakdown && (
+                            <button 
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'var(--bg-secondary)' }}
+                              onClick={() => setShowAreaBreakdown(true)}
+                            >
+                              Show Area Breakdown 📊
+                            </button>
+                          )}
+                        </div>
                         
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                           * Stock items highlight in <span style={{ color: 'var(--text-info)', fontWeight: 600 }}>blue</span>. Selections highlight in <span style={{ color: 'var(--text-success)', fontWeight: 600 }}>green</span>. Low-margins highlight in <span style={{ color: 'var(--text-danger)', fontWeight: 600 }}>red</span>.
