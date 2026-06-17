@@ -1142,25 +1142,59 @@ export function StoreProvider({ children }) {
   };
 
   const addProject = (project) => {
-    const key = project.name.toLowerCase().replace(/\s+/g, '-');
+    const baseKey = (project.name || 'new-project').toLowerCase().trim().replace(/\s+/g, '-');
+    let key = baseKey || 'new-project';
+    let counter = 1;
+    while (projects[key]) {
+      key = `${baseKey}-${counter}`;
+      counter++;
+    }
     setProjects(prev => ({
       ...prev,
       [key]: { 
-        key,
         ...project,
+        key,
         projectType: project.projectType || 'Design & Orders',
         designFees: project.designFees || [],
         orders: project.orders || [],
-        stage: 'Stage 1',
-        status: 'On track',
+        stage: project.stage || 'Stage 1',
+        status: project.status || 'On track',
         delay: '—',
-        start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
-        deadline: 'TBD',
+        start: project.start || new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+        deadline: project.deadline || 'TBD',
         daysLeft: '—',
         complete: 'Ongoing',
         s1:'',s2:'',s3:'',s4:'',s5:''
       }
     }));
+    return key;
+  };
+
+  const saveDraftProject = (oldKey, projectData) => {
+    const baseKey = (projectData.name || 'unnamed-project').toLowerCase().trim().replace(/\s+/g, '-');
+    let finalKey = baseKey || 'unnamed-project';
+    setProjects(prev => {
+      const next = { ...prev };
+      const existingDraft = prev[oldKey] || {};
+      delete next[oldKey];
+      
+      let counter = 1;
+      while (next[finalKey]) {
+        finalKey = `${baseKey}-${counter}`;
+        counter++;
+      }
+
+      next[finalKey] = {
+        ...existingDraft,
+        ...projectData,
+        key: finalKey,
+        isDraft: false,
+        stage: 'Stage 1',
+        status: 'On track'
+      };
+      return next;
+    });
+    return finalKey;
   };
 
   const moveLead = (leadId, fromStage, toStage) => {
@@ -1243,7 +1277,7 @@ export function StoreProvider({ children }) {
   };
 
   return (
-    <StoreContext.Provider value={{ projects, updateProject, addProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
+    <StoreContext.Provider value={{ projects, updateProject, addProject, saveDraftProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
       {children}
     </StoreContext.Provider>
   );

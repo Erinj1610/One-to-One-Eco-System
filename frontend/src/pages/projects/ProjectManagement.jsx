@@ -39,7 +39,7 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject } = useStore();
+  const { projects, updateProject, saveDraftProject } = useStore();
   const [activeTab, setActiveTab] = useState('overview');
 
   const [folders, setFolders] = useState([]);
@@ -697,21 +697,21 @@ export default function ProjectManagement() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
             <Lightbulb size={22} color="var(--text-info)" style={{ filter: 'drop-shadow(0 2px 8px rgba(24,95,165,0.2))' }} />
-            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{p.name}</span>
-            <span className={`badge ${p.status === 'On track' ? 'b-success' : 'b-danger'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status}</span>
+            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{p.name || 'Draft Project'}</span>
+            <span className={`badge ${p.status === 'On track' ? 'b-success' : p.isDraft ? 'b-muted' : 'b-danger'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status}</span>
             <span className="badge b-info" style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.projectType}</span>
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
               <User size={14} style={{ color: 'var(--text-tertiary)' }} />
-              <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</span>
+              <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client || '—'}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
               <Users size={14} style={{ color: 'var(--text-tertiary)' }} />
               <span>Project Manager: <strong style={{ color: 'var(--text-primary)' }}>{p.pm}</strong></span>
             </div>
-            {p.sqm !== '—' && (
+            {p.sqm && p.sqm !== '—' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
                 <Award size={14} style={{ color: 'var(--text-tertiary)' }} />
                 <span>Scope Area: <strong style={{ color: 'var(--text-primary)' }}>{p.sqm} m²</strong></span>
@@ -724,21 +724,21 @@ export default function ProjectManagement() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Active Stage</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.stage}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : p.stage}</span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Blended Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
-              {blendedMargin}%
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+              {p.isDraft ? '—' : `${blendedMargin}%`}
             </span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Contract Value</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {grandContractValue.toLocaleString()}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandContractValue.toLocaleString()}`}</span>
           </div>
           <div style={{ textAlign: 'center' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: grandOutstandingValue > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {grandOutstandingValue.toLocaleString()}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : grandOutstandingValue > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandOutstandingValue.toLocaleString()}`}</span>
           </div>
         </div>
       </div>
@@ -755,10 +755,10 @@ export default function ProjectManagement() {
       }}>
         {[
           { id: 'overview', label: '1. Overview (Project Info)', icon: <ClipboardList size={15} />, disabled: false },
-          { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={15} />, disabled: p.projectType === 'Orders-Only' },
-          { id: 'orders', label: '3. Orders Section (Product Orders)', icon: <ShoppingBag size={15} />, disabled: p.projectType === 'Design-Only' },
-          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Wallet size={15} />, disabled: false },
-          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: false }
+          { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={15} />, disabled: p.isDraft || p.projectType === 'Orders-Only' },
+          { id: 'orders', label: '3. Orders Section (Product Orders)', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
+          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Wallet size={15} />, disabled: p.isDraft },
+          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft }
         ].map(tab => {
           const isActive = activeTab === tab.id;
           return (
@@ -844,21 +844,65 @@ export default function ProjectManagement() {
                   <div className="card-head" style={{ padding: '12px 16px' }}><div className="card-title" style={{ fontSize: '12.5px' }}>Update Active Parameters</div></div>
                   <div className="card-body" style={{ padding: '16px 20px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Type Workflow</div>
-                        <select className="form-control" value={p.projectType || 'Design & Orders'} onChange={e => updateProject(id, 'projectType', e.target.value)}>
-                          <option>Design & Orders</option>
-                          <option>Design-Only</option>
-                          <option>Orders-Only</option>
-                        </select>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Name</div>
+                          <input 
+                            type="text" 
+                            className="form-control"
+                            value={p.name || ''} 
+                            onChange={e => updateProject(id, 'name', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Client Name</div>
+                          <input 
+                            type="text" 
+                            className="form-control"
+                            value={p.client || ''} 
+                            onChange={e => updateProject(id, 'client', e.target.value)}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Manager</div>
-                        <select className="form-control" value={p.pm} onChange={e => updateProject(id, 'pm', e.target.value)}>
-                          <option>Dani</option>
-                          <option>Martin</option>
-                        </select>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Type Workflow</div>
+                          <select className="form-control" value={p.projectType || 'Design & Orders'} onChange={e => updateProject(id, 'projectType', e.target.value)}>
+                            <option>Design & Orders</option>
+                            <option>Design-Only</option>
+                            <option>Orders-Only</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Manager</div>
+                          <select className="form-control" value={p.pm} onChange={e => updateProject(id, 'pm', e.target.value)}>
+                            <option>Dani</option>
+                            <option>Martin</option>
+                          </select>
+                        </div>
                       </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Design Offering Package</div>
+                          <select className="form-control" value={p.offering || 'Signature'} onChange={e => updateProject(id, 'offering', e.target.value)}>
+                            <option>Signature</option>
+                            <option>Modus</option>
+                            <option>Essential</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Meterage Scope (m²)</div>
+                          <input 
+                            type="text" 
+                            className="form-control"
+                            value={p.sqm || ''} 
+                            onChange={e => updateProject(id, 'sqm', e.target.value)}
+                          />
+                        </div>
+                      </div>
+
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Target Margin (%)</div>
@@ -876,73 +920,135 @@ export default function ProjectManagement() {
                           </select>
                         </div>
                       </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Start Date</div>
+                          <input 
+                            type="text" 
+                            className="form-control"
+                            value={p.start || ''} 
+                            onChange={e => updateProject(id, 'start', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Deadline</div>
+                          <input 
+                            type="text" 
+                            className="form-control"
+                            value={p.deadline || ''} 
+                            onChange={e => updateProject(id, 'deadline', e.target.value)}
+                          />
+                        </div>
+                      </div>
+
                       <div>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Delay / Blockers</div>
                         <select className="form-control" value={p.delay} onChange={e => updateProject(id, 'delay', e.target.value)}>
                           {['—', 'Awaiting feedback/approval', 'Complex design iteration/rework required', 'Unforeseen technical challenges', 'Snags/Site visit'].map(s => <option key={s}>{s}</option>)}
                         </select>
                       </div>
+
+                      {p.isDraft && (
+                        <div style={{ marginTop: '16px', borderTop: '0.5px solid var(--border)', paddingTop: '16px' }}>
+                          <button 
+                            className="btn btn-primary" 
+                            style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!p.name?.trim()) {
+                                alert("Please enter a Project Name to save!");
+                                return;
+                              }
+                              if (!p.client?.trim()) {
+                                alert("Please enter a Client Name to save!");
+                                return;
+                              }
+                              // Save the draft project!
+                              const finalKey = saveDraftProject(id, {
+                                name: p.name,
+                                client: p.client,
+                                sqm: p.sqm || '1,000',
+                                pm: p.pm,
+                                offering: p.offering,
+                                targetMargin: p.targetMargin || 18,
+                                projectType: p.projectType || 'Design & Orders',
+                                start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+                                deadline: p.deadline === '—' || !p.deadline ? 'TBD' : p.deadline,
+                                status: 'On track',
+                                stage: 'Stage 1'
+                              });
+                              alert("Project created successfully!");
+                              navigate(`/projects/${finalKey}`);
+                            }}
+                          >
+                            Save & Create Project
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Integrated Plaque & Health Console Below */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px', marginTop: '24px' }}>
-                
-                {/* Philosophical Advisor Plaque */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                  border: '1.5px dashed var(--border-info)', 
-                  borderRadius: 'var(--radius-lg)', 
-                  padding: '16px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center'
-                }}>
-                  <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stoic Advisory Context (Marcus Aurelius)</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{PHI_ADVISORIES.overview.author}</span>
-                  </div>
-                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontStyle: 'italic', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
-                    "{PHI_ADVISORIES.overview.quote}"
-                  </p>
-                  <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: '8px', fontSize: '11.5px', color: 'var(--text-info)', lineHeight: 1.4 }}>
-                    <strong>Strategic Practice:</strong> {PHI_ADVISORIES.overview.advice}
-                  </div>
-                </div>
-
-                {/* Project Health Score Card */}
-                <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'block' }}>Project Health Scoring</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
-                        <span>Deadline Risk Index</span>
-                        <span style={{ fontWeight: 600, color: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                          {p.status === 'Off track' ? 'Critical' : 'Stable'}
-                        </span>
-                      </div>
-                      <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                        <div style={{ width: p.status === 'Off track' ? '90%' : '15%', height: '100%', background: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
-                      </div>
+              {!p.isDraft && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px', marginTop: '24px' }}>
+                  
+                  {/* Philosophical Advisor Plaque */}
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
+                    border: '1.5px dashed var(--border-info)', 
+                    borderRadius: 'var(--radius-lg)', 
+                    padding: '16px 20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stoic Advisory Context (Marcus Aurelius)</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{PHI_ADVISORIES.overview.author}</span>
                     </div>
-
-                    <div>
-                      <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
-                        <span>Blended Margin Index</span>
-                        <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                          {blendedMargin < (p.targetMargin || 18) ? 'Under Target' : 'Optimal'}
-                        </span>
-                      </div>
-                      <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                        <div style={{ width: blendedMargin < (p.targetMargin || 18) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
-                      </div>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontStyle: 'italic', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+                      "{PHI_ADVISORIES.overview.quote}"
+                    </p>
+                    <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: '8px', fontSize: '11.5px', color: 'var(--text-info)', lineHeight: 1.4 }}>
+                      <strong>Strategic Practice:</strong> {PHI_ADVISORIES.overview.advice}
                     </div>
                   </div>
-                </div>
 
-              </div>
+                  {/* Project Health Score Card */}
+                  <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'block' }}>Project Health Scoring</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
+                          <span>Deadline Risk Index</span>
+                          <span style={{ fontWeight: 600, color: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {p.status === 'Off track' ? 'Critical' : 'Stable'}
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
+                          <div style={{ width: p.status === 'Off track' ? '90%' : '15%', height: '100%', background: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
+                          <span>Blended Margin Index</span>
+                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {blendedMargin < (p.targetMargin || 18) ? 'Under Target' : 'Optimal'}
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
+                          <div style={{ width: blendedMargin < (p.targetMargin || 18) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
           )}
             {/* SECTION 2: DESIGN SECTION (Mirror of standalone DesignPage) */}

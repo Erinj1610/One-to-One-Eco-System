@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Briefcase, Clock, ShieldAlert, Award, TrendingUp, Search, Filter, 
   Plus, Play, AlertTriangle, Users, BarChart3, ChevronRight, UserCheck, CheckCircle,
-  FileText, ShoppingBag, FolderGit, Calendar
+  FileText, ShoppingBag, FolderGit, Calendar, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 // Philosophy Hooks configuration for the Coaching Sidebar
@@ -46,27 +46,21 @@ export default function ProjectList() {
   // Search & Filter States
   const [search, setSearch] = useState('');
   const [pmFilter, setPmFilter] = useState('All PMs');
+  const [clientFilter, setClientFilter] = useState('All Clients');
   const [typeFilter, setTypeFilter] = useState('All Types');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [activeKpiFilter, setActiveKpiFilter] = useState(null); // 'total', 'pending', 'active', 'complete'
+
+  // Sorting States
+  const [sortField, setSortField] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
 
   // Date Filter States
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Modal States
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: '',
-    client: '',
-    projectType: 'Design & Orders',
-    offering: 'Signature',
-    sqm: '1,500',
-    pm: 'Dani',
-    targetMargin: 18,
-    actualMargin: 18
-  });
+
 
   // Date parser helper
   const parseProjectDate = (dateStr) => {
@@ -113,7 +107,7 @@ export default function ProjectList() {
 
   // Filter projects by Date Range first
   const dateFilteredProjects = useMemo(() => {
-    return Object.values(projects).filter(p => isDateInRange(p.start));
+    return Object.values(projects).filter(p => !p.isDraft && isDateInRange(p.start));
   }, [projects, startDate, endDate]);
 
   // Dynamic Portfolio KPI Calculations grouped by Total, Pending, Active, Complete
@@ -157,15 +151,24 @@ export default function ProjectList() {
     };
   }, [dateFilteredProjects]);
 
+  // Dynamic list of unique clients for the dropdown filter
+  const clientsList = useMemo(() => {
+    const cls = Object.values(projects).map(p => p.client).filter(Boolean);
+    return ['All Clients', ...Array.from(new Set(cls))].sort();
+  }, [projects]);
+
   // Project List Filter Logic
   const filteredProjects = useMemo(() => {
     return dateFilteredProjects.filter(p => {
       // Search matches
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                            p.client.toLowerCase().includes(search.toLowerCase());
+                            (p.client || '').toLowerCase().includes(search.toLowerCase());
       
       // PM matches
       const matchesPm = pmFilter === 'All PMs' || p.pm === pmFilter;
+
+      // Client matches
+      const matchesClient = clientFilter === 'All Clients' || p.client === clientFilter;
 
       // Project Type matches
       const matchesType = typeFilter === 'All Types' || p.projectType === typeFilter;
@@ -185,42 +188,90 @@ export default function ProjectList() {
         matchesKpi = p.complete === 'Complete';
       }
 
-      return matchesSearch && matchesPm && matchesType && matchesStatus && matchesKpi;
+      return matchesSearch && matchesPm && matchesClient && matchesType && matchesStatus && matchesKpi;
     });
-  }, [dateFilteredProjects, search, pmFilter, typeFilter, statusFilter, activeKpiFilter]);
+  }, [dateFilteredProjects, search, pmFilter, clientFilter, typeFilter, statusFilter, activeKpiFilter]);
 
-  // Handle Project Creation
-  const handleCreateProject = (e) => {
-    e.preventDefault();
-    if (!newProject.name || !newProject.client) {
-      alert("Please fill in the project and client names!");
-      return;
-    }
-    
-    // Setup initial arrays based on type
-    const projectPayload = {
-      ...newProject,
-      designFees: newProject.projectType !== 'Orders-Only' ? [
-        { id: `DF-${newProject.name.substring(0,3).toUpperCase()}-01`, name: 'Initial Design Fee Proposal', sqm: Number(newProject.sqm) || 1000, feeValue: 0, paid: 0, outstanding: 0, margin: newProject.actualMargin || 18, status: 'Draft' }
-      ] : [],
-      orders: []
+  // Sort Logic for All Columns
+  const sortedProjects = useMemo(() => {
+    if (!sortField) return filteredProjects;
+    const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
+
+    const getVal = (p, field) => {
+      switch (field) {
+        case 'name':
+          return (p.name || '').toLowerCase();
+        case 'client':
+          return (p.client || '').toLowerCase();
+        case 'projectType':
+          return (p.projectType || '').toLowerCase();
+        case 'designFees':
+          return p.designFees?.length || 0;
+        case 'orders':
+          return p.orders?.length || 0;
+        case 'stage': {
+          const idx = stagesList.indexOf(p.stage);
+          return idx === -1 ? 0 : idx;
+        }
+        case 'margin': {
+          let totalValue = p.feeValue || 0;
+          let actualMargin = p.actualMargin || 18;
+          if (p.designFees && p.orders) {
+            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            totalValue = dfVal + poVal;
+            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+                              p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+            actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+          }
+          return actualMargin;
+        }
+        case 'status':
+          return (p.status || '').toLowerCase();
+        case 'outstanding': {
+          let totalValue = p.feeValue || 0;
+          let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
+          if (p.designFees && p.orders) {
+            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+            totalValue = dfVal + poVal;
+            totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+          }
+          return totalOutstanding;
+        }
+        default:
+          return '';
+      }
     };
 
-    addProject(projectPayload);
-    setShowCreateModal(false);
-    
-    // Reset form
-    setNewProject({
-      name: '',
-      client: '',
-      projectType: 'Design & Orders',
-      offering: 'Signature',
-      sqm: '1,500',
-      pm: 'Dani',
-      targetMargin: 18,
-      actualMargin: 18
+    return [...filteredProjects].sort((a, b) => {
+      const valA = getVal(a, sortField);
+      const valB = getVal(b, sortField);
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
+  }, [filteredProjects, sortField, sortDirection]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
   };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.5 }} />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
+  };
+
 
   // Dynamic PM Coaching Nudges based on actual project parameters
   const coachNudges = useMemo(() => {
@@ -283,10 +334,29 @@ export default function ProjectList() {
           </div>
           <button 
             className="btn btn-primary" 
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              const newKey = addProject({
+                name: '',
+                client: '',
+                projectType: 'Design & Orders',
+                offering: 'Signature',
+                sqm: '',
+                pm: 'Dani',
+                targetMargin: 18,
+                actualMargin: 18,
+                designFees: [],
+                orders: [],
+                isDraft: true,
+                stage: '—',
+                status: 'Draft',
+                start: '—',
+                deadline: '—'
+              });
+              navigate(`/projects/${newKey}`);
+            }}
             style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
           >
-            <Plus size={16} /> New Converted Project
+            <Plus size={16} /> New Project
           </button>
         </div>
 
@@ -474,6 +544,12 @@ export default function ProjectList() {
               </select>
             </div>
 
+            <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
+              {clientsList.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
             <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
               <option>All Types</option>
               <option>Design & Orders</option>
@@ -493,29 +569,49 @@ export default function ProjectList() {
         <div className="card" style={{ overflow: 'hidden' }}>
           <table className="table" style={{ margin: 0 }}>
             <colgroup>
-              <col style={{ width: '22%' }} />
               <col style={{ width: '15%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '16%' }} />
-              <col style={{ width: '7%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '8%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
               <tr>
-                <th>Project & Client</th>
-                <th>Project Type</th>
-                <th>Design Fees</th>
-                <th>Orders</th>
-                <th>Stage & Progress</th>
-                <th>Margin</th>
-                <th>Status</th>
-                <th>Outstanding</th>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project {renderSortIcon('name')}</div>
+                </th>
+                <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                </th>
+                <th onClick={() => handleSort('projectType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Type {renderSortIcon('projectType')}</div>
+                </th>
+                <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderSortIcon('designFees')}</div>
+                </th>
+                <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderSortIcon('orders')}</div>
+                </th>
+                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderSortIcon('stage')}</div>
+                </th>
+                <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
+                </th>
+                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
+                </th>
+                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredProjects.map(p => {
+              {sortedProjects.map(p => {
                 // Calculate percentage of progress based on stage
                 const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
                 const currentStageIdx = stagesList.indexOf(p.stage);
@@ -560,7 +656,9 @@ export default function ProjectList() {
                   >
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{p.client}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</div>
                     </td>
                     <td>
                       <span className={`badge ${typeColors[p.projectType || 'Design & Orders']}`} style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -612,9 +710,9 @@ export default function ProjectList() {
                   </tr>
                 );
               })}
-              {filteredProjects.length === 0 && (
+              {sortedProjects.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
                     No converted projects matched the active filters.
                   </td>
                 </tr>
@@ -706,132 +804,7 @@ export default function ProjectList() {
 
       </div>
 
-      {/* CREATE NEW CONVERTED PROJECT MODAL */}
-      {showCreateModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, animation: 'fadeIn 0.2s ease'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '480px', overflow: 'hidden' }}>
-            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title">Spin Up Converted Project</div>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowCreateModal(false)}>✕</button>
-            </div>
-            
-            <form onSubmit={handleCreateProject}>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '20px' }}>
-                
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Project Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Upper Primrose, House Sissou"
-                    value={newProject.name} 
-                    onChange={e => setNewProject({...newProject, name: e.target.value})}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', fontSize: '13px' }}
-                    required
-                  />
-                </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Client Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Sarah Venter, Marco Esteves"
-                    value={newProject.client} 
-                    onChange={e => setNewProject({...newProject, client: e.target.value})}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', fontSize: '13px' }}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Project Type</label>
-                    <select 
-                      className="t-sel" 
-                      value={newProject.projectType} 
-                      onChange={e => setNewProject({...newProject, projectType: e.target.value})}
-                      style={{ fontSize: '13px' }}
-                    >
-                      <option>Design & Orders</option>
-                      <option>Design-Only</option>
-                      <option>Orders-Only</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Project Manager</label>
-                    <select 
-                      className="t-sel" 
-                      value={newProject.pm} 
-                      onChange={e => setNewProject({...newProject, pm: e.target.value})}
-                      style={{ fontSize: '13px' }}
-                    >
-                      <option>Dani</option>
-                      <option>Martin</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Project SQM (m²)</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 1,500"
-                      value={newProject.sqm} 
-                      onChange={e => setNewProject({...newProject, sqm: e.target.value})}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Offering Package</label>
-                    <select 
-                      className="t-sel" 
-                      value={newProject.offering} 
-                      onChange={e => setNewProject({...newProject, offering: e.target.value})}
-                      style={{ fontSize: '13px' }}
-                    >
-                      <option>Signature</option>
-                      <option>Modus</option>
-                      <option>Essential</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Target Margin (%)</label>
-                    <input 
-                      type="number" 
-                      value={newProject.targetMargin} 
-                      onChange={e => setNewProject({...newProject, targetMargin: Number(e.target.value)})}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', fontSize: '13px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Actual Margin (%)</label>
-                    <input 
-                      type="number" 
-                      value={newProject.actualMargin} 
-                      onChange={e => setNewProject({...newProject, actualMargin: Number(e.target.value)})}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: 'white', fontSize: '13px' }}
-                    />
-                  </div>
-                </div>
-
-              </div>
-
-              <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" className="btn" onClick={() => setShowCreateModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Convert & Deploy</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );
