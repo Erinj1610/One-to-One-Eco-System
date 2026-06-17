@@ -565,27 +565,23 @@ export default function ProjectManagement() {
   };
 
   // Create new Product Order
-  const handleCreateProductOrder = (e) => {
-    e.preventDefault();
-    if (!newOrderForm.supplier || !newOrderForm.value) return;
-
-    const orderVal = Number(newOrderForm.value) || 0;
-    const paidVal = Number(newOrderForm.paid) || 0;
+  const handleCreateProductOrder = () => {
+    const newOrderId = `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     const newOrder = {
-      id: `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
-      supplier: newOrderForm.supplier,
-      items: Number(newOrderForm.items) || 1,
-      value: orderVal,
-      paid: paidVal,
-      outstanding: Math.max(0, orderVal - paidVal),
-      status: newOrderForm.status,
-      eta: newOrderForm.eta || '—'
+      id: newOrderId,
+      supplier: 'Made by 1-to-1',
+      items: 0,
+      value: 0,
+      paid: 0,
+      outstanding: 0,
+      status: 'Pending',
+      eta: '—',
+      itemsList: []
     };
 
     const updatedOrders = [...orders, newOrder];
     updateProject(id, 'orders', updatedOrders);
-    setShowCreateOrderModal(false);
-    setNewOrderForm({ supplier: 'Modus Lighting', items: '', value: '', paid: '', status: 'Pending', eta: '' });
+    navigate('/orders', { state: { projectKey: p.key, openOrderId: newOrderId } });
   };
 
   // Update a single cell in the active order spreadsheet state
@@ -780,7 +776,7 @@ export default function ProjectManagement() {
         {[
           { id: 'overview', label: '1. Overview (Project Info)', icon: <ClipboardList size={15} />, disabled: false },
           { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={15} />, disabled: p.isDraft || p.projectType === 'Orders-Only' },
-          { id: 'orders', label: '3. Orders Section (Product Orders)', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
+          { id: 'orders', label: '3. Orders Section', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
           { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Wallet size={15} />, disabled: p.isDraft },
           { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft }
         ].map(tab => {
@@ -1099,219 +1095,186 @@ export default function ProjectManagement() {
             {/* SECTION 2: DESIGN SECTION (Mirror of standalone DesignPage) */}
             {activeTab === 'design' && (
               <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '28px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Design Suite</span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Design Fee Calculator & Deliverables Workspace</span>
-                      </div>
-                      <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        🧠 Standalone Design Fees & CAD Module
-                      </h2>
-                      <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '600px', lineHeight: '1.5' }}>
-                        Create proportional scope costing plans, manage living zoning parameters, track drawings, upload technical sheets, and monitor blended project margins in real time.
-                      </p>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button 
-                        className="btn btn-primary" 
-                        onClick={() => navigate('/design', { state: { projectKey: p.key } })}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 24px', fontSize: '14px', fontWeight: 600 }}
-                      >
-                        <span>Launch Design Workspace</span>
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
                 {/* PROJECT DESIGN FEES SUMMARY CARD */}
                 <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-                  <div className="card-body" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <h3 style={{ margin: 0, fontSize: '15px', color: 'white', fontWeight: 600 }}>
-                        Active Design Fees & Proposals for {p.name}
-                      </h3>
-                      <button className="btn btn-primary btn-sm" onClick={() => setShowCreateDfModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Plus size={14} /> Add Design Fee Sub-project
-                      </button>
-                    </div>
-
-                    {designFees.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                        No design sub-fees or proposals have been created for this project yet. Launch the workspace or click above to get started.
-                      </div>
-                    ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                          <thead>
-                            <tr>
-                              <th>Fee Ref</th>
-                              <th>Fee Title</th>
-                              <th>Scope Size</th>
-                              <th>Fee Value (EX VAT)</th>
-                              <th>Amount Paid</th>
-                              <th>Balance Outstanding</th>
-                              <th>Design Margin</th>
-                              <th>Status</th>
-                              <th style={{ textAlign: 'right' }}>Workspace Link</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {designFees.map(f => (
-                              <tr key={f.id}>
-                                <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{f.id}</td>
-                                <td style={{ fontWeight: 500 }}>{f.name}</td>
-                                <td>{f.sqm} m²</td>
-                                <td style={{ fontWeight: 600, color: 'white' }}>R {f.feeValue?.toLocaleString()}</td>
-                                <td style={{ color: 'var(--text-success)' }}>R {(f.paid || 0).toLocaleString()}</td>
-                                <td style={{ fontWeight: 600, color: (f.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                                  R {(f.outstanding || 0).toLocaleString()}
-                                </td>
-                                <td style={{ fontWeight: 700, color: 'var(--text-success)' }}>{f.margin || 18}%</td>
-                                <td>
-                                  <span className={`badge ${f.status === 'Approved' ? 'b-success' : f.status === 'In Review' ? 'b-warning' : 'b-default'}`}>
-                                    {f.status}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <button 
-                                    className="btn btn-ghost btn-sm" 
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-                                    onClick={() => navigate('/design', { state: { projectKey: p.key, openFeeId: f.id } })}
-                                  >
-                                    Open Builder 🧠
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Stoic Planning Advisory Banner */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                  border: '1.5px dashed var(--border-info)', 
-                  borderRadius: 'var(--radius-lg)', 
-                  padding: '14px 18px', 
-                  display: 'flex', 
-                  gap: '12px', 
-                  alignItems: 'center' 
-                }}>
-                  <HelpCircle size={18} color="var(--text-info)" style={{ flexShrink: 0 }} />
-                  <div style={{ fontSize: '12px' }}>
-                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '2px' }}>Stoic Planning Advisory ({PHI_ADVISORIES.design.author})</span>
-                    <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>"{PHI_ADVISORIES.design.quote}"</span>
-                    <span style={{ color: 'var(--text-info)', display: 'block', marginTop: '4px' }}><strong>Strategic Practice:</strong> {PHI_ADVISORIES.design.advice}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* SECTION 3: ORDERS SECTION (Shortcut to Dedicated Workspace) */}
-            {activeTab === 'orders' && (
-              <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '28px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Operations Suite</span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Project Orders & BOQ Controller</span>
-                      </div>
-                      <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        🧠 Interactive Orders & BOQ Workspace
-                      </h2>
-                      <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '600px', lineHeight: '1.5' }}>
-                        Create client quotations, area-by-area Bills of Quantity (BOQ), and dynamically generate Quotations, Tax Invoices, technical Fitting Schedules, Delivery Notes, and progress statements.
-                      </p>
-                    </div>
-
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => navigate('/orders', { state: { projectKey: p.key } })}
-                      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 24px', fontSize: '14px', fontWeight: 600 }}
-                    >
-                      <span>Launch Order Brain Workspace</span>
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* PROJECT ORDERS SUMMARY VITALS CARD */}
-                <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-                  <div className="card-body" style={{ padding: '20px' }}>
-                    <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'white', fontWeight: 600 }}>
-                      Active Quotations & BOQs for {p.name}
-                    </h3>
-
-                    {orders.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                        No orders or quotations have been created for this project yet. Launch the workspace to get started.
-                      </div>
-                    ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                          <thead>
-                            <tr>
-                              <th>Quote/PO Ref</th>
-                              <th>Hardware Supplier</th>
-                              <th style={{ textAlign: 'center' }}>BOQ Items</th>
-                              <th>Billed Retail (EX VAT)</th>
-                              <th>Amount Paid</th>
-                              <th>Balance Outstanding</th>
-                              <th>ETA</th>
-                              <th>Status</th>
-                              <th style={{ textAlign: 'right' }}>Workspace Link</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {orders.map(o => {
-                              const cost = o.costValue || 0;
-                              const retail = o.value || 0;
-                              const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
-                              const isLowMargin = margin < 39;
-
-                              return (
-                                <tr key={o.id}>
-                                  <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
-                                  <td>{o.supplier}</td>
-                                  <td style={{ textAlign: 'center' }}>{o.items} items</td>
-                                  <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
-                                  <td>R {(o.paid || 0).toLocaleString()}</td>
-                                  <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                                    R {(o.outstanding || 0).toLocaleString()}
-                                  </td>
-                                  <td>{o.eta || '—'}</td>
-                                  <td>
-                                    <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : o.status === 'Processing' ? 'b-warning' : 'b-default'}`}>
-
-                                      {o.status}
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'right' }}>
-                                    <button 
-                                      className="btn btn-ghost btn-sm" 
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-                                      onClick={() => navigate('/orders', { state: { projectKey: p.key, openOrderId: o.id } })}
-                                    >
-                                      Open Brain Spec 🧠
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                   <div className="card-body" style={{ padding: '20px' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                       <h3 style={{ margin: 0, fontSize: '15px', color: 'white', fontWeight: 600 }}>
+                         Active Design Fees & Proposals for {p.name}
+                       </h3>
+                       <div style={{ display: 'flex', gap: '8px' }}>
+                         <button className="btn btn-primary btn-sm" onClick={() => setShowCreateDfModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                           <Plus size={14} /> Add Design Fee Sub-project
+                         </button>
+                       </div>
+                     </div>
+ 
+                     {designFees.length === 0 ? (
+                       <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
+                         No design sub-fees or proposals have been created for this project yet. Click above to get started.
+                       </div>
+                     ) : (
+                       <div style={{ overflowX: 'auto' }}>
+                         <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                           <thead>
+                             <tr>
+                               <th>Fee Ref</th>
+                               <th>Fee Title</th>
+                               <th>Scope Size</th>
+                               <th>Fee Value (EX VAT)</th>
+                               <th>Amount Paid</th>
+                               <th>Balance Outstanding</th>
+                               <th>Design Margin</th>
+                               <th>Status</th>
+                             </tr>
+                           </thead>
+                           <tbody>
+                             {designFees.map(f => (
+                               <tr key={f.id}>
+                                 <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                   <button 
+                                     className="btn-link"
+                                     style={{ 
+                                       background: 'none', 
+                                       border: 'none', 
+                                       padding: 0, 
+                                       fontFamily: 'inherit', 
+                                       fontWeight: 'inherit', 
+                                       color: 'var(--text-info)', 
+                                       cursor: 'pointer',
+                                       textDecoration: 'underline'
+                                     }}
+                                     onClick={() => navigate('/design', { state: { projectKey: p.key, openFeeId: f.id } })}
+                                   >
+                                     {f.id}
+                                   </button>
+                                 </td>
+                                 <td style={{ fontWeight: 500 }}>{f.name}</td>
+                                 <td>{f.sqm} m²</td>
+                                 <td style={{ fontWeight: 600, color: 'white' }}>R {f.feeValue?.toLocaleString()}</td>
+                                 <td style={{ color: 'var(--text-success)' }}>R {(f.paid || 0).toLocaleString()}</td>
+                                 <td style={{ fontWeight: 600, color: (f.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                   R {(f.outstanding || 0).toLocaleString()}
+                                 </td>
+                                 <td style={{ fontWeight: 700, color: 'var(--text-success)' }}>{f.margin || 18}%</td>
+                                 <td>
+                                   <span className={`badge ${f.status === 'Approved' ? 'b-success' : f.status === 'In Review' ? 'b-warning' : 'b-default'}`}>
+                                     {f.status}
+                                   </span>
+                                 </td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+ 
+                 {/* Stoic Planning Advisory Banner */}
+                 <div style={{ 
+                   background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
+                   border: '1.5px dashed var(--border-info)', 
+                   borderRadius: 'var(--radius-lg)', 
+                   padding: '14px 18px', 
+                   display: 'flex', 
+                   gap: '12px', 
+                   alignItems: 'center' 
+                 }}>
+                   <HelpCircle size={18} color="var(--text-info)" style={{ flexShrink: 0 }} />
+                   <div style={{ fontSize: '12px' }}>
+                     <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '2px' }}>Stoic Planning Advisory ({PHI_ADVISORIES.design.author})</span>
+                     <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>"{PHI_ADVISORIES.design.quote}"</span>
+                     <span style={{ color: 'var(--text-info)', display: 'block', marginTop: '4px' }}><strong>Strategic Practice:</strong> {PHI_ADVISORIES.design.advice}</span>
+                   </div>
+                 </div>
+               </div>
+             )}
+ 
+             {/* SECTION 3: ORDERS SECTION (Shortcut to Dedicated Workspace) */}
+             {activeTab === 'orders' && (
+               <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                 {/* PROJECT ORDERS SUMMARY VITALS CARD */}
+                 <div className="card" style={{ border: '1.5px solid var(--border)' }}>
+                   <div className="card-body" style={{ padding: '20px' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                       <h3 style={{ margin: 0, fontSize: '15px', color: 'white', fontWeight: 600 }}>
+                         Active Quotations & BOQs for {p.name}
+                       </h3>
+                       <button className="btn btn-primary btn-sm" onClick={handleCreateProductOrder} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                         <Plus size={14} /> Create Order
+                       </button>
+                     </div>
+ 
+                     {orders.length === 0 ? (
+                       <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
+                         No orders or quotations have been created for this project yet. Click above to get started.
+                       </div>
+                     ) : (
+                       <div style={{ overflowX: 'auto' }}>
+                         <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                           <thead>
+                             <tr>
+                               <th>Quote/Order Ref</th>
+                               <th>Hardware Supplier</th>
+                               <th style={{ textAlign: 'center' }}>BOQ Items</th>
+                               <th>Billed Retail (EX VAT)</th>
+                               <th>Amount Paid</th>
+                               <th>Balance Outstanding</th>
+                               <th>ETA</th>
+                               <th>Status</th>
+                             </tr>
+                           </thead>
+                           <tbody>
+                             {orders.map(o => {
+                               const cost = o.costValue || 0;
+                               const retail = o.value || 0;
+                               const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+                               const isLowMargin = margin < 39;
+ 
+                               return (
+                                 <tr key={o.id}>
+                                   <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                     <button 
+                                       className="btn-link"
+                                       style={{ 
+                                         background: 'none', 
+                                         border: 'none', 
+                                         padding: 0, 
+                                         fontFamily: 'inherit', 
+                                         fontWeight: 'inherit', 
+                                         color: 'var(--text-info)', 
+                                         cursor: 'pointer',
+                                         textDecoration: 'underline'
+                                       }}
+                                       onClick={() => navigate('/orders', { state: { projectKey: p.key, openOrderId: o.id } })}
+                                     >
+                                       {o.id}
+                                     </button>
+                                   </td>
+                                   <td>{o.supplier}</td>
+                                   <td style={{ textAlign: 'center' }}>{o.items} items</td>
+                                   <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
+                                   <td>R {(o.paid || 0).toLocaleString()}</td>
+                                   <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                                     R {(o.outstanding || 0).toLocaleString()}
+                                   </td>
+                                   <td>{o.eta || '—'}</td>
+                                   <td>
+                                     <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : o.status === 'Processing' ? 'b-warning' : 'b-default'}`}>
+ 
+                                       {o.status}
+                                     </span>
+                                   </td>
+                                 </tr>
+                               );
+                             })}
+                           </tbody>
+                         </table>
+                       </div>
+                     )}
+                   </div>
+                 </div>
 
                 {/* Stoic Logistical Advisory plaque inline */}
                 <div style={{ 
@@ -1338,18 +1301,18 @@ export default function ProjectManagement() {
               <div className="animation-fade-in">
                 <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', marginBottom: '20px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Wallet size={14} />
-                  <span><strong>Statement Overview:</strong> Consolidated summary showing sub-contract items, payments made, and outstanding hardware supplier pipelines.</span>
+                  <span><strong>Statement Overview:</strong> Consolidated summary showing sub-contract items, payments made, and outstanding supplier pipelines.</span>
                 </div>
 
                 {/* Grid Financial Cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Design Portfolio</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalDesignVal.toLocaleString()}</div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Orders</span>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalOrderVal.toLocaleString()}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Hardware Orders</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalOrderVal.toLocaleString()}</div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Design Portfolio</span>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalDesignVal.toLocaleString()}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.02)', border: '1px solid rgba(16,185,129,0.2)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-success)', textTransform: 'uppercase', fontWeight: 600 }}>Total Payments</span>
@@ -1368,6 +1331,40 @@ export default function ProjectManagement() {
                 {/* Sub-ledgers list */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
                   
+                  {/* Orders Statement */}
+                  <div>
+                    <div className="section-label" style={{ marginBottom: '10px' }}>Orders pipeline</div>
+                    <div className="card" style={{ padding: '10px' }}>
+                      <table className="table" style={{ margin: 0, fontSize: '12px' }}>
+                        <thead>
+                          <tr>
+                            <th>Order ID</th>
+                            <th>Supplier</th>
+                            <th>Order Value</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orders.map(o => (
+                            <tr key={o.id}>
+                              <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
+                              <td style={{ fontWeight: 500 }}>{o.supplier}</td>
+                              <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
+                              <td>
+                                <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : 'b-warning'}`}>{o.status}</span>
+                              </td>
+                            </tr>
+                          ))}
+                          {orders.length === 0 && (
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No product orders pipeline.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                   {/* Design Sub-contracts Statement */}
                   <div>
                     <div className="section-label" style={{ marginBottom: '10px' }}>Design fees statement</div>
@@ -1395,40 +1392,6 @@ export default function ProjectManagement() {
                           {designFees.length === 0 && (
                             <tr>
                               <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No design sub-contracts.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Hardware Orders Statement */}
-                  <div>
-                    <div className="section-label" style={{ marginBottom: '10px' }}>Hardware orders pipeline</div>
-                    <div className="card" style={{ padding: '10px' }}>
-                      <table className="table" style={{ margin: 0, fontSize: '12px' }}>
-                        <thead>
-                          <tr>
-                            <th>PO Number</th>
-                            <th>Supplier</th>
-                            <th>Order Value</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {orders.map(o => (
-                            <tr key={o.id}>
-                              <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
-                              <td style={{ fontWeight: 500 }}>{o.supplier}</td>
-                              <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
-                              <td>
-                                <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : 'b-warning'}`}>{o.status}</span>
-                              </td>
-                            </tr>
-                          ))}
-                          {orders.length === 0 && (
-                            <tr>
-                              <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No product orders pipeline.</td>
                             </tr>
                           )}
                         </tbody>
@@ -1751,7 +1714,7 @@ export default function ProjectManagement() {
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '400px', overflow: 'hidden' }}>
             <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title">Create Product Order (PO)</div>
+              <div className="card-title">Create Order</div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowCreateOrderModal(false)}>✕</button>
             </div>
             
