@@ -13,7 +13,7 @@ const DOCUMENT_TYPES = {
       "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "PROPOSAL_NUMBER"],
       "Areas & Meterage": ["LIVING_AREA", "LANDSCAPE_AREA", "EXP_LIVING_SQM", "SEC_LIVING_SQM", "NONEXP_LIVING_SQM", "EXP_LAND_SQM", "SEC_LAND_SQM"],
       "Phase Fees": ["CONCEPT_COST", "SCHEMATIC_COST", "FINAL_COST", "DEPOSIT_REQUIRED"],
-      "Totals": ["DISCOUNT_AMOUNT", "DESIGN_NET", "GRAND_TOTAL"]
+      "Extras & Totals": ["ARCH_COST", "SITE_SUPPORT_COST", "COMMISSIONING_COST", "DISCOUNT_AMOUNT", "DESIGN_NET", "GRAND_TOTAL", "GRAND_TOTAL_USD", "USD_RATE"]
     }
   },
   QUOTATION: {
@@ -21,11 +21,11 @@ const DOCUMENT_TYPES = {
     name: '🧾 Quotation / BOQ',
     description: 'Word (.docx) template for hardware quotations and BOQ specifications.',
     tokens: {
-      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER"],
-      "Client Info": ["CLIENT_COMPANY", "CLIENT_EMAIL", "CLIENT_PHONE", "DELIVERY_ADDRESS"],
-      "Staff Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL"],
-      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming"]
+      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
+      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
+      "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
+      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT"],
+      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus"]
     }
   },
   INVOICE: {
@@ -34,9 +34,9 @@ const DOCUMENT_TYPES = {
     description: 'Word (.docx) template for commercial client billing and tax invoicing.',
     tokens: {
       "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER"],
-      "Client Info": ["CLIENT_COMPANY", "CLIENT_EMAIL", "CLIENT_PHONE", "DELIVERY_ADDRESS"],
+      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
       "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.retail", "item.totalRetail"]
+      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.retail", "item.totalRetail", "item.floor", "item.area"]
     }
   },
   PACKING_LIST: {
@@ -160,6 +160,31 @@ export default function TemplateHub() {
     }
   };
 
+  const handleDownload = async (e) => {
+    e.preventDefault();
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/download`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to download template file.');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedDoc.toLowerCase()}_template.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      setMessage({ type: 'success', text: 'Template download completed!' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message || 'Error downloading template. Please verify the backend is running.' });
+    }
+  };
+
   const updateConfigVal = (key, val) => {
     setConfig(prev => ({ ...prev, [key]: val }));
   };
@@ -242,16 +267,13 @@ export default function TemplateHub() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {metadata?.exists && (
-                    <a 
-                      href={`${API_BASE}/admin/templates/${selectedDoc}/download`}
-                      className="btn"
-                      style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--text-primary)' }}
-                      download
-                    >
-                      <Download size={13} /> Download Current
-                    </a>
-                  )}
+                  <button 
+                    onClick={handleDownload}
+                    className="btn"
+                    style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
+                  >
+                    <Download size={13} /> {metadata?.exists ? 'Download Current' : 'Download Starter'}
+                  </button>
 
                   <label className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
                     <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Template'}

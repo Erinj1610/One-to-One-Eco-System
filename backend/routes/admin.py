@@ -15,10 +15,17 @@ def get_template_path(doc_type: str):
 async def download_template(doc_type: str):
     """
     Downloads the current .docx template for the specified document type.
+    If it doesn't exist, it auto-initializes it with a starter template from DESIGN_FEE_PROPOSAL.
     """
     path = get_template_path(doc_type)
     if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Template for {doc_type} not found")
+        starter_path = get_template_path("DESIGN_FEE_PROPOSAL")
+        if os.path.exists(starter_path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            shutil.copyfile(starter_path, path)
+            print(f"DEBUG: Auto-initialized template for {doc_type} from DESIGN_FEE_PROPOSAL")
+        else:
+            raise HTTPException(status_code=404, detail=f"Template for {doc_type} not found and starter template is missing")
     
     return FileResponse(
         path, 
