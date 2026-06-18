@@ -8,11 +8,89 @@ from googleapiclient.http import MediaFileUpload
 
 logger = logging.getLogger(__name__)
 
+_word_app = None
+
+def get_word_app():
+    global _word_app
+    import win32com.client
+    if _word_app is not None:
+        try:
+            # Test if the application is still responsive and valid
+            _word_app.Visible = False
+            return _word_app
+        except Exception:
+            _word_app = None
+
+    try:
+        # Try to connect to an existing running Word instance
+        _word_app = win32com.client.GetActiveObject("Word.Application")
+    except Exception:
+        try:
+            # Start a new Word application instance
+            _word_app = win32com.client.Dispatch("Word.Application")
+        except Exception:
+            _word_app = None
+
+    if _word_app:
+        try:
+            _word_app.Visible = False
+            _word_app.DisplayAlerts = False
+        except Exception:
+            pass
+    return _word_app
+
+def convert_docx_to_pdf_local(docx_path, pdf_path):
+    """
+    Attempts to convert docx to PDF locally using Microsoft Word via win32com.
+    Reuses a cached Word instance for high performance.
+    """
+    import pythoncom
+    pythoncom.CoInitialize()
+    
+    word = get_word_app()
+    if not word:
+        logger.error("Could not obtain a Word application instance.")
+        return False
+        
+    try:
+        # Word SaveAs PDF format code is 17
+        doc = word.Documents.Open(docx_path)
+        doc.SaveAs(pdf_path, FileFormat=17)
+        doc.Close()
+        logger.info(f"Local Word conversion successful: {pdf_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Local Word conversion failed: {e}")
+        # Reset cached app in case it was closed/corrupted
+        global _word_app
+        _word_app = None
+        return False
+
+def clean_docx_xml(xml_content):
+    """
+    Cleans up Microsoft Word XML run-split templates where placeholder braces
+    e.g. {{ PROJECT_NAME }} are split by internal run formatting tags.
+    """
+    # 1. Join curly braces that got split: { <tags> { -> {{
+    xml_content = re.sub(r'\{\s*(<[^>]+>\s*)*\{', '{{', xml_content)
+    # 2. Join curly braces that got split: } <tags> } -> }}
+    xml_content = re.sub(r'\}\s*(<[^>]+>\s*)*\}', '}}', xml_content)
+    
+    # 3. Strip internal XML formatting tags inside curly braces
+    def strip_tags_inside_braces(match):
+        inside = match.group(0)
+        # Strip all XML tags
+        cleaned = re.sub(r'<[^>]+>', '', inside)
+        return cleaned
+        
+    xml_content = re.sub(r'(\{\{[^}]+\}\})', strip_tags_inside_braces, xml_content)
+    return xml_content
+
 def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json=None):
     """
     Reads a .docx template from disk, performs placeholder replacement
-    (including table row repetition for list items), uploads the resulting
-    document to Google Drive to convert it to a PDF, and downloads the PDF.
+    (including table row repetition for list items), converts it to a PDF
+    locally (if on Windows) or uploads to Google Drive as fallback, and returns the PDF path.
     """
     logger.info(f"Merging docx template: {template_path}")
     
@@ -33,6 +111,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                 # We process XML files (main doc, headers, footers)
                 if item.filename.endswith('.xml'):
                     xml_content = data.decode('utf-8', errors='ignore')
+                    xml_content = clean_docx_xml(xml_content)
                     
                     # Special processing for document.xml (repeating table rows)
                     if item.filename == 'word/document.xml' and items_list:
@@ -41,18 +120,18 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                         
                         def replace_row(match):
                             row_xml = match.group(1)
-                            # If it contains item placeholder, repeat it!
-                            if '{{item.' in row_xml:
+                            # Check if it contains item placeholder (supporting optional whitespace)
+                            if 'item.' in row_xml:
                                 repeated_rows = []
                                 for idx, list_item in enumerate(items_list):
                                     row_copy = row_xml
-                                    # Always replace a 1-based index placeholder if needed
-                                    row_copy = row_copy.replace('{{item.index}}', str(idx + 1))
+                                    # Replace item.index with optional whitespace
+                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
                                     
-                                    # Replace item placeholders
+                                    # Replace item placeholders with optional whitespace
                                     for item_key, item_val in list_item.items():
-                                        placeholder = '{{item.' + item_key + '}}'
-                                        row_copy = row_copy.replace(placeholder, str(item_val))
+                                        pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
+                                        row_copy = re.sub(pattern, str(item_val), row_copy, flags=re.IGNORECASE)
                                     
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
@@ -60,17 +139,33 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                         
                         xml_content = tr_pattern.sub(replace_row, xml_content)
                     
-                    # Global token replacement
+                    # Global token replacement with optional whitespace support
                     for key, val in tokens.items():
                         if key != "items":
-                            placeholder = '{{' + str(key) + '}}'
-                            xml_content = xml_content.replace(placeholder, str(val))
+                            pattern = r'{{\s*' + re.escape(str(key)) + r'\s*}}'
+                            xml_content = re.sub(pattern, str(val), xml_content, flags=re.IGNORECASE)
                             
                     data = xml_content.encode('utf-8')
                 
                 zout.writestr(item, data)
                 
-    # 2. Upload the merged .docx file to Google Drive and convert to PDF
+    # 2. Try Local Word conversion first (on Windows)
+    local_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    local_pdf.close() # Close so Microsoft Word can overwrite it
+    
+    logger.info("Attempting local Word to PDF conversion...")
+    if convert_docx_to_pdf_local(temp_docx_path, local_pdf.name):
+        try:
+            if os.path.exists(temp_docx_path):
+                os.remove(temp_docx_path)
+            if os.path.exists(temp_dir):
+                os.rmdir(temp_dir)
+        except Exception as e:
+            logger.warn(f"Failed to delete temp local docx files: {e}")
+        return local_pdf.name
+
+    # 3. Fallback: Upload the merged .docx file to Google Drive and convert to PDF
+    logger.info("Local conversion failed or unavailable. Falling back to Google Drive...")
     drive_service, _ = get_google_services(credentials_json)
     
     cloned_file_id = None
@@ -95,7 +190,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
         cloned_file_id = uploaded_file.get('id')
         logger.info(f"Drive file created: {cloned_file_id}. Exporting to PDF...")
         
-        # 3. Export Google Doc file to PDF
+        # 4. Export Google Doc file to PDF
         export_request = drive_service.files().export_media(fileId=cloned_file_id, mimeType='application/pdf')
         
         tmp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
@@ -106,7 +201,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
         return tmp_pdf.name
         
     finally:
-        # 4. Clean up temporary files on disk and Google Drive
+        # 5. Clean up temporary files on disk and Google Drive
         try:
             if os.path.exists(temp_docx_path):
                 os.remove(temp_docx_path)

@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
+import { API_BASE } from '../api_config';
 import { 
   Save, 
   TrendingUp, 
@@ -299,6 +300,201 @@ export default function OrdersPage() {
 
   // Pricing consistency assistant modal state
   const [pendingPriceEdit, setPendingPriceEdit] = useState(null); // { itemId, field, value, code }
+
+  const [exportingDocx, setExportingDocx] = useState(false);
+  const [livePreviewUrl, setLivePreviewUrl] = useState(null);
+  const [loadingLivePreview, setLoadingLivePreview] = useState(false);
+  const [previewPage, setPreviewPage] = useState(1);
+
+  const triggerLivePreviewCompile = async (targetTab, pageNum = 1) => {
+    let docType = '';
+    if (targetTab === 'quote') {
+      docType = 'QUOTATION';
+    } else if (targetTab === 'invoice') {
+      docType = 'INVOICE';
+    } else {
+      setLivePreviewUrl(null);
+      return;
+    }
+
+    setLoadingLivePreview(true);
+    try {
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const vatAmount = discountedRetail * 0.15;
+      const finalTotalInclVat = discountedRetail * 1.15;
+      
+      const tokens = {
+        PROJECT_NAME: projectFullName || 'Private Client Project',
+        CLIENT_NAME: clientContact || 'Client Name',
+        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: selectedOrderId || 'PO-2025-XXX',
+        PROPOSAL_NUMBER: selectedOrderId || 'PO-2025-XXX',
+        ORDER_STATUS: orderStatus || 'Draft',
+        
+        CLIENT_COMPANY: clientCompany || 'Private Client',
+        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+        CLIENT_EMAIL: clientEmail || '',
+        CLIENT_PHONE: clientPhone || '',
+        CLIENT_VAT: '',
+        DELIVERY_ADDRESS: deliveryAddress || '',
+        
+        ONEONE_REP: oneOneRep || 'Martin Döller',
+        PM_NAME: pmName || 'Merlyn Mittins',
+        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PROJECT_PM: pmName || 'Merlyn Mittins',
+        PROJECT_SIZE: projectSize || '—',
+        PROJECT_TIER: projectTier || 'Signature',
+        
+        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        
+        items: activeOrderItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock'
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/admin/generate/${docType}?page=${pageNum}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens)
+      });
+
+      if (!res.ok) {
+        throw new Error('Preview compilation failed');
+      }
+
+      const blob = await res.blob();
+      if (livePreviewUrl) {
+        window.URL.revokeObjectURL(livePreviewUrl);
+      }
+      const url = window.URL.createObjectURL(blob);
+      setLivePreviewUrl(url);
+    } catch (err) {
+      console.error("Failed to compile preview:", err);
+    } finally {
+      setLoadingLivePreview(false);
+    }
+  };
+
+  useEffect(() => {
+    setPreviewPage(1);
+  }, [workspaceSubTab, selectedOrderId, activeOrderItems.length]);
+
+  useEffect(() => {
+    if (workspaceSubTab === 'quote' || workspaceSubTab === 'invoice') {
+      triggerLivePreviewCompile(workspaceSubTab, previewPage);
+    } else {
+      setLivePreviewUrl(null);
+    }
+  }, [workspaceSubTab, selectedOrderId, activeOrderItems.length, previewPage]);
+
+  const handleExportDocxTemplate = async () => {
+    let docType = '';
+    if (activeDocType === 'quote') {
+      docType = 'QUOTATION';
+    } else if (activeDocType === 'invoice') {
+      docType = 'INVOICE';
+    } else {
+      alert(`${activeDocType} is not supported via Word docx templates. Only Quotations and Invoices are supported.`);
+      return;
+    }
+
+    setExportingDocx(true);
+    try {
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const vatAmount = discountedRetail * 0.15;
+      const finalTotalInclVat = discountedRetail * 1.15;
+      
+      const tokens = {
+        PROJECT_NAME: projectFullName || 'Private Client Project',
+        CLIENT_NAME: clientContact || 'Client Name',
+        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: selectedOrderId || 'PO-2025-XXX',
+        ORDER_STATUS: orderStatus || 'Draft',
+        
+        CLIENT_COMPANY: clientCompany || 'Private Client',
+        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+        CLIENT_EMAIL: clientEmail || '',
+        CLIENT_PHONE: clientPhone || '',
+        CLIENT_VAT: '',
+        DELIVERY_ADDRESS: deliveryAddress || '',
+        
+        ONEONE_REP: oneOneRep || 'Martin Döller',
+        PM_NAME: pmName || 'Merlyn Mittins',
+        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PROJECT_PM: pmName || 'Merlyn Mittins',
+        PROJECT_SIZE: projectSize || '—',
+        PROJECT_TIER: projectTier || 'Signature',
+        
+        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        
+        items: activeOrderItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock'
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate document from Word template.');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docType.toLowerCase()}_${selectedOrderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error(err);
+      alert(`Error generating document: ${err.message}`);
+    } finally {
+      setExportingDocx(false);
+    }
+  };
 
   // Modal creation state
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
@@ -811,20 +1007,41 @@ export default function OrdersPage() {
       {/* STYLE INJECTION FOR PREMIUM CLEAN DOCUMENT PRINTING */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
+          /* Hide sidebar, navigation header, tabs, buttons, forms, and settings cards */
+          .sidebar, .navbar, .tabs, button, select, input, .btn, .section-label, .search-box-container, .card-title,
+          div[style*="display: flex; flex-direction: column; gap: 8px;"] {
+            display: none !important;
           }
-          #print-document-canvas, #print-document-canvas * {
-            visibility: visible !important;
-          }
-          #print-document-canvas {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
+          
+          /* Un-restrict layout wrappers so they don't block the canvas */
+          #root, body, html, main, .app-container, .main-content {
+            background: white !important;
+            color: #0f172a !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
+            border: none !important;
+            overflow: visible !important;
+          }
+
+          #print-document-canvas-container {
+            display: block !important;
+            width: 100% !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          #print-document-canvas {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 20px 40px !important;
+            box-shadow: none !important;
+            border: none !important;
             background: white !important;
             color: #0f172a !important;
           }
@@ -1540,6 +1757,10 @@ export default function OrdersPage() {
 
                       {/* CSS STYLE INJECTIONS FOR ENHANCED LEGIBILITY & SPACING */}
                       <style>{`
+                        @keyframes spin {
+                          0% { transform: rotate(0deg); }
+                          100% { transform: rotate(360deg); }
+                        }
                         .boq-cell-input {
                           padding: 6px 10px !important;
                           font-size: 13.5px !important;
@@ -1933,13 +2154,22 @@ export default function OrdersPage() {
                 {/* DOCUMENT SIDEBAR UTILITIES */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-                  {/* PRINT / EXPORT BUTTON */}
+                  {/* PRINT / EXPORT ACTIONS */}
                   <button 
                     className="btn btn-primary"
-                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
+                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #2b579a 0%, #1e3f70 100%)', border: 'none' }}
+                    onClick={handleExportDocxTemplate}
+                    disabled={exportingDocx}
+                  >
+                    <FileText size={15} /> {exportingDocx ? 'Compiling PDF...' : 'Download PDF (Word Template) 📝'}
+                  </button>
+
+                  <button 
+                    className="btn"
+                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
                     onClick={() => window.print()}
                   >
-                    <Printer size={15} /> Print / Save PDF 🖨️
+                    <Printer size={15} /> Print Browser View 🖨️
                   </button>
                 </div>
 
@@ -1961,20 +2191,94 @@ export default function OrdersPage() {
                   });
 
                   return (
-                    <div style={{ display: 'flex', justifyContent: 'center', overflowX: 'auto', padding: '4px' }}>
-                      <div 
-                        id="print-document-canvas" 
-                        style={{ 
-                          width: '100%', 
-                          maxWidth: '840px', 
-                          background: 'white', 
-                          color: '#1e293b', 
-                          padding: '40px 50px', 
-                          borderRadius: '8px', 
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                          fontFamily: 'system-ui, -apple-system, sans-serif'
-                        }}
-                      >
+                    <div id="print-document-canvas-container" style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'center', overflowX: 'auto', padding: '4px' }}>
+                      {loadingLivePreview ? (
+                        <div style={{
+                          width: '100%',
+                          maxWidth: '840px',
+                          height: '600px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: 'transparent',
+                          border: '1px dashed var(--border)',
+                          borderRadius: '8px',
+                          color: 'var(--text-secondary)'
+                        }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            border: '3px solid rgba(255,255,255,0.1)',
+                            borderTopColor: 'var(--primary, #1764e6)',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite',
+                            marginBottom: '16px'
+                          }}></div>
+                          <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
+                          <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
+                        </div>
+                      ) : (workspaceSubTab === 'quote' || workspaceSubTab === 'invoice') && livePreviewUrl ? (
+                        <div style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '15px',
+                            background: 'var(--bg-secondary, #1a1e29)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '20px',
+                            padding: '6px 16px',
+                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                          }}>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              disabled={previewPage <= 1}
+                              onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
+                              style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                            >
+                              ◀
+                            </button>
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px', textAlign: 'center' }}>
+                              Page {previewPage}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => setPreviewPage(p => p + 1)}
+                              style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                            >
+                              ▶
+                            </button>
+                          </div>
+                          <iframe
+                            src={`${livePreviewUrl}#page=${previewPage}&toolbar=0&navpanes=0`}
+                            style={{
+                              width: '100%',
+                              height: '1000px',
+                              border: 'none',
+                              borderRadius: '8px',
+                              boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                              background: 'white'
+                            }}
+                            title="Live Document Preview"
+                          />
+                        </div>
+                      ) : (
+                        <div 
+                          id="print-document-canvas" 
+                          style={{ 
+                            width: '100%', 
+                            maxWidth: '840px', 
+                            background: 'white', 
+                            color: '#1e293b', 
+                            padding: '40px 50px', 
+                            borderRadius: '8px', 
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                            fontFamily: 'system-ui, -apple-system, sans-serif'
+                          }}
+                        >
                         {/* Dynamic Document Header Letterhead */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2.5px solid #0f172a', paddingBottom: '20px', marginBottom: '24px' }}>
                           <div>
@@ -2339,7 +2643,8 @@ export default function OrdersPage() {
                           {customTerms}
                         </div>
 
-                      </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

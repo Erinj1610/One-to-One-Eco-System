@@ -119,11 +119,11 @@ import tempfile
 from fastapi import Body
 
 @router.post("/generate/{doc_type}")
-def generate_document(doc_type: str, data: dict = Body(...), db: Session = Depends(get_db)):
+def generate_document(doc_type: str, page: int = None, data: dict = Body(...), db: Session = Depends(get_db)):
     """
     High-Fidelity Document Generator (Google Docs API Bridge).
     """
-    print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())}")
+    print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())} for page: {page}")
     
     # Check if a direct docx template exists
     from services.docx_engine import merge_docx_template
@@ -151,6 +151,34 @@ def generate_document(doc_type: str, data: dict = Body(...), db: Session = Depen
                 credentials_json=custom_creds
             )
             print(f"DEBUG: Generation successful from docx! PDF path: {pdf_path}")
+            
+            if page is not None:
+                import pypdf
+                try:
+                    reader = pypdf.PdfReader(pdf_path)
+                    total_pages = len(reader.pages)
+                    idx = max(0, min(page - 1, total_pages - 1))
+                    
+                    writer = pypdf.PdfWriter()
+                    writer.add_page(reader.pages[idx])
+                    
+                    single_page_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    single_page_pdf_path = single_page_pdf.name
+                    single_page_pdf.close()
+                    
+                    with open(single_page_pdf_path, "wb") as f:
+                        writer.write(f)
+                    
+                    # Remove original full PDF
+                    try:
+                        os.remove(pdf_path)
+                    except Exception:
+                        pass
+                    pdf_path = single_page_pdf_path
+                    print(f"DEBUG: Successfully extracted page {page} to {pdf_path}")
+                except Exception as pypdf_err:
+                    print(f"Error extracting page {page} with pypdf: {pypdf_err}")
+
             
             filename = f"Document_{doc_type.lower()}.pdf"
             if config:
