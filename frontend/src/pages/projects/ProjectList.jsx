@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Briefcase, Clock, ShieldAlert, Award, TrendingUp, Search, Filter, 
   Plus, Play, AlertTriangle, Users, BarChart3, ChevronRight, UserCheck, CheckCircle,
@@ -20,8 +21,8 @@ const PHILOSOPHIES = [
     id: 'behavioral',
     author: 'Daniel Kahneman',
     source: 'Thinking, Fast and Slow',
-    quote: '"The planning fallacy: plans are unrealistically close to best-case scenarios and could be improved by consulting the statistics of similar cases."',
-    theme: 'Optimism Bias & Planning Fallacy'
+    quote: '"Nothing in life is as important as you think it is, while you are thinking about it."',
+    theme: 'Behavioral Bias Mitigation'
   },
   {
     id: 'toc',
@@ -40,7 +41,8 @@ const PHILOSOPHIES = [
 ];
 
 export default function ProjectList() {
-  const { projects, addProject } = useStore();
+  const { projects, addProject, contacts } = useStore();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   // Search & Filter States
@@ -105,10 +107,24 @@ export default function ProjectList() {
     }
   };
 
+  const userContact = useMemo(() => {
+    if (isAdmin) return null;
+    return contacts.find(c => c.email?.toLowerCase() === user?.email?.toLowerCase());
+  }, [contacts, user, isAdmin]);
+
   // Filter projects by Date Range first
   const dateFilteredProjects = useMemo(() => {
-    return Object.values(projects).filter(p => !p.isDraft && isDateInRange(p.start));
-  }, [projects, startDate, endDate]);
+    let list = Object.values(projects).filter(p => !p.isDraft && isDateInRange(p.start));
+    if (!isAdmin) {
+      list = list.filter(p => {
+        const matchClient = p.client?.toLowerCase() === userContact?.name?.toLowerCase();
+        const hasMyFee = (p.designFees || []).some(f => f.clientEmail?.toLowerCase() === user?.email?.toLowerCase() || f.projectClient?.toLowerCase() === userContact?.name?.toLowerCase());
+        const hasMyOrder = (p.orders || []).some(o => o.clientEmail?.toLowerCase() === user?.email?.toLowerCase() || o.clientContact?.toLowerCase() === userContact?.name?.toLowerCase());
+        return matchClient || hasMyFee || hasMyOrder;
+      });
+    }
+    return list;
+  }, [projects, startDate, endDate, isAdmin, user, userContact]);
 
   // Dynamic Portfolio KPI Calculations grouped by Total, Pending, Active, Complete
   const kpis = useMemo(() => {

@@ -118,6 +118,54 @@ def generate_document(doc_type: str, data: dict = Body(...), db: Session = Depen
     """
     print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())}")
     
+    # Check if a direct docx template exists
+    from services.docx_engine import merge_docx_template
+    docx_template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.docx'))
+    
+    if os.path.exists(docx_template_path):
+        print(f"DEBUG: Found direct docx template at {docx_template_path}. Using docx_engine...")
+        config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+        custom_creds = None
+        if config:
+            custom_creds = config.config_json.get("google_credentials_json")
+            if custom_creds and isinstance(custom_creds, str):
+                import json
+                try:
+                    custom_creds = json.loads(custom_creds)
+                except Exception as j_err:
+                    print(f"DEBUG: JSON credentials load error: {j_err}")
+                    custom_creds = None
+                    
+        try:
+            pdf_path = merge_docx_template(
+                docx_template_path,
+                data,
+                f"{doc_type.lower()}.pdf",
+                credentials_json=custom_creds
+            )
+            print(f"DEBUG: Generation successful from docx! PDF path: {pdf_path}")
+            
+            filename = f"Document_{doc_type.lower()}.pdf"
+            if config:
+                naming_conv = config.config_json.get("naming_convention")
+                if naming_conv:
+                    temp_name = naming_conv
+                    for k, v in data.items():
+                        temp_name = temp_name.replace("{{" + k + "}}", str(v))
+                    import re
+                    filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
+                    if not filename.lower().endswith(".pdf"):
+                        filename += ".pdf"
+                        
+            return FileResponse(
+                pdf_path,
+                media_type='application/pdf',
+                filename=filename
+            )
+        except Exception as docx_err:
+            print(f"Error generating {doc_type} via docx: {docx_err}")
+            raise HTTPException(status_code=500, detail=f"Word Template Conversion Error: {docx_err}")
+
     # Fetch template settings to get the linked Google Doc ID and Credentials
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
     if not config or "google_doc_id" not in config.config_json:

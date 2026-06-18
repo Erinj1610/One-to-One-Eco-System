@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   Save, TrendingUp, AlertCircle, Plus, Search, ArrowLeft, 
@@ -32,12 +33,18 @@ const RATE_CARD = {
 };
 
 export default function DesignPage() {
-  const { projects, updateProject, contacts, addInvoice, invoices } = useStore();
+  const { projects, updateProject, contacts, addInvoice, invoices, moveDesignFee } = useStore();
+  const { isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [selectedFeeId, setSelectedFeeId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+  
+  // Link/Unlink modal state
+  const [linkModalItem, setLinkModalItem] = useState(null);
+  const [linkClient, setLinkClient] = useState('');
+  const [linkProjectKey, setLinkProjectKey] = useState('');
   
   // Workspace active values
   const [activeFeeName, setActiveFeeName] = useState('');
@@ -600,9 +607,15 @@ export default function DesignPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    alert(`Design Fee Workspace Synced!\n- Adjusted Design Value: ${calculatorBreakdown.symbol} ${newCalculatedValue.toLocaleString()}\n- Sum of Milestones Paid: ${calculatorBreakdown.symbol} ${totalPaidAmount.toLocaleString()}\n- Project blended margin recalculated to ${blendedMargin}%.`);
     setSelectedFeeId(null);
   };
+
+  const activeFeeObject = useMemo(() => {
+    if (selectedFeeId === null) return null;
+    return Object.values(projects)
+      .flatMap(p => p.designFees || [])
+      .find(f => f.id === selectedFeeId);
+  }, [projects, selectedFeeId]);
 
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
@@ -812,7 +825,24 @@ export default function DesignPage() {
                   <tbody>
                     {filteredFees.map(f => (
                       <tr key={f.id} className="clickable" onClick={() => handleOpenWorkspace(f)}>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{f.id}</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                          <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(f)}>{f.id}</span>
+                          {isAdmin && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                              title="Link / Shift Project or Client"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLinkModalItem(f);
+                                setLinkClient(f.projectClient || '');
+                                setLinkProjectKey(f.projectKey || '');
+                              }}
+                            >
+                              <Layers size={10} /> Link
+                            </button>
+                          )}
+                        </td>
                         <td style={{ fontWeight: 600 }}>{f.name}</td>
                         <td style={{ fontWeight: 500 }}>{f.projectName}</td>
                         <td>{f.projectClient}</td>
@@ -861,9 +891,26 @@ export default function DesignPage() {
                 >
                   <ArrowLeft size={12} /> Back to Ledger
                 </button>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Fee Setup & Options
-                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Fee Setup & Options
+                  </h3>
+                  {isAdmin && activeFeeObject && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      style={{ padding: '2px 6px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)', textTransform: 'none', letterSpacing: 'normal' }}
+                      title="Link / Shift Project or Client"
+                      onClick={() => {
+                        setLinkModalItem(activeFeeObject);
+                        setLinkClient(activeFeeObject.projectClient || '');
+                        setLinkProjectKey(activeFeeObject.projectKey || '');
+                      }}
+                    >
+                      <Layers size={10} /> Link / Shift
+                    </button>
+                  )}
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button className="btn btn-ghost btn-sm" style={{ padding: '4px 10px' }} onClick={() => setSelectedFeeId(null)}>Cancel</button>
@@ -1886,6 +1933,106 @@ export default function DesignPage() {
         </div>
       )}
 
+      {/* LINK/UNLINK SHIFT PROJECT OR CLIENT MODAL */}
+      {linkModalItem && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>Link / Shift Design Fee: {linkModalItem.id}</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setLinkModalItem(null)}>✕</button>
+            </div>
+            
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
+                <select 
+                  className="form-control" 
+                  value={linkProjectKey} 
+                  onChange={e => {
+                    const nextKey = e.target.value;
+                    setLinkProjectKey(nextKey);
+                    if (nextKey) {
+                      const proj = projects[nextKey];
+                      if (proj && proj.client) {
+                        setLinkClient(proj.client);
+                      }
+                    }
+                  }}
+                >
+                  <option value="">-- Client Direct / No Project --</option>
+                  {Object.values(projects).filter(p => p.projectType !== 'Client-Direct').map(p => (
+                    <option key={p.key} value={p.key}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Client (Contact)</label>
+                <select 
+                  className="form-control" 
+                  value={linkClient} 
+                  onChange={e => setLinkClient(e.target.value)}
+                  disabled={!!linkProjectKey}
+                >
+                  <option value="">-- Select Client --</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                  ))}
+                </select>
+                {linkProjectKey && (
+                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
+                    🔒 Client locked to project client: <strong>{linkClient}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-primary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                <strong>Linking Note:</strong> Changing links shifts this design fee. If unlinked from a project, it will be catalogued directly under the client's direct design fee portfolio.
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn" onClick={() => setLinkModalItem(null)}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={() => {
+                  const targetClient = contacts.find(c => c.name === linkClient) || {};
+                  const oldProjectKey = linkModalItem.projectKey;
+                  
+                  // Compute target project key
+                  let newProjectKey = linkProjectKey;
+                  if (!newProjectKey) {
+                    if (!linkClient) {
+                      alert('Please select a client to link to if unlinking from a project.');
+                      return;
+                    }
+                    newProjectKey = `client-${linkClient.toLowerCase().trim().replace(/\s+/g, '-')}`;
+                  }
+                  
+                  moveDesignFee(
+                    linkModalItem.id,
+                    oldProjectKey,
+                    newProjectKey,
+                    linkClient,
+                    targetClient.company || ''
+                  );
+                  
+                  setLinkModalItem(null);
+                  alert(`Successfully shifted design fee ${linkModalItem.id}!`);
+                }}
+              >
+                Save & Link Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

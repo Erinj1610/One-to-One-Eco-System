@@ -10,7 +10,7 @@ import {
   File, FileText, Receipt, Plus, Play, User, Users, ShieldAlert, 
   AlertTriangle, TrendingUp, DollarSign, Calendar, BarChart3, HelpCircle,
   ShoppingBag, ClipboardList, Wallet, Percent, Award, Folder, Download, Trash2,
-  Copy, Save, AlertCircle, ChevronRight
+  Copy, Save, AlertCircle, ChevronRight, Layers
 } from 'lucide-react';
 
 // Philosophy Contexts for the Right Panel
@@ -41,9 +41,14 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, saveDraftProject, deleteProject } = useStore();
-  const { isAdmin } = useAuth();
+  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee } = useStore();
+  const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Link/Unlink shifting modal states
+  const [linkModalItem, setLinkModalItem] = useState(null);
+  const [linkClient, setLinkClient] = useState('');
+  const [linkProjectKey, setLinkProjectKey] = useState('');
 
   const { widths: designWidths, onResizeStart: onDesignResizeStart } = useResizableTable('pm_design_subfees', {
     ref: 100,
@@ -54,7 +59,7 @@ export default function ProjectManagement() {
     outstanding: 150,
     margin: 100,
     status: 90
-  });
+  }, ['ref', 'title', 'sqm', 'value', 'paid', 'outstanding', 'margin', 'status']);
 
   const { widths: ordersWidths, onResizeStart: onOrdersResizeStart } = useResizableTable('pm_orders_pipeline', {
     ref: 120,
@@ -65,7 +70,7 @@ export default function ProjectManagement() {
     outstanding: 150,
     eta: 100,
     status: 90
-  });
+  }, ['ref', 'supplier', 'items', 'value', 'paid', 'outstanding', 'eta', 'status']);
 
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -88,9 +93,30 @@ export default function ProjectManagement() {
 
   const p = projects[id];
 
-  // Fallback lists if empty
-  const designFees = p?.designFees || [];
-  const orders = p?.orders || [];
+  const userContact = useMemo(() => {
+    if (isAdmin) return null;
+    return contacts.find(c => c.email?.toLowerCase() === user?.email?.toLowerCase());
+  }, [contacts, user, isAdmin]);
+
+  const designFees = useMemo(() => {
+    const list = p?.designFees || [];
+    if (isAdmin) return list;
+    return list.filter(df => {
+      const matchEmail = df.clientEmail?.toLowerCase() === user?.email?.toLowerCase();
+      const matchName = df.projectClient?.toLowerCase() === userContact?.name?.toLowerCase();
+      return matchEmail || matchName;
+    });
+  }, [p?.designFees, isAdmin, user, userContact]);
+
+  const orders = useMemo(() => {
+    const list = p?.orders || [];
+    if (isAdmin) return list;
+    return list.filter(o => {
+      const matchEmail = o.clientEmail?.toLowerCase() === user?.email?.toLowerCase();
+      const matchName = o.clientContact?.toLowerCase() === userContact?.name?.toLowerCase();
+      return matchEmail || matchName;
+    });
+  }, [p?.orders, isAdmin, user, userContact]);
 
   // Selected Design Fee for costing inside Design Fee Builder
   const [selectedDesignFeeId, setSelectedDesignFeeId] = useState(null);
@@ -886,7 +912,7 @@ export default function ProjectManagement() {
                 <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
                   <div className="card-head" style={{ padding: '12px 16px' }}><div className="card-title" style={{ fontSize: '12.5px' }}>Update Active Parameters</div></div>
                   <div className="card-body" style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <fieldset disabled={!isAdmin} style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Name</div>
@@ -1050,7 +1076,7 @@ export default function ProjectManagement() {
                           <Trash2 size={14} /> Delete Project {isLockedForDeletion && <Lock size={12} style={{ opacity: 0.6 }} />}
                         </button>
                       </div>
-                    </div>
+                    </fieldset>
                   </div>
                 </div>
               </div>
@@ -1138,7 +1164,7 @@ export default function ProjectManagement() {
                        </div>
                      ) : (
                        <div style={{ overflowX: 'auto' }}>
-                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(designWidths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12.5px' }}>
+                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', fontSize: '12.5px' }}>
                            <thead>
                              <tr>
                                <th style={{ width: designWidths.ref, position: 'relative' }}>
@@ -1171,14 +1197,13 @@ export default function ProjectManagement() {
                                </th>
                                <th style={{ width: designWidths.status, position: 'relative' }}>
                                  Status
-                                 <div className="resize-handle" onMouseDown={e => onDesignResizeStart('status', e)} />
                                </th>
                              </tr>
                            </thead>
                            <tbody>
                              {designFees.map(f => (
                                <tr key={f.id}>
-                                 <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                 <td style={{ fontFamily: 'monospace', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                    <button 
                                      className="btn-link"
                                      style={{ 
@@ -1195,6 +1220,21 @@ export default function ProjectManagement() {
                                    >
                                      {f.id}
                                    </button>
+                                   {isAdmin && (
+                                     <button
+                                       className="btn btn-ghost btn-sm"
+                                       style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                                       title="Link / Shift Project or Client"
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setLinkModalItem(f);
+                                         setLinkClient(f.projectClient || '');
+                                         setLinkProjectKey(f.projectKey || '');
+                                       }}
+                                     >
+                                       <Layers size={10} /> Link
+                                     </button>
+                                   )}
                                  </td>
                                  <td style={{ fontWeight: 500 }}>{f.name}</td>
                                  <td>{f.sqm} m²</td>
@@ -1259,7 +1299,7 @@ export default function ProjectManagement() {
                        </div>
                      ) : (
                        <div style={{ overflowX: 'auto' }}>
-                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(ordersWidths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12.5px' }}>
+                         <table className="table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', fontSize: '12.5px' }}>
                            <thead>
                              <tr>
                                <th style={{ width: ordersWidths.ref, position: 'relative' }}>
@@ -1292,7 +1332,6 @@ export default function ProjectManagement() {
                                </th>
                                <th style={{ width: ordersWidths.status, position: 'relative' }}>
                                  Status
-                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('status', e)} />
                                </th>
                              </tr>
                            </thead>
@@ -1305,7 +1344,7 @@ export default function ProjectManagement() {
  
                                return (
                                  <tr key={o.id}>
-                                   <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                   <td style={{ fontFamily: 'monospace', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                      <button 
                                        className="btn-link"
                                        style={{ 
@@ -1322,6 +1361,21 @@ export default function ProjectManagement() {
                                      >
                                        {o.id}
                                      </button>
+                                     {isAdmin && (
+                                       <button
+                                         className="btn btn-ghost btn-sm"
+                                         style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                                         title="Link / Shift Project or Client"
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           setLinkModalItem(o);
+                                           setLinkClient(o.projectClient || o.clientContact || '');
+                                           setLinkProjectKey(o.projectKey || '');
+                                         }}
+                                       >
+                                         <Layers size={10} /> Link
+                                       </button>
+                                     )}
                                    </td>
                                    <td>{o.supplier}</td>
                                    <td style={{ textAlign: 'center' }}>{o.items} items</td>
@@ -1874,6 +1928,120 @@ export default function ProjectManagement() {
                 <button type="submit" className="btn btn-primary">Create Order</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* LINK/UNLINK SHIFT PROJECT OR CLIENT MODAL */}
+      {linkModalItem && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>Link / Shift Document: {linkModalItem.id}</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setLinkModalItem(null)}>✕</button>
+            </div>
+            
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
+                <select 
+                  className="form-control" 
+                  value={linkProjectKey} 
+                  onChange={e => {
+                    const nextKey = e.target.value;
+                    setLinkProjectKey(nextKey);
+                    if (nextKey) {
+                      const proj = projects[nextKey];
+                      if (proj && proj.client) {
+                        setLinkClient(proj.client);
+                      }
+                    }
+                  }}
+                >
+                  <option value="">-- Client Direct / No Project --</option>
+                  {Object.values(projects).filter(proj => proj.projectType !== 'Client-Direct').map(proj => (
+                    <option key={proj.key} value={proj.key}>{proj.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Client (Contact)</label>
+                <select 
+                  className="form-control" 
+                  value={linkClient} 
+                  onChange={e => setLinkClient(e.target.value)}
+                  disabled={!!linkProjectKey}
+                >
+                  <option value="">-- Select Client --</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                  ))}
+                </select>
+                {linkProjectKey && (
+                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
+                    🔒 Client locked to project client: <strong>{linkClient}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-primary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                <strong>Linking Note:</strong> Changing links shifts this document. If unlinked from a project, it will be catalogued directly under the client's direct portfolio.
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn" onClick={() => setLinkModalItem(null)}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={() => {
+                  const targetClient = contacts.find(c => c.name === linkClient) || {};
+                  const oldProjectKey = p.key;
+                  
+                  // Compute target project key
+                  let newProjectKey = linkProjectKey;
+                  if (!newProjectKey) {
+                    if (!linkClient) {
+                      alert('Please select a client to link to if unlinking from a project.');
+                      return;
+                    }
+                    newProjectKey = `client-${linkClient.toLowerCase().trim().replace(/\s+/g, '-')}`;
+                  }
+
+                  const isOrder = orders.some(o => o.id === linkModalItem.id);
+                  if (isOrder) {
+                    moveOrder(
+                      linkModalItem.id,
+                      oldProjectKey,
+                      newProjectKey,
+                      linkClient,
+                      targetClient.company || '',
+                      targetClient.phone || '',
+                      targetClient.email || ''
+                    );
+                  } else {
+                    moveDesignFee(
+                      linkModalItem.id,
+                      oldProjectKey,
+                      newProjectKey,
+                      linkClient,
+                      targetClient.company || ''
+                    );
+                  }
+                  
+                  setLinkModalItem(null);
+                  alert(`Successfully shifted document ${linkModalItem.id}!`);
+                }}
+              >
+                Save & Link Document
+              </button>
+            </div>
           </div>
         </div>
       )}

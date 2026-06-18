@@ -1284,8 +1284,121 @@ export function StoreProvider({ children }) {
     ]);
   };
 
+  const moveOrder = (orderId, oldProjectKey, newProjectKey, clientContact, clientCompany, clientPhone, clientEmail) => {
+    setProjects(prev => {
+      const next = { ...prev };
+      
+      // Get the order from the old project
+      const oldProj = next[oldProjectKey];
+      if (!oldProj) return prev;
+      
+      const order = (oldProj.orders || []).find(o => o.id === orderId);
+      if (!order) return prev;
+      
+      // Remove from old project
+      oldProj.orders = (oldProj.orders || []).filter(o => o.id !== orderId);
+      
+      // Prepare order with updated client details
+      const updatedOrder = {
+        ...order,
+        clientContact: clientContact || order.clientContact,
+        clientCompany: clientCompany || order.clientCompany,
+        clientPhone: clientPhone !== undefined ? clientPhone : order.clientPhone,
+        clientEmail: clientEmail !== undefined ? clientEmail : order.clientEmail,
+        projectKey: newProjectKey
+      };
+      
+      // Ensure the new project exists (it could be a virtual client-only project)
+      if (!next[newProjectKey]) {
+        next[newProjectKey] = {
+          key: newProjectKey,
+          name: newProjectKey.startsWith('client-') ? `${clientContact} (Direct Client)` : 'Direct Client Project',
+          client: clientContact,
+          projectType: 'Client-Direct',
+          orders: [],
+          designFees: [],
+          stage: 'Stage 1',
+          status: 'On track',
+          start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+          deadline: 'TBD'
+        };
+      }
+      
+      // Add to new project
+      next[newProjectKey].orders = [...(next[newProjectKey].orders || []), updatedOrder];
+      
+      return next;
+    });
+  };
+
+  const moveDesignFee = (feeId, oldProjectKey, newProjectKey, clientContact, clientCompany) => {
+    setProjects(prev => {
+      const next = { ...prev };
+      
+      // Get the design fee from the old project
+      const oldProj = next[oldProjectKey];
+      if (!oldProj) return prev;
+      
+      const fee = (oldProj.designFees || []).find(f => f.id === feeId);
+      if (!fee) return prev;
+      
+      // Remove from old project
+      oldProj.designFees = (oldProj.designFees || []).filter(f => f.id !== feeId);
+      
+      // Prepare fee with updated client/project details
+      const updatedFee = {
+        ...fee,
+        projectClient: clientContact || fee.projectClient,
+        clientCompany: clientCompany || fee.clientCompany,
+        projectName: newProjectKey.startsWith('client-') ? `${clientContact} (Direct Client)` : (next[newProjectKey]?.name || fee.projectName),
+        projectKey: newProjectKey
+      };
+      
+      // Ensure the new project exists (virtual client-only project)
+      if (!next[newProjectKey]) {
+        next[newProjectKey] = {
+          key: newProjectKey,
+          name: newProjectKey.startsWith('client-') ? `${clientContact} (Direct Client)` : 'Direct Client Project',
+          client: clientContact,
+          projectType: 'Client-Direct',
+          orders: [],
+          designFees: [],
+          stage: 'Stage 1',
+          status: 'On track',
+          start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+          deadline: 'TBD'
+        };
+      }
+      
+      // Add to new project
+      next[newProjectKey].designFees = [...(next[newProjectKey].designFees || []), updatedFee];
+      
+      return next;
+    });
+  };
+
   return (
-    <StoreContext.Provider value={{ projects, updateProject, addProject, saveDraftProject, deleteProject, contacts, setContacts, leads, setLeads, moveLead, updateLead, attritionLogs, setAttritionLogs, logAttrition, invoices, setInvoices, addInvoice }}>
+    <StoreContext.Provider value={{ 
+      projects, 
+      updateProject, 
+      addProject, 
+      saveDraftProject, 
+      deleteProject, 
+      contacts, 
+      setContacts, 
+      leads, 
+      setLeads, 
+      moveLead, 
+      updateLead, 
+      attritionLogs, 
+      setAttritionLogs, 
+      logAttrition, 
+      invoices, 
+      setInvoices, 
+      addInvoice,
+      moveOrder,
+      moveDesignFee
+    }}>
       {children}
     </StoreContext.Provider>
   );

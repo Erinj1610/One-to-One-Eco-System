@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
 import { 
@@ -222,7 +223,8 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts } = useStore();
+  const { projects, updateProject, contacts, moveOrder } = useStore();
+  const { isAdmin } = useAuth();
   const location = useLocation();
 
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
@@ -240,7 +242,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  });
+  }, ['qty', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -253,6 +255,11 @@ export default function OrdersPage() {
   const [orderEta, setOrderEta] = useState('');
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
+  
+  // Link/Unlink modal state
+  const [linkModalItem, setLinkModalItem] = useState(null);
+  const [linkClient, setLinkClient] = useState('');
+  const [linkProjectKey, setLinkProjectKey] = useState('');
 
   // Editable Client & Project Registration details on the order
   const [clientCompany, setClientCompany] = useState('');
@@ -791,6 +798,13 @@ export default function OrdersPage() {
     });
   };
 
+  const activeOrderObject = useMemo(() => {
+    if (selectedOrderId === null) return null;
+    return Object.values(projects)
+      .flatMap(p => p.orders || [])
+      .find(o => o.id === selectedOrderId);
+  }, [projects, selectedOrderId]);
+
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
       
@@ -952,7 +966,24 @@ export default function OrdersPage() {
 
                       return (
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
+                            {isAdmin && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                                title="Link / Shift Project or Client"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLinkModalItem(o);
+                                  setLinkClient(o.projectClient || '');
+                                  setLinkProjectKey(o.projectKey || '');
+                                }}
+                              >
+                                <Layers size={10} /> Link
+                              </button>
+                            )}
+                          </td>
                           <td style={{ fontWeight: 600, color: 'white' }}>{o.projectName}</td>
                           <td style={{ color: 'var(--text-secondary)' }}>{o.projectClient || '—'}</td>
                           <td>{o.supplier}</td>
@@ -1189,6 +1220,28 @@ export default function OrdersPage() {
                             Customer Details
                           </span>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ gridColumn: 'span 2', marginBottom: '2px' }}>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-info)', marginBottom: '2px', fontWeight: 600 }}>Linked Contact (Select to Auto-Fill)</label>
+                              <select 
+                                className="form-control" 
+                                style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
+                                value={contacts.find(c => c.name === clientContact)?.name || ''}
+                                onChange={e => {
+                                  const contact = contacts.find(c => c.name === e.target.value);
+                                  if (contact) {
+                                    setClientContact(contact.name);
+                                    setClientCompany(contact.company || '');
+                                    setClientPhone(contact.phone || '');
+                                    setClientEmail(contact.email || '');
+                                  }
+                                }}
+                              >
+                                <option value="">-- Choose from Contacts CRM --</option>
+                                {contacts.map(c => (
+                                  <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                                ))}
+                              </select>
+                            </div>
                             <div>
                               <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Company Name</label>
                               <input 
@@ -1256,15 +1309,44 @@ export default function OrdersPage() {
                             Project Details
                           </span>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
-                            <div>
-                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Full Project Name</label>
-                              <input 
-                                type="text" 
+                            <div style={{ gridColumn: 'span 3' }}>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-info)', marginBottom: '2px', fontWeight: 600 }}>Project Name</label>
+                              <select 
                                 className="form-control" 
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
-                                value={projectFullName} 
-                                onChange={e => setProjectFullName(e.target.value)} 
-                              />
+                                value={Object.keys(projects).find(k => projects[k].name === projectFullName) || ''}
+                                onChange={e => {
+                                  const projKey = e.target.value;
+                                  const proj = projects[projKey];
+                                  if (proj) {
+                                    setProjectFullName(proj.name);
+                                    setProjectTier(proj.offering || 'Signature');
+                                    setProjectSize(proj.sqm || '—');
+                                    setPmName(proj.pm || '');
+                                    
+                                    // Lock client details to this project's client contact
+                                    if (proj.client) {
+                                      setClientContact(proj.client);
+                                      const contact = contacts.find(c => c.name === proj.client);
+                                      if (contact) {
+                                        setClientCompany(contact.company || '');
+                                        setClientPhone(contact.phone || '');
+                                        setClientEmail(contact.email || '');
+                                      }
+                                    }
+                                  } else {
+                                    setProjectFullName('');
+                                    setProjectTier('');
+                                    setProjectSize('—');
+                                    setPmName('');
+                                  }
+                                }}
+                              >
+                                <option value="">-- Client Direct / No Project --</option>
+                                {Object.values(projects).filter(p => p.projectType !== 'Client-Direct').map(p => (
+                                  <option key={p.key} value={p.key}>{p.name}</option>
+                                ))}
+                              </select>
                             </div>
                             <div>
                               <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Project Tier</label>
@@ -1503,7 +1585,7 @@ export default function OrdersPage() {
                           onKeyDown={handleGridKeyDown}
                           onPaste={handleGridPaste}
                         >
-                          <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: Object.values(widths).reduce((sum, w) => sum + w, 0) + 'px', fontSize: '12px' }}>
+                          <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                             <thead>
                               <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
                                 <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
@@ -1560,7 +1642,6 @@ export default function OrdersPage() {
                                 </th>
                                 <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
                                   Actions
-                                  <div className="resize-handle" onMouseDown={e => onResizeStart('actions', e)} />
                                 </th>
                               </tr>
                             </thead>
@@ -2378,6 +2459,110 @@ export default function OrdersPage() {
                 <button type="submit" className="btn btn-primary">Initialize BOQ & Open Spec 🧠</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* LINK/UNLINK SHIFT PROJECT OR CLIENT MODAL */}
+      {linkModalItem && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title">Link / Shift: {linkModalItem.id}</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setLinkModalItem(null)}>✕</button>
+            </div>
+            
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
+                <select 
+                  className="form-control" 
+                  value={linkProjectKey} 
+                  onChange={e => {
+                    const nextKey = e.target.value;
+                    setLinkProjectKey(nextKey);
+                    if (nextKey) {
+                      const proj = projects[nextKey];
+                      if (proj && proj.client) {
+                        setLinkClient(proj.client);
+                      }
+                    }
+                  }}
+                >
+                  <option value="">-- Client Direct / No Project --</option>
+                  {Object.values(projects).filter(p => p.projectType !== 'Client-Direct').map(p => (
+                    <option key={p.key} value={p.key}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Client (Contact)</label>
+                <select 
+                  className="form-control" 
+                  value={linkClient} 
+                  onChange={e => setLinkClient(e.target.value)}
+                  disabled={!!linkProjectKey}
+                >
+                  <option value="">-- Select Client --</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                  ))}
+                </select>
+                {linkProjectKey && (
+                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
+                    🔒 Client locked to project client: <strong>{linkClient}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                <strong>Linking Note:</strong> Changing links shifts this document. If unlinked from a project, it will be catalogued directly under the client's direct order portfolio.
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn" onClick={() => setLinkModalItem(null)}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={() => {
+                  const targetClient = contacts.find(c => c.name === linkClient) || {};
+                  const oldProjectKey = linkModalItem.projectKey;
+                  
+                  // Compute target project key
+                  let newProjectKey = linkProjectKey;
+                  if (!newProjectKey) {
+                    // Client direct - No Project
+                    if (!linkClient) {
+                      alert('Please select a client to link to if unlinking from a project.');
+                      return;
+                    }
+                    newProjectKey = `client-${linkClient.toLowerCase().trim().replace(/\s+/g, '-')}`;
+                  }
+                  
+                  moveOrder(
+                    linkModalItem.id,
+                    oldProjectKey,
+                    newProjectKey,
+                    linkClient,
+                    targetClient.company || '',
+                    targetClient.phone || '',
+                    targetClient.email || ''
+                  );
+                  
+                  setLinkModalItem(null);
+                  alert(`Successfully shifted order ${linkModalItem.id}!`);
+                }}
+              >
+                Save & Link Document
+              </button>
+            </div>
           </div>
         </div>
       )}
