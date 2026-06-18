@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-
-const TABS = ['General', 'Permissions', 'Rate card', 'Integrations'];
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const ROLES = ['Admin', 'Senior Designer', 'Designer', 'Coordinator', 'Showroom'];
 const MODULES = ['Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'];
@@ -14,6 +14,13 @@ const RATES = [
 ];
 
 export default function SettingsPage() {
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+
+  const availableTabs = isAdmin
+    ? ['General', 'Permissions', 'Rate card', 'Integrations', 'Templates']
+    : ['General', 'Permissions', 'Rate card', 'Integrations'];
+
   const [activeTab, setActiveTab] = useState('General');
   const [activeRole, setActiveRole] = useState('Admin');
   const [general, setGeneral] = useState({ companyName: '1-to-1 World', email: 'studio@1-to-1.world', phone: '+27 21 000 0000', address: 'Woodstock, Cape Town', vat: '4880123456', currency: 'ZAR' });
@@ -21,7 +28,7 @@ export default function SettingsPage() {
   return (
     <div className="animation-fade-in">
       <div className="tabs" style={{ marginBottom: 18 }}>
-        {TABS.map(t => (
+        {availableTabs.map(t => (
           <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
         ))}
       </div>
@@ -126,6 +133,76 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {activeTab === 'Templates' && isAdmin && (
+        <div className="animation-fade-in">
+          <div className="section-label">Document Templates</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>
+            Configure custom Microsoft Word (.docx) templates for automatic PDF generation. Upload custom designs with placeholders to style documents.
+          </div>
+          <div className="card" style={{ maxWidth: 600 }}>
+            <div className="card-body" style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                <div style={{
+                  width: 48,
+                  height: 48,
+                  background: 'linear-gradient(135deg, #2b579a 0%, #1e3f70 100%)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  fontSize: 22,
+                  boxShadow: '0 4px 12px rgba(43, 87, 154, 0.2)'
+                }}>
+                  📝
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>Word (.docx) Template Hub</h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    Upload and manage templates for proposals, quotes, invoices, packing lists, and delivery notes.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{
+                background: 'var(--bg-secondary)',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                borderLeft: '4px solid #2b579a',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+                marginBottom: 24
+              }}>
+                <strong>Supported Templates:</strong>
+                <ul style={{ margin: '6px 0 0 0', paddingLeft: 18 }}>
+                  <li>Design Fee Proposal (.docx)</li>
+                  <li>Quotation (.docx)</li>
+                  <li>Tax Invoice (.docx)</li>
+                  <li>Packing List (.docx)</li>
+                  <li>Delivery Note (.docx)</li>
+                </ul>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => navigate('/admin/template-editor')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Manage & Upload Templates ➔
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

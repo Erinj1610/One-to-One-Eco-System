@@ -1932,19 +1932,6 @@ export default function OrdersPage() {
                 
                 {/* DOCUMENT SIDEBAR UTILITIES */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {/* EDITABLE TERMS AND CONDITIONS BOX */}
-                  <div style={{ background: 'rgba(0,0,0,0.12)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-                    <label style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                      Custom Terms & Notes
-                    </label>
-                    <textarea 
-                      className="form-control"
-                      style={{ fontSize: '11px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', color: 'white', height: '110px', resize: 'vertical', width: '100%' }}
-                      value={customTerms}
-                      onChange={e => setCustomTerms(e.target.value)}
-                      placeholder="Insert customized contract T&Cs or bank detail descriptions..."
-                    />
-                  </div>
 
                   {/* PRINT / EXPORT BUTTON */}
                   <button 
