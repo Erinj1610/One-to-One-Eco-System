@@ -47,16 +47,16 @@ const statusColor = {
 
 // Global Product Catalog for Item Code selection
 const PRODUCT_CATALOG = [
-  { code: '28402 9240 W', description: 'Downlight - Entero RD-S 14W 2700K 30° White', brand: 'Delta Light', dimming: 'Non-dim', unitCost: 2238.63, unitRetail: 2995.00, stockQty: 45 },
-  { code: 'TA8-WWW', description: 'Downlight - Club Series TA8 GU10 White', brand: 'NEKO', dimming: 'Phase', unitCost: 450.00, unitRetail: 690.00, stockQty: 120 },
-  { code: 'LA_12859898', description: 'Lamp - Classic LED GU10 5.5W 2700K 36°', brand: 'Spazio', dimming: 'Non-dim', unitCost: 65.00, unitRetail: 110.00, stockQty: 250 },
-  { code: 'MOD-LED-001', description: 'Recessed LED Downlight 10W', brand: 'Modus', dimming: 'Non-dim', unitCost: 590.00, unitRetail: 890.00, stockQty: 85 },
-  { code: 'MOD-STR-003', description: 'Surface Strip 2700K 1200mm', brand: 'Modus', dimming: 'Phase', unitCost: 820.00, unitRetail: 1240.00, stockQty: 14 },
-  { code: 'SIG-PND-007', description: 'Bespoke Pendant Cluster', brand: 'Signature', dimming: 'DALI', unitCost: 5400.00, unitRetail: 8400.00, stockQty: 3 },
-  { code: 'MOL-DRV-012', description: 'DALI Driver 100W', brand: 'Molecule', dimming: 'DALI', unitCost: 1400.00, unitRetail: 2100.00, stockQty: 60 },
-  { code: 'MOD-WAL-002', description: 'Wall Washer Exterior 20W', brand: 'Modus', dimming: 'Non-dim', unitCost: 1100.00, unitRetail: 1650.00, stockQty: 22 },
-  { code: 'SIG-FLR-019', description: 'Architectural Floor Uplight', brand: 'Signature', dimming: 'Non-dim', unitCost: 2100.00, unitRetail: 3200.00, stockQty: 8 },
-  { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30 },
+  { code: '28402 9240 W', description: 'Downlight - Entero RD-S 14W 2700K 30° White', brand: 'Delta Light', dimming: 'Non-dim', unitCost: 2238.63, unitRetail: 2995.00, stockQty: 45, eta: '6 weeks' },
+  { code: 'TA8-WWW', description: 'Downlight - Club Series TA8 GU10 White', brand: 'NEKO', dimming: 'Phase', unitCost: 450.00, unitRetail: 690.00, stockQty: 120, eta: '3 weeks' },
+  { code: 'LA_12859898', description: 'Lamp - Classic LED GU10 5.5W 2700K 36°', brand: 'Spazio', dimming: 'Non-dim', unitCost: 65.00, unitRetail: 110.00, stockQty: 250, eta: '2 weeks' },
+  { code: 'MOD-LED-001', description: 'Recessed LED Downlight 10W', brand: 'Modus', dimming: 'Non-dim', unitCost: 590.00, unitRetail: 890.00, stockQty: 85, eta: '2 weeks' },
+  { code: 'MOD-STR-003', description: 'Surface Strip 2700K 1200mm', brand: 'Modus', dimming: 'Phase', unitCost: 820.00, unitRetail: 1240.00, stockQty: 14, eta: '2 weeks' },
+  { code: 'SIG-PND-007', description: 'Bespoke Pendant Cluster', brand: 'Signature', dimming: 'DALI', unitCost: 5400.00, unitRetail: 8400.00, stockQty: 3, eta: '8 weeks' },
+  { code: 'MOL-DRV-012', description: 'DALI Driver 100W', brand: 'Molecule', dimming: 'DALI', unitCost: 1400.00, unitRetail: 2100.00, stockQty: 60, eta: '4 weeks' },
+  { code: 'MOD-WAL-002', description: 'Wall Washer Exterior 20W', brand: 'Modus', dimming: 'Non-dim', unitCost: 1100.00, unitRetail: 1650.00, stockQty: 22, eta: '3 weeks' },
+  { code: 'SIG-FLR-019', description: 'Architectural Floor Uplight', brand: 'Signature', dimming: 'Non-dim', unitCost: 2100.00, unitRetail: 3200.00, stockQty: 8, eta: '4 weeks' },
+  { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30, eta: '2 weeks' },
 ];
 
 function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKeyDown }) {
@@ -306,10 +306,34 @@ export default function OrdersPage() {
   const [loadingLivePreview, setLoadingLivePreview] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
 
+  // Helper to roll up items for the summarized Quotation
+  const groupItemsForQuotation = (items) => {
+    const grouped = {};
+    items.forEach(item => {
+      const code = (item.code || '').trim();
+      const desc = (item.description || '').trim();
+      const key = code ? code : desc;
+      if (!key) return;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          ...item,
+          qty: 0,
+          floor: '',
+          area: '',
+        };
+      }
+      grouped[key].qty += (Number(item.qty) || 0);
+    });
+    return Object.values(grouped).filter(item => item.qty > 0);
+  };
+
   const triggerLivePreviewCompile = async (targetTab, pageNum = 1) => {
     let docType = '';
     if (targetTab === 'quote') {
       docType = 'QUOTATION';
+    } else if (targetTab === 'boq_doc') {
+      docType = 'BOQ';
     } else if (targetTab === 'invoice') {
       docType = 'INVOICE';
     } else {
@@ -325,6 +349,64 @@ export default function OrdersPage() {
       const vatAmount = discountedRetail * 0.15;
       const finalTotalInclVat = discountedRetail * 1.15;
       
+      let finalItems = [];
+      if (docType === 'QUOTATION') {
+        const summarized = groupItemsForQuotation(activeOrderItems);
+        finalItems = summarized.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: '',
+          area: '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      } else if (docType === 'BOQ') {
+        const sortedItems = [...activeOrderItems].sort((a, b) => {
+          const floorA = (a.floor || '').toLowerCase();
+          const floorB = (b.floor || '').toLowerCase();
+          if (floorA !== floorB) return floorA.localeCompare(floorB);
+          return (a.area || '').toLowerCase().localeCompare((b.area || '').toLowerCase());
+        });
+        finalItems = sortedItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      } else {
+        finalItems = activeOrderItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      }
+
       const tokens = {
         PROJECT_NAME: projectFullName || 'Private Client Project',
         CLIENT_NAME: clientContact || 'Client Name',
@@ -353,21 +435,10 @@ export default function OrdersPage() {
         TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         
-        items: activeOrderItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock'
-        }))
+        items: finalItems
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?page=${pageNum}`, {
@@ -398,7 +469,7 @@ export default function OrdersPage() {
   }, [workspaceSubTab, selectedOrderId, activeOrderItems.length]);
 
   useEffect(() => {
-    if (workspaceSubTab === 'quote' || workspaceSubTab === 'invoice') {
+    if (workspaceSubTab === 'quote' || workspaceSubTab === 'boq_doc' || workspaceSubTab === 'invoice') {
       triggerLivePreviewCompile(workspaceSubTab, previewPage);
     } else {
       setLivePreviewUrl(null);
@@ -409,6 +480,8 @@ export default function OrdersPage() {
     let docType = '';
     if (activeDocType === 'quote') {
       docType = 'QUOTATION';
+    } else if (activeDocType === 'boq_doc') {
+      docType = 'BOQ';
     } else if (activeDocType === 'invoice') {
       docType = 'INVOICE';
     } else {
@@ -424,6 +497,64 @@ export default function OrdersPage() {
       const vatAmount = discountedRetail * 0.15;
       const finalTotalInclVat = discountedRetail * 1.15;
       
+      let finalItems = [];
+      if (docType === 'QUOTATION') {
+        const summarized = groupItemsForQuotation(activeOrderItems);
+        finalItems = summarized.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: '',
+          area: '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      } else if (docType === 'BOQ') {
+        const sortedItems = [...activeOrderItems].sort((a, b) => {
+          const floorA = (a.floor || '').toLowerCase();
+          const floorB = (b.floor || '').toLowerCase();
+          if (floorA !== floorB) return floorA.localeCompare(floorB);
+          return (a.area || '').toLowerCase().localeCompare((b.area || '').toLowerCase());
+        });
+        finalItems = sortedItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      } else {
+        finalItems = activeOrderItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+      }
+
       const tokens = {
         PROJECT_NAME: projectFullName || 'Private Client Project',
         CLIENT_NAME: clientContact || 'Client Name',
@@ -451,21 +582,10 @@ export default function OrdersPage() {
         TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         
-        items: activeOrderItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock'
-        }))
+        items: finalItems
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
@@ -809,7 +929,8 @@ export default function OrdersPage() {
             brand: catalogItem.brand,
             dimming: catalogItem.dimming,
             unitCost: catalogItem.unitCost,
-            unitRetail: catalogItem.unitRetail
+            unitRetail: catalogItem.unitRetail,
+            eta: catalogItem.eta
           };
         }
         return item;
@@ -851,7 +972,8 @@ export default function OrdersPage() {
       unitTrade: 130,
       unitRetail: 150,
       selection: 'Selection',
-      stockStatus: 'Ordered'
+      stockStatus: 'Ordered',
+      eta: '4 weeks'
     };
     setActiveOrderItems(prev => [...prev, newRow]);
   };
@@ -1330,6 +1452,13 @@ export default function OrdersPage() {
                 onClick={() => setWorkspaceSubTab('quote')}
               >
                 <FileText size={14} /> 🧾 Quotation
+              </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'boq_doc' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('boq_doc')}
+              >
+                <Layers size={14} /> 📄 BOQ Document
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'invoice' ? 'btn-primary' : 'btn-ghost'}`}
@@ -1861,6 +1990,10 @@ export default function OrdersPage() {
                                   Stock
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
                                 </th>
+                                <th style={{ width: widths.eta, position: 'relative' }}>
+                                  ETA
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('eta', e)} />
+                                </th>
                                 <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
                                   Actions
                                 </th>
@@ -2041,6 +2174,20 @@ export default function OrdersPage() {
                                       })()}
                                     </td>
 
+                                    {/* ETA */}
+                                    <td>
+                                      <input 
+                                        type="text"
+                                        className="boq-cell-input"
+                                        style={{ textAlign: 'center' }}
+                                        value={item.eta || ''}
+                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
+                                        data-row={index}
+                                        data-col={13}
+                                        data-field="eta"
+                                      />
+                                    </td>
+
                                     {/* ACTIONS */}
                                     <td>
                                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
@@ -2218,7 +2365,7 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
                           <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
                         </div>
-                      ) : (workspaceSubTab === 'quote' || workspaceSubTab === 'invoice') && livePreviewUrl ? (
+                      ) : (workspaceSubTab === 'quote' || workspaceSubTab === 'boq_doc' || workspaceSubTab === 'invoice') && livePreviewUrl ? (
                         <div style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                           <div style={{
                             display: 'flex',

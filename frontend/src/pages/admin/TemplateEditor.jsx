@@ -18,14 +18,26 @@ const DOCUMENT_TYPES = {
   },
   QUOTATION: {
     id: 'QUOTATION',
-    name: '🧾 Quotation / BOQ',
-    description: 'Word (.docx) template for hardware quotations and BOQ specifications.',
+    name: '🧾 Summarized Quotation',
+    description: 'Word (.docx) template for summarized hardware quotations (aggregated quantities).',
     tokens: {
       "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
       "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
       "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
-      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus"]
+      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT", "DEPOSIT", "BALANCE"],
+      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus", "item.eta"]
+    }
+  },
+  BOQ: {
+    id: 'BOQ',
+    name: '📄 Bill of Quantity (BOQ)',
+    description: 'Word (.docx) template for detailed room/area breakdowns.',
+    tokens: {
+      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
+      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
+      "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
+      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT", "DEPOSIT", "BALANCE"],
+      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus", "item.eta"]
     }
   },
   INVOICE: {
