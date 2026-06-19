@@ -129,7 +129,10 @@ export default function CrmPage() {
 
   // Clickable KPI Modals
   const [kpiModal, setKpiModal] = useState(null); // { title: string, clientIds: number[] }
-  const [activeKpiFilter, setActiveKpiFilter] = useState(null); // null, 'total', 'active', 'vip', 'important', 'inactive'
+  const [activeKpiFilter, setActiveKpiFilter] = useState(null); // null, 'total', 'active', 'vip', 'inactive', 'lost'
+  const [finDatePreset, setFinDatePreset] = useState('All');
+  const [finStartDate, setFinStartDate] = useState('');
+  const [finEndDate, setFinEndDate] = useState('');
 
   // Custom Interactive States for Behavioral Prompts and Post-Mortems
   const [toasts, setToasts] = useState([]);
@@ -250,18 +253,18 @@ export default function CrmPage() {
   // Segmented calculations for Top KPI Cards (Clickable)
   const funnels = useMemo(() => {
     const totalCount = filteredClients.length;
-    const activeClients = filteredClients.filter(c => c.status === 'Active');
+    const activeClients = filteredClients.filter(c => c.status !== 'Inactive' && c.projectsList.some(p => p.complete !== 'Complete'));
     const vipClients = filteredClients.filter(c => c.projects > 3 && c.health === 'Green');
-    const importantClients = filteredClients.filter(c => c.projects > 3 && c.health === 'Yellow');
-    const inactiveClients = filteredClients.filter(c => c.health === 'Red');
+    const inactiveClients = filteredClients.filter(c => c.status !== 'Inactive' && !c.projectsList.some(p => p.complete !== 'Complete'));
+    const lostClients = filteredClients.filter(c => c.status === 'Inactive');
     const topRevenueClients = [...filteredClients].sort((a, b) => b.totalValue - a.totalValue).slice(0, 3);
 
     return {
       totalCount,
       activeClients,
       vipClients,
-      importantClients,
       inactiveClients,
+      lostClients,
       topRevenueClients
     };
   }, [filteredClients]);
@@ -289,16 +292,16 @@ export default function CrmPage() {
   const kpiFilteredClients = useMemo(() => {
     if (!activeKpiFilter || activeKpiFilter === 'total') return filteredClients;
     if (activeKpiFilter === 'active') {
-      return filteredClients.filter(c => c.status === 'Active');
+      return filteredClients.filter(c => c.status !== 'Inactive' && c.projectsList.some(p => p.complete !== 'Complete'));
     }
     if (activeKpiFilter === 'vip') {
       return filteredClients.filter(c => c.projects > 3 && c.health === 'Green');
     }
-    if (activeKpiFilter === 'important') {
-      return filteredClients.filter(c => c.projects > 3 && c.health === 'Yellow');
-    }
     if (activeKpiFilter === 'inactive') {
-      return filteredClients.filter(c => c.health === 'Red');
+      return filteredClients.filter(c => c.status !== 'Inactive' && !c.projectsList.some(p => p.complete !== 'Complete'));
+    }
+    if (activeKpiFilter === 'lost') {
+      return filteredClients.filter(c => c.status === 'Inactive');
     }
     return filteredClients;
   }, [filteredClients, activeKpiFilter]);
@@ -570,6 +573,7 @@ export default function CrmPage() {
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>Active: <strong>{funnels.activeClients.length}</strong></span>
               <span>Inactive: <strong>{funnels.inactiveClients.length}</strong></span>
+              <span>Lost: <strong>{funnels.lostClients.length}</strong></span>
             </div>
             <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Users size={11} /> All-Time directory
@@ -595,8 +599,8 @@ export default function CrmPage() {
               {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Engaged</span>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>LTV: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>YTD: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>All Time: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Year to Date: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
             </div>
             <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Activity size={11} /> Active in pipeline
@@ -622,38 +626,11 @@ export default function CrmPage() {
               {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Core</span>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>LTV: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>YTD: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>All Time: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Year to Date: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
             </div>
             <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Star size={11} /> &gt;3 projects, Active
-            </div>
-          </div>
-
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'important' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'important' ? null : 'important')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'important' ? '2px solid #ef4444' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Important Clients</span>
-              <Heart size={16} color="#ef4444" />
-            </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>
-              {funnels.importantClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Dormant</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>LTV: <strong>R {(funnels.importantClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Status: <strong>Yellow (Aging)</strong></span>
-            </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Heart size={11} /> Needs urgent outreach
             </div>
           </div>
 
@@ -673,18 +650,43 @@ export default function CrmPage() {
               <User size={16} color="#64748b" />
             </div>
             <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#64748b' }}>
-              {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Churned</span>
+              {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Dormant</span>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>LTV Lost: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Status: <strong>Red (Churn)</strong></span>
+              <span>All Time: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Year to Date: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
             </div>
             <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <User size={11} /> &gt;12 months inactive
+              <User size={11} /> No active project currently
             </div>
           </div>
 
-
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'lost' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'lost' ? null : 'lost')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'lost' ? '2px solid #ef4444' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lost Clients</span>
+              <TrendingDown size={16} color="#ef4444" />
+            </div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>
+              {funnels.lostClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Churned</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
+              <span>All Time Lost: <strong>R {(funnels.lostClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+              <span>Year to Date: <strong>R {(funnels.lostClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+            </div>
+            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <TrendingDown size={11} /> Quoted but lost sales
+            </div>
+          </div>
         </div>
 
         <div className="crm-grid" style={{ marginTop: '20px' }}>
@@ -1267,7 +1269,7 @@ export default function CrmPage() {
       {/* Tabs */}
       <div className="card" style={{ marginBottom: '24px' }}>
         <div className="tabs" style={{ borderBottom: 'none', padding: '0 8px' }}>
-          {['overview', 'projects', 'pipeline', 'activity', 'financials'].map(tab => (
+          {['overview', 'projects', 'activity', 'financials'].map(tab => (
             <button key={tab} className={`tab-btn ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
               {tab === 'activity' ? 'Activity Log' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
@@ -1579,12 +1581,7 @@ export default function CrmPage() {
           </div>
         )}
 
-        {/* TAB 3: PIPELINE (Bi-Directional Synced Opportunities Kanban) */}
-        {activeTab === 'pipeline' && (
-          <div style={{ marginLeft: '-24px', marginRight: '-24px', marginTop: '-16px' }}>
-            <PipelinePage clientFilter={selectedClient.name} isEmbedded={true} />
-          </div>
-        )}
+
 
         {/* TAB 4: ACTIVITY LOG */}
         {activeTab === 'activity' && (
@@ -1684,109 +1681,264 @@ export default function CrmPage() {
           </div>
         )}
 
-        {/* TAB 4: FINANCIALS & INTELLIGENT LEARNINGS */}
-        {activeTab === 'financials' && (
-          <div className="animation-fade-in">
-            {/* Contextual intelligent learnings banner */}
-            <div className="card" style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.08) 0%, rgba(24,95,165,0.01) 100%)', border: '1px solid rgba(24,95,165,0.2)', marginBottom: '20px', padding: '16px' }}>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                <ShieldAlert size={20} color="var(--text-info)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>Intelligent CRM Coach learnings banner</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', fontSize: '12px' }}>
-                    
-                    {/* A. Spend trend */}
+        {/* TAB 4: FINANCIALS */}
+        {activeTab === 'financials' && (() => {
+          // Helper to sum up financials
+          const getFinSummary = (projectsList) => {
+            let designVal = 0;
+            let designPaid = 0;
+            let designOut = 0;
+            let orderVal = 0;
+            let orderPaid = 0;
+            let orderOut = 0;
+
+            projectsList.forEach(p => {
+              if (p.designFees) {
+                p.designFees.forEach(df => {
+                  designVal += df.feeValue || 0;
+                  designPaid += df.paid || 0;
+                  designOut += df.outstanding || 0;
+                });
+              }
+              if (p.orders) {
+                p.orders.forEach(ord => {
+                  orderVal += ord.value || 0;
+                  orderPaid += ord.paid || 0;
+                  orderOut += ord.outstanding || 0;
+                });
+              }
+            });
+
+            return {
+              designVal,
+              designPaid,
+              designOut,
+              orderVal,
+              orderPaid,
+              orderOut,
+              totalVal: designVal + orderVal,
+              totalPaid: designPaid + orderPaid,
+              totalOut: designOut + orderOut
+            };
+          };
+
+          const allTimeSummary = getFinSummary(clientProjects);
+          const ytdSummary = getFinSummary(clientProjects.filter(p => {
+            const d = new Date(p.start);
+            return d >= new Date('2026-03-01') && d <= new Date('2027-02-28');
+          }));
+
+          const finFilteredProjects = clientProjects.filter(p => {
+            if (finDatePreset === 'All') return true;
+            const pDate = new Date(p.start);
+            if (isNaN(pDate.getTime())) return true;
+            const todayDate = new Date('2026-05-19'); // anchor date
+            if (finDatePreset === '30') {
+              const diffTime = Math.abs(todayDate - pDate);
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              return diffDays <= 30;
+            }
+            if (finDatePreset === '90') {
+              const diffTime = Math.abs(todayDate - pDate);
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              return diffDays <= 90;
+            }
+            if (finDatePreset === '365') {
+              const diffTime = Math.abs(todayDate - pDate);
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              return diffDays <= 365;
+            }
+            if (finDatePreset === 'custom') {
+              if (finStartDate && pDate < new Date(finStartDate)) return false;
+              if (finEndDate && pDate > new Date(finEndDate)) return false;
+              return true;
+            }
+            return true;
+          });
+
+          const filteredSummary = getFinSummary(finFilteredProjects);
+
+          return (
+            <div className="animation-fade-in">
+              {/* Controls bar */}
+              <div className="card" style={{ padding: '12px 16px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Filter Financial Ledger
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div className="btn-group" style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                    {[
+                      { key: 'All', label: 'All Time' },
+                      { key: '30', label: 'Last 30 Days' },
+                      { key: '90', label: 'Last 90 Days' },
+                      { key: '365', label: 'Last Year' },
+                      { key: 'custom', label: 'Custom Range' }
+                    ].map(p => (
+                      <button 
+                        key={p.key}
+                        onClick={() => setFinDatePreset(p.key)}
+                        style={{ 
+                          padding: '6px 12px', 
+                          fontSize: '11px', 
+                          background: finDatePreset === p.key ? 'var(--text-info)' : 'transparent',
+                          color: finDatePreset === p.key ? '#fff' : 'var(--text-secondary)',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: finDatePreset === p.key ? 600 : 400
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {finDatePreset === 'custom' && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <TrendingUp size={14} color="#22c55e" />
-                      <span>Spend Trend: <strong>Revenue from {selectedClient.name} is UP 15%</strong> compared to previous financial year.</span>
+                      <input 
+                        type="date" 
+                        className="form-control" 
+                        style={{ width: '120px', padding: '3px 8px', fontSize: '11px' }} 
+                        value={finStartDate} 
+                        onChange={e => setFinStartDate(e.target.value)} 
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                      <input 
+                        type="date" 
+                        className="form-control" 
+                        style={{ width: '120px', padding: '3px 8px', fontSize: '11px' }} 
+                        value={finEndDate} 
+                        onChange={e => setFinEndDate(e.target.value)} 
+                      />
                     </div>
+                  )}
+                </div>
+              </div>
 
-                    {/* B. Margin health (Villa Z Marco Esteves is 12% vs 18% target) */}
-                    {clientProjects.some(p => p.actualMargin < p.targetMargin) ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontWeight: 600 }}>
-                        <TrendingDown size={14} color="#ef4444" />
-                        <span>Margin Health Alert: Average margin for this client is dropping below target (18% to 12%). Review fee structures.</span>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <CheckCircle size={14} color="#22c55e" />
-                        <span>Margin Health: Margin is strong at average 19%, exceeding the 18% target threshold.</span>
-                      </div>
-                    )}
-
-                    {/* C. Payment delay */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Clock size={14} color="#eab308" />
-                      <span>Payment Behavior: Client pays invoices on average <strong>{selectedClient.avgPaymentDelayDays} days late</strong>.</span>
+              {/* KPI cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: finDatePreset !== 'All' ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: '12px', marginBottom: '20px' }}>
+                {/* Card 1: ALL TIME */}
+                <div className="card" style={{ padding: '16px', borderRadius: '12px', background: 'var(--bg-primary)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>ALL TIME SUMMARY</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                      <span><strong>Design Fees:</strong></span>
+                      <span>R {allTimeSummary.designVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {allTimeSummary.designPaid.toLocaleString()})</span></span>
                     </div>
-
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                      <span><strong>Product Orders:</strong></span>
+                      <span>R {allTimeSummary.orderVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {allTimeSummary.orderPaid.toLocaleString()})</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-info)', fontSize: '13px', paddingTop: '4px' }}>
+                      <span>Total Value:</span>
+                      <span>R {allTimeSummary.totalVal.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                      <span>Total Paid: <strong>R {allTimeSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {allTimeSummary.totalOut.toLocaleString()}</strong></span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="stat-grid stat-grid-3">
-              <div className="fin-card">
-                <div className="fin-label">Lifetime Value (Detailed)</div>
-                <div className="fin-val">R {clientLtv.toLocaleString()}</div>
-                <div style={{ marginTop: '12px', fontSize: '12px' }}>
-                  <div className="kv"><span className="kv-key">Project Fees</span><span className="kv-val">R {(clientLtv * 0.9).toLocaleString()}</span></div>
-                  <div className="kv"><span className="kv-key">Consulting</span><span className="kv-val">R {(clientLtv * 0.08).toLocaleString()}</span></div>
-                  <div className="kv"><span className="kv-key">Disbursals</span><span className="kv-val">R {(clientLtv * 0.02).toLocaleString()}</span></div>
+                {/* Card 2: YEAR TO DATE */}
+                <div className="card" style={{ padding: '16px', borderRadius: '12px', background: 'var(--bg-primary)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-success)', textTransform: 'uppercase', marginBottom: '8px' }}>YEAR TO DATE (YTD)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                      <span><strong>Design Fees:</strong></span>
+                      <span>R {ytdSummary.designVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {ytdSummary.designPaid.toLocaleString()})</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                      <span><strong>Product Orders:</strong></span>
+                      <span>R {ytdSummary.orderVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {ytdSummary.orderPaid.toLocaleString()})</span></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-success)', fontSize: '13px', paddingTop: '4px' }}>
+                      <span>Total Value:</span>
+                      <span>R {ytdSummary.totalVal.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                      <span>Total Paid: <strong>R {ytdSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {ytdSummary.totalOut.toLocaleString()}</strong></span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="fin-card">
-                <div className="fin-label">Account Balance</div>
-                <div className="fin-val" style={{ color: 'var(--text-danger)' }}>R {(clientLtv - (selectedClient.invoiced || clientLtv * 0.65)).toLocaleString()}</div>
-                <div style={{ marginTop: '12px', fontSize: '12px' }}>
-                  <div className="kv"><span className="kv-key">Total Paid</span><span className="kv-val">R {(selectedClient.invoiced || clientLtv * 0.65).toLocaleString()}</span></div>
-                  <div className="kv"><span className="kv-key">Outstanding</span><span className="kv-val">R {(clientLtv - (selectedClient.invoiced || clientLtv * 0.65)).toLocaleString()}</span></div>
-                </div>
-              </div>
-              <div className="fin-card">
-                <div className="fin-label">Overall Margin Performance</div>
-                <div className="fin-val" style={{ color: clientProjects.some(p => p.actualMargin < p.targetMargin) ? '#ef4444' : '#22c55e' }}>
-                  {clientProjects.some(p => p.actualMargin < p.targetMargin) ? '12.0%' : '19.2%'}
-                </div>
-                <div style={{ marginTop: '12px', fontSize: '12px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Calculated against baseline targets.</div>
-                </div>
-              </div>
-            </div>
 
-            <div className="crm-grid" style={{ marginTop: '20px' }}>
-              <div>
-                <div className="card">
-                  <div className="card-head" style={{ background: 'none' }}><div className="card-title">Recent Invoices</div></div>
-                  <table className="table">
-                    <thead><tr><th>Date</th><th>Invoice #</th><th>Project</th><th>Amount</th><th>Status</th></tr></thead>
+                {/* Card 3: FILTERED PERIOD */}
+                {finDatePreset !== 'All' && (
+                  <div className="card" style={{ padding: '16px', borderRadius: '12px', background: 'var(--bg-primary)', border: '1px dashed var(--text-info)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-info)', textTransform: 'uppercase', marginBottom: '8px' }}>FILTERED PERIOD</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                        <span><strong>Design Fees:</strong></span>
+                        <span>R {filteredSummary.designVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {filteredSummary.designPaid.toLocaleString()})</span></span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
+                        <span><strong>Product Orders:</strong></span>
+                        <span>R {filteredSummary.orderVal.toLocaleString()} <span style={{color:'var(--text-tertiary)'}}>(Paid: R {filteredSummary.orderPaid.toLocaleString()})</span></span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-info)', fontSize: '13px', paddingTop: '4px' }}>
+                        <span>Total Value:</span>
+                        <span>R {filteredSummary.totalVal.toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                        <span>Total Paid: <strong>R {filteredSummary.totalPaid.toLocaleString()}</strong></span>
+                        <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {filteredSummary.totalOut.toLocaleString()}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Project table */}
+              <div className="card">
+                <div className="card-head" style={{ background: 'none' }}>
+                  <div className="card-title">Project-by-Project Financial Breakdown ({finFilteredProjects.length})</div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="table" style={{ fontSize: '12px', minWidth: '850px' }}>
+                    <thead>
+                      <tr>
+                        <th>Project Name</th>
+                        <th>Date Started</th>
+                        <th style={{ textAlign: 'right' }}>Design Value</th>
+                        <th style={{ textAlign: 'right' }}>Design Paid</th>
+                        <th style={{ textAlign: 'right' }}>Design Out</th>
+                        <th style={{ textAlign: 'right' }}>Order Value</th>
+                        <th style={{ textAlign: 'right' }}>Order Paid</th>
+                        <th style={{ textAlign: 'right' }}>Order Out</th>
+                        <th style={{ textAlign: 'right', fontWeight: 'bold' }}>Total Out</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      <tr><td>10 May 2026</td><td>#2034</td><td>Kalahari</td><td>R 151,725</td><td><span className="badge b-success">Paid</span></td></tr>
-                      <tr><td>01 May 2026</td><td>#2033</td><td>Upper Primrose</td><td>R 150,000</td><td><span className="badge b-warning">Pending</span></td></tr>
-                      <tr><td>15 Apr 2026</td><td>#2032</td><td>Kalahari</td><td>R 150,000</td><td><span className="badge b-danger">Overdue</span></td></tr>
+                      {finFilteredProjects.map(p => {
+                        const sums = getFinSummary([p]);
+                        return (
+                          <tr key={p.key} className="hover-row">
+                            <td style={{ fontWeight: 600 }}>{p.name}</td>
+                            <td>{p.start || '—'}</td>
+                            <td style={{ textAlign: 'right' }}>R {sums.designVal.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {sums.designPaid.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right', color: sums.designOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {sums.designOut.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right' }}>R {sums.orderVal.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {sums.orderPaid.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right', color: sums.orderOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {sums.orderOut.toLocaleString()}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: sums.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)' }}>R {sums.totalOut.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                      {finFilteredProjects.length === 0 && (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '24px' }}>
+                            No projects found matching the filter criteria.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
-              
-              <div>
-                <div className="card">
-                  <div className="card-head" style={{ background: 'none' }}><div className="card-title">Project Margins comparison</div></div>
-                  <div className="card-body">
-                    {clientProjects.map(p => (
-                      <div key={p.key} style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '0.5px solid var(--border)' }}>
-                        <div style={{ fontWeight: 600, fontSize: '13px' }}>{p.name}</div>
-                        <div className="kv" style={{ border: 'none', padding: '2px 0' }}><span className="kv-key">Target Margin Baseline</span><span className="kv-val">{p.targetMargin || 18}%</span></div>
-                        <div className="kv" style={{ border: 'none', padding: '2px 0' }}><span className="kv-key">Actual Project Margin</span><span className="kv-val" style={{ fontWeight: 700, color: p.actualMargin >= p.targetMargin ? '#22c55e' : '#ef4444' }}>{p.actualMargin || 18}%</span></div>
-                      </div>
-                    ))}
-                    {clientProjects.length === 0 && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No projects available.</div>}
-                  </div>
-                </div>
-              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
 
