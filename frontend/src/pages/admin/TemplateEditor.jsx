@@ -4,6 +4,15 @@ import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../api_config';
 import { Upload, Download, FileText, CheckCircle, AlertCircle, Layers } from 'lucide-react';
 
+const SHARED_ORDER_TOKENS = {
+  "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
+  "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
+  "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PM_PHONE", "PM_PPHONE", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
+  "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT", "DEPOSIT", "BALANCE", "TOTAL_PAID", "BALANCE_OUTSTANDING"],
+  "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus", "item.eta"],
+  "Payments (Row Loops)": ["payment.index", "payment.date", "payment.reference", "payment.amount"]
+};
+
 const DOCUMENT_TYPES = {
   DESIGN_FEE_PROPOSAL: {
     id: 'DESIGN_FEE_PROPOSAL',
@@ -19,57 +28,50 @@ const DOCUMENT_TYPES = {
   QUOTATION: {
     id: 'QUOTATION',
     name: '🧾 Summarized Quotation',
-    description: 'Word (.docx) template for summarized hardware quotations (aggregated quantities).',
-    tokens: {
-      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
-      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
-      "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
-      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT", "DEPOSIT", "BALANCE"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus", "item.eta"]
-    }
+    description: 'Word (.docx) template for summarized hardware hardware quotations.',
+    tokens: SHARED_ORDER_TOKENS
   },
   BOQ: {
     id: 'BOQ',
     name: '📄 Bill of Quantity (BOQ)',
     description: 'Word (.docx) template for detailed room/area breakdowns.',
-    tokens: {
-      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
-      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
-      "Staff & Project Vitals": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "PROJECT_PM", "PROJECT_SIZE", "PROJECT_TIER"],
-      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL", "TOTAL_COST", "MARGIN_PERCENT", "DEPOSIT", "BALANCE"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.retail", "item.totalRetail", "item.floor", "item.area", "item.dimming", "item.unitCost", "item.stockStatus", "item.eta"]
-    }
+    tokens: SHARED_ORDER_TOKENS
   },
-  INVOICE: {
-    id: 'INVOICE',
-    name: '💳 Tax Invoice',
-    description: 'Word (.docx) template for commercial client billing and tax invoicing.',
-    tokens: {
-      "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER"],
-      "Client Info": ["CLIENT_COMPANY", "CLIENT_CONTACT_PERSON", "CLIENT_EMAIL", "CLIENT_PHONE", "CLIENT_VAT", "DELIVERY_ADDRESS"],
-      "Financials": ["SUBTOTAL", "DISCOUNT_AMOUNT", "VAT_AMOUNT", "TOTAL_RETAIL"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.retail", "item.totalRetail", "item.floor", "item.area"]
-    }
+  DEPOSIT_INVOICE: {
+    id: 'DEPOSIT_INVOICE',
+    name: '💳 Deposit Invoice',
+    description: 'Word (.docx) template for billing client deposit (e.g. 50% deposit payment).',
+    tokens: SHARED_ORDER_TOKENS
+  },
+  BALANCE_INVOICE: {
+    id: 'BALANCE_INVOICE',
+    name: '💳 Balance Invoice',
+    description: 'Word (.docx) template for billing outstanding remaining balance payments.',
+    tokens: SHARED_ORDER_TOKENS
+  },
+  TAX_INVOICE: {
+    id: 'TAX_INVOICE',
+    name: '💳 Tax Invoice (Full)',
+    description: 'Word (.docx) template for commercial client billing and full tax invoicing.',
+    tokens: SHARED_ORDER_TOKENS
+  },
+  PROGRESS_STATEMENT: {
+    id: 'PROGRESS_STATEMENT',
+    name: '📊 Progress Statement',
+    description: 'Word (.docx) template detailing payment status and logistics delivery progress.',
+    tokens: SHARED_ORDER_TOKENS
   },
   PACKING_LIST: {
     id: 'PACKING_LIST',
     name: '📦 Packing List',
     description: 'Word (.docx) template containing packed items and box designations.',
-    tokens: {
-      "Document Info": ["DOCUMENT_NUMBER", "DATE", "PROJECT_NAME", "CLIENT_NAME"],
-      "Shipping Info": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "DELIVERY_ADDRESS"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.floor", "item.area", "item.boxNumber", "item.backOrder", "item.etaBackOrder"]
-    }
+    tokens: SHARED_ORDER_TOKENS
   },
   DELIVERY_NOTE: {
     id: 'DELIVERY_NOTE',
     name: '🚚 Delivery Note',
     description: 'Word (.docx) template issued upon client receipt of physical fixture boxes.',
-    tokens: {
-      "Document Info": ["DOCUMENT_NUMBER", "DATE", "PROJECT_NAME", "CLIENT_NAME"],
-      "Shipping Info": ["ONEONE_REP", "PM_NAME", "PM_EMAIL", "DELIVERY_ADDRESS"],
-      "Table Items (Row Loops)": ["item.index", "item.code", "item.description", "item.qty", "item.brand", "item.floor", "item.area", "item.boxNumber", "item.backOrder", "item.etaBackOrder"]
-    }
+    tokens: SHARED_ORDER_TOKENS
   }
 };
 

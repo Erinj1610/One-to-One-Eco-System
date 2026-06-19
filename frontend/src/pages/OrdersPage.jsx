@@ -342,8 +342,14 @@ export default function OrdersPage() {
       docType = 'QUOTATION';
     } else if (targetTab === 'boq_doc') {
       docType = 'BOQ';
-    } else if (targetTab === 'invoice') {
-      docType = 'INVOICE';
+    } else if (targetTab === 'deposit_invoice') {
+      docType = 'DEPOSIT_INVOICE';
+    } else if (targetTab === 'balance_invoice') {
+      docType = 'BALANCE_INVOICE';
+    } else if (targetTab === 'tax_invoice') {
+      docType = 'TAX_INVOICE';
+    } else if (targetTab === 'statement') {
+      docType = 'PROGRESS_STATEMENT';
     } else {
       setLivePreviewUrl(null);
       return;
@@ -433,6 +439,8 @@ export default function OrdersPage() {
         ONEONE_REP: oneOneRep || 'Martin Döller',
         PM_NAME: pmName || 'Merlyn Mittins',
         PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PM_PHONE: pmPhone || '083 570 7795',
+        PM_PPHONE: pmPhone || '083 570 7795',
         PROJECT_PM: pmName || 'Merlyn Mittins',
         PROJECT_SIZE: projectSize || '—',
         PROJECT_TIER: projectTier || 'Signature',
@@ -445,8 +453,16 @@ export default function OrdersPage() {
         MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
         DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         
-        items: finalItems
+        items: finalItems,
+        payments: (orderPayments || []).map((p, idx) => ({
+          index: (idx + 1).toString(),
+          date: p.date || '',
+          reference: p.reference || '',
+          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }))
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?page=${pageNum}`, {
@@ -477,7 +493,14 @@ export default function OrdersPage() {
   }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length]);
 
   useEffect(() => {
-    if (workspaceSubTab === 'doc_gen' && (selectedDocType === 'quote' || selectedDocType === 'boq_doc' || selectedDocType === 'invoice')) {
+    if (workspaceSubTab === 'doc_gen' && (
+      selectedDocType === 'quote' || 
+      selectedDocType === 'boq_doc' || 
+      selectedDocType === 'deposit_invoice' || 
+      selectedDocType === 'balance_invoice' || 
+      selectedDocType === 'tax_invoice' || 
+      selectedDocType === 'statement'
+    )) {
       triggerLivePreviewCompile(selectedDocType, previewPage);
     } else {
       setLivePreviewUrl(null);
@@ -490,10 +513,16 @@ export default function OrdersPage() {
       docType = 'QUOTATION';
     } else if (activeDocType === 'boq_doc') {
       docType = 'BOQ';
-    } else if (activeDocType === 'invoice') {
-      docType = 'INVOICE';
+    } else if (activeDocType === 'deposit_invoice') {
+      docType = 'DEPOSIT_INVOICE';
+    } else if (activeDocType === 'balance_invoice') {
+      docType = 'BALANCE_INVOICE';
+    } else if (activeDocType === 'tax_invoice') {
+      docType = 'TAX_INVOICE';
+    } else if (activeDocType === 'statement') {
+      docType = 'PROGRESS_STATEMENT';
     } else {
-      alert(`${activeDocType} is not supported via Word docx templates. Only Quotations and Invoices are supported.`);
+      alert(`${activeDocType} is not supported via Word docx templates.`);
       return;
     }
 
@@ -580,6 +609,8 @@ export default function OrdersPage() {
         ONEONE_REP: oneOneRep || 'Martin Döller',
         PM_NAME: pmName || 'Merlyn Mittins',
         PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PM_PHONE: pmPhone || '083 570 7795',
+        PM_PPHONE: pmPhone || '083 570 7795',
         PROJECT_PM: pmName || 'Merlyn Mittins',
         PROJECT_SIZE: projectSize || '—',
         PROJECT_TIER: projectTier || 'Signature',
@@ -592,8 +623,16 @@ export default function OrdersPage() {
         MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
         DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         
-        items: finalItems
+        items: finalItems,
+        payments: (orderPayments || []).map((p, idx) => ({
+          index: (idx + 1).toString(),
+          date: p.date || '',
+          reference: p.reference || '',
+          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }))
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
@@ -2316,7 +2355,9 @@ export default function OrdersPage() {
                       { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
                       { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
                       { id: 'schedule', name: 'Fitting Schedule', icon: <ClipboardList size={14} /> },
-                      { id: 'invoice', name: 'Invoice', icon: <DollarSign size={14} /> },
+                      { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
+                      { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
+                      { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
                       { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
                     ].map(doc => {
                       const isSelected = selectedDocType === doc.id;
@@ -2408,7 +2449,14 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
                           <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
                         </div>
-                      ) : (activeDocType === 'quote' || activeDocType === 'boq_doc' || activeDocType === 'invoice') && livePreviewUrl ? (
+                      ) : (
+                        activeDocType === 'quote' || 
+                        activeDocType === 'boq_doc' || 
+                        activeDocType === 'deposit_invoice' || 
+                        activeDocType === 'balance_invoice' || 
+                        activeDocType === 'tax_invoice' || 
+                        activeDocType === 'statement'
+                      ) && livePreviewUrl ? (
                         <div style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                           <div style={{
                             display: 'flex',
@@ -2495,6 +2543,9 @@ export default function OrdersPage() {
                               fontWeight: 700 
                             }}>
                               {activeDocType === 'quote' && 'BOQ Client Quotation'}
+                              {activeDocType === 'deposit_invoice' && 'Deposit Invoice'}
+                              {activeDocType === 'balance_invoice' && 'Balance Invoice'}
+                              {activeDocType === 'tax_invoice' && 'Tax Invoice (Full)'}
                               {activeDocType === 'invoice' && 'Tax Invoice'}
                               {activeDocType === 'schedule' && 'Fitting Installation Schedule'}
                               {activeDocType === 'delivery' && 'Warehouse Delivery Note'}
@@ -2709,11 +2760,14 @@ export default function OrdersPage() {
                         )}
 
                         {/* 2. TAX INVOICE OUTFLOW */}
-                        {activeDocType === 'invoice' && (
+                        {(activeDocType === 'invoice' || activeDocType === 'deposit_invoice' || activeDocType === 'balance_invoice' || activeDocType === 'tax_invoice') && (
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                               <h4 style={{ margin: 0, fontSize: '12.5px', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px', flex: 1 }}>
-                                Official Tax Billing Invoice
+                                {activeDocType === 'deposit_invoice' && 'Official Billing Deposit Invoice (50% Due)'}
+                                {activeDocType === 'balance_invoice' && 'Official Billing Remaining Balance Invoice'}
+                                {activeDocType === 'tax_invoice' && 'Official Tax Billing Invoice (Full Value)'}
+                                {activeDocType === 'invoice' && 'Official Tax Billing Invoice'}
                               </h4>
                               
                               {/* Large Diagonal Style Paid Badge */}
@@ -2728,7 +2782,9 @@ export default function OrdersPage() {
                                 transform: 'rotate(-5deg)',
                                 marginLeft: '15px'
                               }}>
-                                {balanceOutstanding === 0 ? 'PAID IN FULL ✓' : 'DEPOSIT INVOICE ACTIVE'}
+                                {activeDocType === 'deposit_invoice' ? (
+                                  orderPaidAmount >= (finalTotalInclVat * 0.5) ? 'DEPOSIT PAID ✓' : 'DEPOSIT PENDING'
+                                ) : balanceOutstanding === 0 ? 'PAID IN FULL ✓' : 'BALANCE OUTSTANDING'}
                               </div>
                             </div>
 
@@ -2786,26 +2842,60 @@ export default function OrdersPage() {
                               </div>
 
                               <div style={{ fontSize: '11.5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                                  <span>Total Net Invoice EX VAT:</span>
-                                  <span>R {Math.round(discountedRetail).toLocaleString()}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                                  <span>VAT (15%):</span>
-                                  <span>R {Math.round(vatAmount).toLocaleString()}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 700, borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
-                                  <span>Gross Value (Incl VAT):</span>
-                                  <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', fontWeight: 600 }}>
-                                  <span>Amount Paid Received:</span>
-                                  <span>R {Number(orderPaidAmount).toLocaleString()}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: balanceOutstanding > 0 ? '#f59e0b' : '#64748b', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
-                                  <span>Balance Outstanding:</span>
-                                  <span>R {Math.round(balanceOutstanding).toLocaleString()}</span>
-                                </div>
+                                {activeDocType === 'deposit_invoice' ? (
+                                  <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                      <span>Total Project Value (Incl VAT):</span>
+                                      <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                      <span>Deposit Percentage Required:</span>
+                                      <span>50%</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                      <span>DEPOSIT AMOUNT DUE:</span>
+                                      <span>R {Math.round(finalTotalInclVat * 0.5).toLocaleString()}</span>
+                                    </div>
+                                  </>
+                                ) : activeDocType === 'balance_invoice' ? (
+                                  <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                      <span>Total Project Value (Incl VAT):</span>
+                                      <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', fontWeight: 600 }}>
+                                      <span>Less: Deposit Paid (50%):</span>
+                                      <span>R {Math.round(finalTotalInclVat * 0.5).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                      <span>BALANCE OUTSTANDING:</span>
+                                      <span>R {Math.round(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString()}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                      <span>Total Net Invoice EX VAT:</span>
+                                      <span>R {Math.round(discountedRetail).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                      <span>VAT (15%):</span>
+                                      <span>R {Math.round(vatAmount).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 700, borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                                      <span>Gross Value (Incl VAT):</span>
+                                      <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', fontWeight: 600 }}>
+                                      <span>Amount Paid Received:</span>
+                                      <span>R {Number(orderPaidAmount).toLocaleString()}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: balanceOutstanding > 0 ? '#f59e0b' : '#64748b', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                      <span>Balance Outstanding:</span>
+                                      <span>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
