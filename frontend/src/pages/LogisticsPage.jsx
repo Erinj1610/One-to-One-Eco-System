@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { 
   Truck, ClipboardList, FileText, Plus, Printer, 
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react';
 
 export default function LogisticsPage() {
+  const navigate = useNavigate();
   const { projects, updateProject } = useStore();
   
   // Search & ledger navigation state
@@ -525,7 +527,10 @@ export default function LogisticsPage() {
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-info)', marginTop: '4px' }}>
+                    <div 
+                      style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-info)', marginTop: '4px', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/projects/${doc.projectKey}`); }}
+                    >
                       {doc.projectName}
                     </div>
 

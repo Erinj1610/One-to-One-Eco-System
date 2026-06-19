@@ -656,6 +656,12 @@ export default function DesignTracker() {
                       <div style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)', marginTop: '2px' }}>
                         {row.feeName} ({row.feeId})
                       </div>
+                      <div 
+                        style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-info)', marginTop: '2px', textDecoration: 'underline' }}
+                        onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: row.projectClientName } }); }}
+                      >
+                        Client: {row.projectClientName}
+                      </div>
                     </td>
 
                     {/* 2. Offering */}

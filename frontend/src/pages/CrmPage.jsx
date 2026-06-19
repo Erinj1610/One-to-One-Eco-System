@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PipelinePage from './PipelinePage';
 import { 
   User, Building2, Briefcase, TrendingUp, ArrowLeft, Mail, Phone, 
@@ -33,9 +33,21 @@ export default function CrmPage() {
   } = useStore();
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Page States
   const [selectedClient, setSelectedClient] = useState(null);
+
+  useEffect(() => {
+    if (location.state?.selectedClientId) {
+      const target = contacts.find(c => c.id === location.state.selectedClientId);
+      if (target) setSelectedClient(target);
+    } else if (location.state?.selectedClientName) {
+      const target = contacts.find(c => c.name === location.state.selectedClientName);
+      if (target) setSelectedClient(target);
+    }
+  }, [location.state, contacts]);
+
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [showModal, setShowModal] = useState(false);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   Save, 
   TrendingUp, 
@@ -166,6 +166,7 @@ const getItemDefaults = (item) => {
 export default function SalesTracker() {
   const { projects, updateProject, contacts } = useStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -1444,8 +1445,8 @@ export default function SalesTracker() {
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
                           <td style={{ fontWeight: 600 }}>{o.supplier}</td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{o.projectFullName || o.projectName}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{(o.clientCompany || o.projectClient) || '—'}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
+                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
                           <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>

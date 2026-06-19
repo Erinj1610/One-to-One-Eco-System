@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
 import { API_BASE } from '../api_config';
 import { 
@@ -229,6 +229,7 @@ export default function OrdersPage() {
   const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder } = useStore();
   const { isAdmin } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Attrition/Cancellation modal state
   const [cancelModalItem, setCancelModalItem] = useState(null); // { orderId, projectKey, clientName }
@@ -1433,8 +1434,8 @@ export default function OrdersPage() {
                               </button>
                             )}
                           </td>
-                          <td style={{ fontWeight: 600, color: 'white' }}>{o.projectName}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectClient || '—'}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
+                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
                           <td>{o.supplier}</td>
                           <td>{o.items} fixtures</td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
