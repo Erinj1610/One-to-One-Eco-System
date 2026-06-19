@@ -2,12 +2,17 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { 
-  Calendar, Clock, Play, CheckCircle, Search, Plus, Layers
+  Calendar, Clock, Play, CheckCircle, Search, Plus, Layers, TrendingDown
 } from 'lucide-react';
 
 export default function DesignTracker() {
   const navigate = useNavigate();
-  const { projects, updateProject } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition } = useStore();
+
+  // Cancel Modal states
+  const [cancelModalItem, setCancelModalItem] = useState(null); // { projectKey, clientName }
+  const [lossReason, setLossReason] = useState('Price');
+  const [lossNotes, setLossNotes] = useState('');
 
   // Modal create state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -634,6 +639,7 @@ export default function DesignTracker() {
                 <th style={{ textAlign: 'center', width: '95px' }}>Status</th>
                 <th style={{ width: '180px' }}>Delay Reason</th>
                 <th style={{ textAlign: 'center', width: '110px' }}>Complete/Ongoing</th>
+                <th style={{ textAlign: 'center', width: '90px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -909,12 +915,22 @@ export default function DesignTracker() {
                     <td style={{ padding: 0 }}>
                       <select
                         className="gs-cell-select"
-                        style={{ textAlign: 'center', fontWeight: 600, color: row.status === 'On track' ? 'var(--text-success)' : 'var(--text-danger)' }}
+                        style={{ textAlign: 'center', fontWeight: 600, color: row.status === 'On track' ? 'var(--text-success)' : row.status === 'Cancelled' ? 'var(--text-secondary)' : 'var(--text-danger)' }}
                         value={row.status || ''}
-                        onChange={e => updateProject(row.projectKey, 'status', e.target.value)}
+                        onChange={e => {
+                          if (e.target.value === 'Cancelled') {
+                            setCancelModalItem({
+                              projectKey: row.projectKey,
+                              clientName: row.projectClientName
+                            });
+                          } else {
+                            updateProject(row.projectKey, 'status', e.target.value);
+                          }
+                        }}
                       >
                         <option value="On track">On track</option>
                         <option value="Off track">Off track</option>
+                        <option value="Cancelled">Cancelled</option>
                       </select>
                     </td>
 
@@ -943,12 +959,41 @@ export default function DesignTracker() {
                         <option value="Complete">Complete</option>
                       </select>
                     </td>
+
+                    {/* 24. Actions */}
+                    <td style={{ padding: '4px', textAlign: 'center' }}>
+                      {row.status !== 'Cancelled' && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '11px',
+                            color: 'var(--text-danger)',
+                            border: '1px solid rgba(239,68,68,0.2)',
+                            background: 'rgba(239,68,68,0.02)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          onClick={() => {
+                            setCancelModalItem({
+                              projectKey: row.projectKey,
+                              clientName: row.projectClientName
+                            });
+                          }}
+                        >
+                          <TrendingDown size={11} /> Cancel
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={23} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                  <td colSpan={24} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                     No projects found matching the filter criteria.
                   </td>
                 </tr>
@@ -1058,6 +1103,87 @@ export default function DesignTracker() {
             <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '16px' }}>
               <button className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleCreateNewFeeStructure}>Create Structure</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelModalItem && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal" style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '450px', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Confirm Project/Design Attrition</h3>
+              <button className="modal-close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '16px' }} onClick={() => setCancelModalItem(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '16px' }}>
+              <div style={{ background: 'rgba(239,68,68,0.03)', border: '1px solid rgba(239,68,68,0.1)', padding: '12px', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+                <strong>Post-Mortem Policy:</strong> Before marking this design project as Cancelled, you must log the exact friction reason. This data feeds directly into our Attrition Analytics to help leadership retain key partnerships.
+              </div>
+              
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Client Name</label>
+                <input className="form-control" readOnly style={{ width: '100%', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }} value={cancelModalItem.clientName || ''} />
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Attrition Primary Reason</label>
+                <select className="form-control" style={{ width: '100%' }} value={lossReason} onChange={e => setLossReason(e.target.value)}>
+                  <option value="Price">Price Resistance / Budget caps</option>
+                  <option value="PM friction">Project Manager friction / Handoff delays</option>
+                  <option value="Competitor">Competitor (cheaper/local packaging)</option>
+                  <option value="Other">Other Reason</option>
+                </select>
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Detailed Post-Mortem Notes</label>
+                <textarea 
+                  className="form-control" 
+                  rows={4} 
+                  required
+                  style={{ width: '100%', resize: 'none' }}
+                  placeholder="Log detail: Why are we losing them? What could we have done differently?"
+                  value={lossNotes}
+                  onChange={e => setLossNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn" style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setCancelModalItem(null)}>Cancel</button>
+              <button 
+                className="btn btn-primary" 
+                disabled={!lossNotes.trim()}
+                style={{ padding: '6px 12px', fontSize: '12px', background: '#ef4444', borderColor: '#ef4444', color: 'white', cursor: 'pointer' }}
+                onClick={() => {
+                  const { projectKey, clientName } = cancelModalItem;
+                  
+                  // 1. Set project status to Cancelled
+                  updateProject(projectKey, 'status', 'Cancelled');
+                  
+                  // 2. Resolve or log attrition
+                  const contact = contacts.find(c => c.name === clientName);
+                  const clientId = contact ? contact.id : Date.now();
+                  logAttrition(clientId, clientName, lossReason, lossNotes);
+
+                  // 3. Mark client contact as Inactive (Lost)
+                  setContacts(prev => prev.map(c => {
+                    if (c.name === clientName) {
+                      return { 
+                        ...c, 
+                        status: 'Inactive', 
+                        lastContactDate: '2026-05-19', 
+                        lastContactSummary: `Post-Mortem: Project cancelled due to ${lossReason}` 
+                      };
+                    }
+                    return c;
+                  }));
+                  
+                  setCancelModalItem(null);
+                  setLossNotes('');
+                }}
+              >
+                Log Post-Mortem & Cancel
+              </button>
             </div>
           </div>
         </div>

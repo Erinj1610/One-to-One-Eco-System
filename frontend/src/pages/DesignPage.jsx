@@ -6,7 +6,7 @@ import {
   Save, TrendingUp, AlertCircle, Plus, Search, ArrowLeft, 
   Edit3, Filter, CheckCircle, FileSpreadsheet, AlertTriangle, 
   Printer, FileText, DollarSign, Layers, ChevronRight, Sparkles, ClipboardList,
-  Calendar, Clock, Play
+  Calendar, Clock, Play, TrendingDown
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -20,7 +20,8 @@ const PHI_ADVISORIES = {
 const statusColor = { 
   Approved: 'b-success', 
   Draft: 'b-default', 
-  'In Review': 'b-warning' 
+  'In Review': 'b-warning',
+  Cancelled: 'b-danger'
 };
 
 // Rate card configuration from spec
@@ -33,10 +34,15 @@ const RATE_CARD = {
 };
 
 export default function DesignPage() {
-  const { projects, updateProject, contacts, addInvoice, invoices, moveDesignFee } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, addInvoice, invoices, moveDesignFee } = useStore();
   const { isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Attrition/Cancellation modal state
+  const [cancelModalItem, setCancelModalItem] = useState(null); // { feeId, projectKey, clientName }
+  const [lossReason, setLossReason] = useState('Price');
+  const [lossNotes, setLossNotes] = useState('');
 
   const [selectedFeeId, setSelectedFeeId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -820,6 +826,7 @@ export default function DesignPage() {
                       <th>Amount Paid</th>
                       <th>Amount Outstanding</th>
                       <th>Status</th>
+                      <th style={{ textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -858,11 +865,26 @@ export default function DesignPage() {
                         <td>
                           <span className={`badge ${statusColor[f.status] || 'b-default'}`}>{f.status}</span>
                         </td>
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          {f.status !== 'Cancelled' && (
+                            <button 
+                              className="btn btn-ghost btn-sm" 
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-danger)', border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.02)' }}
+                              onClick={() => setCancelModalItem({
+                                feeId: f.id,
+                                projectKey: f.projectKey,
+                                clientName: f.projectClient
+                              })}
+                            >
+                              <TrendingDown size={13} /> Cancel
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {filteredFees.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                           No active design sub-fees found within range.
                         </td>
                       </tr>
@@ -944,11 +966,22 @@ export default function DesignPage() {
                       className="form-control"
                       style={{ height: '34px', fontSize: '13px' }}
                       value={feeStatus}
-                      onChange={e => setFeeStatus(e.target.value)}
+                      onChange={e => {
+                        if (e.target.value === 'Cancelled') {
+                          setCancelModalItem({
+                            feeId: selectedFeeId,
+                            projectKey: selectedProjectKey,
+                            clientName: clientContact
+                          });
+                        } else {
+                          setFeeStatus(e.target.value);
+                        }
+                      }}
                     >
                       <option>Draft</option>
                       <option>In Review</option>
                       <option>Approved</option>
+                      <option>Cancelled</option>
                     </select>
                   </div>
                   <div>
@@ -2028,6 +2061,101 @@ export default function DesignPage() {
                 }}
               >
                 Save & Link Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelModalItem && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal" style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '450px', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Confirm Design Fee Attrition</h3>
+              <button className="modal-close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '16px' }} onClick={() => setCancelModalItem(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '16px' }}>
+              <div style={{ background: 'rgba(239,68,68,0.03)', border: '1px solid rgba(239,68,68,0.1)', padding: '12px', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+                <strong>Post-Mortem Policy:</strong> Before marking this design fee as Cancelled, you must log the exact friction reason. This data feeds directly into our Attrition Analytics to help leadership retain key partnerships.
+              </div>
+              
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Client Name</label>
+                <input className="form-control" readOnly style={{ width: '100%', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }} value={cancelModalItem.clientName || '—'} />
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Attrition Primary Reason</label>
+                <select className="form-control" style={{ width: '100%' }} value={lossReason} onChange={e => setLossReason(e.target.value)}>
+                  <option value="Price">Price Resistance / Budget caps</option>
+                  <option value="PM friction">Project Manager friction / Handoff delays</option>
+                  <option value="Competitor">Competitor (cheaper/local packaging)</option>
+                  <option value="Other">Other Reason</option>
+                </select>
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Detailed Post-Mortem Notes</label>
+                <textarea 
+                  className="form-control" 
+                  rows={4} 
+                  required
+                  style={{ width: '100%', resize: 'none' }}
+                  placeholder="Log detail: Why are we losing them? What could we have done differently?"
+                  value={lossNotes}
+                  onChange={e => setLossNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn" style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setCancelModalItem(null)}>Cancel</button>
+              <button 
+                className="btn btn-primary" 
+                disabled={!lossNotes.trim()}
+                style={{ padding: '6px 12px', fontSize: '12px', background: '#ef4444', borderColor: '#ef4444', color: 'white', cursor: 'pointer' }}
+                onClick={() => {
+                  const { feeId, projectKey, clientName } = cancelModalItem;
+                  
+                  // 1. Update the design fee status to Cancelled in the specific project
+                  const project = projects[projectKey];
+                  if (project) {
+                    const updatedFees = (project.designFees || []).map(f => {
+                      if (f.id === feeId) {
+                        return { ...f, status: 'Cancelled' };
+                      }
+                      return f;
+                    });
+                    updateProject(projectKey, 'designFees', updatedFees);
+                  }
+
+                  // 2. Resolve or log attrition
+                  const contact = (contacts || []).find(c => c.name === clientName);
+                  const clientId = contact ? contact.id : Date.now();
+                  logAttrition(clientId, clientName, lossReason, lossNotes);
+
+                  // 3. Mark client contact as Inactive (Lost)
+                  setContacts(prev => prev.map(c => {
+                    if (c.name === clientName) {
+                      return { 
+                        ...c, 
+                        status: 'Inactive', 
+                        lastContactDate: '2026-05-19', 
+                        lastContactSummary: `Post-Mortem: Design fee ${feeId} cancelled due to ${lossReason}` 
+                      };
+                    }
+                    return c;
+                  }));
+                  
+                  // 4. Update the feeStatus state if workspace is currently open for it
+                  if (selectedFeeId === feeId) {
+                    setFeeStatus('Cancelled');
+                  }
+                  
+                  setCancelModalItem(null);
+                  setLossNotes('');
+                }}
+              >
+                Log Post-Mortem & Cancel Design Fee
               </button>
             </div>
           </div>

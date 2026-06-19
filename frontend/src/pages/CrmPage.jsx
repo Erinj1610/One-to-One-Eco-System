@@ -1211,8 +1211,9 @@ export default function CrmPage() {
 
 
   // Spend calculations for selectedClient
-  const clientLtv = selectedClient.totalValue || 0;
-  const clientYtd = selectedClient.annualRevenue || 0;
+  const currentContact = clientData.find(c => c.id === selectedClient.id) || selectedClient;
+  const clientLtv = currentContact.totalValue || 0;
+  const clientYtd = currentContact.annualRevenue || 0;
   const client2025Spend = clientLtv - clientYtd;
 
   return (
@@ -1233,11 +1234,12 @@ export default function CrmPage() {
       </button>
 
       <div className="detail-header" style={{ marginBottom: '20px' }}>
-        <div className="av-lg" style={{ width: '80px', height: '80px', fontSize: '32px', background: 'var(--bg-secondary)', borderRadius: '16px' }}>{selectedClient.name.substring(0,2).toUpperCase()}</div>
+        <div className="av-lg" style={{ width: '80px', height: '80px', fontSize: '32px', background: 'var(--bg-secondary)', borderRadius: '16px' }}>{currentContact.name.substring(0,2).toUpperCase()}</div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 700 }}>{selectedClient.name}</h1>
-            <span className={`badge ${typeColors[selectedClient.type]}`} style={{ padding: '4px 12px' }}>{selectedClient.type}</span>
+            <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 700 }}>{currentContact.name}</h1>
+            <span className={`badge ${typeColors[currentContact.type]}`} style={{ padding: '4px 12px' }}>{currentContact.type}</span>
+            
             <button 
               className="btn btn-secondary" 
               style={{ 
@@ -1255,9 +1257,9 @@ export default function CrmPage() {
             </button>
           </div>
           <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color="var(--text-tertiary)" /> {selectedClient.company}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} color="var(--text-tertiary)" /> {selectedClient.email}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Phone size={16} color="var(--text-tertiary)" /> {selectedClient.phone}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color="var(--text-tertiary)" /> {currentContact.company}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} color="var(--text-tertiary)" /> {currentContact.email}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Phone size={16} color="var(--text-tertiary)" /> {currentContact.phone}</span>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>

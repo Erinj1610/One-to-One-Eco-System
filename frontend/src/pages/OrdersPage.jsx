@@ -27,7 +27,8 @@ import {
   Layers,
   ChevronRight,
   Sparkles,
-  ClipboardList
+  ClipboardList,
+  TrendingDown
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -42,7 +43,8 @@ const statusColor = {
   Delivered: 'b-success', 
   'In transit': 'b-info', 
   Pending: 'b-default', 
-  Processing: 'b-warning' 
+  Processing: 'b-warning',
+  Cancelled: 'b-danger'
 };
 
 // Global Product Catalog for Item Code selection
@@ -224,9 +226,14 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts, moveOrder } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder } = useStore();
   const { isAdmin } = useAuth();
   const location = useLocation();
+
+  // Attrition/Cancellation modal state
+  const [cancelModalItem, setCancelModalItem] = useState(null); // { orderId, projectKey, clientName }
+  const [lossReason, setLossReason] = useState('Price');
+  const [lossNotes, setLossNotes] = useState('');
 
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
     qty: 60,
@@ -1442,13 +1449,21 @@ export default function OrdersPage() {
                             <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
                           </td>
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                            <button 
-                              className="btn btn-ghost btn-sm" 
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-                              onClick={() => handleOpenWorkspace(o)}
-                            >
-                              <FileSpreadsheet size={13} /> Open Spec Brain 🧠
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                              {o.status !== 'Cancelled' && (
+                                <button 
+                                  className="btn btn-ghost btn-sm" 
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-danger)', border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.02)' }}
+                                  onClick={() => setCancelModalItem({
+                                    orderId: o.id,
+                                    projectKey: o.projectKey,
+                                    clientName: o.projectClient
+                                  })}
+                                >
+                                  <TrendingDown size={13} /> Cancel
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1503,12 +1518,23 @@ export default function OrdersPage() {
                     className="form-control"
                     style={{ width: '110px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
                     value={orderStatus}
-                    onChange={e => setOrderStatus(e.target.value)}
+                    onChange={e => {
+                      if (e.target.value === 'Cancelled') {
+                        setCancelModalItem({
+                          orderId: selectedOrderId,
+                          projectKey: selectedProjectKey,
+                          clientName: clientContact
+                        });
+                      } else {
+                        setOrderStatus(e.target.value);
+                      }
+                    }}
                   >
                     <option>Pending</option>
                     <option>Processing</option>
                     <option>In transit</option>
                     <option>Delivered</option>
+                    <option>Cancelled</option>
                   </select>
                   
                   <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginLeft: '6px' }}>Paid:</span>
@@ -3514,6 +3540,101 @@ export default function OrdersPage() {
                 onClick={() => setPendingPriceEdit(null)}
               >
                 Cancel Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelModalItem && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal" style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '450px', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Confirm Order Attrition</h3>
+              <button className="modal-close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '16px' }} onClick={() => setCancelModalItem(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '16px' }}>
+              <div style={{ background: 'rgba(239,68,68,0.03)', border: '1px solid rgba(239,68,68,0.1)', padding: '12px', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+                <strong>Post-Mortem Policy:</strong> Before marking this order as Cancelled, you must log the exact friction reason. This data feeds directly into our Attrition Analytics to help leadership retain key partnerships.
+              </div>
+              
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Client Name</label>
+                <input className="form-control" readOnly style={{ width: '100%', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }} value={cancelModalItem.clientName || '—'} />
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Attrition Primary Reason</label>
+                <select className="form-control" style={{ width: '100%' }} value={lossReason} onChange={e => setLossReason(e.target.value)}>
+                  <option value="Price">Price Resistance / Budget caps</option>
+                  <option value="PM friction">Project Manager friction / Handoff delays</option>
+                  <option value="Competitor">Competitor (cheaper/local packaging)</option>
+                  <option value="Other">Other Reason</option>
+                </select>
+              </div>
+
+              <div className="form-row" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600, display: 'block', marginBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>Detailed Post-Mortem Notes</label>
+                <textarea 
+                  className="form-control" 
+                  rows={4} 
+                  required
+                  style={{ width: '100%', resize: 'none' }}
+                  placeholder="Log detail: Why are we losing them? What could we have done differently?"
+                  value={lossNotes}
+                  onChange={e => setLossNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn" style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setCancelModalItem(null)}>Cancel</button>
+              <button 
+                className="btn btn-primary" 
+                disabled={!lossNotes.trim()}
+                style={{ padding: '6px 12px', fontSize: '12px', background: '#ef4444', borderColor: '#ef4444', color: 'white', cursor: 'pointer' }}
+                onClick={() => {
+                  const { orderId, projectKey, clientName } = cancelModalItem;
+                  
+                  // 1. Update the order status to Cancelled in the specific project
+                  const project = projects[projectKey];
+                  if (project) {
+                    const updatedOrders = (project.orders || []).map(o => {
+                      if (o.id === orderId) {
+                        return { ...o, status: 'Cancelled' };
+                      }
+                      return o;
+                    });
+                    updateProject(projectKey, 'orders', updatedOrders);
+                  }
+
+                  // 2. Resolve or log attrition
+                  const contact = (contacts || []).find(c => c.name === clientName);
+                  const clientId = contact ? contact.id : Date.now();
+                  logAttrition(clientId, clientName, lossReason, lossNotes);
+
+                  // 3. Mark client contact as Inactive (Lost)
+                  setContacts(prev => prev.map(c => {
+                    if (c.name === clientName) {
+                      return { 
+                        ...c, 
+                        status: 'Inactive', 
+                        lastContactDate: '2026-05-19', 
+                        lastContactSummary: `Post-Mortem: Order ${orderId} cancelled due to ${lossReason}` 
+                      };
+                    }
+                    return c;
+                  }));
+                  
+                  // 4. Update the orderStatus state if workspace is currently open for it
+                  if (selectedOrderId === orderId) {
+                    setOrderStatus('Cancelled');
+                  }
+                  
+                  setCancelModalItem(null);
+                  setLossNotes('');
+                }}
+              >
+                Log Post-Mortem & Cancel Order
               </button>
             </div>
           </div>
