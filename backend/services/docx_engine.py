@@ -114,14 +114,18 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                     xml_content = clean_docx_xml(xml_content)
                     
                     # Special processing for document.xml (repeating table rows)
-                    if item.filename == 'word/document.xml' and items_list:
-                        # Find table rows <w:tr> containing item placeholders
+                    if item.filename == 'word/document.xml':
+                        # Find table rows <w:tr> containing placeholders
                         tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
                         
+                        payments_list = tokens.get("payments", [])
+                        if not isinstance(payments_list, list):
+                            payments_list = []
+                            
                         def replace_row(match):
                             row_xml = match.group(1)
                             # Check if it contains item placeholder (supporting optional whitespace)
-                            if 'item.' in row_xml:
+                            if 'item.' in row_xml and items_list:
                                 repeated_rows = []
                                 for idx, list_item in enumerate(items_list):
                                     row_copy = row_xml
@@ -135,13 +139,27 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                     
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
+                            elif 'payment.' in row_xml and payments_list:
+                                repeated_rows = []
+                                for idx, list_payment in enumerate(payments_list):
+                                    row_copy = row_xml
+                                    # Replace payment.index with optional whitespace
+                                    row_copy = re.sub(r'{{\s*payment\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
+                                    
+                                    # Replace payment placeholders with optional whitespace
+                                    for pay_key, pay_val in list_payment.items():
+                                        pattern = r'{{\s*payment\.' + re.escape(pay_key) + r'\s*}}'
+                                        row_copy = re.sub(pattern, str(pay_val), row_copy, flags=re.IGNORECASE)
+                                    
+                                    repeated_rows.append(row_copy)
+                                return "".join(repeated_rows)
                             return row_xml
                         
                         xml_content = tr_pattern.sub(replace_row, xml_content)
                     
                     # Global token replacement with optional whitespace support
                     for key, val in tokens.items():
-                        if key != "items":
+                        if key != "items" and key != "payments":
                             pattern = r'{{\s*' + re.escape(str(key)) + r'\s*}}'
                             xml_content = re.sub(pattern, str(val), xml_content, flags=re.IGNORECASE)
                             
