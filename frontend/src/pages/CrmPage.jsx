@@ -129,6 +129,7 @@ export default function CrmPage() {
 
   // Clickable KPI Modals
   const [kpiModal, setKpiModal] = useState(null); // { title: string, clientIds: number[] }
+  const [activeKpiFilter, setActiveKpiFilter] = useState(null); // null, 'total', 'active', 'vip', 'important', 'inactive'
 
   // Custom Interactive States for Behavioral Prompts and Post-Mortems
   const [toasts, setToasts] = useState([]);
@@ -284,12 +285,30 @@ export default function CrmPage() {
     };
   }, [attritionLogs]);
 
+  // Filter by active KPI card
+  const kpiFilteredClients = useMemo(() => {
+    if (!activeKpiFilter || activeKpiFilter === 'total') return filteredClients;
+    if (activeKpiFilter === 'active') {
+      return filteredClients.filter(c => c.status === 'Active');
+    }
+    if (activeKpiFilter === 'vip') {
+      return filteredClients.filter(c => c.projects > 3 && c.health === 'Green');
+    }
+    if (activeKpiFilter === 'important') {
+      return filteredClients.filter(c => c.projects > 3 && c.health === 'Yellow');
+    }
+    if (activeKpiFilter === 'inactive') {
+      return filteredClients.filter(c => c.health === 'Red');
+    }
+    return filteredClients;
+  }, [filteredClients, activeKpiFilter]);
+
   // Directory Pagination
   const pageSize = 4;
   const directoryDisplayList = useMemo(() => {
-    if (showAllClients) return filteredClients;
-    return filteredClients.slice(0, pageSize);
-  }, [filteredClients, showAllClients]);
+    if (showAllClients) return kpiFilteredClients;
+    return kpiFilteredClients.slice(0, pageSize);
+  }, [kpiFilteredClients, showAllClients]);
 
   // Interactive Action Nudge and Churn Resolvers
   const handleResolveAlert = (clientId, touchpointText) => {
@@ -528,14 +547,26 @@ export default function CrmPage() {
         </div>
 
         {/* Clickable Intelligent KPI Funnel Cards - MATCHING PIPELINE HEIGHT AND STRUCTURE */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px' }}>
           
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Total Clients', clientIds: funnels.vipClients.concat(funnels.importantClients, funnels.inactiveClients, funnels.activeClients).map(c => c.id) })} style={{ borderLeft: '3.5px solid var(--text-secondary)', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'total' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'total' ? '2px solid var(--text-info)' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Clients</span>
-              <Users size={14} color="var(--text-secondary)" />
+              <Users size={16} color="var(--text-info)" />
             </div>
-            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700 }}>{funnels.totalCount} Clients</div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {funnels.totalCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Clients</span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>Active: <strong>{funnels.activeClients.length}</strong></span>
               <span>Inactive: <strong>{funnels.inactiveClients.length}</strong></span>
@@ -545,12 +576,24 @@ export default function CrmPage() {
             </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Active Clients', clientIds: funnels.activeClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #22c55e', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'active' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'active' ? '2px solid #22c55e' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Clients</span>
-              <Activity size={14} color="#22c55e" />
+              <Activity size={16} color="#22c55e" />
             </div>
-            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#22c55e' }}>{funnels.activeClients.length} Engaged</div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#22c55e' }}>
+              {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Engaged</span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>LTV: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
               <span>YTD: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
@@ -560,12 +603,24 @@ export default function CrmPage() {
             </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'VIP Clients', clientIds: funnels.vipClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #eab308', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'vip' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'vip' ? null : 'vip')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'vip' ? '2px solid #eab308' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#eab308', textTransform: 'uppercase', letterSpacing: '0.5px' }}>VIP Clients</span>
-              <Star size={14} color="#eab308" />
+              <Star size={16} color="#eab308" />
             </div>
-            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#eab308' }}>{funnels.vipClients.length} Core</div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#eab308' }}>
+              {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Core</span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>LTV: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
               <span>YTD: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
@@ -575,12 +630,24 @@ export default function CrmPage() {
             </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Important Clients', clientIds: funnels.importantClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #ef4444', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'important' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'important' ? null : 'important')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'important' ? '2px solid #ef4444' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Important Clients</span>
-              <Heart size={14} color="#ef4444" />
+              <Heart size={16} color="#ef4444" />
             </div>
-            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>{funnels.importantClients.length} Dormant</div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>
+              {funnels.importantClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Dormant</span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>LTV: <strong>R {(funnels.importantClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
               <span>Status: <strong>Yellow (Aging)</strong></span>
@@ -590,12 +657,24 @@ export default function CrmPage() {
             </div>
           </div>
 
-          <div className="stat clickable hover-scale" onClick={() => setKpiModal({ title: 'Inactive Clients', clientIds: funnels.inactiveClients.map(c => c.id) })} style={{ borderLeft: '3.5px solid #64748b', background: 'var(--bg-primary)', borderTop: '0.5px solid var(--border)', borderRight: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
+          <div 
+            className={`clickable hover-scale ${activeKpiFilter === 'inactive' ? 'active-filter' : ''}`} 
+            onClick={() => setActiveKpiFilter(activeKpiFilter === 'inactive' ? null : 'inactive')} 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              padding: '16px', 
+              borderRadius: '12px', 
+              border: activeKpiFilter === 'inactive' ? '2px solid #64748b' : '1px solid var(--border)',
+              cursor: 'pointer'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inactive Clients</span>
-              <User size={14} color="#64748b" />
+              <User size={16} color="#64748b" />
             </div>
-            <div className="stat-value" style={{ fontSize: '18px', fontWeight: 700 }}>{funnels.inactiveClients.length} Churned</div>
+            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#64748b' }}>
+              {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Churned</span>
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
               <span>LTV Lost: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
               <span>Status: <strong>Red (Churn)</strong></span>
@@ -614,7 +693,16 @@ export default function CrmPage() {
             <div className="card">
               <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
                 <div className="card-title">Client directory database</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {activeKpiFilter && (
+                    <button 
+                      className="btn btn-sm btn-ghost" 
+                      onClick={() => setActiveKpiFilter(null)}
+                      style={{ fontSize: '11px', color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '4px', border: 'none', background: 'none', cursor: 'pointer' }}
+                    >
+                      Clear Metric Filter ({activeKpiFilter})
+                    </button>
+                  )}
                   <div style={{ position: 'relative' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                     <input className="form-control" style={{ width: '200px', paddingLeft: '32px' }} placeholder="Search clients..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -692,7 +780,7 @@ export default function CrmPage() {
               {/* View All / Full List toggle */}
               <div style={{ padding: '12px 16px', borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                  Showing {directoryDisplayList.length} of {filteredClients.length} clients
+                  Showing {directoryDisplayList.length} of {kpiFilteredClients.length} clients
                 </span>
                 <button 
                   className="btn" 
@@ -941,74 +1029,6 @@ export default function CrmPage() {
         </div>
 
       </div>
-
-      {/* Dynamic KPI summary modal list */}
-        {kpiModal && (
-          <div className="modal-bg active" onClick={() => setKpiModal(null)}>
-            <div className="modal" style={{ width: '550px' }} onClick={e => e.stopPropagation()}>
-              <div className="modal-head">
-                <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Building2 size={16} />
-                  <span>{kpiModal.title}</span>
-                </div>
-                <button className="modal-close" onClick={() => setKpiModal(null)}>✕</button>
-              </div>
-              <div className="modal-body" style={{ padding: '0', overflowX: 'auto' }}>
-                <table className="table" style={{ fontSize: '13px', margin: 0 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ paddingLeft: '16px' }}>Client Name</th>
-                      <th>Total Revenue</th>
-                      <th>Lead Owner</th>
-                      <th style={{ paddingRight: '16px' }}>Last Contact Date</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {kpiModal.clientIds.map(id => {
-                      const c = contacts.find(con => con.id === id);
-                      if (!c) return null;
-                      return (
-                        <tr key={c.id} className="hover-row">
-                          <td style={{ paddingLeft: '16px' }}>
-                            <div style={{ fontWeight: 600 }}>{c.name}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.company} • {c.type}</div>
-                          </td>
-                          <td style={{ fontWeight: 600 }}>R {c.lifetimeRevenue?.toLocaleString()}</td>
-                          <td>{c.leadOwner || 'Unassigned'}</td>
-                          <td style={{ paddingRight: '16px' }}>{c.lastContactDate ? new Date(c.lastContactDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown'}</td>
-                          <td style={{ textAlign: 'right', paddingRight: '16px' }}>
-                            <button 
-                              className="btn btn-primary" 
-                              style={{ padding: '4px 8px', fontSize: '11px' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedClient(c);
-                                setKpiModal(null);
-                              }}
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {kpiModal.clientIds.length === 0 && (
-                      <tr>
-                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12px', padding: '20px' }}>
-                          No clients found in this segment.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-primary" onClick={() => setKpiModal(null)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Nudge Email Composer Modal */}
         {activeNudge && (
