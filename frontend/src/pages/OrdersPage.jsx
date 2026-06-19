@@ -255,6 +255,13 @@ export default function OrdersPage() {
   const [orderStatus, setOrderStatus] = useState('');
   const [orderEta, setOrderEta] = useState('');
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
+  const [orderPayments, setOrderPayments] = useState([]);
+
+  useEffect(() => {
+    const sum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    setOrderPaidAmount(sum);
+  }, [orderPayments]);
+
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
   
   // Link/Unlink modal state
@@ -293,9 +300,10 @@ export default function OrdersPage() {
   const [projectFilterKey, setProjectFilterKey] = useState('All');
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
-  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'quote' | 'invoice' | 'schedule' | 'statement'
+  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [showRegForm, setShowRegForm] = useState(true);
-  const activeDocType = workspaceSubTab === 'boq' ? 'quote' : workspaceSubTab;
+  const activeDocType = workspaceSubTab === 'boq' ? 'quote' : selectedDocType;
   const [customTerms, setCustomTerms] = useState('Payment: 50% deposit to initiate order, 40% on delivery, 10% post-installation sign-off. Validity: 30 days from date of issue.');
 
   // Pricing consistency assistant modal state
@@ -466,15 +474,15 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setPreviewPage(1);
-  }, [workspaceSubTab, selectedOrderId, activeOrderItems.length]);
+  }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length]);
 
   useEffect(() => {
-    if (workspaceSubTab === 'quote' || workspaceSubTab === 'boq_doc' || workspaceSubTab === 'invoice') {
-      triggerLivePreviewCompile(workspaceSubTab, previewPage);
+    if (workspaceSubTab === 'doc_gen' && (selectedDocType === 'quote' || selectedDocType === 'boq_doc' || selectedDocType === 'invoice')) {
+      triggerLivePreviewCompile(selectedDocType, previewPage);
     } else {
       setLivePreviewUrl(null);
     }
-  }, [workspaceSubTab, selectedOrderId, activeOrderItems.length, previewPage]);
+  }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length, previewPage]);
 
   const handleExportDocxTemplate = async () => {
     let docType = '';
@@ -677,12 +685,29 @@ export default function OrdersPage() {
   const handleOpenWorkspace = (order) => {
     setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
-    setActiveOrderItems(order.itemsList || []);
+    const loadedItems = (order.itemsList || []).map(item => {
+      if (!item.eta) {
+        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+        return {
+          ...item,
+          eta: catalogItem ? catalogItem.eta : '4 weeks'
+        };
+      }
+      return item;
+    });
+    setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
     setSupplier(order.supplier);
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
     setOrderPaidAmount(order.paid || 0);
+    if (order.payments) {
+      setOrderPayments(order.payments);
+    } else if (order.paid) {
+      setOrderPayments([{ date: order.orderDate || new Date().toISOString().split('T')[0], amount: order.paid, reference: 'Pre-existing Payment' }]);
+    } else {
+      setOrderPayments([]);
+    }
     setWorkspaceSubTab('boq');
 
     // Retrieve linked project & contact info for automatic defaults
@@ -733,6 +758,7 @@ export default function OrdersPage() {
             updated.dimming = catalogItem.dimming;
             updated.unitCost = catalogItem.unitCost;
             updated.unitRetail = catalogItem.unitRetail;
+            updated.eta = catalogItem.eta;
           }
         }
 
@@ -1018,6 +1044,7 @@ export default function OrdersPage() {
           costValue: Math.round(totalCostTotal),
           discount: Number(orderDiscount) || 0,
           paid: Number(orderPaidAmount) || 0,
+          payments: orderPayments,
           outstanding: Math.round(balanceOutstanding),
           itemsList: activeOrderItems,
           // Save order-specific adjusted metadata fields
@@ -1447,43 +1474,22 @@ export default function OrdersPage() {
                 <FileSpreadsheet size={14} /> 📊 BOQ Spreadsheet
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'quote' ? 'btn-primary' : 'btn-ghost'}`}
+                className={`btn btn-sm ${workspaceSubTab === 'doc_gen' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
-                onClick={() => setWorkspaceSubTab('quote')}
+                onClick={() => setWorkspaceSubTab('doc_gen')}
               >
-                <FileText size={14} /> 🧾 Quotation
+                <FileText size={14} /> 📄 Document Generator & Exporter
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'boq_doc' ? 'btn-primary' : 'btn-ghost'}`}
+                className={`btn btn-sm ${workspaceSubTab === 'payments' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
-                onClick={() => setWorkspaceSubTab('boq_doc')}
+                onClick={() => setWorkspaceSubTab('payments')}
               >
-                <Layers size={14} /> 📄 BOQ Document
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'invoice' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
-                onClick={() => setWorkspaceSubTab('invoice')}
-              >
-                <DollarSign size={14} /> 💳 Invoice
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'schedule' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
-                onClick={() => setWorkspaceSubTab('schedule')}
-              >
-                <ClipboardList size={14} /> 🔧 Fitting Schedule
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'statement' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
-                onClick={() => setWorkspaceSubTab('statement')}
-              >
-                <TrendingUp size={14} /> 📊 Progress Statement
+                <DollarSign size={14} /> 💳 Payments
               </button>
             </div>
 
-            {workspaceSubTab === 'boq' ? (
+            {workspaceSubTab === 'boq' && (
               
               /* SUB-TAB 1: BOQ SPREADSHEET ENGINE */
               <div>
@@ -2293,13 +2299,50 @@ export default function OrdersPage() {
                   );
                 })()}
               </div>
-            ) : (
+            )}
+
+            {workspaceSubTab === 'doc_gen' && (
               
               /* SUB-TAB 2: HIGH-FIDELITY DOCUMENT GENERATOR */
               <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
                 
                 {/* DOCUMENT SIDEBAR UTILITIES */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  
+                  {/* DOCUMENT SELECTION */}
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Select Document</span>
+                    {[
+                      { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                      { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
+                      { id: 'schedule', name: 'Fitting Schedule', icon: <ClipboardList size={14} /> },
+                      { id: 'invoice', name: 'Invoice', icon: <DollarSign size={14} /> },
+                      { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
+                    ].map(doc => {
+                      const isSelected = selectedDocType === doc.id;
+                      return (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            justifyContent: 'flex-start',
+                            width: '100%',
+                            padding: '8px 12px',
+                            textAlign: 'left',
+                            borderRadius: '6px'
+                          }}
+                          onClick={() => setSelectedDocType(doc.id)}
+                        >
+                          {doc.icon}
+                          <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
                   {/* PRINT / EXPORT ACTIONS */}
                   <button 
@@ -2365,7 +2408,7 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
                           <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
                         </div>
-                      ) : (workspaceSubTab === 'quote' || workspaceSubTab === 'boq_doc' || workspaceSubTab === 'invoice') && livePreviewUrl ? (
+                      ) : (activeDocType === 'quote' || activeDocType === 'boq_doc' || activeDocType === 'invoice') && livePreviewUrl ? (
                         <div style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                           <div style={{
                             display: 'flex',
@@ -2579,6 +2622,92 @@ export default function OrdersPage() {
                           </div>
                         )}
 
+                        {/* 1.5 DETAIL BOQ DOCUMENT OUTFLOW */}
+                        {activeDocType === 'boq_doc' && (
+                          <div>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '12.5px', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                              Detailed Bill of Quantity (BOQ) Breakdown
+                            </h4>
+
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginTop: '6px' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '2px solid #0f172a', color: '#0f172a', textAlign: 'left', fontWeight: 700 }}>
+                                  <th style={{ padding: '6px', width: '40px', textAlign: 'center' }}>#</th>
+                                  <th style={{ padding: '6px', width: '120px' }}>Location (Floor/Area)</th>
+                                  <th style={{ padding: '6px', width: '90px' }}>Code</th>
+                                  <th style={{ padding: '6px' }}>Description</th>
+                                  <th style={{ padding: '6px', width: '80px' }}>Dimming</th>
+                                  <th style={{ padding: '6px', width: '80px' }}>ETA</th>
+                                  <th style={{ padding: '6px', width: '40px', textAlign: 'center' }}>Qty</th>
+                                  <th style={{ padding: '6px', width: '90px', textAlign: 'right' }}>Unit Retail</th>
+                                  <th style={{ padding: '6px', width: '90px', textAlign: 'right' }}>Total Retail</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[...activeOrderItems]
+                                  .sort((a, b) => {
+                                    const floorA = (a.floor || '').toLowerCase();
+                                    const floorB = (b.floor || '').toLowerCase();
+                                    if (floorA !== floorB) return floorA.localeCompare(floorB);
+                                    return (a.area || '').toLowerCase().localeCompare((b.area || '').toLowerCase());
+                                  })
+                                  .map((item, idx) => (
+                                    <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '6px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                                      <td style={{ padding: '6px', fontWeight: 500 }}>
+                                        {item.floor ? `${item.floor} - ` : ''}{item.area || '—'}
+                                      </td>
+                                      <td style={{ padding: '6px', fontFamily: 'monospace', color: '#0284c7' }}>{item.code || '—'}</td>
+                                      <td style={{ padding: '6px' }}>
+                                        <strong>{item.brand ? `[${item.brand}] ` : ''}</strong>
+                                        {item.description}
+                                      </td>
+                                      <td style={{ padding: '6px' }}>
+                                        <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>
+                                          {item.dimming || 'Non-dim'}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: '6px', whiteSpace: 'nowrap' }}>{item.eta || '4 weeks'}</td>
+                                      <td style={{ padding: '6px', textAlign: 'center', fontWeight: 600 }}>{item.qty}</td>
+                                      <td style={{ padding: '6px', textAlign: 'right' }}>R {Math.round(Number(item.unitRetail) || 0).toLocaleString()}</td>
+                                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>
+                                        R {Math.round((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+
+                            {/* VAT CALCULATIONS & FINAL BALANCES */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+                              <div style={{ width: '280px', fontSize: '11.5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                  <span>BOQ Retail Subtotal:</span>
+                                  <span>R {Math.round(totalRetail).toLocaleString()}</span>
+                                </div>
+                                {orderDiscount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-danger)' }}>
+                                    <span>Volume Discount ({orderDiscount}%):</span>
+                                    <span>- R {Math.round(totalRetail * (orderDiscount/100)).toLocaleString()}</span>
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 600, borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                                  <span>Total Net Excl VAT:</span>
+                                  <span>R {Math.round(discountedRetail).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                  <span>VAT (15%):</span>
+                                  <span>R {Math.round(vatAmount).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13.5px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                  <span>Total Billed Incl VAT:</span>
+                                  <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* 2. TAX INVOICE OUTFLOW */}
                         {activeDocType === 'invoice' && (
                           <div>
@@ -2632,13 +2761,28 @@ export default function OrdersPage() {
 
                             {/* TAX BREAKDOWN TABLE */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', marginTop: '20px' }}>
-                              <div style={{ fontSize: '10.5px', color: '#64748b', background: '#f8fafc', padding: '12px', borderRadius: '6px' }}>
-                                <strong>Standard Payment Bank Details:</strong><br />
-                                First National Bank (FNB)<br />
-                                Account Number: 6289012345<br />
-                                Branch Code: 250655<br />
-                                Reference: Quote ID <strong>{selectedOrderId}</strong><br />
-                                Send POP to finance@1to1lighting.com
+                              <div style={{ fontSize: '10.5px', color: '#64748b', background: '#f8fafc', padding: '12px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div>
+                                  <strong>Standard Payment Bank Details:</strong><br />
+                                  First National Bank (FNB)<br />
+                                  Account Number: 6289012345<br />
+                                  Branch Code: 250655<br />
+                                  Reference: Quote ID <strong>{selectedOrderId}</strong><br />
+                                  Send POP to finance@1to1lighting.com
+                                </div>
+                                {orderPayments && orderPayments.length > 0 && (
+                                  <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '8px', marginTop: '4px' }}>
+                                    <strong>Payments Received:</strong>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                                      {orderPayments.map((p, idx) => (
+                                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '2px' }}>
+                                          <span>{p.date} - {p.reference || 'EFT'}</span>
+                                          <strong style={{ color: '#10b981' }}>R {Number(p.amount).toLocaleString()}</strong>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               <div style={{ fontSize: '11.5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2748,7 +2892,7 @@ export default function OrdersPage() {
                                 }}></div>
                               </div>
                             </div>
-
+                            
                             {/* Spacing areas delivery summary */}
                             <h5 style={{ margin: '0 0 8px 0', fontSize: '11.5px', color: '#0f172a' }}>Site Area Delivery Summaries</h5>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2796,6 +2940,179 @@ export default function OrdersPage() {
                   );
                 })()}
 
+              </div>
+            )}
+
+            {workspaceSubTab === 'payments' && (
+              /* SUB-TAB 3: DEDICATED PAYMENTS LOG WORKSPACE */
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
+                
+                {/* Left Side: Ledger and Entry Form */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  
+                  {/* Payments Table */}
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
+                    <h4 style={{ margin: '0 0 14px 0', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)' }}>
+                      💳 Payments Received History Ledger
+                    </h4>
+                    
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            <th style={{ padding: '8px 10px' }}>Date</th>
+                            <th style={{ padding: '8px 10px' }}>Reference / Notes</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Amount</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'center', width: '80px' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orderPayments.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                No payments have been logged yet for this quotation.
+                              </td>
+                            </tr>
+                          ) : (
+                            orderPayments.map((p, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '8px 10px' }}>
+                                  <input 
+                                    type="date"
+                                    className="form-control"
+                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                                    value={p.date || ''}
+                                    onChange={e => {
+                                      const newP = [...orderPayments];
+                                      newP[idx].date = e.target.value;
+                                      setOrderPayments(newP);
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 10px' }}>
+                                  <input 
+                                    type="text"
+                                    placeholder="e.g. Deposit Payment EFT"
+                                    className="form-control"
+                                    style={{ height: '30px', fontSize: '12px', padding: '4px 8px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)', width: '100%' }}
+                                    value={p.reference || ''}
+                                    onChange={e => {
+                                      const newP = [...orderPayments];
+                                      newP[idx].reference = e.target.value;
+                                      setOrderPayments(newP);
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                                  <input 
+                                    type="number"
+                                    className="form-control"
+                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)', width: '110px', textAlign: 'right' }}
+                                    value={p.amount || ''}
+                                    onChange={e => {
+                                      const newP = [...orderPayments];
+                                      newP[idx].amount = Math.max(0, Number(e.target.value) || 0);
+                                      setOrderPayments(newP);
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  <button 
+                                    type="button"
+                                    className="btn btn-ghost btn-xs"
+                                    style={{ color: 'var(--text-danger)' }}
+                                    onClick={() => {
+                                      if (confirm('Delete this payment record?')) {
+                                        const newP = orderPayments.filter((_, i) => i !== idx);
+                                        setOrderPayments(newP);
+                                      }
+                                    }}
+                                  >
+                                    Delete ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ border: '1px dashed var(--border)', marginTop: '15px', color: 'var(--text-info)' }}
+                      onClick={() => setOrderPayments(prev => [...prev, { date: new Date().toISOString().split('T')[0], amount: 0, reference: '' }])}
+                    >
+                      + Add New Payment Entry
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Side: Payment Status Vitals Card */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {(() => {
+                    const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+                    const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+                    const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                    const vatAmount = discountedRetail * 0.15;
+                    const finalTotalInclVat = discountedRetail * 1.15;
+                    const balanceOutstanding = Math.max(0, finalTotalInclVat - orderPaidAmount);
+                    const depositRequired = finalTotalInclVat * 0.5; // 50% deposit
+                    const depositCleared = orderPaidAmount >= depositRequired;
+
+                    return (
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                          Payment Vitals & Balances
+                        </h4>
+
+                        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Total Quotation Value (Ex VAT):</span>
+                          <strong style={{ display: 'block', fontSize: '18px', color: 'var(--text-primary)', marginTop: '2px' }}>
+                            R {Math.round(discountedRetail).toLocaleString()}
+                          </strong>
+                        </div>
+
+                        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Gross Value (Incl VAT):</span>
+                          <strong style={{ display: 'block', fontSize: '18px', color: 'var(--text-primary)', marginTop: '2px' }}>
+                            R {Math.round(finalTotalInclVat).toLocaleString()}
+                          </strong>
+                        </div>
+
+                        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Total Paid to Date:</span>
+                          <strong style={{ display: 'block', fontSize: '18px', color: 'var(--text-success)', marginTop: '2px' }}>
+                            R {Math.round(orderPaidAmount).toLocaleString()}
+                          </strong>
+                        </div>
+
+                        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Outstanding Balance:</span>
+                          <strong style={{ display: 'block', fontSize: '18px', color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-muted)', marginTop: '2px' }}>
+                            R {Math.round(balanceOutstanding).toLocaleString()}
+                          </strong>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ 
+                            width: '12px', 
+                            height: '12px', 
+                            borderRadius: '50%', 
+                            background: depositCleared ? 'var(--text-success)' : 'var(--text-warning)' 
+                          }}></div>
+                          <div>
+                            <span style={{ fontSize: '11px', fontWeight: 600, display: 'block' }}>50% Deposit Status</span>
+                            <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                              {depositCleared ? 'Cleared ✓' : `Requires R ${Math.round(Math.max(0, depositRequired - orderPaidAmount)).toLocaleString()} more`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
