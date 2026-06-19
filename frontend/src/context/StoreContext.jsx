@@ -1117,10 +1117,39 @@ const defaultInvoices = [
 ];
 
 export function StoreProvider({ children }) {
-  const [projects, setProjects] = useState(initialStore);
-  const [contacts, setContacts] = useState(initialContacts);
-  const [leads, setLeads] = useState(initialLeads);
-  const [invoices, setInvoices] = useState(defaultInvoices);
+  const [projects, setProjects] = useState(() => {
+    const saved = localStorage.getItem('store_projects');
+    return saved ? JSON.parse(saved) : initialStore;
+  });
+  const [contacts, setContacts] = useState(() => {
+    const saved = localStorage.getItem('store_contacts');
+    return saved ? JSON.parse(saved) : initialContacts;
+  });
+  const [leads, setLeads] = useState(() => {
+    const saved = localStorage.getItem('store_leads');
+    return saved ? JSON.parse(saved) : initialLeads;
+  });
+  const [invoices, setInvoices] = useState(() => {
+    const saved = localStorage.getItem('store_invoices');
+    return saved ? JSON.parse(saved) : defaultInvoices;
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('store_projects', JSON.stringify(projects));
+  }, [projects]);
+
+  React.useEffect(() => {
+    localStorage.setItem('store_contacts', JSON.stringify(contacts));
+  }, [contacts]);
+
+  React.useEffect(() => {
+    localStorage.setItem('store_leads', JSON.stringify(leads));
+  }, [leads]);
+
+  React.useEffect(() => {
+    localStorage.setItem('store_invoices', JSON.stringify(invoices));
+  }, [invoices]);
+
 
   const addInvoice = (invoice) => {
     setInvoices(prev => [invoice, ...prev]);

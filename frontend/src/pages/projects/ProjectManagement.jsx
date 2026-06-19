@@ -869,218 +869,471 @@ export default function ProjectManagement() {
           
           {/* SECTION 1: OVERVIEW */}
           {activeTab === 'overview' && (
-            <div className="animation-fade-in">
-              <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', marginBottom: '24px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ClipboardList size={14} />
-                <span><strong>Overview Section:</strong> Configure basic project criteria, target margin tolerances, and select project scope parameters.</span>
+                <span><strong>Overview Section:</strong> Configure basic project criteria, stakeholder details, and manage the contacts directory.</span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
-                {/* Operational Details Card */}
-                <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
-                  <div className="card-head" style={{ padding: '12px 16px' }}><div className="card-title" style={{ fontSize: '12.5px' }}>Operational details</div></div>
-                  <div className="card-body" style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid var(--border)', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Client Name</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.client}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid var(--border)', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Design offering package</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.offering}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid var(--border)', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Meterage Scope</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.sqm} m²</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid var(--border)', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Start Date</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.start}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '0.5px solid var(--border)', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Deadline</span>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{p.deadline}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0 0', fontSize: '13px' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Days Left badge</span>
-                      <span className={`badge ${p.daysLeft && p.daysLeft.includes('−') ? 'b-danger' : 'b-success'}`} style={{ fontWeight: 600, padding: '2px 8px' }}>
-                        {p.daysLeft || 'Ongoing'}
-                      </span>
-                    </div>
+              {/* 1. Project Information Details Card */}
+              <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
+                <div className="card-head" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', color: 'var(--text-info)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ClipboardList size={16} /> Project Information Details
                   </div>
                 </div>
-
-                {/* Update Parameters Card */}
-                <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
-                  <div className="card-head" style={{ padding: '12px 16px' }}><div className="card-title" style={{ fontSize: '12.5px' }}>Update Active Parameters</div></div>
-                  <div className="card-body" style={{ padding: '16px 20px' }}>
-                    <fieldset disabled={!isAdmin} style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Name</div>
-                          <input 
-                            type="text" 
-                            className="form-control"
-                            value={p.name || ''} 
-                            onChange={e => updateProject(id, 'name', e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Client Name</div>
-                          <input 
-                            type="text" 
-                            className="form-control"
-                            value={p.client || ''} 
-                            onChange={e => updateProject(id, 'client', e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Type Workflow</div>
-                          <select className="form-control" value={p.projectType || 'Design & Orders'} onChange={e => updateProject(id, 'projectType', e.target.value)}>
-                            <option>Design & Orders</option>
-                            <option>Design-Only</option>
-                            <option>Orders-Only</option>
-                          </select>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Project Manager</div>
-                          <select className="form-control" value={p.pm} onChange={e => updateProject(id, 'pm', e.target.value)}>
-                            <option>Dani</option>
-                            <option>Martin</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Design Offering Package</div>
-                          <select className="form-control" value={p.offering || 'Signature'} onChange={e => updateProject(id, 'offering', e.target.value)}>
-                            <option>Signature</option>
-                            <option>Modus</option>
-                            <option>Essential</option>
-                          </select>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Meterage Scope (m²)</div>
-                          <input 
-                            type="text" 
-                            className="form-control"
-                            value={p.sqm || ''} 
-                            onChange={e => updateProject(id, 'sqm', e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Target Margin (%)</div>
-                          <input 
-                            type="number" 
-                            className="form-control"
-                            value={p.targetMargin || 18} 
-                            onChange={e => updateProject(id, 'targetMargin', Number(e.target.value))}
-                          />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Current Stage</div>
-                          <select className="form-control" value={p.stage} onChange={e => updateProject(id, 'stage', e.target.value)}>
-                            {['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'].map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Start Date</div>
-                          <input 
-                            type="text" 
-                            className="form-control"
-                            value={p.start || ''} 
-                            onChange={e => updateProject(id, 'start', e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Deadline</div>
-                          <input 
-                            type="text" 
-                            className="form-control"
-                            value={p.deadline || ''} 
-                            onChange={e => updateProject(id, 'deadline', e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px', fontWeight: 600 }}>Delay / Blockers</div>
-                        <select className="form-control" value={p.delay} onChange={e => updateProject(id, 'delay', e.target.value)}>
-                          {['—', 'Awaiting feedback/approval', 'Complex design iteration/rework required', 'Unforeseen technical challenges', 'Snags/Site visit'].map(s => <option key={s}>{s}</option>)}
-                        </select>
-                      </div>
-
-                      <div style={{ marginTop: '16px', borderTop: '0.5px solid var(--border)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {p.isDraft && (
-                          <button 
-                            className="btn btn-primary" 
-                            style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!p.name?.trim()) {
-                                alert("Please enter a Project Name to save!");
-                                return;
-                              }
-                              if (!p.client?.trim()) {
-                                alert("Please enter a Client Name to save!");
-                                return;
-                              }
-                              // Save the draft project!
-                              const finalKey = saveDraftProject(id, {
-                                name: p.name,
-                                client: p.client,
-                                sqm: p.sqm || '1,000',
-                                pm: p.pm,
-                                offering: p.offering,
-                                targetMargin: p.targetMargin || 18,
-                                projectType: p.projectType || 'Design & Orders',
-                                start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
-                                deadline: p.deadline === '—' || !p.deadline ? 'TBD' : p.deadline,
-                                status: 'On track',
-                                stage: 'Stage 1'
-                              });
-                              alert("Project created successfully!");
-                              navigate(`/projects/${finalKey}`);
-                            }}
-                          >
-                            Save & Create Project
-                          </button>
-                        )}
-                        
-                        <button 
-                          type="button"
-                          className="btn"
-                          onClick={handleDeleteProject}
-                          style={{ 
-                            width: '100%', 
-                            justifyContent: 'center', 
-                            padding: '10px', 
-                            fontSize: '13px', 
-                            fontWeight: 600,
-                            color: 'var(--text-danger)',
-                            border: '1px solid rgba(239, 68, 68, 0.2)',
-                            background: 'rgba(239, 68, 68, 0.05)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          <Trash2 size={14} /> Delete Project {isLockedForDeletion && <Lock size={12} style={{ opacity: 0.6 }} />}
-                        </button>
-                      </div>
-                    </fieldset>
+                <div className="card-body" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Project Name:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.name || ''} 
+                      onChange={(e) => updateProject(id, 'name', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Project Type Workflow:</span>
+                    <select 
+                      className="form-control" 
+                      value={p.projectType || 'Design & Orders'} 
+                      onChange={(e) => updateProject(id, 'projectType', e.target.value)}
+                    >
+                      <option value="Design & Orders">Design & Orders</option>
+                      <option value="Design-Only">Design-Only</option>
+                      <option value="Orders-Only">Orders-Only</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Project Manager:</span>
+                    <select 
+                      className="form-control" 
+                      value={p.pm || 'Dani'} 
+                      onChange={(e) => updateProject(id, 'pm', e.target.value)}
+                    >
+                      <option value="Dani">Dani</option>
+                      <option value="Martin">Martin</option>
+                      <option value="Alex">Alex</option>
+                      <option value="Merlyn">Merlyn</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
+                    <select 
+                      className="form-control" 
+                      value={p.stage || 'Stage 1'} 
+                      onChange={(e) => updateProject(id, 'stage', e.target.value)}
+                    >
+                      <option value="Stage 1">Stage 1</option>
+                      <option value="Stage 2">Stage 2</option>
+                      <option value="Stage 3">Stage 3</option>
+                      <option value="Stage 4">Stage 4</option>
+                      <option value="Stage 5">Stage 5</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Start Date:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.start || ''} 
+                      onChange={(e) => updateProject(id, 'start', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Deadline Date:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.deadline || ''} 
+                      onChange={(e) => updateProject(id, 'deadline', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Meterage Scope (m²):</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.sqm || ''} 
+                      onChange={(e) => updateProject(id, 'sqm', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Target Margin (%):</span>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      value={p.targetMargin || 18} 
+                      onChange={(e) => updateProject(id, 'targetMargin', Number(e.target.value) || 0)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: 'span 2' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Delay / Blockers:</span>
+                    <select 
+                      className="form-control" 
+                      value={p.delay || 'None'} 
+                      onChange={(e) => updateProject(id, 'delay', e.target.value)}
+                    >
+                      <option value="None">None</option>
+                      <option value="Awaiting feedback/approval">Awaiting feedback/approval</option>
+                      <option value="Supply Chain Blocked">Supply Chain Blocked</option>
+                      <option value="Budget Constraint">Budget Constraint</option>
+                    </select>
                   </div>
                 </div>
               </div>
+
+              {/* 2. Client Information Card */}
+              <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
+                <div className="card-head" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', color: 'var(--text-info)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <User size={16} /> Client Information
+                  </div>
+                </div>
+                <div className="card-body" style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Client Name:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.client || ''} 
+                      onChange={(e) => updateProject(id, 'client', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Company Name:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.clientCompany || ''} 
+                      onChange={(e) => updateProject(id, 'clientCompany', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Client Email Address:</span>
+                    <input 
+                      type="email" 
+                      className="form-control" 
+                      value={p.clientEmail || ''} 
+                      onChange={(e) => updateProject(id, 'clientEmail', e.target.value)} 
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Client Mobile Number:</span>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.clientPhone || ''} 
+                      onChange={(e) => updateProject(id, 'clientPhone', e.target.value)} 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Project Stakeholders & Billing Details Card */}
+              <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
+                <div className="card-head" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', color: 'var(--text-info)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users size={16} /> Project Stakeholders & Billing Details
+                  </div>
+                </div>
+                <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Architect Details:</span>
+                      <textarea 
+                        className="form-control" 
+                        rows={2} 
+                        placeholder="e.g. Studio Venter, Sarah (082 456 7890)"
+                        value={p.architectDetails || ''} 
+                        onChange={(e) => updateProject(id, 'architectDetails', e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Contractor Details:</span>
+                      <textarea 
+                        className="form-control" 
+                        rows={2} 
+                        placeholder="e.g. BuildCo Contractors, Dave (083 111 2222)"
+                        value={p.contractorDetails || ''} 
+                        onChange={(e) => updateProject(id, 'contractorDetails', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: '1px dashed var(--border)', margin: '10px 0' }}></div>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-info)' }}>Billing details override:</span>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Billing Name:</span>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={p.billingName || ''} 
+                        onChange={(e) => updateProject(id, 'billingName', e.target.value)} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Billing Email:</span>
+                      <input 
+                        type="email" 
+                        className="form-control" 
+                        value={p.billingEmail || ''} 
+                        onChange={(e) => updateProject(id, 'billingEmail', e.target.value)} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Billing Mobile:</span>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={p.billingPhone || ''} 
+                        onChange={(e) => updateProject(id, 'billingPhone', e.target.value)} 
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Full Billing Address:</span>
+                    <textarea 
+                      className="form-control" 
+                      rows={2} 
+                      placeholder="Full business legal/VAT billing coordinates"
+                      value={p.billingDetails || ''} 
+                      onChange={(e) => updateProject(id, 'billingDetails', e.target.value)} 
+                    />
+                  </div>
+
+                  <div style={{ borderTop: '1px dashed var(--border)', margin: '10px 0' }}></div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Site Delivery Address:</span>
+                    <textarea 
+                      className="form-control" 
+                      rows={2} 
+                      placeholder="Street name, City, Zip Code"
+                      value={p.deliveryAddress || ''} 
+                      onChange={(e) => updateProject(id, 'deliveryAddress', e.target.value)} 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Project Directory & Finance Contacts Card */}
+              <div className="card" style={{ margin: 0, border: '1px solid var(--border)' }}>
+                <div className="card-head" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', color: 'var(--text-info)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users size={16} /> Project Directory & Finance Contacts
+                  </div>
+                </div>
+                <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left' }}>
+                          <th>Category</th>
+                          <th>Name</th>
+                          <th>Company</th>
+                          <th>Role</th>
+                          <th>Email</th>
+                          <th>Mobile</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const directory = p.contactsList || [
+                            { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
+                            { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
+                          ];
+
+                          return directory.map((c, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td>
+                                <span className={`badge ${c.category === 'Payment/Finance' ? 'b-success' : 'b-info'}`} style={{ fontSize: '9.5px', padding: '2px 6px' }}>
+                                  {c.category}
+                                </span>
+                              </td>
+                              <td>
+                                <input 
+                                  type="text" 
+                                  className="form-control form-control-sm" 
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  value={c.name} 
+                                  onChange={(e) => {
+                                    const updated = [...directory];
+                                    updated[idx].name = e.target.value;
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input 
+                                  type="text" 
+                                  className="form-control form-control-sm" 
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  value={c.company} 
+                                  onChange={(e) => {
+                                    const updated = [...directory];
+                                    updated[idx].company = e.target.value;
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input 
+                                  type="text" 
+                                  className="form-control form-control-sm" 
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  value={c.role} 
+                                  onChange={(e) => {
+                                    const updated = [...directory];
+                                    updated[idx].role = e.target.value;
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input 
+                                  type="text" 
+                                  className="form-control form-control-sm" 
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  value={c.email} 
+                                  onChange={(e) => {
+                                    const updated = [...directory];
+                                    updated[idx].email = e.target.value;
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input 
+                                  type="text" 
+                                  className="form-control form-control-sm" 
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  value={c.phone} 
+                                  onChange={(e) => {
+                                    const updated = [...directory];
+                                    updated[idx].phone = e.target.value;
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <button 
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '12px' }}
+                                  onClick={() => {
+                                    const updated = directory.filter((_, cIdx) => cIdx !== idx);
+                                    updateProject(id, 'contactsList', updated);
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
+                      onClick={() => {
+                        const directory = p.contactsList || [
+                          { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
+                          { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
+                        ];
+                        const updated = [
+                          ...directory,
+                          { category: 'Project Contact', name: '', company: '', role: '', email: '', phone: '' }
+                        ];
+                        updateProject(id, 'contactsList', updated);
+                      }}
+                    >
+                      + Add Project Contact
+                    </button>
+
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
+                      onClick={() => {
+                        const directory = p.contactsList || [
+                          { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
+                          { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
+                        ];
+                        const updated = [
+                          ...directory,
+                          { category: 'Payment/Finance', name: '', company: '', role: '', email: '', phone: '' }
+                        ];
+                        updateProject(id, 'contactsList', updated);
+                      }}
+                    >
+                      + Add Payment / Finance Contact
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {p.isDraft && (
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (!p.name?.trim()) {
+                      alert("Please enter a Project Name to save!");
+                      return;
+                    }
+                    if (!p.client?.trim()) {
+                      alert("Please enter a Client Name to save!");
+                      return;
+                    }
+                    const finalKey = saveDraftProject(id, {
+                      name: p.name,
+                      client: p.client,
+                      sqm: p.sqm || '1,000',
+                      pm: p.pm,
+                      offering: p.offering,
+                      targetMargin: p.targetMargin || 18,
+                      projectType: p.projectType || 'Design & Orders',
+                      start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+                      deadline: p.deadline === '—' || !p.deadline ? 'TBD' : p.deadline,
+                      status: 'On track',
+                      stage: 'Stage 1'
+                    });
+                    alert("Project created successfully!");
+                    navigate(`/projects/${finalKey}`);
+                  }}
+                >
+                  Save & Create Project
+                </button>
+              )}
+              
+              <button 
+                type="button"
+                className="btn"
+                onClick={handleDeleteProject}
+                style={{ 
+                  width: '100%', 
+                  justifyContent: 'center', 
+                  padding: '10px', 
+                  fontSize: '13px', 
+                  fontWeight: 600,
+                  color: 'var(--text-danger)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Trash2 size={14} /> Delete Project {isLockedForDeletion && <Lock size={12} style={{ opacity: 0.6 }} />}
+              </button>
 
               {/* Integrated Plaque & Health Console Below */}
               {!p.isDraft && (
@@ -1504,21 +1757,42 @@ export default function ProjectManagement() {
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Project Finance Summary</div>
                       
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                        {/* Orders (Incl VAT) */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Total Contract Orders (Billed):</span>
-                          <strong style={{ color: 'white' }}>R {totalOrderVal.toLocaleString()}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Total Design Sub-fees:</span>
-                          <strong style={{ color: 'white' }}>R {totalDesignVal.toLocaleString()}</strong>
+                          <span style={{ color: 'var(--text-secondary)' }}>Orders Billed (Incl VAT):</span>
+                          <strong style={{ color: 'var(--text-primary)' }}>R {Math.round(totalOrderVal * 1.15).toLocaleString()}</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                          <span style={{ color: 'var(--text-success)' }}>Total Payments Cleared:</span>
-                          <strong style={{ color: 'var(--text-success)' }}>R {grandPaidValue.toLocaleString()}</strong>
+                          <span style={{ color: 'var(--text-success)' }}>↳ Orders Paid Received:</span>
+                          <strong style={{ color: 'var(--text-success)' }}>R {totalOrderPaid.toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>↳ Orders Outstanding:</span>
+                          <strong style={{ color: 'var(--text-warning)' }}>R {Math.max(0, Math.round(totalOrderVal * 1.15) - totalOrderPaid).toLocaleString()}</strong>
+                        </div>
+
+                        {/* Design Fees (Incl VAT) */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Design Fees Billed (Incl VAT):</span>
+                          <strong style={{ color: 'var(--text-primary)' }}>R {Math.round(totalDesignVal * 1.15).toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                          <span style={{ color: 'var(--text-success)' }}>↳ Design Fees Paid Received:</span>
+                          <strong style={{ color: 'var(--text-success)' }}>R {totalDesignPaid.toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>↳ Design Outstanding:</span>
+                          <strong style={{ color: 'var(--text-warning)' }}>R {Math.max(0, Math.round(totalDesignVal * 1.15) - totalDesignPaid).toLocaleString()}</strong>
+                        </div>
+
+                        {/* Combined Project Totals */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                          <span style={{ color: 'var(--text-success)', fontWeight: 600 }}>Total Payments Cleared:</span>
+                          <strong style={{ color: 'var(--text-success)', fontWeight: 700 }}>R {grandPaidValue.toLocaleString()}</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', borderTop: '2px solid var(--border)', paddingTop: '10px', fontWeight: 700 }}>
-                          <span style={{ color: 'var(--text-warning)' }}>Outstanding Balance Due:</span>
-                          <strong style={{ color: 'var(--text-warning)' }}>R {grandOutstandingValue.toLocaleString()}</strong>
+                          <span style={{ color: 'var(--text-warning)' }}>Total Outstanding Balance:</span>
+                          <strong style={{ color: 'var(--text-warning)' }}>R {Math.max(0, Math.round(grandContractValue * 1.15) - grandPaidValue).toLocaleString()}</strong>
                         </div>
                       </div>
                     </div>

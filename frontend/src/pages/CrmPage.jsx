@@ -7,7 +7,8 @@ import {
   ExternalLink, FileText, CheckCircle, Clock, Search, Bell, 
   MoreVertical, Calendar, DollarSign, MessageSquare, Send, ChevronRight,
   TrendingDown, Star, Filter, Plus, AlertTriangle, ShieldAlert, Heart, Target,
-  X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList
+  X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList,
+  ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
 } from 'lucide-react';
 
 const typeColors = { Architect: 'b-info', Developer: 'b-success', Interior: 'b-warning', Private: 'b-default' };
@@ -27,7 +28,8 @@ export default function CrmPage() {
     setContacts, 
     projects, 
     attritionLogs, 
-    logAttrition
+    logAttrition,
+    addProject
   } = useStore();
 
   const navigate = useNavigate();
@@ -45,6 +47,26 @@ export default function CrmPage() {
   // Edit Client Profile States
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [editClientData, setEditClientData] = useState(null);
+
+  // Client Projects table sort states
+  const [projSortField, setProjSortField] = useState('name');
+  const [projSortDirection, setProjSortDirection] = useState('asc');
+
+  const handleProjSort = (field) => {
+    if (projSortField === field) {
+      setProjSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setProjSortField(field);
+      setProjSortDirection('asc');
+    }
+  };
+
+  const renderProjSortIcon = (field) => {
+    if (projSortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.5 }} />;
+    return projSortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
+  };
 
   // Activity Log States
   const [newActivityText, setNewActivityText] = useState('');
@@ -199,6 +221,8 @@ export default function CrmPage() {
 
       return {
         ...c,
+        projects: clientProjectsList.length,
+        lifetimeRevenue: calculatedLtv,
         totalValue: calculatedLtv,
         annualRevenue: calculatedYtd,
         health,
@@ -369,6 +393,71 @@ export default function CrmPage() {
       </span>
     );
   };
+
+  const clientProjects = useMemo(() => {
+    if (!selectedClient) return [];
+    const rawList = Object.values(projects).filter(p => p.client === selectedClient?.name);
+    if (!projSortField) return rawList;
+    const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
+
+    const getVal = (p, field) => {
+      switch (field) {
+        case 'name':
+          return (p.name || '').toLowerCase();
+        case 'client':
+          return (p.client || '').toLowerCase();
+        case 'projectType':
+          return (p.projectType || '').toLowerCase();
+        case 'designFees':
+          return p.designFees?.length || 0;
+        case 'orders':
+          return p.orders?.length || 0;
+        case 'stage': {
+          const idx = stagesList.indexOf(p.stage);
+          return idx === -1 ? 0 : idx;
+        }
+        case 'margin': {
+          let totalValue = p.feeValue || 0;
+          let actualMargin = p.actualMargin || 18;
+          if (p.designFees && p.orders) {
+            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            totalValue = dfVal + poVal;
+            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+                              p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+            actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+          }
+          return actualMargin;
+        }
+        case 'status':
+          return (p.status || '').toLowerCase();
+        case 'outstanding': {
+          let totalValue = p.feeValue || 0;
+          let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
+          if (p.designFees && p.orders) {
+            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+            totalValue = dfVal + poVal;
+            totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+          }
+          return totalOutstanding;
+        }
+        default:
+          return '';
+      }
+    };
+
+    return [...rawList].sort((a, b) => {
+      const valA = getVal(a, projSortField);
+      const valB = getVal(b, projSortField);
+
+      if (valA < valB) return projSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return projSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [projects, selectedClient?.name, projSortField, projSortDirection]);
 
   // GLOBAL VIEW
   if (!selectedClient) {
@@ -1097,7 +1186,6 @@ export default function CrmPage() {
   }
 
   // INDIVIDUAL DRILL-DOWN CLIENT PROFILE
-  const clientProjects = Object.values(projects).filter(p => p.client === selectedClient.name);
 
 
   // Spend calculations for selectedClient
@@ -1292,53 +1380,182 @@ export default function CrmPage() {
         {/* TAB 2: PROJECTS */}
         {activeTab === 'projects' && (
           <div className="card">
-            <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
+            <div className="card-head" style={{ background: 'none', borderBottom: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="card-title">ALL Portfolio Projects for {selectedClient.name}</div>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  const newKey = addProject({
+                    name: '',
+                    client: selectedClient.name,
+                    projectType: 'Design & Orders',
+                    offering: 'Signature',
+                    sqm: '',
+                    pm: 'Dani',
+                    targetMargin: 18,
+                    actualMargin: 18,
+                    designFees: [],
+                    orders: [],
+                    isDraft: true,
+                    stage: '—',
+                    status: 'Draft',
+                    start: '—',
+                    deadline: '—'
+                  });
+                  navigate(`/projects/${newKey}`);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Plus size={16} /> New Project
+              </button>
             </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Project Name</th>
-                  <th>Offering Type</th>
-                  <th>Current Stage</th>
-                  <th>Status</th>
-                  <th>Target Margin</th>
-                  <th>Actual Margin</th>
-                  <th>Budget (R)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientProjects.map(p => (
-                  <tr 
-                    key={p.key || p.id || p.name} 
-                    className="clickable hover-row" 
-                    onClick={() => navigate(`/projects/${p.key || p.id || p.name.toLowerCase().replace(/\s+/g, '-')}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</td>
-                    <td>{p.offering}</td>
-                    <td>{p.stage}</td>
-                    <td>
-                      <span className={`badge ${p.complete === 'Complete' ? 'b-success' : 'b-warning'}`}>
-                        {p.complete}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{p.targetMargin || 18}%</td>
-                    <td style={{ fontWeight: 600, color: (p.actualMargin || 18) >= (p.targetMargin || 18) ? '#22c55e' : '#ef4444' }}>
-                      {p.actualMargin || 18}%
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{p.feeExcl}</td>
-                  </tr>
-                ))}
-                {clientProjects.length === 0 && (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '20px' }}>
-                      No projects linked to this client.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+             <table className="table" style={{ margin: 0 }}>
+               <colgroup>
+                 <col style={{ width: '15%' }} />
+                 <col style={{ width: '15%' }} />
+                 <col style={{ width: '12%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '14%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '10%' }} />
+                 <col style={{ width: '10%' }} />
+               </colgroup>
+               <thead>
+                 <tr>
+                   <th onClick={() => handleProjSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project {renderProjSortIcon('name')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderProjSortIcon('client')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('projectType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Type {renderProjSortIcon('projectType')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderProjSortIcon('designFees')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('orders')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderProjSortIcon('orders')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderProjSortIcon('stage')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderProjSortIcon('margin')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderProjSortIcon('status')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderProjSortIcon('outstanding')}</div>
+                   </th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {clientProjects.map(p => {
+                   const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
+                   const currentStageIdx = stagesList.indexOf(p.stage);
+                   const progressPct = currentStageIdx === -1 ? 0 : Math.round(((currentStageIdx + 1) / stagesList.length) * 100);
+                   
+                   let totalValue = p.feeValue || 0;
+                   let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
+                   let actualMargin = p.actualMargin || 18;
+ 
+                   if (p.designFees && p.orders) {
+                     const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+                     const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+                     const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+                     const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+ 
+                     totalValue = dfVal + poVal;
+                     totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+ 
+                     const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+                                       p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+                     actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+                   }
+ 
+                   const isUnderTarget = actualMargin < (p.targetMargin || 18);
+ 
+                   const typeColors = {
+                     'Design & Orders': 'b-info',
+                     'Design-Only': 'b-warning',
+                     'Orders-Only': 'b-success'
+                   };
+ 
+                   return (
+                     <tr 
+                       key={p.key || p.id || p.name} 
+                       className="clickable hover-row" 
+                       onClick={() => navigate(`/projects/${p.key || p.id || p.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                       style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                     >
+                       <td>
+                         <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
+                       </td>
+                       <td>
+                         <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</div>
+                       </td>
+                       <td>
+                         <span className={`badge ${typeColors[p.projectType || 'Design & Orders']}`} style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                           {p.projectType === 'Orders-Only' ? <ShoppingBag size={10} /> : p.projectType === 'Design-Only' ? <FolderGit size={10} /> : <Briefcase size={10} />}
+                           {p.projectType || 'Design & Orders'}
+                         </span>
+                       </td>
+                       <td style={{ fontWeight: 500 }}>
+                         {p.designFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
+                       </td>
+                       <td style={{ fontWeight: 500 }}>
+                         {p.orders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
+                       </td>
+                       <td>
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 500 }}>
+                             <span>{p.stage}</span>
+                             <span style={{ color: 'var(--text-tertiary)' }}>{progressPct}%</span>
+                           </div>
+                           <div style={{ width: '100%', height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
+                             <div 
+                               style={{ 
+                                 width: `${progressPct}%`, 
+                                 height: '100%', 
+                                 background: p.status === 'On track' ? 'var(--text-success)' : 'var(--text-danger)',
+                                 borderRadius: '2px',
+                                 transition: 'width 0.4s ease'
+                               }} 
+                             />
+                           </div>
+                         </div>
+                       </td>
+                       <td>
+                         <div style={{ display: 'flex', flexDirection: 'column' }}>
+                           <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                             {actualMargin}%
+                           </span>
+                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
+                         </div>
+                       </td>
+                       <td>
+                         <span className={`badge ${p.status === 'On track' ? 'b-success' : 'b-danger'}`} style={{ fontSize: '11px' }}>
+                           {p.status}
+                         </span>
+                       </td>
+                       <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                         R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                       </td>
+                     </tr>
+                   );
+                 })}
+                 {clientProjects.length === 0 && (
+                   <tr>
+                     <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '20px' }}>
+                       No projects linked to this client.
+                     </td>
+                   </tr>
+                 )}
+               </tbody>
+             </table>
           </div>
         )}
 
