@@ -462,7 +462,26 @@ export default function OrdersPage() {
           date: p.date || '',
           reference: p.reference || '',
           amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        }))
+        })),
+        // Hierarchical structure for custom docx loop formatting
+        floors: (() => {
+          const floorMap = {};
+          finalItems.forEach(item => {
+            const fName = item.floor || 'Unspecified';
+            const aName = item.area || 'Unspecified';
+            if (!floorMap[fName]) {
+              floorMap[fName] = { name: fName, areas: {} };
+            }
+            if (!floorMap[fName].areas[aName]) {
+              floorMap[fName].areas[aName] = { name: aName, items: [] };
+            }
+            floorMap[fName].areas[aName].items.push(item);
+          });
+          return Object.values(floorMap).map(f => ({
+            name: f.name,
+            areas: Object.values(f.areas)
+          }));
+        })()
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?page=${pageNum}`, {
@@ -632,7 +651,25 @@ export default function OrdersPage() {
           date: p.date || '',
           reference: p.reference || '',
           amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        }))
+        })),
+        floors: (() => {
+          const floorMap = {};
+          finalItems.forEach(item => {
+            const fName = item.floor || 'Unspecified';
+            const aName = item.area || 'Unspecified';
+            if (!floorMap[fName]) {
+              floorMap[fName] = { name: fName, areas: {} };
+            }
+            if (!floorMap[fName].areas[aName]) {
+              floorMap[fName].areas[aName] = { name: aName, items: [] };
+            }
+            floorMap[fName].areas[aName].items.push(item);
+          });
+          return Object.values(floorMap).map(f => ({
+            name: f.name,
+            areas: Object.values(f.areas)
+          }));
+        })()
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {

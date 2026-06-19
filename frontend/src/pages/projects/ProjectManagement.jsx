@@ -826,8 +826,9 @@ export default function ProjectManagement() {
           { id: 'overview', label: '1. Overview (Project Info)', icon: <ClipboardList size={15} />, disabled: false },
           { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={15} />, disabled: p.isDraft || p.projectType === 'Orders-Only' },
           { id: 'orders', label: '3. Orders Section', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
-          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Wallet size={15} />, disabled: p.isDraft },
-          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft }
+          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Layers size={15} />, disabled: p.isDraft },
+          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft },
+          { id: 'payments', label: '💳 Payments Ledger', icon: <Wallet size={15} />, disabled: p.isDraft }
         ].map(tab => {
           const isActive = activeTab === tab.id;
           return (
@@ -1421,7 +1422,124 @@ export default function ProjectManagement() {
               </div>
             )}
 
-                        {/* SECTION 4: SUMMARY (Statement Overview Balance Sheet) */}
+                        {/* SECTION: PAYMENTS LEDGER (Project-wide payments consolidation) */}
+            {activeTab === 'payments' && (
+              <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Wallet size={14} />
+                  <span><strong>Project Payments Ledger:</strong> Below is a consolidated log of all payments received across this project's orders. To log new payments, click on an order ref to open its dedicated sync panel.</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '20px', alignItems: 'start' }}>
+                  
+                  {/* Payments Table list */}
+                  <div className="card" style={{ margin: 0, padding: '16px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '12px', color: 'white' }}>💳 Consolidated Payments Received</div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left' }}>
+                            <th style={{ padding: '8px' }}>Date</th>
+                            <th style={{ padding: '8px' }}>Order/Quote Ref</th>
+                            <th style={{ padding: '8px' }}>Reference / Notes</th>
+                            <th style={{ padding: '8px', textAlign: 'right' }}>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const allPayments = [];
+                            orders.forEach(o => {
+                              if (o.payments && Array.isArray(o.payments)) {
+                                o.payments.forEach(p => {
+                                  allPayments.push({
+                                    orderId: o.id,
+                                    date: p.date,
+                                    reference: p.reference,
+                                    amount: p.amount
+                                  });
+                                });
+                              }
+                            });
+
+                            if (allPayments.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                    No payments have been logged yet for any order in this project.
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            // Sort payments by date descending
+                            allPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                            return allPayments.map((p, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '8px' }}>{p.date}</td>
+                                <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>
+                                  <button 
+                                    className="btn-link"
+                                    style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                    onClick={() => navigate('/orders', { state: { projectKey: p.key || key, openOrderId: p.orderId } })}
+                                  >
+                                    {p.orderId}
+                                  </button>
+                                </td>
+                                <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
+                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-success)' }}>
+                                  R {Number(p.amount || 0).toLocaleString()}
+                                </td>
+                              </tr>
+                            ));
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Summary Card */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div className="card" style={{ margin: 0, padding: '16px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Project Finance Summary</div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Total Contract Orders (Billed):</span>
+                          <strong style={{ color: 'white' }}>R {totalOrderVal.toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Total Design Sub-fees:</span>
+                          <strong style={{ color: 'white' }}>R {totalDesignVal.toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                          <span style={{ color: 'var(--text-success)' }}>Total Payments Cleared:</span>
+                          <strong style={{ color: 'var(--text-success)' }}>R {grandPaidValue.toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', borderTop: '2px solid var(--border)', paddingTop: '10px', fontWeight: 700 }}>
+                          <span style={{ color: 'var(--text-warning)' }}>Outstanding Balance Due:</span>
+                          <strong style={{ color: 'var(--text-warning)' }}>R {grandOutstandingValue.toLocaleString()}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      background: 'linear-gradient(135deg, rgba(24,95,165,0.03) 0%, rgba(139,92,246,0.01) 100%)', 
+                      border: '1.5px dashed var(--border-info)', 
+                      borderRadius: 'var(--radius-lg)', 
+                      padding: '14px 18px',
+                      fontSize: '11.5px',
+                      color: 'var(--text-secondary)'
+                    }}>
+                      <strong>💡 Accounting Ledger Tip:</strong> Payments are stored directly inside the specific Order JSON record. Shifting an order to a different project or client via the <strong>Link</strong> button automatically moves its associated payments.
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 4: SUMMARY (Statement Overview Balance Sheet) */}
             {activeTab === 'summary' && (
               <div className="animation-fade-in">
                 <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', marginBottom: '20px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1432,24 +1550,30 @@ export default function ProjectManagement() {
                 {/* Grid Financial Cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Orders</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalOrderVal.toLocaleString()}</div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Orders Pipeline</span>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
+                      Billed: R {totalOrderVal.toLocaleString()}<br />
+                      <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-success)' }}>Paid: R {totalOrderPaid.toLocaleString()}</span>
+                    </div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Design Portfolio</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {totalDesignVal.toLocaleString()}</div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
+                      Billed: R {totalDesignVal.toLocaleString()}<br />
+                      <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-success)' }}>Paid: R {totalDesignPaid.toLocaleString()}</span>
+                    </div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.02)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-success)', textTransform: 'uppercase', fontWeight: 600 }}>Total Payments</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>R {grandPaidValue.toLocaleString()}</div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-success)', textTransform: 'uppercase', fontWeight: 600 }}>Grand Total Paid</span>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-success)', marginTop: '8px' }}>R {grandPaidValue.toLocaleString()}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'rgba(245,158,11,0.02)', border: '1px solid rgba(245,158,11,0.2)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-warning)', textTransform: 'uppercase', fontWeight: 600 }}>Outstanding ZAR</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>R {grandOutstandingValue.toLocaleString()}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '8px' }}>R {grandOutstandingValue.toLocaleString()}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Blended Margin</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>{blendedMargin}%</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{blendedMargin}%</div>
                   </div>
                 </div>
 

@@ -114,57 +114,138 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                     xml_content = clean_docx_xml(xml_content)
                     
                     # Special processing for document.xml (repeating table rows)
+                    # Double Nested Block loops parser for custom Word Layouts (Floors & Areas grouping)
+                    # Syntax: {{#floor}} ... {{/floor}} and inside: {{#area}} ... {{/area}}
                     if item.filename == 'word/document.xml':
-                        # Find table rows <w:tr> containing placeholders
-                        tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
+                        floors_data = tokens.get("floors", [])
                         
+                        # 1. First Parse Floor Block loops
+                        # Standard Word paragraphs containing tags may have XML tags split between braces, but clean_docx_xml cleans it.
+                        # Look for paragraphs or runs with {{#floor}} ... {{/floor}}
+                        # Because Word XML structure spans across paragraph runs, we search for block regexes.
+                        # We use a pattern to match everything between the floor tags
+                        floor_block_pattern = re.compile(r'({{\s*#floor\s*}}.*?{{\s*/floor\s*}})', re.DOTALL | re.IGNORECASE)
+                        
+                        def replace_floor_block(floor_match):
+                            block_template = floor_match.group(1)
+                            # Strip tags to get clean template
+                            clean_template = re.sub(r'{{\s*#floor\s*}}', '', block_template, flags=re.IGNORECASE)
+                            clean_template = re.sub(r'{{\s*/floor\s*}}', '', clean_template, flags=re.IGNORECASE)
+                            
+                            expanded_floors = []
+                            for f_idx, floor_obj in enumerate(floors_data):
+                                f_xml = clean_template
+                                # Substitute floor variables
+                                f_xml = re.sub(r'{{\s*floor\.name\s*}}', str(floor_obj.get("name", "")), f_xml, flags=re.IGNORECASE)
+                                
+                                # Now process sub-loop for Areas inside this Floor
+                                areas_data = floor_obj.get("areas", [])
+                                area_block_pattern = re.compile(r'({{\s*#area\s*}}.*?{{\s*/area\s*}})', re.DOTALL | re.IGNORECASE)
+                                
+                                def replace_area_block(area_match):
+                                    area_template = area_match.group(1)
+                                    clean_area_temp = re.sub(r'{{\s*#area\s*}}', '', area_template, flags=re.IGNORECASE)
+                                    clean_area_temp = re.sub(r'{{\s*/area\s*}}', '', clean_area_temp, flags=re.IGNORECASE)
+                                    
+                                    expanded_areas = []
+                                    for a_idx, area_obj in enumerate(areas_data):
+                                        a_xml = clean_area_temp
+                                        a_xml = re.sub(r'{{\s*area\.name\s*}}', str(area_obj.get("name", "")), a_xml, flags=re.IGNORECASE)
+                                        
+                                        # Within this Area, repeat the table rows matching item.* placeholders
+                                        items_data = area_obj.get("items", [])
+                                        tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
+                                        
+                                        def replace_item_row(row_match):
+                                            row_xml = row_match.group(1)
+                                            if 'item.' in row_xml and items_data:
+                                                repeated_rows = []
+                                                for idx, list_item in enumerate(items_data):
+                                                    row_copy = row_xml
+                                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
+                                                    for item_key, item_val in list_item.items():
+                                                        pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
+                                                        row_copy = re.sub(pattern, str(item_val), row_copy, flags=re.IGNORECASE)
+                                                    repeated_rows.append(row_copy)
+                                                return "".join(repeated_rows)
+                                            return row_xml
+                                            
+                                        a_xml = tr_pattern.sub(replace_item_row, a_xml)
+                                        expanded_areas.append(a_xml)
+                                    return "".join(expanded_areas)
+                                    
+                                f_xml = area_block_pattern.sub(replace_area_block, f_xml)
+                                expanded_floors.append(f_xml)
+                            return "".join(expanded_floors)
+                            
+                        xml_content = floor_block_pattern.sub(replace_floor_block, xml_content)
+                        
+                        # 2. Fallback / Flat Table Repeater (if flat template remains or flat payment list is used)
+                        tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
                         payments_list = tokens.get("payments", [])
                         if not isinstance(payments_list, list):
                             payments_list = []
                             
-                        def replace_row(match):
+                        def replace_flat_row(match):
                             row_xml = match.group(1)
-                            # Check if it contains item placeholder (supporting optional whitespace)
-                            if 'item.' in row_xml and items_list:
+                            # Fallback item parser for non-nested flat list templates
+                            if 'item.' in row_xml and items_list and '#floor' not in xml_content:
                                 repeated_rows = []
+                                last_floor = None
+                                last_area = None
                                 for idx, list_item in enumerate(items_list):
-                                    row_copy = row_xml
-                                    # Replace item.index with optional whitespace
-                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
+                                    current_floor = list_item.get('floor', '').strip()
+                                    current_area = list_item.get('area', '').strip()
                                     
-                                    # Replace item placeholders with optional whitespace
+                                    if current_floor and current_floor != last_floor:
+                                        last_floor = current_floor
+                                        last_area = None
+                                        floor_row = row_xml
+                                        for key in list_item.keys():
+                                            floor_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', floor_row, flags=re.IGNORECASE)
+                                        floor_row = re.sub(r'{{\s*item\.description\s*}}', f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>", floor_row, flags=re.IGNORECASE)
+                                        floor_row = re.sub(r'{{\s*item\.index\s*}}', '', floor_row, flags=re.IGNORECASE)
+                                        floor_row = floor_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F1F5F9\"/></w:tcPr>')
+                                        repeated_rows.append(floor_row)
+                                        
+                                    if current_area and current_area != last_area:
+                                        last_area = current_area
+                                        area_row = row_xml
+                                        for key in list_item.keys():
+                                            area_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', area_row, flags=re.IGNORECASE)
+                                        area_row = re.sub(r'{{\s*item\.description\s*}}', f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>", area_row, flags=re.IGNORECASE)
+                                        area_row = re.sub(r'{{\s*item\.index\s*}}', '', area_row, flags=re.IGNORECASE)
+                                        area_row = area_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F8FAFC\"/></w:tcPr>')
+                                        repeated_rows.append(area_row)
+                                        
+                                    row_copy = row_xml
+                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
                                     for item_key, item_val in list_item.items():
                                         pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
                                         row_copy = re.sub(pattern, str(item_val), row_copy, flags=re.IGNORECASE)
-                                    
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
                             elif 'payment.' in row_xml and payments_list:
                                 repeated_rows = []
                                 for idx, list_payment in enumerate(payments_list):
                                     row_copy = row_xml
-                                    # Replace payment.index with optional whitespace
                                     row_copy = re.sub(r'{{\s*payment\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
-                                    
-                                    # Replace payment placeholders with optional whitespace
                                     for pay_key, pay_val in list_payment.items():
                                         pattern = r'{{\s*payment\.' + re.escape(pay_key) + r'\s*}}'
                                         row_copy = re.sub(pattern, str(pay_val), row_copy, flags=re.IGNORECASE)
-                                    
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
                             return row_xml
+                            
+                        xml_content = tr_pattern.sub(replace_row if 'replace_row' in locals() else replace_flat_row, xml_content)
                         
-                        xml_content = tr_pattern.sub(replace_row, xml_content)
-                    
                     # Global token replacement with optional whitespace support
                     for key, val in tokens.items():
-                        if key != "items" and key != "payments":
+                        if key not in ["items", "payments", "floors"]:
                             pattern = r'{{\s*' + re.escape(str(key)) + r'\s*}}'
                             xml_content = re.sub(pattern, str(val), xml_content, flags=re.IGNORECASE)
                             
                     data = xml_content.encode('utf-8')
-                
                 zout.writestr(item, data)
                 
     # 2. Try Local Word conversion first (on Windows)
