@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
+import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import { API_BASE } from '../api_config';
 import { 
   Save, 
@@ -28,7 +29,8 @@ import {
   ChevronRight,
   Sparkles,
   ClipboardList,
-  TrendingDown
+  TrendingDown,
+  Calendar
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -226,8 +228,11 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName } = useStore();
   const { isAdmin } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed_orders') === 'true';
+  });
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -306,6 +311,37 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
+
+  const [datePreset, setDatePreset] = useState('All Time');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const today = new Date();
+    if (preset === 'All Time') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'Last Week') {
+      const past = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(today.toISOString().split('T')[0]);
+    } else if (preset === 'Last 30 Days') {
+      const past = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(today.toISOString().split('T')[0]);
+    } else if (preset === 'Financial Year') {
+      const currentYear = today.getFullYear();
+      const march1 = new Date(currentYear, 2, 1);
+      if (today < march1) {
+        setStartDate(new Date(currentYear - 1, 2, 1).toISOString().split('T')[0]);
+        setEndDate(new Date(currentYear, 1, 28).toISOString().split('T')[0]);
+      } else {
+        setStartDate(march1.toISOString().split('T')[0]);
+        setEndDate(new Date(currentYear + 1, 1, 28).toISOString().split('T')[0]);
+      }
+    }
+  };
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
@@ -751,14 +787,25 @@ export default function OrdersPage() {
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
     const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
     
-    return matchesSearch && matchesStatus && matchesProject;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      if (o.orderDate) {
+        const orderTime = new Date(o.orderDate).getTime();
+        if (startDate && orderTime < new Date(startDate).getTime()) matchesDate = false;
+        if (endDate && orderTime > new Date(endDate).getTime() + 86400000) matchesDate = false;
+      } else {
+        matchesDate = false;
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesProject && matchesDate;
   });
 
   // Dynamic statistics
-  const totalCostCompany = allOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
-  const totalValueCompany = allOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+  const totalCostCompany = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
+  const totalValueCompany = filteredOrders.reduce((sum, o) => sum + (o.value || 0), 0);
   const blendedMarginCompany = totalValueCompany > 0 ? Math.round(((totalValueCompany - totalCostCompany) / totalValueCompany) * 100) : 0;
-  const lowMarginPoCount = allOrders.filter(o => {
+  const lowMarginPoCount = filteredOrders.filter(o => {
     const cost = o.costValue || 0;
     const retail = o.value || 0;
     if (retail === 0) return false;
@@ -1283,60 +1330,172 @@ export default function OrdersPage() {
 
       {/* HEADER BANNER */}
       {selectedOrderId === null ? (
-        <>
-          <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Operations Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Quotations & Area-by-Area BOQ Builder</span>
+        <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
+          <div style={{ minWidth: 0 }}>
+          <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
+            <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
+                  <ClipboardList size={18} />
                 </div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  🧠 Hardware Quotations & BOQ Workspace
-                </h1>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Hardware {getModuleName('orders', 'Orders')} & BOQ Workspace</h2>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder.</div>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {projectFilterKey !== 'All' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Date Filters */}
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                  {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
+                    <button 
+                      key={preset} 
+                      className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
+                      style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
+                      onClick={() => applyPreset(preset)}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Date Inputs */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                  <Calendar size={13} color="var(--text-tertiary)" />
+                  <input 
+                    type="date" 
+                    className="form-control" 
+                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    value={startDate}
+                    onChange={e => {
+                      setStartDate(e.target.value);
+                      setDatePreset('Custom');
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                  <input 
+                    type="date" 
+                    className="form-control" 
+                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    value={endDate}
+                    onChange={e => {
+                      setEndDate(e.target.value);
+                      setDatePreset('Custom');
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginLeft: '8px' }}>
+                  {projectFilterKey !== 'All' && (
+                    <button 
+                      className="btn btn-ghost" 
+                      onClick={() => setProjectFilterKey('All')}
+                      style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', height: '28px' }}
+                    >
+                      Clear Project Filter ×
+                    </button>
+                  )}
+                  
                   <button 
-                    className="btn btn-ghost" 
-                    onClick={() => setProjectFilterKey('All')}
-                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)' }}
+                    className="btn btn-primary" 
+                    onClick={() => setShowCreatePoModal(true)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '28px', fontSize: '12px' }}
                   >
-                    Clear Project Filter ×
+                    <Plus size={16} /> Create Quotation BOQ
                   </button>
-                )}
-                
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => setShowCreatePoModal(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                >
-                  <Plus size={16} /> Create Quotation BOQ
-                </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* DYNAMIC VITAL CONTROLS STATS GRID */}
-          <div className="stat-grid stat-grid-4" style={{ marginBottom: '20px' }}>
-            <div className="stat" style={{ border: '1px solid var(--border)' }}>
-              <div className="stat-value">{allOrders.length}</div>
-              <div className="stat-label">Total Active Quotations</div>
+          {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+            {/* Card 1 */}
+            <div 
+              className="stat-card hover-scale"
+              style={{ 
+                background: 'var(--bg-primary)', 
+                padding: '16px', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>TOTAL ACTIVE QUOTATIONS</span>
+                <ClipboardList size={16} color="var(--text-info)" />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {filteredOrders.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                Total quotations in system.
+              </div>
             </div>
-            <div className="stat" style={{ border: '1px solid var(--border)' }}>
-              <div className="stat-value text-info">R {Math.round(totalCostCompany).toLocaleString()}</div>
-              <div className="stat-label">Aggregate Cost Basis</div>
+
+            {/* Card 2 */}
+            <div 
+              className="stat-card hover-scale"
+              style={{ 
+                background: 'var(--bg-primary)', 
+                padding: '16px', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>AGGREGATE COST BASIS</span>
+                <DollarSign size={16} color="var(--text-warning)" />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                R {Math.round(totalCostCompany).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                Aggregate supplier cost.
+              </div>
             </div>
-            <div className="stat" style={{ border: '1px solid var(--border)' }}>
-              <div className="stat-value text-success">R {Math.round(totalValueCompany).toLocaleString()}</div>
-              <div className="stat-label">Total Quotation Value</div>
+
+            {/* Card 3 */}
+            <div 
+              className="stat-card hover-scale"
+              style={{ 
+                background: 'var(--bg-primary)', 
+                padding: '16px', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>TOTAL QUOTATION VALUE</span>
+                <TrendingUp size={16} color="var(--text-success)" />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                R {Math.round(totalValueCompany).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                Aggregate retail value.
+              </div>
             </div>
-            <div className="stat" style={{ border: '1px solid var(--border)' }}>
-              <div className="stat-value text-info" style={{ color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+
+            {/* Card 4 */}
+            <div 
+              className="stat-card hover-scale"
+              style={{ 
+                background: 'var(--bg-primary)', 
+                padding: '16px', 
+                borderRadius: '12px', 
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>BLENDED RETAIL MARGIN</span>
+                <Layers size={16} color="var(--text-info)" />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
                 {blendedMarginCompany}%
               </div>
-              <div className="stat-label">Blended Retail Margin</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                Average margin across filtered.
+              </div>
             </div>
           </div>
 
@@ -1483,7 +1642,21 @@ export default function OrdersPage() {
 
             </div>
           </div>
-        </>
+          </div>
+          <CollapsibleAlertSidebar 
+            module="orders" 
+            onNavigate={(path, state) => {
+              if (path === '/orders' && state?.selectedOrderId) {
+                setSelectedOrderId(state.selectedOrderId);
+                if (state.selectedProjectKey) setSelectedProjectKey(state.selectedProjectKey);
+              } else {
+                navigate(path, { state });
+              }
+            }}
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed(prev => !prev)}
+          />
+        </div>
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */

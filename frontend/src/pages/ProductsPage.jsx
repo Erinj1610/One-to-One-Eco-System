@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useStore } from '../context/StoreContext';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings
@@ -506,6 +507,7 @@ const StockTrendChart = ({ history }) => {
 };
 
 export default function ProductsPage() {
+  const { getModuleName } = useStore();
   // Local state for product list
   const [products, setProducts] = useState(initialProducts);
   const [selectedSku, setSelectedSku] = useState(null); // String e.g. '28402 9240 FW'
@@ -824,11 +826,11 @@ export default function ProductsPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Product Suite</span>
+                  <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  📦 Product Master Database
+                  📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>

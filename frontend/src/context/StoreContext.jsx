@@ -1133,6 +1133,114 @@ export function StoreProvider({ children }) {
     const saved = localStorage.getItem('store_invoices');
     return saved ? JSON.parse(saved) : defaultInvoices;
   });
+  const [alertSettings, setAlertSettings] = useState(() => {
+    const saved = localStorage.getItem('store_alert_settings');
+    const defaultSettings = {
+      crm: {
+        lostClients: true,
+        inactiveClients: true,
+        npsReview: true
+      },
+      design: {
+        outstandingFees: true,
+        upcomingDeadlines: true
+      },
+      projects: {
+        overdueDeadlines: true,
+        lowMargins: true,
+        outstandingDesignFees: true,
+        orderLogisticsAlerts: true,
+        productApprovalAlerts: true
+      },
+      orders: {
+        logisticsHolds: true,
+        backorderedIssues: true,
+        lowMarginOrders: true
+      },
+      customRules: [
+        {
+          id: 'rule-margin',
+          module: 'projects',
+          parameter: 'margin',
+          condition: 'less_than',
+          value: 18,
+          label: 'Project margin is below 18%'
+        },
+        {
+          id: 'rule-nps',
+          module: 'crm',
+          parameter: 'nps',
+          condition: 'less_than',
+          value: 6,
+          label: 'Client NPS score is below 6'
+        },
+        {
+          id: 'rule-outstanding',
+          module: 'design',
+          parameter: 'outstanding',
+          condition: 'greater_than',
+          value: 1000,
+          label: 'Outstanding design fee is greater than R 1,000'
+        }
+      ]
+    };
+    
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (!parsed.customRules) {
+        parsed.customRules = defaultSettings.customRules;
+      }
+      return parsed;
+    }
+    return defaultSettings;
+  });
+
+  const [moduleConfig, setModuleConfig] = useState(() => {
+    const saved = localStorage.getItem('store_module_config');
+    const defaultModules = [
+      { id: 'dashboard', label: 'Dashboard', icon: 'Home', path: '/dashboard', sectionId: 'general', visible: true, order: 0 },
+      { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm', sectionId: 'clients_sales', visible: true, order: 1 },
+      { id: 'projects', label: 'Projects', icon: 'Layout', path: '/projects', sectionId: 'projects_sec', visible: true, order: 2 },
+      { id: 'design', label: 'Design', icon: 'Calculator', path: '/design', sectionId: 'projects_sec', visible: true, order: 3 },
+      { id: 'orders', label: 'Orders', icon: 'ClipboardList', path: '/orders', sectionId: 'projects_sec', visible: true, order: 4 },
+      { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 5 },
+      { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 6 },
+      { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 7 },
+      { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 8 },
+      { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 9 },
+      { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 10 },
+      { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 11 },
+      { id: 'reports', label: 'Reports', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 12 },
+      { id: 'support', label: 'Support', icon: 'Headset', path: '/support', sectionId: 'other_modules', visible: true, order: 13 }
+    ];
+    const defaultSections = [
+      { id: 'general', label: 'General', order: 0 },
+      { id: 'clients_sales', label: 'Clients & sales', order: 1 },
+      { id: 'projects_sec', label: 'Projects', order: 2 },
+      { id: 'other_modules', label: 'Other modules', order: 3 }
+    ];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.modules && parsed.sections) {
+          defaultModules.forEach(dm => {
+            if (!parsed.modules.some(pm => pm.id === dm.id)) {
+              parsed.modules.push(dm);
+            }
+          });
+          return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return { modules: defaultModules, sections: defaultSections };
+  });
+
+  const getModuleName = (moduleId, fallback) => {
+    const found = moduleConfig.modules.find(m => m.id === moduleId);
+    return found ? found.label : fallback;
+  };
 
   React.useEffect(() => {
     localStorage.setItem('store_projects', JSON.stringify(projects));
@@ -1149,6 +1257,14 @@ export function StoreProvider({ children }) {
   React.useEffect(() => {
     localStorage.setItem('store_invoices', JSON.stringify(invoices));
   }, [invoices]);
+
+  React.useEffect(() => {
+    localStorage.setItem('store_alert_settings', JSON.stringify(alertSettings));
+  }, [alertSettings]);
+
+  React.useEffect(() => {
+    localStorage.setItem('store_module_config', JSON.stringify(moduleConfig));
+  }, [moduleConfig]);
 
 
   const addInvoice = (invoice) => {
@@ -1426,7 +1542,12 @@ export function StoreProvider({ children }) {
       setInvoices, 
       addInvoice,
       moveOrder,
-      moveDesignFee
+      moveDesignFee,
+      alertSettings,
+      setAlertSettings,
+      moduleConfig,
+      setModuleConfig,
+      getModuleName
     }}>
       {children}
     </StoreContext.Provider>

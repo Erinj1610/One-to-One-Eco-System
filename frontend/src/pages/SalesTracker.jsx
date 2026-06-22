@@ -164,7 +164,7 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts } = useStore();
+  const { projects, updateProject, contacts, getModuleName } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1172,7 +1172,7 @@ export default function SalesTracker() {
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Quotations & Area-by-Area BOQ Builder</span>
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  📈 Sales Tracker Dashboard
+                  📈 {getModuleName('sales_tracker', 'Sales Tracker')} Dashboard
                 </h1>
               </div>
 

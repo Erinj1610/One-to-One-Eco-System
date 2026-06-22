@@ -1,32 +1,23 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  Home, Users, TrendingUp, Table, Layout, Calculator, Clock, 
-  Package, Truck, Receipt, Folder, BadgeCheck, BarChart, Headset, 
-  Settings, Lightbulb, ChevronLeft, ChevronRight, Compass, ClipboardList
-} from 'lucide-react';
-
-const navItems = [
-  { path: '/dashboard', icon: Home, label: 'Dashboard' },
-  { section: 'Clients & sales' },
-  { path: '/crm', icon: Users, label: 'CRM' },
-  { section: 'Projects' },
-  { path: '/projects', icon: Layout, label: 'Projects' },
-  { path: '/design', icon: Calculator, label: 'Design' },
-  { path: '/orders', icon: ClipboardList, label: 'Orders' },
-  { path: '/logistics', icon: Truck, label: 'Logistics' },
-  { path: '/sales-tracker', icon: TrendingUp, label: 'Sales tracker' },
-  { path: '/tracker', icon: Compass, label: 'Design fee tracker' },
-  { section: 'Other modules' },
-  { path: '/pipeline', icon: TrendingUp, label: 'Sales pipeline' },
-  { path: '/products', icon: Package, label: 'Products' },
-  { path: '/docs', icon: Folder, label: 'Documents' },
-  { path: '/hr', icon: BadgeCheck, label: 'HR & people' },
-  { path: '/reports', icon: BarChart, label: 'Reports' },
-  { path: '/support', icon: Headset, label: 'Support' }
-];
+import { useStore } from '../../context/StoreContext';
+import * as Icons from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleCollapse }) {
+  const { moduleConfig } = useStore();
+
+  const { modules = [], sections = [] } = moduleConfig || {};
+
+  // Sort sections and modules by their designated order
+  const sortedSections = [...sections].sort((a, b) => a.order - b.order);
+  const sortedModules = [...modules].sort((a, b) => a.order - b.order);
+
+  // Chevron components for toggling sidebar
+  const ChevronRight = Icons.ChevronRight;
+  const ChevronLeft = Icons.ChevronLeft;
+  const Lightbulb = Icons.Lightbulb;
+  const SettingsIcon = Icons.Settings;
+
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sb-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '49px' }}>
@@ -56,24 +47,33 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
         </button>
       </div>
       
-      {navItems.map((item, idx) => {
-        if (item.section) {
-          if (isCollapsed) return null;
-          return <div key={idx} className="sb-sec-label">{item.section}</div>;
-        }
-        const Icon = item.icon;
-        return (
-          <NavLink 
-            key={idx} 
-            to={item.path} 
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            title={isCollapsed ? item.label : undefined}
-          >
-            <Icon size={16} style={{ flexShrink: 0 }} /> 
-            {!isCollapsed && <span>{item.label}</span>}
-          </NavLink>
-        );
-      })}
+      <div className="sb-nav-list" style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'auto', flex: 1, paddingBottom: '60px' }}>
+        {sortedSections.map((sec) => {
+          // Get visible modules belonging to this section
+          const secModules = sortedModules.filter(m => m.sectionId === sec.id && m.visible);
+          if (secModules.length === 0) return null;
+
+          return (
+            <React.Fragment key={sec.id}>
+              {!isCollapsed && <div className="sb-sec-label" style={{ marginTop: '12px' }}>{sec.label}</div>}
+              {secModules.map((item) => {
+                const IconComponent = Icons[item.icon] || Icons.HelpCircle;
+                return (
+                  <NavLink 
+                    key={item.id} 
+                    to={item.path} 
+                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <IconComponent size={16} style={{ flexShrink: 0 }} /> 
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </NavLink>
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
+      </div>
 
       <div className="sb-bottom">
         <NavLink 
@@ -81,11 +81,10 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? 'Settings' : undefined}
         >
-          <Settings size={16} style={{ flexShrink: 0 }} /> 
+          <SettingsIcon size={16} style={{ flexShrink: 0 }} /> 
           {!isCollapsed && <span>Settings</span>}
         </NavLink>
       </div>
     </div>
   );
 }
-

@@ -7,41 +7,11 @@ import {
   Plus, Play, AlertTriangle, Users, BarChart3, ChevronRight, UserCheck, CheckCircle,
   FileText, ShoppingBag, FolderGit, Calendar, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
+import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSidebar';
 
-// Philosophy Hooks configuration for the Coaching Sidebar
-const PHILOSOPHIES = [
-  {
-    id: 'stoic',
-    author: 'Marcus Aurelius',
-    source: 'Meditations',
-    quote: '"The impediment to action advances action. What stands in the way becomes the way."',
-    theme: 'Stoicism & Obstacle Transformation'
-  },
-  {
-    id: 'behavioral',
-    author: 'Daniel Kahneman',
-    source: 'Thinking, Fast and Slow',
-    quote: '"Nothing in life is as important as you think it is, while you are thinking about it."',
-    theme: 'Behavioral Bias Mitigation'
-  },
-  {
-    id: 'toc',
-    author: 'Eliyahu Goldratt',
-    source: 'Critical Chain Project Management',
-    quote: '"An hour lost at the bottleneck is an hour lost for the entire system."',
-    theme: 'Theory of Constraints & Throughput'
-  },
-  {
-    id: 'realism',
-    author: 'Sun Tzu',
-    source: 'The Art of War',
-    quote: '"Strategy without tactics is the slowest route to victory. Tactics without strategy is the noise before defeat."',
-    theme: 'Strategic Realism & Workload Safety'
-  }
-];
 
 export default function ProjectList() {
-  const { projects, addProject, contacts } = useStore();
+  const { projects, addProject, contacts, getModuleName } = useStore();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
 
@@ -52,6 +22,9 @@ export default function ProjectList() {
   const [typeFilter, setTypeFilter] = useState('All Types');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [activeKpiFilter, setActiveKpiFilter] = useState(null); // 'total', 'pending', 'active', 'complete'
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed_projects') === 'true';
+  });
 
   // Sorting States
   const [sortField, setSortField] = useState(null);
@@ -289,128 +262,92 @@ export default function ProjectList() {
   };
 
 
-  // Dynamic PM Coaching Nudges based on actual project parameters
-  const coachNudges = useMemo(() => {
-    const list = Object.values(projects);
-    const nudges = [];
-
-    // 1. Stoic Challenge / Obstacle Transformed
-    const worstDelayed = list.find(p => p.status === 'Off track' && p.complete !== 'Complete');
-    if (worstDelayed) {
-      nudges.push({
-        philosophy: PHILOSOPHIES[0], // Marcus Aurelius
-        title: `Harness Obstacles on ${worstDelayed.name}`,
-        desc: `${worstDelayed.name} is Off Track: "${worstDelayed.delay}". As Marcus advises, don't resist the delay—treat this technical rework as an opportunity to host a focused workshop with the client.`,
-        action: `Coordinate collaborative workshop`
-      });
-    }
-
-    // 2. Planning Fallacy Warning
-    const highRiskPlanning = list.find(p => p.complete !== 'Complete' && p.stage === 'Stage 1' && p.daysLeft && Number(p.daysLeft) < 0);
-    if (highRiskPlanning) {
-      nudges.push({
-        philosophy: PHILOSOPHIES[1], // Daniel Kahneman
-        title: `De-Bias the Timeline on ${highRiskPlanning.name}`,
-        desc: `This project is stuck in Stage 1 but is already overdue by ${Math.abs(Number(highRiskPlanning.daysLeft))} days. Kahneman's Planning Fallacy proves we anchored on the best-case deadline. Revise the timeline using statistical realities.`,
-        action: `Re-baseline Stage 1 targets`
-      });
-    }
-
-    // 3. Goldratt's Bottleneck Nudge
-    const pmWorkload = {};
-    list.forEach(p => {
-      if (p.complete !== 'Complete') {
-        pmWorkload[p.pm] = (pmWorkload[p.pm] || 0) + 1;
-      }
-    });
-    const overloadedPm = Object.entries(pmWorkload).find(([pm, count]) => count >= 3);
-    if (overloadedPm) {
-      nudges.push({
-        philosophy: PHILOSOPHIES[2], // Theory of Constraints
-        title: `Bottleneck Alert: ${overloadedPm[0]}'s Pipeline`,
-        desc: `${overloadedPm[0]} is carrying ${overloadedPm[1]} active delivery chains. In Goldratt's Theory of Constraints, this overload acts as a project throughput blocker.`,
-        action: `Review team capacity & time allocation`
-      });
-    }
-
-    return nudges;
-  }, [projects]);
-
   return (
-    <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px', alignItems: 'start' }}>
+    <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
       
       {/* LEFT COLUMN: Main Dashboard */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Projects Module</h1>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-              Track converted projects, manage design sub-fees, product orders, and consolidated project statements.
-            </p>
-          </div>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => {
-              const newKey = addProject({
-                name: '',
-                client: '',
-                projectType: 'Design & Orders',
-                offering: 'Signature',
-                sqm: '',
-                pm: 'Dani',
-                targetMargin: 18,
-                actualMargin: 18,
-                designFees: [],
-                orders: [],
-                isDraft: true,
-                stage: '—',
-                status: 'Draft',
-                start: '—',
-                deadline: '—'
-              });
-              navigate(`/projects/${newKey}`);
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <Plus size={16} /> New Project
-          </button>
-        </div>
-
-        {/* Date presets & Custom inputs bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', border: '0.5px solid var(--border)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Calendar size={14} color="var(--text-secondary)" />
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Date Range:</span>
-            <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
-              {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
-                <button 
-                  key={preset} 
-                  className="btn btn-sm" 
-                  style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)', padding: '3px 8px', fontSize: '11px', borderRadius: '4px', cursor: 'pointer' }}
-                  onClick={() => applyPreset(preset)}
-                >
-                  {preset}
-                </button>
-              ))}
+        {/* Title & Filter Bar Header */}
+        <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
+          <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
+                <Briefcase size={18} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{getModuleName('projects', 'Projects')} Module</h2>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Track converted projects, manage design sub-fees, product orders, and consolidated project statements.</div>
+              </div>
             </div>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input 
-              type="date" 
-              className="form-control" 
-              style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-              value={startDate} 
-              onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
-            />
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>to</span>
-            <input 
-              type="date" 
-              className="form-control" 
-              style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-              value={endDate} 
-              onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
-            />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
+                  <button 
+                    key={preset} 
+                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
+                    style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
+                    onClick={() => applyPreset(preset)}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Date Inputs */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                <Calendar size={13} color="var(--text-tertiary)" />
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                  value={startDate}
+                  onChange={e => {
+                    setStartDate(e.target.value);
+                    setDatePreset('Custom');
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                <input 
+                  type="date" 
+                  className="form-control" 
+                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                  value={endDate}
+                  onChange={e => {
+                    setEndDate(e.target.value);
+                    setDatePreset('Custom');
+                  }}
+                />
+              </div>
+
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  const newKey = addProject({
+                    name: '',
+                    client: '',
+                    projectType: 'Design & Orders',
+                    offering: 'Signature',
+                    sqm: '',
+                    pm: 'Dani',
+                    targetMargin: 18,
+                    actualMargin: 18,
+                    designFees: [],
+                    orders: [],
+                    isDraft: true,
+                    stage: '—',
+                    status: 'Draft',
+                    start: '—',
+                    deadline: '—'
+                  });
+                  navigate(`/projects/${newKey}`);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '28px', fontSize: '12px' }}
+              >
+                <Plus size={16} /> New Project
+              </button>
+            </div>
           </div>
         </div>
 
@@ -738,87 +675,13 @@ export default function ProjectList() {
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Philosophies & PM Coaching Engine */}
-      <div style={{ position: 'sticky', top: '20px' }}>
-        
-        {/* Coaching Advisories */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          
-          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid rgba(24,95,165,0.2)' }}>
-            <div className="card-head" style={{ borderBottom: '1px solid rgba(24,95,165,0.1)' }}>
-              <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-                <Award size={15} color="var(--text-info)" />
-                <span>Stoic Project Advisor</span>
-              </div>
-            </div>
-            <div className="card-body" style={{ fontSize: '12px', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
-              <em>"We are what we repeatedly do. Excellence, then, is not an act, but a habit."</em> 
-              <div style={{ textAlign: 'right', fontWeight: 600, marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>— Aristotle</div>
-            </div>
-          </div>
-
-          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', tracking: '0.05em', marginTop: '8px' }}>
-            Actions & Notifications ({coachNudges.length})
-          </div>
-
-          {coachNudges.map((nudge, idx) => (
-            <div 
-              key={idx} 
-              className="card" 
-              style={{ 
-                borderLeft: `4px solid ${nudge.philosophy.id === 'stoic' ? 'var(--text-danger)' : nudge.philosophy.id === 'behavioral' ? 'var(--text-warning)' : nudge.philosophy.id === 'toc' ? 'var(--text-info)' : 'var(--text-success)'}`,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
-              }}
-            >
-              <div className="card-body" style={{ padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
-                    {nudge.philosophy.theme}
-                  </span>
-                  <span style={{ fontSize: '10px', fontStyle: 'italic', color: 'var(--text-tertiary)' }}>
-                    {nudge.philosophy.author}
-                  </span>
-                </div>
-                
-                <h4 style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {nudge.title}
-                </h4>
-                
-                <p style={{ margin: '0 0 10px 0', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                  {nudge.desc}
-                </p>
-
-                <button 
-                  className="btn btn-sm btn-ghost" 
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'center', 
-                    fontSize: '11px', 
-                    background: 'rgba(255,255,255,0.03)', 
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-info)'
-                  }}
-                  onClick={() => {
-                    const matchedProj = Object.values(projects).find(p => nudge.title.includes(p.name));
-                    if (matchedProj) navigate(`/projects/${matchedProj.key}`);
-                  }}
-                >
-                  <Play size={10} style={{ marginRight: '4px' }} /> {nudge.action}
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {coachNudges.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '24px', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
-              <CheckCircle size={18} color="var(--text-success)" style={{ margin: '0 auto 8px auto' }} />
-              All parameters on track! Aristotle's Virtue is actively realized in your delivery chain.
-            </div>
-          )}
-
-        </div>
-
-      </div>
+      {/* RIGHT COLUMN: Operational Alerts & Prompts */}
+      <CollapsibleAlertSidebar 
+        module="projects" 
+        onNavigate={(path, state) => navigate(path, { state })} 
+        isCollapsed={isSidebarCollapsed} 
+        onToggle={() => setIsSidebarCollapsed(prev => !prev)}
+      />
 
 
 

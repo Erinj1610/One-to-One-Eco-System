@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useStore } from '../context/StoreContext';
 
 const ROLES = ['Admin', 'Senior Designer', 'Designer', 'Coordinator', 'Showroom'];
 const MODULES = ['Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'];
@@ -17,12 +18,16 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
+  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig } = useStore();
+
   const availableTabs = isAdmin
-    ? ['General', 'Permissions', 'Rate card', 'Integrations', 'Templates']
-    : ['General', 'Permissions', 'Rate card', 'Integrations'];
+    ? ['General', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
   const [activeRole, setActiveRole] = useState('Admin');
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
   const [general, setGeneral] = useState({ companyName: '1-to-1 World', email: 'studio@1-to-1.world', phone: '+27 21 000 0000', address: 'Woodstock, Cape Town', vat: '4880123456', currency: 'ZAR' });
 
   return (
@@ -199,6 +204,730 @@ export default function SettingsPage() {
                   }}
                 >
                   Manage & Upload Templates ➔
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'Alerts' && (
+        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+          <div className="section-label">Manage Operational Alerts & Toggles</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Configure which events generate alerts in the collapsible sidebar for each module. These settings apply globally.
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            
+            {/* CRM MODULE ALERTS */}
+            <div className="card">
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>CRM Module Alerts</div>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.crm?.lostClients} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        crm: { ...prev.crm, lostClients: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Lost Clients Warnings</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Prompt to review post-mortem / check inactive client re-engagement.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.crm?.inactiveClients} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        crm: { ...prev.crm, inactiveClients: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>At-Risk / Inactive Warnings</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when clients have Red health or haven't placed projects for long periods.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.crm?.npsReview} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        crm: { ...prev.crm, npsReview: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>NPS Detractor Alerts</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag feedback scores below 6/10 for immediate follow-up.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* DESIGN MODULE ALERTS */}
+            <div className="card">
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Design Module Alerts</div>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.design?.outstandingFees} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        design: { ...prev.design, outstandingFees: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Outstanding Design Fees</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when design fee payments have unpaid outstanding balances.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.design?.upcomingDeadlines} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        design: { ...prev.design, upcomingDeadlines: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Delayed Design Phases</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when active concept design phases are past project timeline deadlines.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* PROJECTS MODULE ALERTS */}
+            <div className="card" style={{ marginTop: '20px' }}>
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Projects Module Alerts</div>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.projects?.overdueDeadlines} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        projects: { ...prev.projects, overdueDeadlines: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Overdue Deadlines</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects that are behind schedule based on deadline.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.projects?.lowMargins} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        projects: { ...prev.projects, lowMargins: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Low Margins</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects whose dynamic margins fall below target margin threshold.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.projects?.outstandingDesignFees} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        projects: { ...prev.projects, outstandingDesignFees: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Outstanding Design Fee Balance</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects with unpaid design fees in the project dashboard.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.projects?.orderLogisticsAlerts} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        projects: { ...prev.projects, orderLogisticsAlerts: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Order Logistics Alerts</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when any order is delayed, in Customs hold, or backordered.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.projects?.productApprovalAlerts} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        projects: { ...prev.projects, productApprovalAlerts: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Product Approvals</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when client approvals or initial deposits are missing.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* ORDERS MODULE ALERTS */}
+            <div className="card" style={{ marginTop: '20px' }}>
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Orders Module Alerts</div>
+              </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.orders?.logisticsHolds} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        orders: { ...prev.orders, logisticsHolds: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Logistics Customs Holds</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when imported hardware orders are flagged on Customs hold status.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.orders?.backorderedIssues} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        orders: { ...prev.orders, backorderedIssues: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Pending Deposit Clearances</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when initiated hardware orders are pending deposit confirmation.</span>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={alertSettings?.orders?.lowMarginOrders} 
+                    onChange={e => {
+                      setAlertSettings(prev => ({
+                        ...prev,
+                        orders: { ...prev.orders, lowMarginOrders: e.target.checked }
+                      }));
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Low Order Margins</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when specific hardware order profit margin drops below the standard 39% target.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+          </div>
+
+          {/* CUSTOM ALERTS RULE BUILDER SECTION */}
+          <div style={{ marginTop: '24px' }}>
+            <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Custom Alert Rules Builder</span>
+              <button 
+                className="btn btn-sm btn-primary"
+                onClick={() => setShowRuleModal(true)}
+              >
+                + Add Custom Rule
+              </button>
+            </div>
+            
+            <div className="card">
+              <div className="card-body" style={{ padding: 0 }}>
+                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '10px 14px' }}>Module</th>
+                      <th>Parameter</th>
+                      <th>Condition</th>
+                      <th>Threshold Value</th>
+                      <th>Alert Label Description</th>
+                      <th style={{ textAlign: 'right', width: '80px', paddingRight: '14px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(alertSettings?.customRules || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                          No custom alert rules configured. Click "+ Add Custom Rule" to build one.
+                        </td>
+                      </tr>
+                    ) : (
+                      (alertSettings.customRules).map(rule => (
+                        <tr key={rule.id}>
+                          <td style={{ textTransform: 'uppercase', fontWeight: 600, padding: '10px 14px' }}>{rule.module}</td>
+                          <td><code>{rule.parameter.replace('_',' ')}</code></td>
+                          <td style={{ color: 'var(--text-info)' }}>{rule.condition.replace('_',' ')}</td>
+                          <td style={{ fontWeight: 600 }}>{rule.value}</td>
+                          <td>{rule.label}</td>
+                          <td style={{ textAlign: 'right', paddingRight: '14px' }}>
+                            <button 
+                              className="btn btn-sm btn-ghost" 
+                              style={{ color: 'var(--text-danger)', border: 'none', padding: '2px 8px' }}
+                              onClick={() => {
+                                setAlertSettings(prev => ({
+                                  ...prev,
+                                  customRules: prev.customRules.filter(r => r.id !== rule.id)
+                                }));
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {activeTab === 'Modules' && isAdmin && (
+        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+          <div className="section-label">Modules Layout & Custom Naming</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Configure visibility, custom names, section grouping, and navigation ordering for all modules. These changes propagate dynamically across the sidebar, page titles, and page headers.
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px', marginBottom: '24px' }}>
+            {/* SECTIONS MANAGER */}
+            <div className="card">
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Navigation Sections / Categories</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    id="new-section-input" 
+                    placeholder="New section name..." 
+                    className="form-control" 
+                    style={{ width: '180px', padding: '4px 8px', fontSize: '12px', height: 'auto' }} 
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && e.target.value.trim()) {
+                        const newName = e.target.value.trim();
+                        const newId = newName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                        if (moduleConfig.sections.some(s => s.id === newId)) {
+                          alert('Section ID already exists');
+                          return;
+                        }
+                        const newSections = [
+                          ...moduleConfig.sections,
+                          { id: newId, label: newName, order: moduleConfig.sections.length }
+                        ];
+                        setModuleConfig(prev => ({ ...prev, sections: newSections }));
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <button 
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const input = document.getElementById('new-section-input');
+                      if (input && input.value.trim()) {
+                        const newName = input.value.trim();
+                        const newId = newName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                        if (moduleConfig.sections.some(s => s.id === newId)) {
+                          alert('Section ID already exists');
+                          return;
+                        }
+                        const newSections = [
+                          ...moduleConfig.sections,
+                          { id: newId, label: newName, order: moduleConfig.sections.length }
+                        ];
+                        setModuleConfig(prev => ({ ...prev, sections: newSections }));
+                        input.value = '';
+                      }
+                    }}
+                  >
+                    Add Section
+                  </button>
+                </div>
+              </div>
+              <div className="card-body" style={{ padding: '16px' }}>
+                <table className="table" style={{ fontSize: '12.5px' }}>
+                  <thead>
+                    <tr>
+                      <th>Section ID</th>
+                      <th>Label / Name</th>
+                      <th>Sort Order</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...moduleConfig.sections].sort((a, b) => a.order - b.order).map((sec, index, sortedArr) => (
+                      <tr key={sec.id}>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>{sec.id}</td>
+                        <td>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '180px' }}
+                            value={sec.label}
+                            onChange={e => {
+                              const updatedSections = moduleConfig.sections.map(s => 
+                                s.id === sec.id ? { ...s, label: e.target.value } : s
+                              );
+                              setModuleConfig(prev => ({ ...prev, sections: updatedSections }));
+                            }}
+                          />
+                        </td>
+                        <td>{sec.order}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: '4px' }}>
+                            <button 
+                              className="btn btn-xs"
+                              disabled={index === 0}
+                              onClick={() => {
+                                const newSecs = [...moduleConfig.sections];
+                                const current = newSecs.find(s => s.id === sec.id);
+                                const prevSec = newSecs.find(s => s.id === sortedArr[index - 1].id);
+                                if (current && prevSec) {
+                                  const temp = current.order;
+                                  current.order = prevSec.order;
+                                  prevSec.order = temp;
+                                  setModuleConfig(prev => ({ ...prev, sections: newSecs }));
+                                }
+                              }}
+                            >
+                              ▲
+                            </button>
+                            <button 
+                              className="btn btn-xs"
+                              disabled={index === sortedArr.length - 1}
+                              onClick={() => {
+                                const newSecs = [...moduleConfig.sections];
+                                const current = newSecs.find(s => s.id === sec.id);
+                                const nextSec = newSecs.find(s => s.id === sortedArr[index + 1].id);
+                                if (current && nextSec) {
+                                  const temp = current.order;
+                                  current.order = nextSec.order;
+                                  nextSec.order = temp;
+                                  setModuleConfig(prev => ({ ...prev, sections: newSecs }));
+                                }
+                              }}
+                            >
+                              ▼
+                            </button>
+                            <button 
+                              className="btn btn-xs btn-danger-outline"
+                              disabled={['general', 'clients_sales', 'projects_sec', 'other_modules'].includes(sec.id)}
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete the section "${sec.label}"? Any modules in this section will be reassigned to General.`)) {
+                                  const updatedSections = moduleConfig.sections.filter(s => s.id !== sec.id);
+                                  const updatedModules = moduleConfig.modules.map(m => 
+                                    m.sectionId === sec.id ? { ...m, sectionId: 'general' } : m
+                                  );
+                                  setModuleConfig({ sections: updatedSections, modules: updatedModules });
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* MODULES CONFIGURATION */}
+            <div className="card">
+              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Modules Layout & Renaming</div>
+              </div>
+              <div className="card-body" style={{ padding: '16px' }}>
+                <table className="table" style={{ fontSize: '12.5px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '50px', textAlign: 'center' }}>Show</th>
+                      <th>Module ID</th>
+                      <th>Display Name</th>
+                      <th>Section</th>
+                      <th>Sort Order</th>
+                      <th style={{ textAlign: 'right' }}>Order Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...moduleConfig.modules].sort((a, b) => a.order - b.order).map((mod, index, sortedArr) => (
+                      <tr key={mod.id}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input 
+                            type="checkbox"
+                            checked={mod.visible}
+                            onChange={e => {
+                              const updatedModules = moduleConfig.modules.map(m => 
+                                m.id === mod.id ? { ...m, visible: e.target.checked } : m
+                              );
+                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
+                            }}
+                          />
+                        </td>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>{mod.id}</td>
+                        <td>
+                          <input 
+                            type="text"
+                            className="form-control"
+                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '180px' }}
+                            value={mod.label}
+                            onChange={e => {
+                              const updatedModules = moduleConfig.modules.map(m => 
+                                m.id === mod.id ? { ...m, label: e.target.value } : m
+                              );
+                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="form-control"
+                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '150px' }}
+                            value={mod.sectionId}
+                            onChange={e => {
+                              const updatedModules = moduleConfig.modules.map(m => 
+                                m.id === mod.id ? { ...m, sectionId: e.target.value } : m
+                              );
+                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
+                            }}
+                          >
+                            {moduleConfig.sections.map(s => (
+                              <option key={s.id} value={s.id}>{s.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>{mod.order}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', gap: '4px' }}>
+                            <button 
+                              className="btn btn-xs"
+                              disabled={index === 0}
+                              onClick={() => {
+                                const newMods = [...moduleConfig.modules];
+                                const current = newMods.find(m => m.id === mod.id);
+                                const prevMod = newMods.find(m => m.id === sortedArr[index - 1].id);
+                                if (current && prevMod) {
+                                  const temp = current.order;
+                                  current.order = prevMod.order;
+                                  prevMod.order = temp;
+                                  setModuleConfig(prev => ({ ...prev, modules: newMods }));
+                                }
+                              }}
+                            >
+                              ▲
+                            </button>
+                            <button 
+                              className="btn btn-xs"
+                              disabled={index === sortedArr.length - 1}
+                              onClick={() => {
+                                const newMods = [...moduleConfig.modules];
+                                const current = newMods.find(m => m.id === mod.id);
+                                const nextMod = newMods.find(m => m.id === sortedArr[index + 1].id);
+                                if (current && nextMod) {
+                                  const temp = current.order;
+                                  current.order = nextMod.order;
+                                  nextMod.order = temp;
+                                  setModuleConfig(prev => ({ ...prev, modules: newMods }));
+                                }
+                              }}
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CUSTOM ALERT RULE MODAL */}
+      {showRuleModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>Add Custom Alert Rule</div>
+              <button style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px' }} onClick={() => setShowRuleModal(false)}>✕</button>
+            </div>
+            <div className="card-body" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="form-row">
+                <label className="form-label" style={{ color: 'var(--text-primary)' }}>Target Module</label>
+                <select 
+                  className="form-control" 
+                  value={ruleForm.module} 
+                  onChange={e => {
+                    const mod = e.target.value;
+                    let param = 'margin';
+                    if (mod === 'crm') param = 'nps';
+                    if (mod === 'design') param = 'outstanding';
+                    setRuleForm(prev => ({ ...prev, module: mod, parameter: param }));
+                  }}
+                >
+                  <option value="crm">CRM Module</option>
+                  <option value="design">Design tracker Module</option>
+                  <option value="projects">Projects Module</option>
+                  <option value="orders">Orders Module</option>
+                </select>
+              </div>
+
+              <div className="form-row">
+                <label className="form-label" style={{ color: 'var(--text-primary)' }}>Condition Parameter</label>
+                <select 
+                  className="form-control" 
+                  value={ruleForm.parameter}
+                  onChange={e => setRuleForm(prev => ({ ...prev, parameter: e.target.value }))}
+                >
+                  {ruleForm.module === 'crm' && (
+                    <>
+                      <option value="nps">Client NPS Score</option>
+                      <option value="days_dormant">Days since last project</option>
+                      <option value="days_since_contact">Days since last contact</option>
+                    </>
+                  )}
+                  {ruleForm.module === 'design' && (
+                    <>
+                      <option value="outstanding">Outstanding design fee balance (R)</option>
+                      <option value="overdue_days">Drawing phase overdue days</option>
+                    </>
+                  )}
+                  {ruleForm.module === 'projects' && (
+                    <>
+                      <option value="margin">Dynamic Project margin (%)</option>
+                      <option value="overdue_days">Project overdue days</option>
+                      <option value="outstanding">Outstanding design fee balance (R)</option>
+                    </>
+                  )}
+                  {ruleForm.module === 'orders' && (
+                    <>
+                      <option value="margin">Order margin (%)</option>
+                      <option value="value">Order retail value (R)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div className="row-2">
+                <div className="form-row">
+                  <label className="form-label" style={{ color: 'var(--text-primary)' }}>Condition</label>
+                  <select 
+                    className="form-control" 
+                    value={ruleForm.condition}
+                    onChange={e => setRuleForm(prev => ({ ...prev, condition: e.target.value }))}
+                  >
+                    <option value="less_than">Less Than (&lt;)</option>
+                    <option value="greater_than">Greater Than (&gt;)</option>
+                    <option value="equals">Equals (=)</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label" style={{ color: 'var(--text-primary)' }}>Threshold Value</label>
+                  <input 
+                    type="number" 
+                    className="form-control" 
+                    placeholder="e.g. 18 or 5000" 
+                    value={ruleForm.value}
+                    onChange={e => setRuleForm(prev => ({ ...prev, value: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label className="form-label" style={{ color: 'var(--text-primary)' }}>Alert Label Description</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="e.g. Margin is below 18%" 
+                  value={ruleForm.label}
+                  onChange={e => setRuleForm(prev => ({ ...prev, label: e.target.value }))}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button className="btn btn-secondary" onClick={() => setShowRuleModal(false)}>Cancel</button>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    if (!ruleForm.value || !ruleForm.label) return;
+                    const newRule = {
+                      id: `rule-${Date.now()}`,
+                      ...ruleForm,
+                      value: Number(ruleForm.value)
+                    };
+                    setAlertSettings(prev => ({
+                      ...prev,
+                      customRules: [...(prev.customRules || []), newRule]
+                    }));
+                    setShowRuleModal(false);
+                    setRuleForm({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
+                  }}
+                >
+                  Save Rule
                 </button>
               </div>
             </div>

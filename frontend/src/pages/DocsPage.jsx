@@ -4,7 +4,7 @@ import { Folder, Upload, Download, Trash2, ChevronRight, RefreshCw, FileText } f
 import { API_BASE } from '../api_config';
 
 export default function DocsPage() {
-  const { projects } = useStore();
+  const { projects, getModuleName } = useStore();
   const [selectedProjectId, setSelectedProjectId] = useState('');
   
   const [folders, setFolders] = useState([]);
@@ -225,7 +225,7 @@ export default function DocsPage() {
       {/* Page Header and Project Dropdown Selector */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-primary)', fontWeight: 700 }}>Google Drive Document Portal</h2>
+          <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-primary)', fontWeight: 700 }}>Google Drive {getModuleName('docs', 'Documents')} Portal</h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
             Strictly read-only folder structure mirroring database layout. Files stay on Drive.
           </p>

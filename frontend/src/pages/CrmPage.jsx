@@ -10,6 +10,7 @@ import {
   X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList,
   ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
 } from 'lucide-react';
+import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 
 const typeColors = { Architect: 'b-info', Developer: 'b-success', Interior: 'b-warning', Private: 'b-default' };
 
@@ -29,7 +30,8 @@ export default function CrmPage() {
     projects, 
     attritionLogs, 
     logAttrition,
-    addProject
+    addProject,
+    getModuleName
   } = useStore();
 
   const navigate = useNavigate();
@@ -51,6 +53,9 @@ export default function CrmPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [showModal, setShowModal] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed_crm') === 'true';
+  });
   const [activeTab, setActiveTab] = useState('overview');
   const [showAi, setShowAi] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
@@ -496,8 +501,8 @@ export default function CrmPage() {
   // GLOBAL VIEW
   if (!selectedClient) {
     return (
-      <>
-        <div className="animation-fade-in" style={{ position: 'relative' }}>
+      <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
+        <div style={{ minWidth: 0, position: 'relative' }}>
         {/* Success Toasts container */}
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {toasts.map(t => (
@@ -517,7 +522,7 @@ export default function CrmPage() {
                 <Users size={18} />
               </div>
               <div>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Global CRM Dashboard</h2>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Global {getModuleName('crm', 'CRM')} Dashboard</h2>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Client directory, retention analytics, and behavioral triggers.</div>
               </div>
             </div>
@@ -1186,7 +1191,6 @@ export default function CrmPage() {
               </div>
             </div>
           )}
-        </div>
 
         {/* New Client Modal */}
         {showModal && (
@@ -1215,7 +1219,21 @@ export default function CrmPage() {
             </div>
           </div>
         )}
-      </>
+      </div>
+      <CollapsibleAlertSidebar 
+        module="crm" 
+        onNavigate={(path, state) => {
+          if (path === '/crm' && state?.selectedClientId) {
+            const target = contacts.find(c => c.id === state.selectedClientId);
+            if (target) setSelectedClient(target);
+          } else {
+            navigate(path, { state });
+          }
+        }}
+        isCollapsed={isSidebarCollapsed}
+        onToggle={() => setIsSidebarCollapsed(prev => !prev)}
+      />
+    </div>
     );
   }
 

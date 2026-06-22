@@ -6,8 +6,9 @@ import {
   Save, TrendingUp, AlertCircle, Plus, Search, ArrowLeft, 
   Edit3, Filter, CheckCircle, FileSpreadsheet, AlertTriangle, 
   Printer, FileText, DollarSign, Layers, ChevronRight, Sparkles, ClipboardList,
-  Calendar, Clock, Play, TrendingDown
+  Calendar, Clock, Play, TrendingDown, Calculator
 } from 'lucide-react';
+import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 
 const PHI_ADVISORIES = {
   design: {
@@ -34,7 +35,7 @@ const RATE_CARD = {
 };
 
 export default function DesignPage() {
-  const { projects, updateProject, contacts, setContacts, logAttrition, addInvoice, invoices, moveDesignFee } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, addInvoice, invoices, moveDesignFee, getModuleName } = useStore();
   const { isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,6 +47,9 @@ export default function DesignPage() {
 
   const [selectedFeeId, setSelectedFeeId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed_design') === 'true';
+  });
   
   // Link/Unlink modal state
   const [linkModalItem, setLinkModalItem] = useState(null);
@@ -628,57 +632,55 @@ export default function DesignPage() {
       
       {/* HEADER BANNER */}
       {selectedFeeId === null ? (
-        <>
-          <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Design Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Design Fee Calculator & Deliverables Workspace</span>
+        <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
+          <div style={{ minWidth: 0 }}>
+          <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
+            <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
+                  <Calculator size={18} />
                 </div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  🧠 Standalone Design Fees & CAD Module
-                </h1>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Standalone {getModuleName('design', 'Design')} Fees & CAD Module</h2>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Design Fee Calculator & Deliverables Workspace.</div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Date range filter banner */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <Calendar size={15} color="var(--text-info)" />
-              <span style={{ fontSize: '13.5px', fontWeight: 600 }}>Filter Design Fees by Date:</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
-                  <button
-                    key={preset}
-                    onClick={() => applyPreset(preset)}
-                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ padding: '4px 10px', height: 'auto', fontSize: '11.5px', borderRadius: '6px' }}
-                  >
-                    {preset}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Date Filters */}
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                  {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
+                    <button
+                      key={preset}
+                      onClick={() => applyPreset(preset)}
+                      className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Date Inputs */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                  <Calendar size={13} color="var(--text-tertiary)" />
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    value={startDate}
+                    onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    value={endDate}
+                    onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
+                  />
+                </div>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Custom Range:</span>
-              <input
-                type="date"
-                className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11.5px' }}
-                value={startDate}
-                onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
-              />
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
-              <input
-                type="date"
-                className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11.5px' }}
-                value={endDate}
-                onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
-              />
             </div>
           </div>
 
@@ -895,7 +897,24 @@ export default function DesignPage() {
 
             </div>
           </div>
-        </>
+          </div>
+          <CollapsibleAlertSidebar 
+            module="design" 
+            onNavigate={(path, state) => {
+              if (path === '/design' && state?.selectedProjectKey) {
+                setSelectedProjectKey(state.selectedProjectKey);
+                const proj = projects[state.selectedProjectKey];
+                if (proj && proj.designFees && proj.designFees.length > 0) {
+                  setSelectedFeeId(proj.designFees[0].id);
+                }
+              } else {
+                navigate(path, { state });
+              }
+            }}
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed(prev => !prev)}
+          />
+        </div>
       ) : (
         /* DESIGN FEE CALCULATOR & PROPOSAL PREVIEW WORKSPACE */
         <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.3fr', gap: '24px', alignItems: 'start' }}>

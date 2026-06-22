@@ -27,7 +27,7 @@ const stageBorderColors = {
 const todayStr = '2026-05-18'; // Mocked local current date
 
 export default function PipelinePage({ clientFilter = null, isEmbedded = false }) {
-  const { addProject, leads, setLeads, moveLead, updateLead, contacts, setContacts } = useStore();
+  const { addProject, leads, setLeads, moveLead, updateLead, contacts, setContacts, getModuleName } = useStore();
   const navigate = useNavigate();
 
   // Date and View Filter States
@@ -781,7 +781,7 @@ export default function PipelinePage({ clientFilter = null, isEmbedded = false }
                 <Layout size={18} />
               </div>
               <div>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Sales Pipeline (CRM Coach)</h2>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{getModuleName('pipeline', 'Sales pipeline')} (CRM Coach)</h2>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Weighted forecasts, Visual decay, Action gates, and PM notifications.</div>
               </div>
             </div>

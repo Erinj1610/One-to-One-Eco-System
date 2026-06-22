@@ -8,7 +8,7 @@ import {
 
 export default function LogisticsPage() {
   const navigate = useNavigate();
-  const { projects, updateProject } = useStore();
+  const { projects, updateProject, getModuleName } = useStore();
   
   // Search & ledger navigation state
   const [searchQuery, setSearchQuery] = useState('');
@@ -425,7 +425,7 @@ export default function LogisticsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>
-            Logistics & Warehousing Module
+            {getModuleName('logistics', 'Logistics')} & Warehousing Module
           </h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
             Track Packing Lists (PL) & Delivery Notes (DN) issued for client orders
