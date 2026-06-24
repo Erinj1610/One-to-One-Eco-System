@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE } from '../api_config';
+
 import { 
   FileText, X, CheckCircle, AlertCircle, Clock, Tag, User, 
   Calendar, Star, Send, Image, MessageSquare, AlertTriangle, Play, Upload, Sparkles, ArrowLeft
@@ -96,15 +98,19 @@ const statusColor = {
 export default function SupportPage() {
   const { user, isAdmin } = useAuth();
   
-  const [tickets, setTickets] = useState(() => {
-    const saved = localStorage.getItem('store_support_tickets');
-    return saved ? JSON.parse(saved) : INITIAL_TICKETS;
-  });
+  const [tickets, setTickets] = useState([]);
 
-  const saveTickets = (updatedList) => {
-    setTickets(updatedList);
-    localStorage.setItem('store_support_tickets', JSON.stringify(updatedList));
-  };
+  // Load tickets on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/api/support/tickets`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setTickets(data);
+        }
+      })
+      .catch(err => console.error("Error loading tickets:", err));
+  }, []);
 
   const [filter, setFilter] = useState('All');
   
@@ -131,15 +137,15 @@ export default function SupportPage() {
   // Switch to detail view
   const handleOpenDetail = (t) => {
     setSelectedTicketId(t.id);
-    setAdminEta(t.eta || '');
-    setAdminNotes(t.adminNotes || '');
+    setAdminEta(t.status === 'Closed' ? 'Completed' : (t.status === 'In progress' ? 'Developing' : ''));
+    setAdminNotes(t.response_text || '');
     setAdminStatus(t.status || 'Open');
     setStaffRating(t.rating || 0);
     setStaffComment('');
     setView('detail');
   };
 
-  // Convert uploaded file to base64 for local persistence simulation
+  // Convert uploaded file to base64
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -171,78 +177,87 @@ export default function SupportPage() {
     setFormImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const addTicket = () => {
+  const addTicket = async () => {
     if (!form.title) return;
-    const nextId = `TKT-${String(tickets.length + 1).padStart(3, '0')}`;
-    const newTkt = {
-      ...form,
-      id: nextId,
-      raised: user?.name || user?.email || 'Anonymous Staff',
-      date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-      status: 'Open',
-      images: formImages,
-      eta: '',
-      adminNotes: '',
-      rating: null,
-      developerComments: []
+    const body = {
+      title: form.title,
+      description: form.description,
+      urgency: form.priority,
+      image_url: formImages[0] || null, // API handles primary screenshot upload
+      created_at: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     };
-    const updated = [...tickets, newTkt];
-    saveTickets(updated);
     
-    // Reset Form & Switch view
-    setForm({ title: '', cat: 'Bug', priority: 'Medium', description: '' });
-    setFormImages([]);
-    setView('list');
-  };
-
-  const handleUpdateAdminResponse = () => {
-    if (!detailTicket) return;
-    const updated = tickets.map(t => {
-      if (t.id === detailTicket.id) {
-        const tObj = {
-          ...t,
-          eta: adminEta,
-          adminNotes: adminNotes,
-          status: adminStatus
-        };
-        // Auto set eta message for completed
-        if (adminStatus === 'Closed') {
-          tObj.eta = 'Completed';
-        }
-        return tObj;
+    try {
+      const res = await fetch(`${API_BASE}/api/support/tickets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        // reload
+        const listRes = await fetch(`${API_BASE}/api/support/tickets`);
+        const listData = await listRes.json();
+        setTickets(listData);
+        
+        // Reset Form & Switch view
+        setForm({ title: '', cat: 'Bug', priority: 'Medium', description: '' });
+        setFormImages([]);
+        setView('list');
       }
-      return t;
-    });
-    saveTickets(updated);
-    alert('Support ticket status and response updated successfully.');
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleSubmittingFeedback = (e) => {
+  const handleUpdateAdminResponse = async () => {
+    if (!detailTicket) return;
+    const body = {
+      status: adminStatus,
+      response_text: adminNotes
+    };
+    try {
+      const res = await fetch(`${API_BASE}/api/support/tickets/${detailTicket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        const listRes = await fetch(`${API_BASE}/api/support/tickets`);
+        const listData = await listRes.json();
+        setTickets(listData);
+        alert('Support ticket status and response updated successfully.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSubmittingFeedback = async (e) => {
     e.preventDefault();
     if (!detailTicket) return;
     
-    const updated = tickets.map(t => {
-      if (t.id === detailTicket.id) {
-        const comments = [...(t.developerComments || [])];
-        if (staffComment.trim()) {
-          comments.push({
-            sender: user?.name || user?.email || 'Staff member',
-            text: staffComment.trim(),
-            date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-          });
-        }
-        return {
-          ...t,
-          rating: staffRating || t.rating,
-          developerComments: comments
-        };
+    try {
+      const res = await fetch(`${API_BASE}/api/support/tickets/${detailTicket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: String(staffRating),
+          response_text: staffComment.trim() ? `${detailTicket.response_text || ''}\n\nFeedback: ${staffComment.trim()}` : detailTicket.response_text
+        })
+      });
+      if (res.ok) {
+        const listRes = await fetch(`${API_BASE}/api/support/tickets`);
+        const listData = await listRes.json();
+        setTickets(listData);
+        setStaffComment('');
+        alert('Thank you for rating my solution! Feedback submitted.');
       }
-      return t;
-    });
-    saveTickets(updated);
-    setStaffComment('');
-    alert('Thank you for rating my solution! Feedback submitted.');
+    } catch (err) {
+      console.error(err);
+    }
   };
+
 
   const filtered = filter === 'All' ? tickets : tickets.filter(t => t.status === filter);
 

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState } from 'react';
+import { API_BASE } from '../api_config';
 
 const StoreContext = createContext();
+
 
 const initialContacts = [
   { 
@@ -1117,124 +1119,96 @@ const defaultInvoices = [
 ];
 
 export function StoreProvider({ children }) {
-  const [projects, setProjects] = useState(() => {
-    const saved = localStorage.getItem('store_projects');
-    return saved ? JSON.parse(saved) : initialStore;
-  });
-  const [contacts, setContacts] = useState(() => {
-    const saved = localStorage.getItem('store_contacts');
-    return saved ? JSON.parse(saved) : initialContacts;
-  });
-  const [leads, setLeads] = useState(() => {
-    const saved = localStorage.getItem('store_leads');
-    return saved ? JSON.parse(saved) : initialLeads;
-  });
-  const [invoices, setInvoices] = useState(() => {
-    const saved = localStorage.getItem('store_invoices');
-    return saved ? JSON.parse(saved) : defaultInvoices;
-  });
-  const [alertSettings, setAlertSettings] = useState(() => {
-    const saved = localStorage.getItem('store_alert_settings');
-    const defaultSettings = {
-      crm: {
-        lostClients: true,
-        inactiveClients: true,
-        npsReview: true
-      },
-      design: {
-        outstandingFees: true,
-        upcomingDeadlines: true
-      },
-      projects: {
-        overdueDeadlines: true,
-        lowMargins: true,
-        outstandingDesignFees: true,
-        orderLogisticsAlerts: true,
-        productApprovalAlerts: true
-      },
-      orders: {
-        logisticsHolds: true,
-        backorderedIssues: true,
-        lowMarginOrders: true
-      },
-      customRules: [
-        {
-          id: 'rule-margin',
-          module: 'projects',
-          parameter: 'margin',
-          condition: 'less_than',
-          value: 18,
-          label: 'Project margin is below 18%'
-        },
-        {
-          id: 'rule-nps',
-          module: 'crm',
-          parameter: 'nps',
-          condition: 'less_than',
-          value: 6,
-          label: 'Client NPS score is below 6'
-        },
-        {
-          id: 'rule-outstanding',
-          module: 'design',
-          parameter: 'outstanding',
-          condition: 'greater_than',
-          value: 1000,
-          label: 'Outstanding design fee is greater than R 1,000'
-        }
-      ]
-    };
-    
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (!parsed.customRules) {
-        parsed.customRules = defaultSettings.customRules;
-      }
-      return parsed;
-    }
-    return defaultSettings;
-  });
+  const [projects, setProjects] = useState(initialStore);
+  const [contacts, setContacts] = useState(initialContacts);
+  const [leads, setLeads] = useState(initialLeads);
+  const [invoices, setInvoices] = useState(defaultInvoices);
 
-  const [moduleConfig, setModuleConfig] = useState(() => {
-    const saved = localStorage.getItem('store_module_config');
-    const defaultModules = [
-      { id: 'dashboard', label: 'Dashboard', icon: 'Home', path: '/dashboard', sectionId: 'general', visible: true, order: 0 },
-      { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm', sectionId: 'clients_sales', visible: true, order: 1 },
-      { id: 'projects', label: 'Projects', icon: 'Layout', path: '/projects', sectionId: 'projects_sec', visible: true, order: 2 },
-      { id: 'design', label: 'Design', icon: 'Calculator', path: '/design', sectionId: 'projects_sec', visible: true, order: 3 },
-      { id: 'orders', label: 'Orders', icon: 'ClipboardList', path: '/orders', sectionId: 'projects_sec', visible: true, order: 4 },
-      { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 5 },
-      { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 6 },
-      { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 7 },
-      { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 8 },
-      { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 9 },
-      { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 10 },
-      { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 11 },
-      { id: 'reports', label: 'Reports', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 12 },
-      { id: 'support', label: 'Support', icon: 'Headset', path: '/support', sectionId: 'other_modules', visible: true, order: 13 }
-    ];
-    const defaultSections = [
-      { id: 'general', label: 'General', order: 0 },
-      { id: 'clients_sales', label: 'Clients & sales', order: 1 },
-      { id: 'projects_sec', label: 'Projects', order: 2 },
-      { id: 'other_modules', label: 'Other modules', order: 3 }
-    ];
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.modules && parsed.sections) {
-          defaultModules.forEach(dm => {
-            if (!parsed.modules.some(pm => pm.id === dm.id)) {
-              parsed.modules.push(dm);
-            }
-          });
-          return parsed;
-        }
-      } catch (e) {
-        console.error(e);
+  const defaultSettings = {
+    crm: {
+      lostClients: true,
+      inactiveClients: true,
+      npsReview: true
+    },
+    design: {
+      outstandingFees: true,
+      upcomingDeadlines: true
+    },
+    projects: {
+      overdueDeadlines: true,
+      lowMargins: true,
+      outstandingDesignFees: true,
+      orderLogisticsAlerts: true,
+      productApprovalAlerts: true
+    },
+    orders: {
+      logisticsHolds: true,
+      backorderedIssues: true,
+      lowMarginOrders: true
+    },
+    customRules: [
+      {
+        id: 'rule-margin',
+        module: 'projects',
+        parameter: 'margin',
+        condition: 'less_than',
+        value: 18,
+        label: 'Project margin is below 18%'
+      },
+      {
+        id: 'rule-nps',
+        module: 'crm',
+        parameter: 'nps',
+        condition: 'less_than',
+        value: 6,
+        label: 'Client NPS score is below 6'
+      },
+      {
+        id: 'rule-outstanding',
+        module: 'design',
+        parameter: 'outstanding',
+        condition: 'greater_than',
+        value: 1000,
+        label: 'Outstanding design fee is greater than R 1,000'
       }
-    }
-    return { modules: defaultModules, sections: defaultSections };
+    ]
+  };
+
+  const [alertSettings, setAlertSettings] = useState(defaultSettings);
+
+  const defaultModules = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'Home', path: '/dashboard', sectionId: 'general', visible: true, order: 0 },
+    { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm', sectionId: 'clients_sales', visible: true, order: 1 },
+    { id: 'projects', label: 'Projects', icon: 'Layout', path: '/projects', sectionId: 'projects_sec', visible: true, order: 2 },
+    { id: 'design', label: 'Design', icon: 'Calculator', path: '/design', sectionId: 'projects_sec', visible: true, order: 3 },
+    { id: 'orders', label: 'Orders', icon: 'ClipboardList', path: '/orders', sectionId: 'projects_sec', visible: true, order: 4 },
+    { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 5 },
+    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 6 },
+    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 7 },
+    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 8 },
+    { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 9 },
+    { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 10 },
+    { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 11 },
+    { id: 'reports', label: 'Reports', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 12 },
+    { id: 'support', label: 'Support', icon: 'Headset', path: '/support', sectionId: 'other_modules', visible: true, order: 13 }
+  ];
+  const defaultSections = [
+    { id: 'general', label: 'General', order: 0 },
+    { id: 'clients_sales', label: 'Clients & sales', order: 1 },
+    { id: 'projects_sec', label: 'Projects', order: 2 },
+    { id: 'other_modules', label: 'Other modules', order: 3 }
+  ];
+
+  const [moduleConfig, setModuleConfig] = useState({ modules: defaultModules, sections: defaultSections });
+
+  // References to trace when backend fetch is completed so we don't save default values on load
+  const isLoaded = React.useRef({
+    projects: false,
+    contacts: false,
+    leads: false,
+    invoices: false,
+    alertSettings: false,
+    moduleConfig: false
   });
 
   const getModuleName = (moduleId, fallback) => {
@@ -1242,29 +1216,48 @@ export function StoreProvider({ children }) {
     return found ? found.label : fallback;
   };
 
+  // Load all states on mount
   React.useEffect(() => {
-    localStorage.setItem('store_projects', JSON.stringify(projects));
-  }, [projects]);
+    const loadState = (key, setter, fallback) => {
+      fetch(`${API_BASE}/api/settings/${key}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.value) {
+            setter(data.value);
+          }
+          isLoaded.current[key] = true;
+        })
+        .catch(err => {
+          console.error(`Error loading ${key}:`, err);
+          isLoaded.current[key] = true;
+        });
+    };
 
-  React.useEffect(() => {
-    localStorage.setItem('store_contacts', JSON.stringify(contacts));
-  }, [contacts]);
+    loadState('projects', setProjects);
+    loadState('contacts', setContacts);
+    loadState('leads', setLeads);
+    loadState('invoices', setInvoices);
+    loadState('alertSettings', setAlertSettings);
+    loadState('moduleConfig', setModuleConfig);
+  }, []);
 
-  React.useEffect(() => {
-    localStorage.setItem('store_leads', JSON.stringify(leads));
-  }, [leads]);
+  // Save states on changes (excluding initial load)
+  const saveState = (key, value) => {
+    if (!isLoaded.current[key]) return;
+    fetch(`${API_BASE}/api/settings/${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value })
+    }).catch(err => console.error(`Error saving ${key}:`, err));
+  };
 
-  React.useEffect(() => {
-    localStorage.setItem('store_invoices', JSON.stringify(invoices));
-  }, [invoices]);
+  React.useEffect(() => { saveState('projects', projects); }, [projects]);
+  React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
+  React.useEffect(() => { saveState('leads', leads); }, [leads]);
+  React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
+  React.useEffect(() => { saveState('alertSettings', alertSettings); }, [alertSettings]);
+  React.useEffect(() => { saveState('moduleConfig', moduleConfig); }, [moduleConfig]);
 
-  React.useEffect(() => {
-    localStorage.setItem('store_alert_settings', JSON.stringify(alertSettings));
-  }, [alertSettings]);
-
-  React.useEffect(() => {
-    localStorage.setItem('store_module_config', JSON.stringify(moduleConfig));
-  }, [moduleConfig]);
 
 
   const addInvoice = (invoice) => {

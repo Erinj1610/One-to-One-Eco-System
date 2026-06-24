@@ -13,6 +13,9 @@ from routes.projects import router as projects_router
 from routes.admin import router as admin_router
 from routes.documents import router as documents_router
 from routes.hr import router as hr_router
+from routes.settings import router as settings_router
+from routes.users import router as users_router
+import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
 
@@ -28,16 +31,22 @@ app.add_middleware(
 def health_check():
     return {"status": "ok", "message": "Backend is running"}
 
-app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
-app.include_router(admin_router, prefix="/admin", tags=["admin"])
-app.include_router(documents_router, prefix="/api/documents", tags=["documents"])
-app.include_router(hr_router, prefix="/api/hr", tags=["hr"])
+from services.firebase_auth import verify_firebase_token
+
+app.include_router(projects_router, prefix="/api/projects", tags=["projects"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(admin_router, prefix="/admin", tags=["admin"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(documents_router, prefix="/api/documents", tags=["documents"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(hr_router, prefix="/api/hr", tags=["hr"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(settings_router, prefix="/api", tags=["settings"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(users_router, prefix="/admin/users", tags=["users"])
+
 
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
     try:
-        from models.orm_models import Project, Quote, TemplateConfig, ProjectFolder, Employee, LeaveType, LeaveBalance, LeaveRequest, PulseSurvey
+        from models.orm_models import Project, Quote, TemplateConfig, ProjectFolder, Employee, LeaveType, LeaveBalance, LeaveRequest, PulseSurvey, PortalSetting, SupportTicket
         Base.metadata.create_all(bind=engine)
+
         
         # Seed default project folders if none exist for each project
         db = SessionLocal()

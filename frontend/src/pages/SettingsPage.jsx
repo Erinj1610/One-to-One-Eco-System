@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
+import { API_BASE } from '../api_config';
 
 const ROLES = ['Admin', 'Senior Designer', 'Designer', 'Coordinator', 'Showroom'];
 const MODULES = ['Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'];
@@ -21,7 +22,7 @@ export default function SettingsPage() {
   const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig } = useStore();
 
   const availableTabs = isAdmin
-    ? ['General', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? ['General', 'Users', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
@@ -29,6 +30,79 @@ export default function SettingsPage() {
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
   const [general, setGeneral] = useState({ companyName: '1-to-1 World', email: 'studio@1-to-1.world', phone: '+27 21 000 0000', address: 'Woodstock, Cape Town', vat: '4880123456', currency: 'ZAR' });
+
+  // Users Management State
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role_id: 3, department: 'Design' });
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSuccess, setInviteSuccess] = useState('');
+  const [generatedLink, setGeneratedLink] = useState('');
+
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'Users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  const handleInvite = async (e) => {
+    e.preventDefault();
+    setInviteError('');
+    setInviteSuccess('');
+    setGeneratedLink('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inviteForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setInviteSuccess(`Successfully invited ${inviteForm.name}!`);
+        if (data.reset_link) {
+          setGeneratedLink(data.reset_link);
+        }
+        setInviteForm({ name: '', email: '', role_id: 3, department: 'Design' });
+        fetchUsers();
+      } else {
+        setInviteError(data.detail || 'Failed to invite user');
+      }
+    } catch (err) {
+      setInviteError('Network error');
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm("Are you sure you want to delete this user? This will also remove them from Firebase Auth.")) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to delete user');
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  };
 
   return (
     <div className="animation-fade-in">
@@ -59,6 +133,139 @@ export default function SettingsPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                 <button className="btn btn-primary">Save changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'Users' && isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
+          <div>
+            <div className="section-label">System Users</div>
+            <div className="card">
+              <div className="card-body" style={{ padding: 0 }}>
+                {usersLoading ? (
+                  <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>Loading users...</div>
+                ) : (
+                  <table className="table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Department</th>
+                        <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(u => (
+                        <tr key={u.id}>
+                          <td style={{ fontWeight: 600 }}>{u.name}</td>
+                          <td>{u.email}</td>
+                          <td>
+                            <span className="badge" style={{ background: 'rgba(224, 153, 36, 0.1)', color: '#e09924', border: '1px solid rgba(224, 153, 36, 0.2)' }}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td>{u.department}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button 
+                              onClick={() => handleDeleteUser(u.id)}
+                              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="section-label">Invite New User</div>
+            <div className="card">
+              <div className="card-body">
+                <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div className="form-row">
+                    <label className="form-label">Full Name</label>
+                    <input 
+                      className="form-control" 
+                      required 
+                      value={inviteForm.name} 
+                      onChange={e => setInviteForm(f => ({...f, name: e.target.value}))} 
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label">Email Address</label>
+                    <input 
+                      type="email"
+                      className="form-control" 
+                      required 
+                      value={inviteForm.email} 
+                      onChange={e => setInviteForm(f => ({...f, email: e.target.value}))} 
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label">Role</label>
+                    <select 
+                      className="form-control"
+                      value={inviteForm.role_id}
+                      onChange={e => setInviteForm(f => ({...f, role_id: parseInt(e.target.value)}))}
+                    >
+                      <option value={1}>Admin</option>
+                      <option value={2}>Senior Designer</option>
+                      <option value={3}>Designer</option>
+                      <option value={4}>Coordinator</option>
+                      <option value={5}>Showroom</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label">Department</label>
+                    <input 
+                      className="form-control" 
+                      value={inviteForm.department} 
+                      onChange={e => setInviteForm(f => ({...f, department: e.target.value}))} 
+                    />
+                  </div>
+
+                  {inviteError && (
+                    <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
+                      {inviteError}
+                    </div>
+                  )}
+
+                  {inviteSuccess && (
+                    <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
+                      {inviteSuccess}
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary" 
+                    style={{ marginTop: 8 }}
+                  >
+                    Send Invitation
+                  </button>
+                </form>
+
+                {generatedLink && (
+                  <div style={{ marginTop: 16, padding: 12, background: 'rgba(224, 153, 36, 0.05)', border: '1px solid rgba(224, 153, 36, 0.15)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 11, color: '#e09924', fontWeight: 600, marginBottom: 4 }}>Invitation / Setup Link:</div>
+                    <textarea 
+                      readOnly 
+                      value={generatedLink} 
+                      onClick={e => e.target.select()}
+                      style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
+                    />
+                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Copy this link and send it directly to the user so they can set their password.</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

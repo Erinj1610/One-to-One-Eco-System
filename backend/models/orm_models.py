@@ -365,3 +365,23 @@ class ProjectFolder(Base):
     sort_order = Column(Integer, default=0)
     name = Column(String, nullable=False)
 
+class PortalSetting(Base):
+    __tablename__ = "portal_settings"
+    
+    key = Column(String, primary_key=True, index=True)
+    value = Column(JSON, nullable=False)
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    status = Column(String, default="Pending")
+    urgency = Column(String, default="Medium")
+    image_url = Column(String, nullable=True)
+    rating = Column(Integer, nullable=True)
+    response_text = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
+
+
