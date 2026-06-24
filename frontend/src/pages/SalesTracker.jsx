@@ -2004,9 +2004,10 @@ export default function SalesTracker() {
                                         </td>
                                         <td style={{ padding: 0, borderRight: '1px solid var(--border-strong)' }}>
                                           <input 
-                                            type="text" 
+                                            type="date" 
                                             className="gs-cell-input" 
-                                            value={poEtaVal}
+                                            style={{ colorScheme: 'dark' }}
+                                            value={toInputDate(poEtaVal)}
                                             data-row={rowIndex}
                                             data-col="poEta"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poEta', e.target.value)}
