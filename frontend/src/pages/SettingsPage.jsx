@@ -19,10 +19,10 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig } = useStore();
+  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig, projectManagers, setProjectManagers } = useStore();
 
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? ['General', 'Users', 'Project managers', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
@@ -45,6 +45,12 @@ export default function SettingsPage() {
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
   const [resetPwLink, setResetPwLink] = useState('');
+
+  // Project Managers Settings State
+  const [newPmName, setNewPmName] = useState('');
+  const [newPmEmail, setNewPmEmail] = useState('');
+  const [newPmPhone, setNewPmPhone] = useState('');
+  const [editingPmId, setEditingPmId] = useState(null);
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -467,6 +473,176 @@ export default function SettingsPage() {
                 <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>The reset email has been sent. You can also copy and send this direct link manually.</div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'Project managers' && isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
+          <div>
+            <div className="section-label">Project Managers List</div>
+            <div className="card">
+              <div className="card-body" style={{ padding: 0 }}>
+                {(!projectManagers || projectManagers.length === 0) ? (
+                  <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>No project managers configured.</div>
+                ) : (
+                  <table className="table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectManagers.map(pm => (
+                        <tr key={pm.id} style={{ opacity: pm.active === false ? 0.6 : 1 }}>
+                          <td style={{ fontWeight: 600 }}>{pm.name}</td>
+                          <td>{pm.email || '—'}</td>
+                          <td>{pm.phone || '—'}</td>
+                          <td>
+                            <span className="badge" style={{ 
+                              background: pm.active === false ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                              color: pm.active === false ? '#ef4444' : '#10b981', 
+                              border: pm.active === false ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(34, 197, 94, 0.2)' 
+                            }}>
+                              {pm.active === false ? 'Inactive' : 'Active'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              <button 
+                                className="btn btn-sm btn-ghost" 
+                                onClick={() => {
+                                  setEditingPmId(pm.id);
+                                  setNewPmName(pm.name);
+                                  setNewPmEmail(pm.email || '');
+                                  setNewPmPhone(pm.phone || '');
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button 
+                                className="btn btn-sm" 
+                                style={{
+                                  background: pm.active === false ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                  color: pm.active === false ? '#10b981' : '#ef4444',
+                                  border: pm.active === false ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                                }}
+                                onClick={() => {
+                                  setProjectManagers(prev => prev.map(p => p.id === pm.id ? { ...p, active: p.active === false ? true : false } : p));
+                                }}
+                              >
+                                {pm.active === false ? 'Activate' : 'Deactivate'}
+                              </button>
+                              <button 
+                                className="btn btn-sm btn-ghost" 
+                                style={{ color: '#ef4444' }}
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete ${pm.name}? This will remove them from settings, but existing projects referencing their name will keep the reference.`)) {
+                                    setProjectManagers(prev => prev.filter(p => p.id !== pm.id));
+                                  }
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="section-label">{editingPmId ? 'Edit Project Manager' : 'Add Project Manager'}</div>
+            <div className="card">
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Full Name:</span>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={newPmName} 
+                    onChange={e => setNewPmName(e.target.value)} 
+                    placeholder="e.g. Martin" 
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Email Address:</span>
+                  <input 
+                    type="email" 
+                    className="form-control" 
+                    value={newPmEmail} 
+                    onChange={e => setNewPmEmail(e.target.value)} 
+                    placeholder="e.g. martin@1-to-1.world" 
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Phone Number:</span>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={newPmPhone} 
+                    onChange={e => setNewPmPhone(e.target.value)} 
+                    placeholder="e.g. 082 123 4567" 
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary" 
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      if (!newPmName.trim()) {
+                        alert('Name is required!');
+                        return;
+                      }
+                      if (editingPmId) {
+                        setProjectManagers(prev => prev.map(pm => pm.id === editingPmId ? { ...pm, name: newPmName.trim(), email: newPmEmail.trim(), phone: newPmPhone.trim() } : pm));
+                        setEditingPmId(null);
+                        alert('Project Manager updated successfully!');
+                      } else {
+                        const newPM = {
+                          id: `pm-${Date.now()}`,
+                          name: newPmName.trim(),
+                          email: newPmEmail.trim(),
+                          phone: newPmPhone.trim(),
+                          active: true
+                        };
+                        setProjectManagers(prev => [...prev, newPM]);
+                        alert('Project Manager created successfully!');
+                      }
+                      setNewPmName('');
+                      setNewPmEmail('');
+                      setNewPmPhone('');
+                    }}
+                  >
+                    {editingPmId ? 'Update PM' : 'Create PM'}
+                  </button>
+                  {editingPmId && (
+                    <button 
+                      type="button" 
+                      className="btn" 
+                      onClick={() => {
+                        setEditingPmId(null);
+                        setNewPmName('');
+                        setNewPmEmail('');
+                        setNewPmPhone('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

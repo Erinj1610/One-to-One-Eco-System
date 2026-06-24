@@ -41,7 +41,7 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee } = useStore();
+  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers } = useStore();
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   
@@ -437,6 +437,9 @@ export default function ProjectManagement() {
   const [showDocUploadModal, setShowDocUploadModal] = useState(false);
   const [targetDocStage, setTargetDocStage] = useState('Stage 1');
   const [docForm, setDocForm] = useState({ name: '', category: 'Design', visibility: 'Client visible' });
+
+  const [showCreatePMModal, setShowCreatePMModal] = useState(false);
+  const [newPMForm, setNewPMForm] = useState({ name: '', email: '', phone: '' });
 
 
 
@@ -906,16 +909,27 @@ export default function ProjectManagement() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Project Manager:</span>
-                    <select 
-                      className="form-control" 
-                      value={p.pm || 'Dani'} 
-                      onChange={(e) => updateProject(id, 'pm', e.target.value)}
-                    >
-                      <option value="Dani">Dani</option>
-                      <option value="Martin">Martin</option>
-                      <option value="Alex">Alex</option>
-                      <option value="Merlyn">Merlyn</option>
-                    </select>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select 
+                        className="form-control" 
+                        value={p.pm || 'Dani'} 
+                        onChange={(e) => updateProject(id, 'pm', e.target.value)}
+                        style={{ flex: 1 }}
+                      >
+                        {(projectManagers || []).map(pm => (
+                          <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
+                        ))}
+                      </select>
+                      <button 
+                        type="button" 
+                        className="btn btn-primary" 
+                        style={{ padding: '8px 12px', height: '36px', minWidth: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold' }} 
+                        onClick={() => setShowCreatePMModal(true)}
+                        title="Add New Project Manager"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
@@ -2438,6 +2452,77 @@ export default function ProjectManagement() {
                 }}
               >
                 Save & Link Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE PROJECT MANAGER MODAL */}
+      {showCreatePMModal && (
+        <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+          <div className="card animation-fade-in" style={{ width: '450px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+            <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>Add New Project Manager</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowCreatePMModal(false)}>✕</button>
+            </div>
+            <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Full Name:</span>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={newPMForm.name} 
+                  onChange={(e) => setNewPMForm(prev => ({ ...prev, name: e.target.value }))} 
+                  placeholder="e.g. Dani"
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Email Address:</span>
+                <input 
+                  type="email" 
+                  className="form-control" 
+                  value={newPMForm.email} 
+                  onChange={(e) => setNewPMForm(prev => ({ ...prev, email: e.target.value }))} 
+                  placeholder="e.g. dani@1-to-1.world"
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Phone Number:</span>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={newPMForm.phone} 
+                  onChange={(e) => setNewPMForm(prev => ({ ...prev, phone: e.target.value }))} 
+                  placeholder="e.g. 083 570 7795"
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn" onClick={() => setShowCreatePMModal(false)}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={() => {
+                  if (!newPMForm.name.trim()) {
+                    alert('Please enter a name!');
+                    return;
+                  }
+                  const newPM = {
+                    id: `pm-${Date.now()}`,
+                    name: newPMForm.name.trim(),
+                    email: newPMForm.email.trim(),
+                    phone: newPMForm.phone.trim(),
+                    active: true
+                  };
+                  setProjectManagers(prev => [...prev, newPM]);
+                  updateProject(id, 'pm', newPM.name);
+                  setNewPMForm({ name: '', email: '', phone: '' });
+                  setShowCreatePMModal(false);
+                  alert('Project Manager added and selected!');
+                }}
+              >
+                Save Project Manager
               </button>
             </div>
           </div>

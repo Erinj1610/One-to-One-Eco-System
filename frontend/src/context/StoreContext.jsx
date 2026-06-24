@@ -4,6 +4,13 @@ import { useAuth } from './AuthContext';
 
 const StoreContext = createContext();
 
+const defaultPMs = [
+  { id: 'pm-1', name: 'Dani', email: 'dani@1-to-1.world', phone: '083 570 7795', active: true },
+  { id: 'pm-2', name: 'Martin', email: 'martin@1-to-1.world', phone: '082 123 4567', active: true },
+  { id: 'pm-3', name: 'Alex', email: 'alex@1-to-1.world', phone: '083 765 4321', active: true },
+  { id: 'pm-4', name: 'Merlyn', email: 'merlyn@1-to-1.world', phone: '084 987 6543', active: true }
+];
+
 
 const initialContacts = [
   { 
@@ -1125,6 +1132,7 @@ export function StoreProvider({ children }) {
   const [contacts, setContacts] = useState([]);
   const [leads, setLeads] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [projectManagers, setProjectManagers] = useState([]);
 
   const defaultSettings = {
     crm: {
@@ -1210,7 +1218,8 @@ export function StoreProvider({ children }) {
     leads: false,
     invoices: false,
     alertSettings: false,
-    moduleConfig: false
+    moduleConfig: false,
+    projectManagers: false
   });
 
   const getModuleName = (moduleId, fallback) => {
@@ -1228,7 +1237,8 @@ export function StoreProvider({ children }) {
         leads: false,
         invoices: false,
         alertSettings: false,
-        moduleConfig: false
+        moduleConfig: false,
+        projectManagers: false
       };
       return;
     }
@@ -1242,11 +1252,16 @@ export function StoreProvider({ children }) {
         .then(data => {
           if (data && data.value !== null && data.value !== undefined) {
             setter(data.value);
+          } else if (key === 'projectManagers') {
+            setter(defaultPMs);
           }
           isLoaded.current[key] = true;
         })
         .catch(err => {
           console.error(`Error loading ${key}:`, err);
+          if (key === 'projectManagers') {
+            setter(defaultPMs);
+          }
           isLoaded.current[key] = true;
         });
     };
@@ -1257,6 +1272,7 @@ export function StoreProvider({ children }) {
     loadState('invoices', setInvoices);
     loadState('alertSettings', setAlertSettings);
     loadState('moduleConfig', setModuleConfig);
+    loadState('projectManagers', setProjectManagers);
   }, [user]);
 
   // Save states on changes (excluding initial load)
@@ -1275,6 +1291,7 @@ export function StoreProvider({ children }) {
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
   React.useEffect(() => { saveState('alertSettings', alertSettings); }, [alertSettings]);
   React.useEffect(() => { saveState('moduleConfig', moduleConfig); }, [moduleConfig]);
+  React.useEffect(() => { saveState('projectManagers', projectManagers); }, [projectManagers]);
 
 
 
@@ -1558,7 +1575,9 @@ export function StoreProvider({ children }) {
       setAlertSettings,
       moduleConfig,
       setModuleConfig,
-      getModuleName
+      getModuleName,
+      projectManagers,
+      setProjectManagers
     }}>
       {children}
     </StoreContext.Provider>
