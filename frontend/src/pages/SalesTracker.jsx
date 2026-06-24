@@ -1800,7 +1800,7 @@ export default function SalesTracker() {
                           <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1350px' : activeTab === 'order' ? '1100px' : activeTab === 'invoicing' ? '1100px' : '1200px' }}>
                             <thead>
                               <tr style={{ background: 'var(--bg-secondary)' }}>
-                                <th colSpan={6} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
+                                <th colSpan={7} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
                                 
                                 {activeTab === 'order' && (
                                   <th 
@@ -1841,6 +1841,7 @@ export default function SalesTracker() {
                               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
                                 <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
                                 <th style={{ width: '80px' }}>Type Code</th>
+                                <th style={{ width: '100px' }}>1:1 Code</th>
                                 <th style={{ width: '130px' }}>Item Code</th>
                                 <th style={{ width: '250px' }}>Description</th>
                                 <th style={{ width: '90px', textAlign: 'right' }}>Unit Retail</th>
@@ -1925,6 +1926,7 @@ export default function SalesTracker() {
                                   >
                                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                                     <td style={{ fontFamily: 'monospace' }}>{item.type || '—'}</td>
+                                    <td style={{ fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
                                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.description}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>

@@ -244,6 +244,7 @@ export default function OrdersPage() {
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
     qty: 60,
     type: 80,
+    oneOneCode: 100,
     code: 165,
     description: 250,
     floor: 90,
@@ -256,7 +257,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'type', 'oneOneCode', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -1014,6 +1015,7 @@ export default function OrdersPage() {
     const fieldsOrder = [
       'qty',
       'type',
+      'oneOneCode',
       'code',
       'description',
       'floor',
@@ -1036,6 +1038,7 @@ export default function OrdersPage() {
           id: 'I-' + (Date.now() + rowOffset),
           qty: 1,
           type: 'NEW',
+          oneOneCode: '',
           code: '',
           description: 'New custom fixture description',
           floor: 'Ground',
@@ -1118,6 +1121,7 @@ export default function OrdersPage() {
       id: newId,
       qty: 1,
       type: 'NEW',
+      oneOneCode: '',
       code: '',
       description: 'New custom fixture description',
       floor: 'Ground',
@@ -2231,6 +2235,10 @@ export default function OrdersPage() {
                                   Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                 </th>
+                                <th style={{ width: widths.oneOneCode, position: 'relative' }}>
+                                  1:1 Code
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                                </th>
                                 <th style={{ width: widths.code, position: 'relative' }}>
                                   Item Code
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
@@ -2330,6 +2338,19 @@ export default function OrdersPage() {
                                       />
                                     </td>
 
+                                    {/* 1:1 CODE */}
+                                    <td>
+                                      <input 
+                                        type="text"
+                                        className="boq-cell-input"
+                                        value={item.oneOneCode || ''}
+                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
+                                        data-row={index}
+                                        data-col={2}
+                                        data-field="oneOneCode"
+                                      />
+                                    </td>
+
                                     {/* ITEM CODE SELECTOR / CUSTOM ENTRY */}
                                     <td>
                                       <SearchableCodeSelect 
@@ -2339,7 +2360,7 @@ export default function OrdersPage() {
                                           handleItemCodeChange(item.id, prod.code);
                                         }}
                                         rowIdx={index}
-                                        colIdx={2}
+                                        colIdx={3}
                                         onKeyDown={handleGridKeyDown}
                                       />
                                     </td>
@@ -2352,7 +2373,7 @@ export default function OrdersPage() {
                                         value={item.description || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
                                         data-row={index}
-                                        data-col={3}
+                                        data-col={4}
                                         data-field="description"
                                       />
                                     </td>
@@ -2365,7 +2386,7 @@ export default function OrdersPage() {
                                         value={item.floor || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'floor', e.target.value)}
                                         data-row={index}
-                                        data-col={4}
+                                        data-col={5}
                                         data-field="floor"
                                       />
                                     </td>
@@ -2378,7 +2399,7 @@ export default function OrdersPage() {
                                         value={item.area || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'area', e.target.value)}
                                         data-row={index}
-                                        data-col={5}
+                                        data-col={6}
                                         data-field="area"
                                       />
                                     </td>
@@ -2390,7 +2411,7 @@ export default function OrdersPage() {
                                         value={item.dimming || 'Non-dim'}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'dimming', e.target.value)}
                                         data-row={index}
-                                        data-col={6}
+                                        data-col={7}
                                         data-field="dimming"
                                       >
                                         <option>Non-dim</option>
@@ -2408,7 +2429,7 @@ export default function OrdersPage() {
                                         value={item.brand || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'brand', e.target.value)}
                                         data-row={index}
-                                        data-col={7}
+                                        data-col={8}
                                         data-field="brand"
                                       />
                                     </td>
@@ -2422,7 +2443,7 @@ export default function OrdersPage() {
                                         value={item.unitCost}
                                         onChange={e => handlePriceEdit(item.id, 'unitCost', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={8}
+                                        data-col={9}
                                         data-field="unitCost"
                                       />
                                     </td>
@@ -2436,7 +2457,7 @@ export default function OrdersPage() {
                                         value={item.unitRetail}
                                         onChange={e => handlePriceEdit(item.id, 'unitRetail', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={9}
+                                        data-col={10}
                                         data-field="unitRetail"
                                       />
                                     </td>
@@ -2468,7 +2489,7 @@ export default function OrdersPage() {
                                         value={item.eta || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
                                         data-row={index}
-                                        data-col={13}
+                                        data-col={14}
                                         data-field="eta"
                                       />
                                     </td>
@@ -3153,6 +3174,7 @@ export default function OrdersPage() {
                                 <tr style={{ borderBottom: '2px solid #0f172a', color: '#0f172a', textAlign: 'left', fontWeight: 700 }}>
                                   <th style={{ padding: '8px', width: '40px', textAlign: 'center' }}>Qty</th>
                                   <th style={{ padding: '8px', width: '70px' }}>Type</th>
+                                  <th style={{ padding: '8px', width: '90px' }}>1:1 Code</th>
                                   <th style={{ padding: '8px', width: '110px' }}>Item Code</th>
                                   <th style={{ padding: '8px' }}>Internal Technical Specification</th>
                                   <th style={{ padding: '8px', width: '90px' }}>Floor</th>
@@ -3166,6 +3188,7 @@ export default function OrdersPage() {
                                   <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                                     <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>{item.type}</td>
+                                    <td style={{ padding: '8px', fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
                                     <td style={{ padding: '8px', fontFamily: 'monospace', color: '#0284c7' }}>{item.code || '—'}</td>
                                     <td style={{ padding: '8px' }}>{item.description}</td>
                                     <td style={{ padding: '8px' }}>{item.floor}</td>
