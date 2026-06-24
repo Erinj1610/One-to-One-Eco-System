@@ -328,6 +328,42 @@ export default function SalesTracker() {
     let nextRow = row;
     let nextColIndex = colIndex;
 
+    // Intercept keyboard copy (Ctrl+C / Cmd+C) to copy cell value, particularly useful for date inputs
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      const currentItem = groupedItems[row];
+      const val = currentItem[col];
+      navigator.clipboard.writeText(val !== undefined && val !== null ? String(val) : '');
+      // Don't preventDefault to allow natural text copy selection where possible
+    }
+
+    // Intercept keyboard fill down (Ctrl+D / Cmd+D) to duplicate the cell value above
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      if (row > 0) {
+        const prevRowItem = groupedItems[row - 1];
+        const valToCopy = prevRowItem[col];
+        const currentItem = groupedItems[row];
+        
+        if (col === 'poRef') {
+          handlePOChange(currentItem.itemIds, valToCopy);
+        } else {
+          handleUpdateSpreadsheetCell(currentItem.itemIds, col, valToCopy);
+        }
+        
+        // Auto-advance focus to the next row (if there is one) for quick sequential fills
+        const nextTargetRow = Math.min(groupedItems.length - 1, row + 1);
+        setTimeout(() => {
+          const selector = `[data-row="${nextTargetRow}"][data-col="${col}"]`;
+          const nextElement = document.querySelector(selector);
+          if (nextElement) {
+            nextElement.focus();
+            if (nextElement.select) nextElement.select();
+          }
+        }, 10);
+      }
+      return;
+    }
+
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       nextRow = Math.max(0, row - 1);
