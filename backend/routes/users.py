@@ -172,8 +172,31 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict 
 
     employee = db.query(Employee).filter(Employee.user_id == user_id).first()
     if employee:
-        # Nullify any manager links pointing to this employee to avoid foreign key violations
+        # Import related models to ensure clean deletion
+        from models.orm_models import Project, LeaveBalance, LeaveRequest, WellbeingCheckIn, StaffSelfAssessment, TimeLog
+        
+        # 1. Nullify project manager links
+        db.query(Project).filter(Project.pm_id == employee.id).update({Project.pm_id: None})
+        
+        # 2. Nullify manager references in other employees
         db.query(Employee).filter(Employee.manager_id == employee.id).update({Employee.manager_id: None})
+        
+        # 3. Clean up leave balances and requests
+        db.query(LeaveBalance).filter(LeaveBalance.employee_id == employee.id).delete()
+        db.query(LeaveRequest).filter(LeaveRequest.employee_id == employee.id).delete()
+        db.query(LeaveRequest).filter(LeaveRequest.manager_id == employee.id).update({LeaveRequest.manager_id: None})
+        
+        # 4. Clean up wellbeing check-ins and self assessments
+        db.query(WellbeingCheckIn).filter(
+            (WellbeingCheckIn.employee_id == employee.id) | 
+            (WellbeingCheckIn.manager_id == employee.id)
+        ).delete()
+        db.query(StaffSelfAssessment).filter(StaffSelfAssessment.employee_id == employee.id).delete()
+        
+        # 5. Clean up time logs
+        db.query(TimeLog).filter(TimeLog.employee_id == employee.id).delete()
+        
+        # 6. Delete the employee record
         db.delete(employee)
     
     db.delete(user_to_delete)
