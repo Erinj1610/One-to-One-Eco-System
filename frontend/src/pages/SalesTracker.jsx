@@ -844,6 +844,49 @@ export default function SalesTracker() {
     }
   };
 
+  // Handle auto-filling of PO columns when Stock in Hand or Client Supplied is selected
+  const handlePOChange = (itemOrItemIds, val) => {
+    const itemIds = Array.isArray(itemOrItemIds) ? itemOrItemIds : [itemOrItemIds];
+    
+    // Always update poRef first
+    handleUpdateSpreadsheetCell(itemIds, 'poRef', val);
+
+    if (val === 'Stock in Hand') {
+      const today = new Date().toISOString().split('T')[0];
+      setActiveOrderItems(prev => prev.map(item => {
+        if (itemIds.includes(item.id)) {
+          return {
+            ...item,
+            poSupplier: 'Warehouse Inventory',
+            poDate: today,
+            poQtyOrdered: 0,
+            poEta: today,
+            receivedQty: item.qty || 0,
+            receivedDate: today
+          };
+        }
+        return item;
+      }));
+    } else if (val === 'Client Supplied') {
+      const today = new Date().toISOString().split('T')[0];
+      setActiveOrderItems(prev => prev.map(item => {
+        if (itemIds.includes(item.id)) {
+          return {
+            ...item,
+            poSupplier: 'Client',
+            poDate: today,
+            poQtyOrdered: 0,
+            poEta: today,
+            receivedQty: item.qty || 0,
+            receivedDate: today
+          };
+        }
+        return item;
+      }));
+    }
+  };
+
+
   // Populate row fields based on selected product from catalog
   const handleItemCodeChange = (itemId, newCode) => {
     const catalogItem = PRODUCT_CATALOG.find(p => p.code === newCode);
@@ -1966,9 +2009,14 @@ export default function SalesTracker() {
                                             type="text" 
                                             className="gs-cell-input" 
                                             value={poRefVal}
+                                            list="po-ref-options"
                                             data-row={rowIndex}
                                             data-col="poRef"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poRef', e.target.value)}
+                                            onChange={(e) => handlePOChange(item.itemIds, e.target.value)}
+                                            style={
+                                              poRefVal === 'Stock in Hand' ? { backgroundColor: 'rgba(74, 222, 128, 0.15)', color: '#4ade80', fontWeight: 'bold' } :
+                                              poRefVal === 'Client Supplied' ? { backgroundColor: 'rgba(96, 165, 250, 0.15)', color: '#60a5fa', fontWeight: 'bold' } : {}
+                                            }
                                           />
                                         </td>
                                         <td style={{ padding: 0 }}>
@@ -2602,6 +2650,11 @@ export default function SalesTracker() {
           </div>
         </div>
       )}
+      {/* PO Reference Datalist Options */}
+      <datalist id="po-ref-options">
+        <option value="Stock in Hand" />
+        <option value="Client Supplied" />
+      </datalist>
 
     </div>
   );
