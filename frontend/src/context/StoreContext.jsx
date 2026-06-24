@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import { API_BASE } from '../api_config';
+import { useAuth } from './AuthContext';
 
 const StoreContext = createContext();
 
@@ -1119,6 +1120,7 @@ const defaultInvoices = [
 ];
 
 export function StoreProvider({ children }) {
+  const { user } = useAuth();
   const [projects, setProjects] = useState(initialStore);
   const [contacts, setContacts] = useState(initialContacts);
   const [leads, setLeads] = useState(initialLeads);
@@ -1216,13 +1218,29 @@ export function StoreProvider({ children }) {
     return found ? found.label : fallback;
   };
 
-  // Load all states on mount
+  // Load all states when user logs in
   React.useEffect(() => {
-    const loadState = (key, setter, fallback) => {
+    if (!user) {
+      // If user logs out, reset loaded states
+      isLoaded.current = {
+        projects: false,
+        contacts: false,
+        leads: false,
+        invoices: false,
+        alertSettings: false,
+        moduleConfig: false
+      };
+      return;
+    }
+
+    const loadState = (key, setter) => {
       fetch(`${API_BASE}/api/settings/${key}`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+          return res.json();
+        })
         .then(data => {
-          if (data && data.value) {
+          if (data && data.value !== null && data.value !== undefined) {
             setter(data.value);
           }
           isLoaded.current[key] = true;
@@ -1239,11 +1257,11 @@ export function StoreProvider({ children }) {
     loadState('invoices', setInvoices);
     loadState('alertSettings', setAlertSettings);
     loadState('moduleConfig', setModuleConfig);
-  }, []);
+  }, [user]);
 
   // Save states on changes (excluding initial load)
   const saveState = (key, value) => {
-    if (!isLoaded.current[key]) return;
+    if (!user || !isLoaded.current[key]) return;
     fetch(`${API_BASE}/api/settings/${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
