@@ -63,6 +63,44 @@ const toInputDate = (dateStr) => {
   return dateStr;
 };
 
+const getFittingType = (item) => {
+  const code = (item.code || '').toUpperCase();
+  const desc = (item.description || '').toUpperCase();
+  
+  // 1. Direct Catalog Match
+  if (code.includes('28402 9240') || code.includes('TA8') || code.includes('MOD-LED')) return 'Downlight';
+  if (code.includes('LA_128598')) return 'Lamp';
+  if (code.includes('MOD-STR')) return 'Strip';
+  if (code.includes('SIG-PND')) return 'Pendant';
+  if (code.includes('MOL-DRV')) return 'Driver';
+  if (code.includes('MOD-WAL')) return 'Wall Washer';
+  if (code.includes('SIG-FLR')) return 'Uplight';
+  if (code.includes('MOL-TRK')) return 'Track';
+  
+  // 2. Keyword check on Description
+  if (desc.includes('DOWNLIGHT')) return 'Downlight';
+  if (desc.includes('FOOTLIGHT')) return 'Footlight';
+  if (desc.includes('UPLIGHT')) return 'Uplight';
+  if (desc.includes('SPOTLIGHT')) return 'Spotlight';
+  if (desc.includes('TRACK')) return 'Track';
+  if (desc.includes('PENDANT') || desc.includes('CHANDELIER')) return 'Pendant';
+  if (desc.includes('LAMP') || desc.includes('BULB')) return 'Lamp';
+  if (desc.includes('STRIP') || desc.includes('FLEX')) return 'Strip';
+  if (desc.includes('PROFILE') || desc.includes('CHANNEL')) return 'Profile';
+  if (desc.includes('DRIVER') || desc.includes('POWER SUPPLY') || desc.includes('TRANSFORMER')) return 'Driver';
+  if (desc.includes('END CAP') || desc.includes(' EC ') || desc.includes('CONNECTOR') || desc.includes('ACCESSORY')) return 'Accessories';
+  
+  // 3. Fallback check on Code
+  if (code.includes('DRV') || code.includes('DRIVE') || code.includes('PSU')) return 'Driver';
+  if (code.includes('STRIP') || code.includes('STRP')) return 'Strip';
+  if (code.includes('PROF') || code.includes('PRFL')) return 'Profile';
+  if (code.includes('EC') || code.includes('END')) return 'Accessories';
+  if (code.includes('LAMP')) return 'Lamp';
+  
+  // Default fallback
+  return 'Fitting';
+};
+
 // Global Product Catalog for Item Code selection
 const PRODUCT_CATALOG = [
   { code: '28402 9240 W', description: 'Downlight - Entero RD-S 14W 2700K 30° White', brand: 'Delta Light', dimming: 'Non-dim', unitCost: 2238.63, unitRetail: 2995.00 },
@@ -1941,7 +1979,7 @@ export default function SalesTracker() {
                                         <td>{item.supplier || '—'}</td>
                                         <td style={{ borderRight: '1px solid var(--border-strong)', verticalAlign: 'middle', padding: '4px 8px' }}>
                                           <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                                            {item.area || 'LED'}
+                                            {getFittingType(item)}
                                           </span>
                                         </td>
                                       </>
