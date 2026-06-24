@@ -12,7 +12,7 @@ def initialize_firebase():
             # Assumes Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS 
             # environment variable is present configuring the default credentials for the VM or local
             cred = credentials.ApplicationDefault()
-            firebase_admin.initialize_app(cred, options={'projectId': 'one-to-one-eco-system'})
+            firebase_admin.initialize_app(cred)
             logger.info("Firebase Admin initialized successfully.")
         except Exception as e:
             logger.error(f"Error initializing Firebase Admin: {e}")

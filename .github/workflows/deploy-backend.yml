@@ -46,5 +46,4 @@ jobs:
           --image gcr.io/${{ env.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           --region ${{ env.GCP_REGION }} \
           --platform managed \
-          --allow-unauthenticated \
-          --update-env-vars "FIREBASE_CREDENTIALS_JSON=${{ secrets.FIREBASE_CREDENTIALS_JSON }}"
+          --allow-unauthenticated
