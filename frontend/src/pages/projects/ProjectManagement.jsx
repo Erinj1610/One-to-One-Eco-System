@@ -37,6 +37,29 @@ const PHI_ADVISORIES = {
   }
 };
 
+const formatDateForInput = (dateStr) => {
+  if (!dateStr || dateStr === '—' || dateStr === 'TBD') return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const parsed = Date.parse(dateStr);
+  if (!isNaN(parsed)) {
+    try {
+      return new Date(parsed).toISOString().split('T')[0];
+    } catch (e) {
+      // Ignore
+    }
+  }
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const day = parts[0].trim().padStart(2, '0');
+    const month = parts[1].trim().padStart(2, '0');
+    const year = parts[2].trim();
+    if (year.length === 4) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+  return '';
+};
+
 export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -536,7 +559,7 @@ export default function ProjectManagement() {
       feeValue: newFeeVal,
       paid: 0,
       outstanding: newFeeVal,
-      margin: p.targetMargin || 18,
+      margin: p.targetMargin || 39,
       status: 'Draft',
       proposalPdf: '',
       files: [] // Initialize with empty files array!
@@ -604,7 +627,7 @@ export default function ProjectManagement() {
           sqm: livingArea || df.sqm,
           outstanding: Math.max(0, feeValue - (df.paid || 0)),
           proposalPdf: proposalDocName,
-          margin: sigConsult ? 22 : (p.targetMargin || 18),
+          margin: sigConsult ? 22 : (p.targetMargin || 39),
           status: 'Approved'
         };
       }
@@ -799,7 +822,7 @@ export default function ProjectManagement() {
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Blended Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
               {p.isDraft ? '—' : `${blendedMargin}%`}
             </span>
           </div>
@@ -934,31 +957,29 @@ export default function ProjectManagement() {
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
                     <select 
                       className="form-control" 
-                      value={p.stage || 'Stage 1'} 
+                      value={p.stage || 'Pending'} 
                       onChange={(e) => updateProject(id, 'stage', e.target.value)}
                     >
-                      <option value="Stage 1">Stage 1</option>
-                      <option value="Stage 2">Stage 2</option>
-                      <option value="Stage 3">Stage 3</option>
-                      <option value="Stage 4">Stage 4</option>
-                      <option value="Stage 5">Stage 5</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Ongoing">Ongoing</option>
+                      <option value="Complete">Complete</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Start Date:</span>
                     <input 
-                      type="text" 
+                      type="date" 
                       className="form-control" 
-                      value={p.start || ''} 
+                      value={formatDateForInput(p.start)} 
                       onChange={(e) => updateProject(id, 'start', e.target.value)} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Deadline Date:</span>
                     <input 
-                      type="text" 
+                      type="date" 
                       className="form-control" 
-                      value={p.deadline || ''} 
+                      value={formatDateForInput(p.deadline)} 
                       onChange={(e) => updateProject(id, 'deadline', e.target.value)} 
                     />
                   </div>
@@ -976,7 +997,7 @@ export default function ProjectManagement() {
                     <input 
                       type="number" 
                       className="form-control" 
-                      value={p.targetMargin || 18} 
+                      value={p.targetMargin || 39} 
                       onChange={(e) => updateProject(id, 'targetMargin', Number(e.target.value) || 0)} 
                     />
                   </div>
@@ -1312,12 +1333,12 @@ export default function ProjectManagement() {
                       sqm: p.sqm || '1,000',
                       pm: p.pm,
                       offering: p.offering,
-                      targetMargin: p.targetMargin || 18,
+                      targetMargin: p.targetMargin || 39,
                       projectType: p.projectType || 'Design & Orders',
-                      start: new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
-                      deadline: p.deadline === '—' || !p.deadline ? 'TBD' : p.deadline,
+                      start: new Date().toISOString().split('T')[0],
+                      deadline: p.deadline === '—' || !p.deadline ? '' : p.deadline,
                       status: 'On track',
-                      stage: 'Stage 1'
+                      stage: 'Pending'
                     });
                     alert("Project created successfully!");
                     navigate(`/projects/${finalKey}`);
@@ -1393,12 +1414,12 @@ export default function ProjectManagement() {
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Blended Margin Index</span>
-                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMargin < (p.targetMargin || 18) ? 'Under Target' : 'Optimal'}
+                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal'}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: blendedMargin < (p.targetMargin || 18) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: blendedMargin < (p.targetMargin || 39) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
                         </div>
                       </div>
                     </div>
@@ -1981,12 +2002,12 @@ export default function ProjectManagement() {
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Blended Margin Index</span>
-                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMargin < (p.targetMargin || 18) ? 'Under Target' : 'Optimal'}
+                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal'}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: blendedMargin < (p.targetMargin || 18) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 18) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: blendedMargin < (p.targetMargin || 39) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
                         </div>
                       </div>
                     </div>

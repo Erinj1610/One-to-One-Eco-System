@@ -70,23 +70,23 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
         // 3. Low Margin Warnings
         if (activeSettings.lowMargins) {
           let totalValue = p.feeValue || 0;
-          let actualMargin = p.actualMargin || 18;
+          let actualMargin = p.actualMargin || 39;
           if (p.designFees && p.orders) {
             const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
             const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
             totalValue = dfVal + poVal;
-            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 39)/100)), 0) +
                               p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
-            actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+            actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 39;
           }
-          if (actualMargin < (p.targetMargin || 18)) {
+          if (actualMargin < (p.targetMargin || 39)) {
             generated.push({
               id: `${p.key}-margin`,
               projectKey: p.key,
               type: 'margin',
               badge: 'LOW MARGIN',
               title: `Low Margin Alert: ${p.name}`,
-              desc: `Margin is at ${actualMargin}%, which is below target of ${p.targetMargin || 18}%.`,
+              desc: `Margin is at ${actualMargin}%, which is below target of ${p.targetMargin || 39}%.`,
               action: 'Review financials',
               navPath: `/projects/${p.key}`
             });
@@ -317,14 +317,14 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
           let paramValue = null;
           if (rule.parameter === 'margin') {
             let totalValue = p.feeValue || 0;
-            let actualMargin = p.actualMargin || 18;
+            let actualMargin = p.actualMargin || 39;
             if (p.designFees && p.orders) {
               const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
               const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
               totalValue = dfVal + poVal;
-              const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+              const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 39)/100)), 0) +
                                 p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
-              actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+              actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 39;
             }
             paramValue = actualMargin;
           }

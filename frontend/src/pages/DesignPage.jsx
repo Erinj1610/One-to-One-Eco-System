@@ -200,8 +200,8 @@ export default function DesignPage() {
     setClientContact(proj.client || '');
     setProjectFullName(proj.name || '');
     setProjectTier(proj.offering || 'Signature');
-    setTargetMargin(proj.targetMargin || 18);
-    setActualMargin(fee.margin || 18);
+    setTargetMargin(proj.targetMargin || 39);
+    setActualMargin(fee.margin || 39);
     setPmName(proj.pm || 'Dani');
     setWorkspaceSubTab('calculator');
     setShowCalculatorBuilder(false);

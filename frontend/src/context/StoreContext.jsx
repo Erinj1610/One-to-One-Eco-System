@@ -1162,8 +1162,8 @@ export function StoreProvider({ children }) {
         module: 'projects',
         parameter: 'margin',
         condition: 'less_than',
-        value: 18,
-        label: 'Project margin is below 18%'
+        value: 39,
+        label: 'Project margin is below 39%'
       },
       {
         id: 'rule-nps',
