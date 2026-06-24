@@ -172,6 +172,8 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict 
 
     employee = db.query(Employee).filter(Employee.user_id == user_id).first()
     if employee:
+        # Nullify any manager links pointing to this employee to avoid foreign key violations
+        db.query(Employee).filter(Employee.manager_id == employee.id).update({Employee.manager_id: None})
         db.delete(employee)
     
     db.delete(user_to_delete)

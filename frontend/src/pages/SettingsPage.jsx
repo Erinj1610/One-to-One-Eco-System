@@ -277,7 +277,16 @@ export default function SettingsPage() {
           <div>
             {editingUser ? (
               <div>
-                <div className="section-label">Edit User</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div className="section-label" style={{ margin: 0 }}>Edit User</div>
+                  <button 
+                    type="button"
+                    onClick={() => setEditingUser(null)} 
+                    style={{ background: 'rgba(224, 153, 36, 0.1)', border: '1px solid rgba(224, 153, 36, 0.3)', color: '#e09924', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
+                  >
+                    + Invite New User
+                  </button>
+                </div>
                 <div className="card">
                   <div className="card-body">
                     <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
