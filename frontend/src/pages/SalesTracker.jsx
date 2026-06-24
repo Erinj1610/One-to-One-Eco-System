@@ -120,82 +120,55 @@ const getItemDefaults = (item) => {
   
   // Phase 1: Order Phase (Procurement)
   if (resolved.poRef === undefined) {
-    if (item.id === 'I-1') resolved.poRef = 'PO-01675';
-    else if (item.id === 'I-2') resolved.poRef = 'PO-01679';
-    else if (item.id === 'I-3') resolved.poRef = 'PO-01676';
-    else resolved.poRef = 'PO-01675';
+    resolved.poRef = '';
   }
   if (resolved.poSupplier === undefined) {
-    resolved.poSupplier = item.supplier || 'Molecule Dist.';
+    resolved.poSupplier = item.supplier || '';
   }
   if (resolved.poDate === undefined) {
-    resolved.poDate = '2026-01-20';
+    resolved.poDate = '';
   }
   if (resolved.poQtyOrdered === undefined) {
-    resolved.poQtyOrdered = item.qty || 0;
+    resolved.poQtyOrdered = 0;
   }
   if (resolved.poEta === undefined) {
-    if (item.id === 'I-1') resolved.poEta = '2026-02-12';
-    else if (item.id === 'I-2') resolved.poEta = '2026-02-28';
-    else if (item.id === 'I-3') resolved.poEta = '2026-01-20';
-    else resolved.poEta = '2026-02-12';
+    resolved.poEta = '';
   }
   
   // Phase 2: Receiving Phase
   if (resolved.receivedQty === undefined) {
-    if (item.id === 'I-1') resolved.receivedQty = 3;
-    else if (item.id === 'I-2') resolved.receivedQty = 20;
-    else if (item.id === 'I-3') resolved.receivedQty = 50;
-    else resolved.receivedQty = item.qty || 0;
+    resolved.receivedQty = 0;
   }
   if (resolved.receivedDate === undefined) {
-    if (item.id === 'I-1') resolved.receivedDate = '2026-02-17';
-    else if (item.id === 'I-2') resolved.receivedDate = '2026-04-21';
-    else if (item.id === 'I-3') resolved.receivedDate = '2026-01-21';
-    else resolved.receivedDate = '2026-02-17';
+    resolved.receivedDate = '';
   }
   
   // Phase 3: Invoicing Phase
   if (resolved.invoiceQty === undefined) {
-    if (item.id === 'I-1') resolved.invoiceQty = 3;
-    else if (item.id === 'I-2') resolved.invoiceQty = 20;
-    else if (item.id === 'I-3') resolved.invoiceQty = 50;
-    else resolved.invoiceQty = item.qty || 0;
+    resolved.invoiceQty = 0;
   }
   if (resolved.invoiceRef === undefined) {
-    if (item.id === 'I-1') resolved.invoiceRef = 'INV01599';
-    else if (item.id === 'I-2') resolved.invoiceRef = 'INV-000102';
-    else if (item.id === 'I-3') resolved.invoiceRef = 'INV01510';
-    else resolved.invoiceRef = 'INV01599';
+    resolved.invoiceRef = '';
   }
   if (resolved.invoiceDate === undefined) {
-    if (item.id === 'I-1') resolved.invoiceDate = '2026-02-18';
-    else if (item.id === 'I-2') resolved.invoiceDate = '2026-04-21';
-    else if (item.id === 'I-3') resolved.invoiceDate = '2026-01-22';
-    else resolved.invoiceDate = '2026-02-18';
+    resolved.invoiceDate = '';
   }
   if (resolved.invoiceValue === undefined) {
-    resolved.invoiceValue = resolved.invoiceQty * (item.unitRetail || 0);
+    resolved.invoiceValue = 0;
   }
   
   // Phase 4: Delivery Phase
   if (resolved.deliveryQty === undefined) {
-    if (item.id === 'I-1') resolved.deliveryQty = 3;
-    else if (item.id === 'I-2') resolved.deliveryQty = 20;
-    else if (item.id === 'I-3') resolved.deliveryQty = 50;
-    else resolved.deliveryQty = item.qty || 0;
+    resolved.deliveryQty = 0;
   }
   if (resolved.deliveryDate === undefined) {
-    resolved.deliveryDate = '2026-03-09';
+    resolved.deliveryDate = '';
   }
   if (resolved.deliveryStatus === undefined) {
-    resolved.deliveryStatus = 'Delivered';
+    resolved.deliveryStatus = 'Pending';
   }
   if (resolved.deliveryNotes === undefined) {
-    if (item.id === 'I-1') resolved.deliveryNotes = 'x3 collected 09/03/2026 by Triton Zaza waybill 16644339, CPT 767862';
-    else if (item.id === 'I-2') resolved.deliveryNotes = 'Using x20 05-E014-J6-CL from Singita (The Hub Zone 1). Only receiving on system when we receive x107 from LEDS C4. P.O. number T.B.C. x20 collected 09/03/2026 by Triton Zaza waybill 16644339, CPT 767862';
-    else if (item.id === 'I-3') resolved.deliveryNotes = 'x56 collected 09/03/2026 by Triton Zaza waybill 16644339, CPT 767862';
-    else resolved.deliveryNotes = `x${resolved.qty} delivered by Darren - Received by Ismail 10/03/2026`;
+    resolved.deliveryNotes = '';
   }
   
   return resolved;
@@ -223,6 +196,7 @@ export default function SalesTracker() {
       if (!groups[codeKey]) {
         groups[codeKey] = {
           code: item.code,
+          oneOneCode: item.oneOneCode || item.one_one_code || '',
           description: item.description,
           type: item.type,
           unitRetail: item.unitRetail || 0,
