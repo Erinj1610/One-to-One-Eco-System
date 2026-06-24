@@ -2207,6 +2207,9 @@ export default function OrdersPage() {
                           background: var(--bg-secondary) !important;
                           color: var(--text-secondary) !important;
                           border-bottom: 2px solid var(--border-strong) !important;
+                          position: sticky !important;
+                          top: 0 !important;
+                          z-index: 10 !important;
                         }
                         .boq-table td {
                           padding: 6px 8px !important;
@@ -2220,7 +2223,7 @@ export default function OrdersPage() {
                         
                         {/* LEFT COLUMN: INTERACTIVE HIGH-DENSITY SPREADSHEET */}
                         <div 
-                          style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+                          style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
                           onKeyDown={handleGridKeyDown}
                           onPaste={handleGridPaste}
                         >
