@@ -75,6 +75,27 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
                     disabled=False
                 )
             reset_link = firebase_auth.generate_password_reset_link(invite.email)
+            
+            # Send the email automatically via Identity Platform REST API
+            try:
+                import urllib.request
+                import json
+                api_key = "AIzaSyAsdT5wto73He85BZjf1gu_sEBtDxDgPkA"
+                url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
+                post_data = json.dumps({
+                    "requestType": "PASSWORD_RESET",
+                    "email": invite.email
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    url,
+                    data=post_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req) as response:
+                    print(f"Successfully triggered password reset email for {invite.email}")
+            except Exception as email_err:
+                print(f"Warning: Failed to automatically send email: {email_err}")
+                
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Firebase user creation failed: {str(e)}")
     else:
