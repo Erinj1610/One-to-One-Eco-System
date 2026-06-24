@@ -1027,37 +1027,34 @@ export default function ProjectManagement() {
                 <div className="card-body" style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Client Name:</span>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={p.client || ''} 
-                        onChange={(e) => updateProject(id, 'client', e.target.value)} 
-                        placeholder="Type client name..."
-                        style={{ flex: 1 }}
-                      />
-                      <select
-                        className="form-control"
-                        style={{ width: '170px', padding: '6px 8px', fontSize: '12px' }}
-                        value=""
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val) return;
-                          const contact = contacts.find(c => c.name === val);
-                          if (contact) {
-                            updateProject(id, 'client', contact.name);
-                            updateProject(id, 'clientCompany', contact.company || '');
-                            updateProject(id, 'clientEmail', contact.email || '');
-                            updateProject(id, 'clientPhone', contact.phone || '');
-                          }
-                        }}
-                      >
-                        <option value="">Select Existing...</option>
-                        {(contacts || []).map(c => (
-                          <option key={c.id || c.name} value={c.name}>{c.name} ({c.company || 'Private'})</option>
-                        ))}
-                      </select>
-                    </div>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={p.client || ''} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateProject(id, 'client', val);
+                        const contact = contacts.find(c => c.name === val);
+                        if (contact) {
+                          updateProject(id, 'clientCompany', contact.company || '');
+                          updateProject(id, 'clientEmail', contact.email || '');
+                          updateProject(id, 'clientPhone', contact.phone || '');
+                          
+                          // Pre-populate Billing details from client
+                          updateProject(id, 'billingName', contact.name);
+                          updateProject(id, 'billingEmail', contact.email || '');
+                          updateProject(id, 'billingPhone', contact.phone || '');
+                          updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                        }
+                      }} 
+                      placeholder="Type client name or select..."
+                      list="client-datalist"
+                    />
+                    <datalist id="client-datalist">
+                      {(contacts || []).map(c => (
+                        <option key={c.id || c.name} value={c.name}>{c.company ? `${c.company} (${c.type})` : c.type}</option>
+                      ))}
+                    </datalist>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Company Name:</span>
@@ -1097,31 +1094,139 @@ export default function ProjectManagement() {
                   </div>
                 </div>
                 <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Architect Details:</span>
-                      <textarea 
-                        className="form-control" 
-                        rows={2} 
-                        placeholder="e.g. Studio Venter, Sarah (082 456 7890)"
-                        value={p.architectDetails || ''} 
-                        onChange={(e) => updateProject(id, 'architectDetails', e.target.value)}
-                      />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    
+                    {/* Architect Column */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderRight: '1px dashed var(--border)', paddingRight: '20px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-info)' }}>Architect Details:</span>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Architect Name:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.architectName || ''} 
+                          list="architect-datalist"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateProject(id, 'architectName', val);
+                            const contact = contacts.find(c => c.name === val);
+                            if (contact) {
+                              updateProject(id, 'architectCompany', contact.company || '');
+                              updateProject(id, 'architectEmail', contact.email || '');
+                              updateProject(id, 'architectPhone', contact.phone || '');
+                            }
+                          }}
+                          placeholder="Type or select architect..."
+                        />
+                        <datalist id="architect-datalist">
+                          {(contacts || []).filter(c => c.type === 'Architect').map(c => (
+                            <option key={c.id || c.name} value={c.name}>{c.company || 'Architect'}</option>
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Company Name:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.architectCompany || ''} 
+                          onChange={(e) => updateProject(id, 'architectCompany', e.target.value)} 
+                          placeholder="Architect Company"
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email Address:</span>
+                        <input 
+                          type="email" 
+                          className="form-control" 
+                          value={p.architectEmail || ''} 
+                          onChange={(e) => updateProject(id, 'architectEmail', e.target.value)} 
+                          placeholder="architect@email.com"
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Contact Number:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.architectPhone || ''} 
+                          onChange={(e) => updateProject(id, 'architectPhone', e.target.value)} 
+                          placeholder="Contact Number"
+                        />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Contractor Details:</span>
-                      <textarea 
-                        className="form-control" 
-                        rows={2} 
-                        placeholder="e.g. BuildCo Contractors, Dave (083 111 2222)"
-                        value={p.contractorDetails || ''} 
-                        onChange={(e) => updateProject(id, 'contractorDetails', e.target.value)}
-                      />
+
+                    {/* Contractor Column */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-info)' }}>Contractor Details:</span>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Contractor Name:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.contractorName || ''} 
+                          list="contractor-datalist"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateProject(id, 'contractorName', val);
+                            const contact = contacts.find(c => c.name === val);
+                            if (contact) {
+                              updateProject(id, 'contractorCompany', contact.company || '');
+                              updateProject(id, 'contractorEmail', contact.email || '');
+                              updateProject(id, 'contractorPhone', contact.phone || '');
+                            }
+                          }}
+                          placeholder="Type or select contractor..."
+                        />
+                        <datalist id="contractor-datalist">
+                          {(contacts || []).filter(c => c.type === 'Contractor').map(c => (
+                            <option key={c.id || c.name} value={c.name}>{c.company || 'Contractor'}</option>
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Company Name:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.contractorCompany || ''} 
+                          onChange={(e) => updateProject(id, 'contractorCompany', e.target.value)} 
+                          placeholder="Contractor Company"
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Email Address:</span>
+                        <input 
+                          type="email" 
+                          className="form-control" 
+                          value={p.contractorEmail || ''} 
+                          onChange={(e) => updateProject(id, 'contractorEmail', e.target.value)} 
+                          placeholder="contractor@email.com"
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Contact Number:</span>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          value={p.contractorPhone || ''} 
+                          onChange={(e) => updateProject(id, 'contractorPhone', e.target.value)} 
+                          placeholder="Contact Number"
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div style={{ borderTop: '1px dashed var(--border)', margin: '10px 0' }}></div>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-info)' }}>Billing details override:</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-info)' }}>Billing Details Override:</span>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1130,8 +1235,35 @@ export default function ProjectManagement() {
                         type="text" 
                         className="form-control" 
                         value={p.billingName || ''} 
-                        onChange={(e) => updateProject(id, 'billingName', e.target.value)} 
+                        list="billing-datalist"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateProject(id, 'billingName', val);
+                          
+                          if (val === `Use Client Details (${p.client})` || val === p.client) {
+                            updateProject(id, 'billingName', p.client || '');
+                            updateProject(id, 'billingEmail', p.clientEmail || '');
+                            updateProject(id, 'billingPhone', p.clientPhone || '');
+                            updateProject(id, 'billingDetails', `${p.client || ''}\n${p.clientCompany || ''}`);
+                            return;
+                          }
+
+                          const contact = contacts.find(c => c.name === val);
+                          if (contact) {
+                            updateProject(id, 'billingName', contact.name);
+                            updateProject(id, 'billingEmail', contact.email || '');
+                            updateProject(id, 'billingPhone', contact.phone || '');
+                            updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                          }
+                        }} 
+                        placeholder="Type billing name or select..."
                       />
+                      <datalist id="billing-datalist">
+                        {p.client && <option value={`Use Client Details (${p.client})`} />}
+                        {(contacts || []).map(c => (
+                          <option key={c.id || c.name} value={c.name}>{c.company || c.type}</option>
+                        ))}
+                      </datalist>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Billing Email:</span>
