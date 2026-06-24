@@ -342,6 +342,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    disabled = Column(Boolean, default=False)
 
 class Quote(Base):
     __tablename__ = "quotes"

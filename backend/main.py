@@ -44,8 +44,17 @@ app.include_router(users_router, prefix="/admin/users", tags=["users"])
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
     try:
-        from models.orm_models import Project, Quote, TemplateConfig, ProjectFolder, Employee, LeaveType, LeaveBalance, LeaveRequest, PulseSurvey, PortalSetting, SupportTicket
         Base.metadata.create_all(bind=engine)
+        
+        # Run migration to add disabled column if it doesn't exist
+        from sqlalchemy import text
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;"))
+                conn.commit()
+                print("Database migration: ensured 'disabled' column exists on 'users' table.")
+        except Exception as migration_err:
+            print(f"Warning: Migration failed to add 'disabled' column: {migration_err}")
 
         
         # Seed default project folders if none exist for each project

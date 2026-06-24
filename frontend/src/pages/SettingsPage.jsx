@@ -38,6 +38,13 @@ export default function SettingsPage() {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
+  
+  // Edit & Reset Password States
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', role_id: 3, department: 'Design', disabled: false });
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [resetPwLink, setResetPwLink] = useState('');
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -104,6 +111,65 @@ export default function SettingsPage() {
     }
   };
 
+  const handleEditClick = (u) => {
+    setEditingUser(u);
+    setEditForm({
+      name: u.name,
+      role_id: u.role_id || 3,
+      department: u.department || 'Design',
+      disabled: !!u.disabled
+    });
+    setEditError('');
+    setEditSuccess('');
+    setResetPwLink('');
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    setEditSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditSuccess(`Successfully updated ${editForm.name}!`);
+        fetchUsers();
+        setTimeout(() => {
+          setEditingUser(null);
+        }, 1500);
+      } else {
+        setEditError(data.detail || 'Failed to update user');
+      }
+    } catch (err) {
+      setEditError('Network error');
+    }
+  };
+
+  const handleResetPassword = async (userId, userEmail) => {
+    if (!window.confirm(`Trigger password reset email/link for ${userEmail}?`)) return;
+    setResetPwLink('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/reset-password`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Password reset email triggered successfully!");
+        if (data.reset_link) {
+          setResetPwLink(data.reset_link);
+        }
+      } else {
+        alert(data.detail || 'Failed to trigger password reset');
+      }
+    } catch (err) {
+      alert('Network error');
+    }
+  };
+
   return (
     <div className="animation-fade-in">
       <div className="tabs" style={{ marginBottom: 18 }}>
@@ -155,12 +221,13 @@ export default function SettingsPage() {
                         <th>Email</th>
                         <th>Role</th>
                         <th>Department</th>
-                        <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
+                        <th>Status</th>
+                        <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {users.map(u => (
-                        <tr key={u.id}>
+                        <tr key={u.id} style={{ opacity: u.disabled ? 0.6 : 1 }}>
                           <td style={{ fontWeight: 600 }}>{u.name}</td>
                           <td>{u.email}</td>
                           <td>
@@ -169,10 +236,31 @@ export default function SettingsPage() {
                             </span>
                           </td>
                           <td>{u.department}</td>
+                          <td>
+                            <span className="badge" style={{ 
+                              background: u.disabled ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                              color: u.disabled ? '#ef4444' : '#10b981', 
+                              border: u.disabled ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(34, 197, 94, 0.2)' 
+                            }}>
+                              {u.disabled ? 'Disabled' : 'Active'}
+                            </span>
+                          </td>
                           <td style={{ textAlign: 'right' }}>
                             <button 
+                              onClick={() => handleEditClick(u)}
+                              style={{ background: 'transparent', border: 'none', color: '#e09924', cursor: 'pointer', fontSize: 11, padding: '4px 6px', marginRight: 4 }}
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={() => handleResetPassword(u.id, u.email)}
+                              style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 11, padding: '4px 6px', marginRight: 4 }}
+                            >
+                              Reset PW
+                            </button>
+                            <button 
                               onClick={() => handleDeleteUser(u.id)}
-                              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, padding: '4px 8px' }}
+                              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, padding: '4px 6px' }}
                             >
                               Delete
                             </button>
@@ -187,87 +275,189 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <div className="section-label">Invite New User</div>
-            <div className="card">
-              <div className="card-body">
-                <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div className="form-row">
-                    <label className="form-label">Full Name</label>
-                    <input 
-                      className="form-control" 
-                      required 
-                      value={inviteForm.name} 
-                      onChange={e => setInviteForm(f => ({...f, name: e.target.value}))} 
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label className="form-label">Email Address</label>
-                    <input 
-                      type="email"
-                      className="form-control" 
-                      required 
-                      value={inviteForm.email} 
-                      onChange={e => setInviteForm(f => ({...f, email: e.target.value}))} 
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label className="form-label">Role</label>
-                    <select 
-                      className="form-control"
-                      value={inviteForm.role_id}
-                      onChange={e => setInviteForm(f => ({...f, role_id: parseInt(e.target.value)}))}
-                    >
-                      <option value={1}>Admin</option>
-                      <option value={2}>Senior Designer</option>
-                      <option value={3}>Designer</option>
-                      <option value={4}>Coordinator</option>
-                      <option value={5}>Showroom</option>
-                    </select>
-                  </div>
-                  <div className="form-row">
-                    <label className="form-label">Department</label>
-                    <input 
-                      className="form-control" 
-                      value={inviteForm.department} 
-                      onChange={e => setInviteForm(f => ({...f, department: e.target.value}))} 
-                    />
-                  </div>
+            {editingUser ? (
+              <div>
+                <div className="section-label">Edit User</div>
+                <div className="card">
+                  <div className="card-body">
+                    <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
+                        Editing settings for: <strong>{editingUser.email}</strong>
+                      </div>
+                      
+                      <div className="form-row">
+                        <label className="form-label">Full Name</label>
+                        <input 
+                          className="form-control" 
+                          required 
+                          value={editForm.name} 
+                          onChange={e => setEditForm(f => ({...f, name: e.target.value}))} 
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Role</label>
+                        <select 
+                          className="form-control"
+                          value={editForm.role_id}
+                          onChange={e => setEditForm(f => ({...f, role_id: parseInt(e.target.value)}))}
+                        >
+                          <option value={1}>Admin</option>
+                          <option value={2}>Senior Designer</option>
+                          <option value={3}>Designer</option>
+                          <option value={4}>Coordinator</option>
+                          <option value={5}>Showroom</option>
+                        </select>
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Department</label>
+                        <input 
+                          className="form-control" 
+                          value={editForm.department} 
+                          onChange={e => setEditForm(f => ({...f, department: e.target.value}))} 
+                        />
+                      </div>
+                      
+                      <div className="form-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        <input 
+                          type="checkbox" 
+                          id="user-disabled-check"
+                          checked={editForm.disabled} 
+                          onChange={e => setEditForm(f => ({...f, disabled: e.target.checked}))}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <label htmlFor="user-disabled-check" style={{ fontSize: 12, color: '#f3f4f6', cursor: 'pointer', fontWeight: 600 }}>
+                          Disable User (Lock account access)
+                        </label>
+                      </div>
 
-                  {inviteError && (
-                    <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
-                      {inviteError}
-                    </div>
-                  )}
+                      {editError && (
+                        <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
+                          {editError}
+                        </div>
+                      )}
 
-                  {inviteSuccess && (
-                    <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
-                      {inviteSuccess}
-                    </div>
-                  )}
+                      {editSuccess && (
+                        <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
+                          {editSuccess}
+                        </div>
+                      )}
 
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary" 
-                    style={{ marginTop: 8 }}
-                  >
-                    Send Invitation
-                  </button>
-                </form>
-
-                {generatedLink && (
-                  <div style={{ marginTop: 16, padding: 12, background: 'rgba(224, 153, 36, 0.05)', border: '1px solid rgba(224, 153, 36, 0.15)', borderRadius: 8 }}>
-                    <div style={{ fontSize: 11, color: '#e09924', fontWeight: 600, marginBottom: 4 }}>Invitation / Setup Link:</div>
-                    <textarea 
-                      readOnly 
-                      value={generatedLink} 
-                      onClick={e => e.target.select()}
-                      style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
-                    />
-                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Copy this link and send it directly to the user so they can set their password.</div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                          Save Changes
+                        </button>
+                        <button 
+                          type="button" 
+                          className="btn" 
+                          onClick={() => setEditingUser(null)}
+                          style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="section-label">Invite New User</div>
+                <div className="card">
+                  <div className="card-body">
+                    <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div className="form-row">
+                        <label className="form-label">Full Name</label>
+                        <input 
+                          className="form-control" 
+                          required 
+                          value={inviteForm.name} 
+                          onChange={e => setInviteForm(f => ({...f, name: e.target.value}))} 
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Email Address</label>
+                        <input 
+                          type="email"
+                          className="form-control" 
+                          required 
+                          value={inviteForm.email} 
+                          onChange={e => setInviteForm(f => ({...f, email: e.target.value}))} 
+                        />
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Role</label>
+                        <select 
+                          className="form-control"
+                          value={inviteForm.role_id}
+                          onChange={e => setInviteForm(f => ({...f, role_id: parseInt(e.target.value)}))}
+                        >
+                          <option value={1}>Admin</option>
+                          <option value={2}>Senior Designer</option>
+                          <option value={3}>Designer</option>
+                          <option value={4}>Coordinator</option>
+                          <option value={5}>Showroom</option>
+                        </select>
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label">Department</label>
+                        <input 
+                          className="form-control" 
+                          value={inviteForm.department} 
+                          onChange={e => setInviteForm(f => ({...f, department: e.target.value}))} 
+                        />
+                      </div>
+
+                      {inviteError && (
+                        <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
+                          {inviteError}
+                        </div>
+                      )}
+
+                      {inviteSuccess && (
+                        <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
+                          {inviteSuccess}
+                        </div>
+                      )}
+
+                      <button 
+                        type="submit" 
+                        className="btn btn-primary" 
+                        style={{ marginTop: 8 }}
+                      >
+                        Send Invitation
+                      </button>
+                    </form>
+
+                    {generatedLink && (
+                      <div style={{ marginTop: 16, padding: 12, background: 'rgba(224, 153, 36, 0.05)', border: '1px solid rgba(224, 153, 36, 0.15)', borderRadius: 8 }}>
+                        <div style={{ fontSize: 11, color: '#e09924', fontWeight: 600, marginBottom: 4 }}>Invitation / Setup Link:</div>
+                        <textarea 
+                          readOnly 
+                          value={generatedLink} 
+                          onClick={e => e.target.select()}
+                          style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
+                        />
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Copy this link and send it directly to the user so they can set their password.</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Display triggered reset password link if any */}
+            {resetPwLink && (
+              <div style={{ marginTop: 16, padding: 12, background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.15)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600, marginBottom: 4 }}>Generated Reset Link:</div>
+                <textarea 
+                  readOnly 
+                  value={resetPwLink} 
+                  onClick={e => e.target.select()}
+                  style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
+                />
+                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>The reset email has been sent. You can also copy and send this direct link manually.</div>
+              </div>
+            )}
           </div>
         </div>
       )}

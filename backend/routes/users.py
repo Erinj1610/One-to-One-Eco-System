@@ -15,6 +15,12 @@ class UserInvite(BaseModel):
     role_id: Optional[int] = None
     department: Optional[str] = None
 
+class UserUpdate(BaseModel):
+    name: str
+    role_id: Optional[int] = None
+    department: Optional[str] = None
+    disabled: Optional[bool] = False
+
 @router.get("/", response_model=List[dict])
 def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
     db_user = db.query(User).filter(User.email == current_user.get("email")).first()
@@ -40,7 +46,8 @@ def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verif
             "role": role.name if role else "User",
             "role_id": u.role_id,
             "name": emp.name if emp else "Unknown",
-            "department": emp.department if emp else "None"
+            "department": emp.department if emp else "None",
+            "disabled": bool(u.disabled)
         })
     return result
 
@@ -171,3 +178,111 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict 
     db.commit()
 
     return {"message": "User deleted successfully"}
+
+@router.put("/{user_id}")
+def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
+    is_admin = False
+    if db_user and db_user.role_id:
+        role = db.query(Role).filter(Role.id == db_user.role_id).first()
+        if role and role.name.lower() == "admin":
+            is_admin = True
+    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
+        is_admin = True
+
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to manage users")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update User model
+    target_user.role_id = data.role_id
+    target_user.disabled = data.disabled
+
+    # Update Employee model
+    employee = db.query(Employee).filter(Employee.user_id == user_id).first()
+    role_record = db.query(Role).filter(Role.id == data.role_id).first() if data.role_id else None
+    
+    if not employee:
+        employee = Employee(
+            user_id=user_id,
+            name=data.name,
+            department=data.department or "Staff",
+            role=role_record.name if role_record else "Staff"
+        )
+        db.add(employee)
+    else:
+        employee.name = data.name
+        employee.department = data.department or "Staff"
+        if role_record:
+            employee.role = role_record.name
+
+    # Sync disabled status with Identity Platform/Firebase Auth
+    if firebase_initialized:
+        try:
+            fb_user = firebase_auth.get_user_by_email(target_user.email)
+            firebase_auth.update_user(fb_user.uid, disabled=bool(data.disabled))
+            print(f"Synced disable status ({data.disabled}) for {target_user.email} in Firebase Auth.")
+        except Exception as e:
+            print(f"Warning: Failed to sync disable status in Firebase Auth: {e}")
+
+    db.commit()
+    return {"message": "User updated successfully"}
+
+@router.post("/{user_id}/reset-password")
+def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
+    is_admin = False
+    if db_user and db_user.role_id:
+        role = db.query(Role).filter(Role.id == db_user.role_id).first()
+        if role and role.name.lower() == "admin":
+            is_admin = True
+    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
+        is_admin = True
+
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to manage users")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reset_link = None
+    if firebase_initialized:
+        try:
+            reset_link = firebase_auth.generate_password_reset_link(target_user.email)
+            if reset_link:
+                reset_link = reset_link.replace(
+                    "https://one-to-one-portal-500205.firebaseapp.com/__/auth/action",
+                    "https://ejportal.vercel.app/reset-password"
+                )
+            
+            # Send the email automatically via Identity Platform REST API
+            try:
+                import urllib.request
+                import json
+                api_key = "AIzaSyAsdT5wto73He85BZjf1gu_sEBtDxDgPkA"
+                url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
+                post_data = json.dumps({
+                    "requestType": "PASSWORD_RESET",
+                    "email": target_user.email
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    url,
+                    data=post_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req) as response:
+                    print(f"Successfully triggered password reset email for {target_user.email}")
+            except Exception as email_err:
+                print(f"Warning: Failed to automatically send email: {email_err}")
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Firebase operations failed: {str(e)}")
+
+    return {
+        "message": "Password reset triggered successfully",
+        "reset_link": reset_link
+    }
