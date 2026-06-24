@@ -1121,10 +1121,10 @@ const defaultInvoices = [
 
 export function StoreProvider({ children }) {
   const { user } = useAuth();
-  const [projects, setProjects] = useState(initialStore);
-  const [contacts, setContacts] = useState(initialContacts);
-  const [leads, setLeads] = useState(initialLeads);
-  const [invoices, setInvoices] = useState(defaultInvoices);
+  const [projects, setProjects] = useState({});
+  const [contacts, setContacts] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [invoices, setInvoices] = useState([]);
 
   const defaultSettings = {
     crm: {
