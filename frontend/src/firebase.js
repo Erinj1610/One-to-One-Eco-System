@@ -2,12 +2,10 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy-api-key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "my-app.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "my-app",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "my-app.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:123456789",
+  apiKey: "AIzaSyDSO3nuH3I6kgJ9o32h3wOcoGr3TGA1Z50",
+  authDomain: "one-to-one-eco-system.firebaseapp.com",
+  projectId: "one-to-one-eco-system",
+  storageBucket: "one-to-one-eco-system.appspot.com",
 };
 
 const app = initializeApp(firebaseConfig);
