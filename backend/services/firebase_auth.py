@@ -7,19 +7,32 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 # Initialize Firebase Admin SDK
 firebase_initialized = False
 try:
-    # Try to load credentials from a file path specified in env, otherwise fallback to default credentials
+    firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     firebase_creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
     options = {'projectId': 'one-to-one-eco-system'}
-    if firebase_creds_path and os.path.exists(firebase_creds_path):
-        cred = credentials.Certificate(firebase_creds_path)
-        firebase_admin.initialize_app(cred, options)
-        firebase_initialized = True
-        print("Firebase Admin SDK initialized using Service Account JSON.")
-    else:
-        # Fallback to Application Default Credentials
-        firebase_admin.initialize_app(options=options)
-        firebase_initialized = True
-        print("Firebase Admin SDK initialized using Application Default Credentials.")
+    
+    if firebase_creds_json:
+        import json
+        try:
+            creds_dict = json.loads(firebase_creds_json)
+            cred = credentials.Certificate(creds_dict)
+            firebase_admin.initialize_app(cred)
+            firebase_initialized = True
+            print("Firebase Admin SDK initialized using FIREBASE_CREDENTIALS_JSON env variable.")
+        except Exception as json_err:
+            print(f"Warning: Failed to initialize Firebase Admin from JSON env: {json_err}")
+
+    if not firebase_initialized:
+        if firebase_creds_path and os.path.exists(firebase_creds_path):
+            cred = credentials.Certificate(firebase_creds_path)
+            firebase_admin.initialize_app(cred, options)
+            firebase_initialized = True
+            print("Firebase Admin SDK initialized using Service Account JSON file.")
+        else:
+            # Fallback to Application Default Credentials
+            firebase_admin.initialize_app(options=options)
+            firebase_initialized = True
+            print("Firebase Admin SDK initialized using Application Default Credentials.")
 except Exception as e:
     print(f"Warning: Firebase Admin SDK could not be initialized: {e}")
     # Initialize without creds or leave uninitialized for fallback config
