@@ -2,5 +2,17 @@
   "buildCommand": "npm run build --prefix frontend",
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install --prefix frontend",
-  "framework": "vite"
+  "framework": "vite",
+  "experimentalServices": {
+    "frontend": {
+      "root": "frontend",
+      "routePrefix": "/",
+      "framework": "vite"
+    },
+    "backend": {
+      "root": "backend",
+      "entrypoint": "main:app",
+      "routePrefix": "/_/backend"
+    }
+  }
 }

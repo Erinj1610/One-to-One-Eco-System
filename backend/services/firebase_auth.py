@@ -9,14 +9,15 @@ firebase_initialized = False
 try:
     # Try to load credentials from a file path specified in env, otherwise fallback to default credentials
     firebase_creds_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+    options = {'projectId': 'one-to-one-eco-system'}
     if firebase_creds_path and os.path.exists(firebase_creds_path):
         cred = credentials.Certificate(firebase_creds_path)
-        firebase_admin.initialize_app(cred)
+        firebase_admin.initialize_app(cred, options)
         firebase_initialized = True
         print("Firebase Admin SDK initialized using Service Account JSON.")
     else:
         # Fallback to Application Default Credentials
-        firebase_admin.initialize_app()
+        firebase_admin.initialize_app(options=options)
         firebase_initialized = True
         print("Firebase Admin SDK initialized using Application Default Credentials.")
 except Exception as e:
