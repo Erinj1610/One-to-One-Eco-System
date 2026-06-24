@@ -23,7 +23,7 @@ def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verif
         role = db.query(Role).filter(Role.id == db_user.role_id).first()
         if role and role.name.lower() == "admin":
             is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za"]:
+    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
         is_admin = True
 
     if not is_admin:
@@ -52,7 +52,7 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
         role = db.query(Role).filter(Role.id == db_user.role_id).first()
         if role and role.name.lower() == "admin":
             is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za"]:
+    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
         is_admin = True
 
     if not is_admin:
@@ -120,7 +120,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict 
         role = db.query(Role).filter(Role.id == db_user.role_id).first()
         if role and role.name.lower() == "admin":
             is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za"]:
+    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
         is_admin = True
 
     if not is_admin:

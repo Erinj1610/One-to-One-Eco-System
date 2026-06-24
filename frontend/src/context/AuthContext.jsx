@@ -5,6 +5,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 const ADMIN_EMAILS = [
   'admin@onetoone.co.za',
   'erin@onetoone.co.za',
+  'erin.jones@1-to-1.world',
 ];
 
 const AuthContext = createContext(null);
