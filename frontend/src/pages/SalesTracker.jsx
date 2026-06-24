@@ -304,7 +304,7 @@ export default function SalesTracker() {
       return ['poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
     }
     if (activeTab === 'invoicing') {
-      return ['invoiceQty', 'invoiceRef', 'invoiceDate', 'invoiceValue'];
+      return ['invoiceQty', 'invoiceRef', 'invoiceDate'];
     }
     if (activeTab === 'delivery') {
       return ['deliveryQty', 'deliveryDate', 'deliveryStatus', 'deliveryNotes'];
@@ -443,9 +443,14 @@ export default function SalesTracker() {
                 const maxForItem = item.qty || 0;
                 const allocated = Math.min(maxForItem, remaining);
                 remaining -= allocated;
+                const extraFields = {};
+                if (targetCol === 'invoiceQty') {
+                  extraFields.invoiceValue = allocated * (item.unitRetail || 0);
+                }
                 newItems[idx] = {
                   ...newItems[idx],
-                  [targetCol]: allocated
+                  [targetCol]: allocated,
+                  ...extraFields
                 };
               }
             });
@@ -854,9 +859,14 @@ export default function SalesTracker() {
             const maxForItem = item.qty || 0;
             const allocated = Math.min(maxForItem, remaining);
             remaining -= allocated;
+            const extraFields = {};
+            if (field === 'invoiceQty') {
+              extraFields.invoiceValue = allocated * (item.unitRetail || 0);
+            }
             return {
               ...item,
-              [field]: allocated
+              [field]: allocated,
+              ...extraFields
             };
           }
           return item;
@@ -1653,7 +1663,7 @@ export default function SalesTracker() {
                       <>
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>Company:</strong> {clientCompany || '—'}</span>
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>Project:</strong> {projectFullName || '—'}</span>
-                        <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>Rep:</strong> {oneOneRep}</span>
+                        <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>PM Name:</strong> {pmName || '—'}</span>
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>PF:</strong> {pfNumber || '—'}</span>
                       </>
                     )}
@@ -2157,15 +2167,8 @@ export default function SalesTracker() {
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceDate', e.target.value)}
                                           />
                                         </td>
-                                        <td style={{ padding: 0, textAlign: 'right' }}>
-                                          <input 
-                                            type="number" 
-                                            className="gs-cell-input" 
-                                            value={invoiceValueVal}
-                                            data-row={rowIndex}
-                                            data-col="invoiceValue"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceValue', Math.max(0, parseFloat(e.target.value) || 0))}
-                                          />
+                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, paddingRight: '10px' }}>
+                                          R {Math.round(invoiceValueVal).toLocaleString()}
                                         </td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)', color: calculatedOutstandingInvoiceValue > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', paddingRight: '10px' }}>
                                           R {Math.round(calculatedOutstandingInvoiceValue).toLocaleString()}
