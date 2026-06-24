@@ -3,7 +3,7 @@ import google.auth
 from google.auth.exceptions import DefaultCredentialsError
 
 # Centralize the GCP Project ID as agreed on
-GCP_PROJECT_ID = "one-to-one-eco-system"
+GCP_PROJECT_ID = "one-to-one-portal-500205"
 
 def check_gcp_status():
     """

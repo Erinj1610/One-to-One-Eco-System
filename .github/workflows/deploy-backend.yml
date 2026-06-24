@@ -9,7 +9,7 @@ on:
       - '.github/workflows/deploy-backend.yml'
 
 env:
-  GCP_PROJECT_ID: 'one-to-one-eco-system'
+  GCP_PROJECT_ID: 'one-to-one-portal-500205'
   GCP_REGION: 'us-central1'
   SERVICE_NAME: 'one-to-one-backend'
 
