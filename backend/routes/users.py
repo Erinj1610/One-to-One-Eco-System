@@ -75,6 +75,11 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
                     disabled=False
                 )
             reset_link = firebase_auth.generate_password_reset_link(invite.email)
+            if reset_link:
+                reset_link = reset_link.replace(
+                    "https://one-to-one-portal-500205.firebaseapp.com/__/auth/action",
+                    "https://ejportal.vercel.app/reset-password"
+                )
             
             # Send the email automatically via Identity Platform REST API
             try:

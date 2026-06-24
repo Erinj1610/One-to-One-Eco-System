@@ -31,6 +31,7 @@ import HrPage from './pages/HrPage';
 import ReportsPage from './pages/ReportsPage';
 import SupportPage from './pages/SupportPage';
 import SettingsPage from './pages/SettingsPage';
+import ResetPassword from './pages/ResetPassword';
 
 import './index.css';
 
@@ -60,14 +61,15 @@ function AppInner({ devBypass, setDevBypass }) {
     );
   }
 
-  if (!user && !devBypass) {
-    return <Login onBypass={() => setDevBypass(true)} />;
-  }
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AppLayout />}>
+        {/* Public Routes */}
+        <Route path="/login" element={user || devBypass ? <Navigate to="/dashboard" replace /> : <Login onBypass={() => setDevBypass(true)} />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Protected Routes */}
+        <Route path="/" element={user || devBypass ? <AppLayout /> : <Navigate to="/login" replace />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"  element={<Dashboard />} />
           <Route path="tracker"    element={<DesignTracker />} />
