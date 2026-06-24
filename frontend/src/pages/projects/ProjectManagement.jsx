@@ -437,13 +437,8 @@ export default function ProjectManagement() {
   const [showDocUploadModal, setShowDocUploadModal] = useState(false);
   const [targetDocStage, setTargetDocStage] = useState('Stage 1');
   const [docForm, setDocForm] = useState({ name: '', category: 'Design', visibility: 'Client visible' });
-
   const [showCreatePMModal, setShowCreatePMModal] = useState(false);
   const [newPMForm, setNewPMForm] = useState({ name: '', email: '', phone: '' });
-
-
-
-  if (!p) return <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading Project...</div>;
 
   // Selected Design Fee detailed data
   const activeDesignFee = designFees.find(df => df.id === selectedDesignFeeId);
@@ -486,7 +481,8 @@ export default function ProjectManagement() {
 
   // Dynamic Blended Profit Margin
   const blendedMargin = useMemo(() => {
-    if (grandContractValue === 0) return p.actualMargin || 18;
+    if (!p) return 18;
+    if (grandContractValue === 0) return p?.actualMargin || 18;
     
     // Weighted sum of actual design margins + detailed cost prices of order spec sheets
     const designMarginCost = designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0);
@@ -497,32 +493,35 @@ export default function ProjectManagement() {
     const blendedCost = designMarginCost + orderMarginCost;
 
     return Math.round(((grandContractValue - blendedCost) / grandContractValue) * 100);
-  }, [designFees, orders, grandContractValue, p.actualMargin]);
+  }, [designFees, orders, grandContractValue, p?.actualMargin]);
 
   // Sync blended margin back to database store when calculated
   useEffect(() => {
-    if (blendedMargin !== p.actualMargin) {
+    if (p && blendedMargin !== p?.actualMargin) {
       updateProject(id, 'actualMargin', blendedMargin);
     }
-  }, [blendedMargin, p.actualMargin, id, updateProject]);
+  }, [blendedMargin, p?.actualMargin, id, updateProject]);
 
   // Sync totals to main fields for backwards compatibility with overview ledger list
   useEffect(() => {
+    if (!p) return;
     const formattedFee = `R ${grandContractValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     const formattedPaid = `R ${grandPaidValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     const formattedOutstanding = `R ${grandOutstandingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-    if (p.feeValue !== grandContractValue) {
+    if (p?.feeValue !== grandContractValue) {
       updateProject(id, 'feeValue', grandContractValue);
       updateProject(id, 'feeExcl', formattedFee);
     }
-    if (p.paid !== formattedPaid) {
+    if (p?.paid !== formattedPaid) {
       updateProject(id, 'paid', formattedPaid);
     }
-    if (p.outstanding !== formattedOutstanding) {
+    if (p?.outstanding !== formattedOutstanding) {
       updateProject(id, 'outstanding', formattedOutstanding);
     }
-  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p.feeValue, p.paid, p.outstanding]);
+  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding]);
+
+  if (!p) return <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading Project...</div>;
 
   // Create new Design Fee Sub-project
   const handleCreateDesignFee = (e) => {
