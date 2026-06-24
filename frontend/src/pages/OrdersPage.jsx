@@ -228,7 +228,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers } = useStore();
   const { isAdmin } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed_orders') === 'true';
@@ -1787,26 +1787,29 @@ export default function OrdersPage() {
                   {showRegForm && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {/* TOP ROW: REP & PM VITALS */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '4px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
-                        <div>
-                          <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px', textTransform: 'uppercase' }}>One:One Rep</label>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                            value={oneOneRep} 
-                            onChange={e => setOneOneRep(e.target.value)} 
-                          />
-                        </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', background: 'rgba(139, 92, 246, 0.05)', padding: '10px', borderRadius: '4px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px', textTransform: 'uppercase' }}>PM Name</label>
-                          <input 
-                            type="text" 
+                          <select 
                             className="form-control" 
                             style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                             value={pmName} 
-                            onChange={e => setPmName(e.target.value)} 
-                          />
+                            onChange={e => {
+                              const val = e.target.value;
+                              setPmName(val);
+                              setOneOneRep(val); // Keep synchronized
+                              const found = (projectManagers || []).find(pm => pm.name === val);
+                              if (found) {
+                                setPmPhone(found.phone || '');
+                                setPmEmail(found.email || '');
+                              }
+                            }}
+                          >
+                            <option value="">Select Project Manager...</option>
+                            {(projectManagers || []).map(pm => (
+                              <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px', textTransform: 'uppercase' }}>PM Mobile</label>

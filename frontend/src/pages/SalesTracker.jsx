@@ -164,7 +164,7 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts, getModuleName } = useStore();
+  const { projects, updateProject, contacts, getModuleName, projectManagers } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1615,31 +1615,29 @@ export default function SalesTracker() {
                       />
                     </div>
 
-                    {/* Sale Rep Name */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Sale Rep Name</label>
+                    {/* PM Name */}
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>PM Name</label>
                       <select 
                         className="form-control" 
                         style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={oneOneRep} 
-                        onChange={e => setOneOneRep(e.target.value)}
-                      >
-                        <option>Merlyn</option>
-                        <option>Martin Döller</option>
-                        <option>Modus Special F</option>
-                      </select>
-                    </div>
-
-                    {/* Sale Rep (or PM) */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Sale Rep (or PM)</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                         value={pmName} 
-                        onChange={e => setPmName(e.target.value)}
-                      />
+                        onChange={e => {
+                          const val = e.target.value;
+                          setPmName(val);
+                          setOneOneRep(val); // Keep synchronized
+                          const found = (projectManagers || []).find(pm => pm.name === val);
+                          if (found) {
+                            setPmPhone(found.phone || '');
+                            setPmEmail(found.email || '');
+                          }
+                        }}
+                      >
+                        <option value="">Select Project Manager...</option>
+                        {(projectManagers || []).map(pm => (
+                          <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
+                        ))}
+                      </select>
                     </div>
 
                     {/* Date Created */}
