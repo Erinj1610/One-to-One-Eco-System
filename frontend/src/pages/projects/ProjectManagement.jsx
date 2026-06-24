@@ -1027,12 +1027,37 @@ export default function ProjectManagement() {
                 <div className="card-body" style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Client Name:</span>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={p.client || ''} 
-                      onChange={(e) => updateProject(id, 'client', e.target.value)} 
-                    />
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={p.client || ''} 
+                        onChange={(e) => updateProject(id, 'client', e.target.value)} 
+                        placeholder="Type client name..."
+                        style={{ flex: 1 }}
+                      />
+                      <select
+                        className="form-control"
+                        style={{ width: '170px', padding: '6px 8px', fontSize: '12px' }}
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const contact = contacts.find(c => c.name === val);
+                          if (contact) {
+                            updateProject(id, 'client', contact.name);
+                            updateProject(id, 'clientCompany', contact.company || '');
+                            updateProject(id, 'clientEmail', contact.email || '');
+                            updateProject(id, 'clientPhone', contact.phone || '');
+                          }
+                        }}
+                      >
+                        <option value="">Select Existing...</option>
+                        {(contacts || []).map(c => (
+                          <option key={c.id || c.name} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Company Name:</span>
