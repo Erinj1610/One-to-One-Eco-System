@@ -1840,8 +1840,8 @@ export default function SalesTracker() {
                               </tr>
                               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
                                 <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
-                                <th style={{ width: '80px' }}>Type Code</th>
                                 <th style={{ width: '100px' }}>1:1 Code</th>
+                                <th style={{ width: '80px' }}>Type Code</th>
                                 <th style={{ width: '130px' }}>Item Code</th>
                                 <th style={{ width: '250px' }}>Description</th>
                                 <th style={{ width: '90px', textAlign: 'right' }}>Unit Retail</th>
@@ -1925,8 +1925,8 @@ export default function SalesTracker() {
                                     style={{ borderBottom: '1px solid var(--border)' }}
                                   >
                                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
-                                    <td style={{ fontFamily: 'monospace' }}>{item.type || '—'}</td>
                                     <td style={{ fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
+                                    <td style={{ fontFamily: 'monospace' }}>{item.type || '—'}</td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
                                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.description}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>

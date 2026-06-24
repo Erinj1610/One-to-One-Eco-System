@@ -243,8 +243,8 @@ export default function OrdersPage() {
 
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
     qty: 60,
-    type: 80,
     oneOneCode: 100,
+    type: 80,
     code: 165,
     description: 250,
     floor: 90,
@@ -257,7 +257,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'type', 'oneOneCode', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -1014,8 +1014,8 @@ export default function OrdersPage() {
 
     const fieldsOrder = [
       'qty',
-      'type',
       'oneOneCode',
+      'type',
       'code',
       'description',
       'floor',
@@ -2231,13 +2231,13 @@ export default function OrdersPage() {
                                   Qty
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
                                 </th>
-                                <th style={{ width: widths.type, position: 'relative' }}>
-                                  Type
-                                  <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
-                                </th>
                                 <th style={{ width: widths.oneOneCode, position: 'relative' }}>
                                   1:1 Code
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                                </th>
+                                <th style={{ width: widths.type, position: 'relative' }}>
+                                  Type
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                 </th>
                                 <th style={{ width: widths.code, position: 'relative' }}>
                                   Item Code
@@ -2325,19 +2325,6 @@ export default function OrdersPage() {
                                       />
                                     </td>
                                     
-                                    {/* TYPE CODE */}
-                                    <td>
-                                      <input 
-                                        type="text"
-                                        className="boq-cell-input"
-                                        value={item.type || ''}
-                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
-                                        data-row={index}
-                                        data-col={1}
-                                        data-field="type"
-                                      />
-                                    </td>
-
                                     {/* 1:1 CODE */}
                                     <td>
                                       <input 
@@ -2346,8 +2333,21 @@ export default function OrdersPage() {
                                         value={item.oneOneCode || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
                                         data-row={index}
-                                        data-col={2}
+                                        data-col={1}
                                         data-field="oneOneCode"
+                                      />
+                                    </td>
+
+                                    {/* TYPE CODE */}
+                                    <td>
+                                      <input 
+                                        type="text"
+                                        className="boq-cell-input"
+                                        value={item.type || ''}
+                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
+                                        data-row={index}
+                                        data-col={2}
+                                        data-field="type"
                                       />
                                     </td>
 
@@ -3173,8 +3173,8 @@ export default function OrdersPage() {
                               <thead>
                                 <tr style={{ borderBottom: '2px solid #0f172a', color: '#0f172a', textAlign: 'left', fontWeight: 700 }}>
                                   <th style={{ padding: '8px', width: '40px', textAlign: 'center' }}>Qty</th>
-                                  <th style={{ padding: '8px', width: '70px' }}>Type</th>
                                   <th style={{ padding: '8px', width: '90px' }}>1:1 Code</th>
+                                  <th style={{ padding: '8px', width: '70px' }}>Type</th>
                                   <th style={{ padding: '8px', width: '110px' }}>Item Code</th>
                                   <th style={{ padding: '8px' }}>Internal Technical Specification</th>
                                   <th style={{ padding: '8px', width: '90px' }}>Floor</th>
@@ -3187,8 +3187,8 @@ export default function OrdersPage() {
                                 {activeOrderItems.map(item => (
                                   <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
-                                    <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>{item.type}</td>
                                     <td style={{ padding: '8px', fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
+                                    <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>{item.type}</td>
                                     <td style={{ padding: '8px', fontFamily: 'monospace', color: '#0284c7' }}>{item.code || '—'}</td>
                                     <td style={{ padding: '8px' }}>{item.description}</td>
                                     <td style={{ padding: '8px' }}>{item.floor}</td>
