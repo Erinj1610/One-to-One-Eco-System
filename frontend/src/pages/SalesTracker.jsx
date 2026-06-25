@@ -2645,6 +2645,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={deliveryQtyVal}
                                             data-row={rowIndex}
                                             data-col="deliveryQty"
+                                            disabled={true}
                                             title={(deliveryQtyVal > (item.stockStatus === 'All Stock on Hand' ? item.qty : receivedQtyVal + (item.stockStatus === 'Partial Stock on Hand' ? (item.qty - poQtyOrderedVal) : 0))) ? "Warning: Qty Delivered exceeds Qty Received/In-stock" : ""}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
@@ -2657,6 +2658,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={toInputDate(deliveryDateVal)}
                                             data-row={rowIndex}
                                             data-col="deliveryDate"
+                                            disabled={true}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryDate', e.target.value)}
                                           />
                                         </td>
@@ -2666,6 +2668,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={deliveryStatusVal}
                                             data-row={rowIndex}
                                             data-col="deliveryStatus"
+                                            disabled={true}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryStatus', e.target.value)}
                                           >
                                             <option>Pending</option>
@@ -3573,8 +3576,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
                           } else if (newType === 'invoicing') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.invoiceQty || 0), 0);
-                          } else if (newType === 'delivery') {
-                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.deliveryQty || 0), 0);
                           }
                           return {
                             itemIds: gi.itemIds,
@@ -3592,7 +3593,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                       <option value="purchasing">PO Order (Purchasing)</option>
                       <option value="receiving">PO Receipt (Receiving)</option>
                       <option value="invoicing">Invoice Document</option>
-                      <option value="delivery">Delivery Logistics (Waybill)</option>
                     </select>
                   </div>
                   <div>
@@ -3724,12 +3724,12 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                       <td style={{ padding: '8px', textAlign: 'center' }}>
                         <button 
                           type="button" 
-                          className="btn btn-xs btn-ghost text-error" 
+                          className="btn btn-xs btn-ghost text-info" 
                           style={{ minHeight: 'unset', height: '24px', padding: '0 6px' }}
-                          onClick={() => handleDeleteWaybill(waybillHistoryModalItem, dh.ref, dh.date)}
-                          title="Delete Waybill Log"
+                          onClick={() => alert(`This waybill comes from Logistics Note ${dh.ref}. To delete it, go to the Logistics Module and delete the issued Delivery Note.`)}
+                          title="Manage via Logistics Module"
                         >
-                          🗑️
+                          ℹ️
                         </button>
                       </td>
                     </tr>
