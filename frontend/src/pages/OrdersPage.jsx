@@ -1770,6 +1770,13 @@ export default function OrdersPage() {
               >
                 <DollarSign size={14} /> 💳 Payments
               </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'logistics' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('logistics')}
+              >
+                <Truck size={14} /> 📦 Delivery Logistics
+              </button>
             </div>
 
             {workspaceSubTab === 'boq' && (
@@ -3488,6 +3495,78 @@ export default function OrdersPage() {
                       </div>
                     );
                   })()}
+                </div>
+              </div>
+            )}
+
+            {workspaceSubTab === 'logistics' && (
+              /* SUB-TAB 4: DELIVERY LOGISTICS & PACKING LISTS REFERENCE VIEW */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
+                        📦 Logistics Documents & Waybills
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Packing Lists and Delivery Notes issued for this quotation order.</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => navigate('/logistics', { state: { filterOrderId: selectedOrderId } })}
+                    >
+                      <Truck size={14} /> Open Logistics Dashboard
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Document ID</th>
+                          <th style={{ padding: '10px 12px' }}>Document Type</th>
+                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                          <th style={{ padding: '10px 12px' }}>Items Count</th>
+                          <th style={{ padding: '10px 12px' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(!activeOrderObject?.packingLists?.length && !activeOrderObject?.deliveryNotes?.length) ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No packing lists or delivery notes have been generated for this order yet. Go to Logistics to draft one.
+                            </td>
+                          </tr>
+                        ) : (
+                          <>
+                            {/* Render Packing Lists */}
+                            {(activeOrderObject?.packingLists || []).map((pl, idx) => (
+                              <tr key={`pl-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                                <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace' }}>{pl.id}</td>
+                                <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
+                                <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
+                                <td style={{ padding: '10px 12px' }}><span className="badge b-info">Issued</span></td>
+                              </tr>
+                            ))}
+                            {/* Render Delivery Notes */}
+                            {(activeOrderObject?.deliveryNotes || []).map((dn, idx) => (
+                              <tr key={`dn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                                <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace' }}>{dn.id}</td>
+                                <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
+                                <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <span className="badge b-success">Delivered</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}

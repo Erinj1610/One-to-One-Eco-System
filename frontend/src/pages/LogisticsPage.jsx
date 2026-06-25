@@ -330,6 +330,7 @@ export default function LogisticsPage() {
     };
 
     // Update Project state: add DN and link PLs
+    const formattedDate = new Date().toISOString().split('T')[0];
     const updatedOrders = project.orders.map(o => {
       if (o.id === oId) {
         const linkedPls = (o.packingLists || []).map(pl => {
@@ -338,10 +339,31 @@ export default function LogisticsPage() {
           }
           return pl;
         });
+
+        // Sync with Sales Tracker deliveryHistory for items
+        const updatedItemsList = (o.itemsList || []).map(item => {
+          const dnItem = finalDnItems.find(di => di.id === item.id);
+          if (dnItem) {
+            const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
+            const syncTransaction = {
+              qty: dnItem.qtyDelivered,
+              ref: newDnId,
+              date: formattedDate
+            };
+            return {
+              ...item,
+              deliveryQty: (Number(item.deliveryQty) || 0) + dnItem.qtyDelivered,
+              deliveryHistory: [...history, syncTransaction]
+            };
+          }
+          return item;
+        });
+
         return {
           ...o,
           packingLists: linkedPls,
-          deliveryNotes: [...(o.deliveryNotes || []), newDn]
+          deliveryNotes: [...(o.deliveryNotes || []), newDn],
+          itemsList: updatedItemsList
         };
       }
       return o;
@@ -379,10 +401,27 @@ export default function LogisticsPage() {
             }
             return pl;
           });
+
+          // Reverse Sales Tracker deliveryHistory quantities for items
+          const updatedItemsList = (o.itemsList || []).map(item => {
+            const dnItem = (doc.items || []).find(di => di.id === item.id);
+            if (dnItem) {
+              const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
+              const cleanedHistory = history.filter(h => h.ref !== doc.id);
+              return {
+                ...item,
+                deliveryQty: Math.max(0, (Number(item.deliveryQty) || 0) - dnItem.qtyDelivered),
+                deliveryHistory: cleanedHistory
+              };
+            }
+            return item;
+          });
+
           return {
             ...o,
             packingLists: unlinkedPls,
-            deliveryNotes: (o.deliveryNotes || []).filter(dn => dn.id !== doc.id)
+            deliveryNotes: (o.deliveryNotes || []).filter(dn => dn.id !== doc.id),
+            itemsList: updatedItemsList
           };
         }
       }
