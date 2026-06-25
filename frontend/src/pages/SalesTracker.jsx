@@ -201,6 +201,8 @@ export default function SalesTracker() {
   const [showHeaderDetails, setShowHeaderDetails] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
   const [showMonthlyGrid, setShowMonthlyGrid] = useState(false);
+  const [gridFinYearStart, setGridFinYearStart] = useState(2025);
+  const [gridSubTab, setGridSubTab] = useState('receiving');
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -808,6 +810,12 @@ export default function SalesTracker() {
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
     setWorkspaceSubTab('boq');
+
+    const orderDateStr = order.orderDate || new Date().toISOString().split('T')[0];
+    const orderDateObj = new Date(orderDateStr);
+    const startYr = (!isNaN(orderDateObj.getTime()) && orderDateObj.getMonth() >= 2) ? orderDateObj.getFullYear() : (orderDateObj.getFullYear() - 1);
+    setGridFinYearStart(startYr);
+    setGridSubTab('receiving');
 
     // Load living ledger historical documents list
     setOrderDocumentsHistory(order.documents || []);
@@ -3148,63 +3156,144 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       });
 
                                       return (
-                                        <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                            <h5 style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                                              Estimated vs Realized Value per Month (Retail)
-                                            </h5>
+                                        <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                              <h5 style={{ margin: 0, fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                Monthly Financial Projections & Ledger
+                                              </h5>
+                                              {showMonthlyGrid && (
+                                                <select
+                                                  value={gridFinYearStart}
+                                                  onChange={(e) => setGridFinYearStart(Number(e.target.value))}
+                                                  style={{
+                                                    fontSize: '11px',
+                                                    padding: '2px 8px',
+                                                    height: '24px',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid var(--border)',
+                                                    background: 'var(--bg-primary)',
+                                                    color: 'var(--text-primary)',
+                                                    outline: 'none'
+                                                  }}
+                                                >
+                                                  {Array.from({ length: 5 }, (_, i) => {
+                                                    const yr = new Date().getFullYear() - 2 + i;
+                                                    return (
+                                                      <option key={yr} value={yr}>
+                                                        FY {yr}/{String(yr + 1).slice(2)} (Mar-Feb)
+                                                      </option>
+                                                    );
+                                                  })}
+                                                </select>
+                                              )}
+                                            </div>
                                             <button
                                               type="button"
                                               className="btn btn-xs btn-ghost"
                                               onClick={() => setShowMonthlyGrid(!showMonthlyGrid)}
-                                              style={{ fontSize: '10px', height: '22px', padding: '2px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-primary)' }}
+                                              style={{ fontSize: '10px', height: '24px', padding: '2px 10px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-primary)' }}
                                             >
                                               {showMonthlyGrid ? 'Hide Table ▲' : 'Show Table ▼'}
                                             </button>
                                           </div>
                                           
                                           {showMonthlyGrid && (
-                                            <div style={{ overflowX: 'auto', animation: 'fadeIn 0.2s ease' }}>
-                                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                                                <thead>
-                                                  <tr style={{ borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                                    <th style={{ padding: '6px 4px' }}>Start Date</th>
-                                                    <th style={{ padding: '6px 4px' }}>End Date</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Receive</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Received</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Invoice</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Invoiced</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Deliver</th>
-                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Delivered</th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {intervals.map((inv, idx) => (
-                                                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                                                      <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.startStr}</td>
-                                                      <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.endStr}</td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedRec > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.expectedRec).toLocaleString()}
-                                                      </td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.received > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.received).toLocaleString()}
-                                                      </td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedInv > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.expectedInv).toLocaleString()}
-                                                      </td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.invoiced > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.invoiced).toLocaleString()}
-                                                      </td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedDel > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.expectedDel).toLocaleString()}
-                                                      </td>
-                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.delivered > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                        R {Math.round(inv.delivered).toLocaleString()}
-                                                      </td>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                              {/* Sub-tab selection bar for distinct module grid */}
+                                              <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-primary)', padding: '3px', borderRadius: '6px', width: 'fit-content', border: '1px solid var(--border)' }}>
+                                                {[
+                                                  { key: 'receiving', label: 'Procurement & Receiving' },
+                                                  { key: 'invoicing', label: 'Invoicing Progress' },
+                                                  { key: 'delivery', label: 'Delivery Logistics' }
+                                                ].map(tab => (
+                                                  <button
+                                                    key={tab.key}
+                                                    type="button"
+                                                    onClick={() => setGridSubTab(tab.key)}
+                                                    style={{
+                                                      fontSize: '10.5px',
+                                                      padding: '4px 12px',
+                                                      borderRadius: '4px',
+                                                      border: 'none',
+                                                      cursor: 'pointer',
+                                                      fontWeight: gridSubTab === tab.key ? 600 : 400,
+                                                      background: gridSubTab === tab.key ? 'var(--bg-secondary)' : 'transparent',
+                                                      color: gridSubTab === tab.key ? 'var(--text-info)' : 'var(--text-secondary)',
+                                                      transition: 'all 0.15s ease'
+                                                    }}
+                                                  >
+                                                    {tab.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+
+                                              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                                                  <thead>
+                                                    <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                                      <th style={{ padding: '8px 12px' }}>Start Date</th>
+                                                      <th style={{ padding: '8px 12px' }}>End Date</th>
+                                                      {gridSubTab === 'receiving' && (
+                                                        <>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Expected to Receive</th>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Realized (Received)</th>
+                                                        </>
+                                                      )}
+                                                      {gridSubTab === 'invoicing' && (
+                                                        <>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Expected to Invoice</th>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Realized (Invoiced)</th>
+                                                        </>
+                                                      )}
+                                                      {gridSubTab === 'delivery' && (
+                                                        <>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Expected to Deliver</th>
+                                                          <th style={{ padding: '8px 12px', textAlign: 'right' }}>Realized (Delivered)</th>
+                                                        </>
+                                                      )}
                                                     </tr>
-                                                  ))}
-                                                </tbody>
-                                              </table>
+                                                  </thead>
+                                                  <tbody>
+                                                    {intervals.map((inv, idx) => (
+                                                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                                                        <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontFamily: 'monospace' }}>{inv.startStr}</td>
+                                                        <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontFamily: 'monospace' }}>{inv.endStr}</td>
+                                                        {gridSubTab === 'receiving' && (
+                                                          <>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.expectedRec > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.expectedRec).toLocaleString()}
+                                                            </td>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.received > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.received).toLocaleString()}
+                                                            </td>
+                                                          </>
+                                                        )}
+                                                        {gridSubTab === 'invoicing' && (
+                                                          <>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.expectedInv > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.expectedInv).toLocaleString()}
+                                                            </td>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.invoiced > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.invoiced).toLocaleString()}
+                                                            </td>
+                                                          </>
+                                                        )}
+                                                        {gridSubTab === 'delivery' && (
+                                                          <>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.expectedDel > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.expectedDel).toLocaleString()}
+                                                            </td>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'right', color: inv.delivered > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                              R {Math.round(inv.delivered).toLocaleString()}
+                                                            </td>
+                                                          </>
+                                                        )}
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
                                             </div>
                                           )}
                                         </div>
