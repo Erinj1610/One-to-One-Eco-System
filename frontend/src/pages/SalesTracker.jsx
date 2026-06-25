@@ -157,18 +157,35 @@ const getItemDefaults = (item) => {
     resolved.invoiceValue = 0;
   }
   
-  if (resolved.deliveryQty === undefined) {
-    resolved.deliveryQty = 0;
+  // Process delivery history if exists to sync with warehouse documents
+  const history = Array.isArray(resolved.deliveryHistory) ? resolved.deliveryHistory : [];
+  if (history.length > 0) {
+    resolved.deliveryQty = history.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+    // Find the latest delivery date
+    resolved.deliveryDate = history
+      .map(h => h.date)
+      .filter(Boolean)
+      .reduce((latest, curr) => curr > latest ? curr : latest, '');
+    
+    resolved.deliveryStatus = resolved.deliveryQty >= (resolved.qty || 0) ? 'Delivered' : 'Partial';
+    
+    // Aggregate waybill references
+    resolved.deliveryNotes = Array.from(new Set(history.map(h => h.ref).filter(Boolean))).join('; ');
+  } else {
+    if (resolved.deliveryQty === undefined) {
+      resolved.deliveryQty = 0;
+    }
+    if (resolved.deliveryDate === undefined) {
+      resolved.deliveryDate = '';
+    }
+    if (resolved.deliveryStatus === undefined) {
+      resolved.deliveryStatus = 'Pending';
+    }
+    if (resolved.deliveryNotes === undefined) {
+      resolved.deliveryNotes = '';
+    }
   }
-  if (resolved.deliveryDate === undefined) {
-    resolved.deliveryDate = '';
-  }
-  if (resolved.deliveryStatus === undefined) {
-    resolved.deliveryStatus = 'Pending';
-  }
-  if (resolved.deliveryNotes === undefined) {
-    resolved.deliveryNotes = '';
-  }
+  
   if (resolved.deliveryComments === undefined) {
     resolved.deliveryComments = '';
   }
