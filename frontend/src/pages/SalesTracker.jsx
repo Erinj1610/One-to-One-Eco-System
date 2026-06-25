@@ -192,6 +192,7 @@ export default function SalesTracker() {
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+  const [orderPayments, setOrderPayments] = useState([]);
   
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
@@ -568,7 +569,6 @@ export default function SalesTracker() {
   const [progressPaymentDateSent, setProgressPaymentDateSent] = useState('');
   const [dateCompleted, setDateCompleted] = useState('');
   const [paymentResponse, setPaymentResponse] = useState('');
-  const [orderPayments, setOrderPayments] = useState([]);
 
   const { totalMasterQty, totalStockOnHand } = useMemo(() => {
     const qtyTotal = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
