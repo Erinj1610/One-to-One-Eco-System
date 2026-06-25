@@ -3196,7 +3196,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       });
 
                                       // Get starting year of the order for reference
-                                      const orderDateStr = order.orderDate || new Date().toISOString().split('T')[0];
+                                      const currentOrderObj = allOrders.find(o => o.id === selectedOrderId) || {};
+                                      const orderDateStr = currentOrderObj.orderDate || new Date().toISOString().split('T')[0];
                                       const orderDateObj = new Date(orderDateStr);
                                       const orderFinYearStart = (!isNaN(orderDateObj.getTime()) && orderDateObj.getMonth() >= 2) 
                                         ? orderDateObj.getFullYear() 
