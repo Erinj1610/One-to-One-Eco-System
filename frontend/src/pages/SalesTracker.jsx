@@ -974,9 +974,17 @@ export default function SalesTracker() {
           maxAllowed = matchingItems.reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
         }
       } else if (type === 'delivery') {
-        // cannot exceed receivedQty
         const matchingItems = activeOrderItems.filter(item => docItem.itemIds.includes(item.id));
-        maxAllowed = matchingItems.reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
+        maxAllowed = matchingItems.reduce((acc, curr) => {
+          if (curr.stockStatus === 'All Stock on Hand') {
+            return acc + (curr.qty || 0);
+          } else if (curr.stockStatus === 'Partial Stock on Hand') {
+            const inStock = Math.max(0, (curr.qty || 0) - (curr.poQtyOrdered || 0));
+            return acc + (curr.receivedQty || 0) + inStock;
+          } else {
+            return acc + (curr.receivedQty || 0);
+          }
+        }, 0);
       }
 
       if (currentVal + addQty > maxAllowed) {
@@ -1041,8 +1049,16 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
               };
             } else if (type === 'delivery') {
               const currentVal = item.deliveryQty || 0;
-              const maxAllowed = item.receivedQty || 0;
-              const avail = Math.max(0, maxAllowed - currentVal);
+              let itemMaxAllowed = 0;
+              if (item.stockStatus === 'All Stock on Hand') {
+                itemMaxAllowed = item.qty || 0;
+              } else if (item.stockStatus === 'Partial Stock on Hand') {
+                const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
+                itemMaxAllowed = (item.receivedQty || 0) + inStock;
+              } else {
+                itemMaxAllowed = item.receivedQty || 0;
+              }
+              const avail = Math.max(0, itemMaxAllowed - currentVal);
               const allocated = Math.min(avail, remaining);
               remaining -= allocated;
               
@@ -2206,7 +2222,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Del</th>
                                     <th style={{ width: '100px' }}>Date Del</th>
                                     <th style={{ width: '100px' }}>Status</th>
-                                    <th>Delivery Notes / Waybill Log</th>
+                                    <th style={{ width: '200px' }}>User Comments</th>
+                                    <th>Waybill Log</th>
                                   </>
                                 )}
                               </tr>
@@ -2457,12 +2474,13 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             type="number" 
                                             className="gs-cell-input" 
                                             style={{
-                                              border: (deliveryQtyVal > receivedQtyVal) ? '1.5px dashed #ef4444' : ''
+                                              border: (deliveryQtyVal > (item.stockStatus === 'All Stock on Hand' ? item.qty : receivedQtyVal + (item.stockStatus === 'Partial Stock on Hand' ? (item.qty - poQtyOrderedVal) : 0))) ? '1.5px dashed #ef4444' : ''
                                             }}
                                             value={deliveryQtyVal}
                                             data-row={rowIndex}
                                             data-col="deliveryQty"
-                                            title={(deliveryQtyVal > receivedQtyVal) ? "Warning: Qty Delivered exceeds Qty Received" : ""}
+                                            disabled={true}
+                                            title={(deliveryQtyVal > (item.stockStatus === 'All Stock on Hand' ? item.qty : receivedQtyVal + (item.stockStatus === 'Partial Stock on Hand' ? (item.qty - poQtyOrderedVal) : 0))) ? "Warning: Qty Delivered exceeds Qty Received/In-stock" : ""}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
@@ -2494,12 +2512,23 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                           <input 
                                             type="text" 
                                             className="gs-cell-input" 
-                                            placeholder="e.g. waybills, collectors..."
-                                            value={deliveryNotesVal}
+                                            placeholder="e.g. comments..."
+                                            value={item.deliveryComments || ''}
                                             data-row={rowIndex}
-                                            data-col="deliveryNotes"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryNotes', e.target.value)}
+                                            data-col="deliveryComments"
+                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryComments', e.target.value)}
                                           />
+                                        </td>
+                                        <td style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--text-secondary)', verticalAlign: 'middle', background: 'rgba(0,0,0,0.05)' }}>
+                                          {item.deliveryHistory && item.deliveryHistory.length > 0 ? (
+                                            item.deliveryHistory.map((dh, idx) => (
+                                              <div key={idx} style={{ marginBottom: '2px' }}>
+                                                <strong>{dh.qty}</strong> delivered on <code>{dh.ref}</code> ({dh.date})
+                                              </div>
+                                            ))
+                                          ) : (
+                                            item.deliveryNotes || '—'
+                                          )}
                                         </td>
                                       </>
                                     )}
