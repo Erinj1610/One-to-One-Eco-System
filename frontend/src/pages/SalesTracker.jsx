@@ -2934,45 +2934,65 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       </div>
 
                                       {/* Right Column: Active Tab specific phase totals next to it */}
-                                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'stretch' }}>
                                         {activeTab === 'order' && (
-                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Cost & Spec Details</div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                          <div style={{ 
+                                            background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)', 
+                                            border: '1.5px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            padding: '20px',
+                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                                            height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <div style={{ fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Cost & Spec Details</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Total Cost:</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Total Cost:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specCost).toLocaleString()}</strong>
                                               </div>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Total Retail:</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Total Retail:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specRetail).toLocaleString()}</strong>
                                               </div>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
-                                                <span>Blended Margin:</span>
-                                                <strong style={{ color: 'var(--text-success)' }}>{specMargin}%</strong>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Blended Margin:</span>
+                                                <strong style={{ color: 'var(--text-success)', fontWeight: 700 }}>{specMargin}%</strong>
                                               </div>
                                             </div>
                                           </div>
                                         )}
 
                                         {activeTab === 'purchasing' && (
-                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Purchasing & Receiving</div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                          <div style={{ 
+                                            background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)', 
+                                            border: '1.5px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            padding: '20px',
+                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                                            height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <div style={{ fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Purchasing & Receiving</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Last Rec Date:</span>
-                                                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastReceivedDate}</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Last Rec Date:</span>
+                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{lastReceivedDate}</span>
                                               </div>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Last ETA:</span>
-                                                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastExpectedEta}</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Last ETA:</span>
+                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{lastExpectedEta}</span>
                                               </div>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Received Value:</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Received Value:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueReceived).toLocaleString()}</strong>
                                               </div>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
-                                                <span>Outstanding:</span>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Outstanding:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: valueOutstandingRec > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueOutstandingRec).toLocaleString()}</strong>
                                               </div>
                                             </div>
@@ -2980,15 +3000,25 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         )}
 
                                         {activeTab === 'invoicing' && (
-                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Invoicing Totals</div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                          <div style={{ 
+                                            background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)', 
+                                            border: '1.5px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            padding: '20px',
+                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                                            height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <div style={{ fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Invoicing Totals</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Invoiced Value:</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Invoiced Value:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueInvoiced).toLocaleString()}</strong>
                                               </div>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
-                                                <span>Still to Invoice:</span>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Still to Invoice:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: valueStillToInvoice > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToInvoice).toLocaleString()}</strong>
                                               </div>
                                             </div>
@@ -2996,15 +3026,25 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         )}
 
                                         {activeTab === 'delivery' && (
-                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Delivery Logistics</div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                          <div style={{ 
+                                            background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)', 
+                                            border: '1.5px solid var(--border)', 
+                                            borderRadius: '8px', 
+                                            padding: '20px',
+                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                                            height: '100%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <div style={{ fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Delivery Logistics</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Delivered Value:</span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Delivered Value:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueDelivered).toLocaleString()}</strong>
                                               </div>
-                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
-                                                <span>Still to Deliver:</span>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Still to Deliver:</span>
                                                 <strong style={{ fontFamily: 'monospace', color: valueStillToDeliver > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToDeliver).toLocaleString()}</strong>
                                               </div>
                                             </div>
@@ -3155,6 +3195,13 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         }
                                       });
 
+                                      // Get starting year of the order for reference
+                                      const orderDateStr = order.orderDate || new Date().toISOString().split('T')[0];
+                                      const orderDateObj = new Date(orderDateStr);
+                                      const orderFinYearStart = (!isNaN(orderDateObj.getTime()) && orderDateObj.getMonth() >= 2) 
+                                        ? orderDateObj.getFullYear() 
+                                        : (orderDateObj.getFullYear() - 1);
+
                                       return (
                                         <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
@@ -3177,14 +3224,9 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                                     outline: 'none'
                                                   }}
                                                 >
-                                                  {Array.from({ length: 5 }, (_, i) => {
-                                                    const yr = new Date().getFullYear() - 2 + i;
-                                                    return (
-                                                      <option key={yr} value={yr}>
-                                                        FY {yr}/{String(yr + 1).slice(2)} (Mar-Feb)
-                                                      </option>
-                                                    );
-                                                  })}
+                                                  <option value={orderFinYearStart - 1}>Previous FY ({orderFinYearStart - 1}/{String(orderFinYearStart).slice(2)})</option>
+                                                  <option value={orderFinYearStart}>Order FY ({orderFinYearStart}/{String(orderFinYearStart + 1).slice(2)})</option>
+                                                  <option value={orderFinYearStart + 1}>Next FY ({orderFinYearStart + 1}/{String(orderFinYearStart + 2).slice(2)})</option>
                                                 </select>
                                               )}
                                             </div>
