@@ -169,6 +169,12 @@ const getItemDefaults = (item) => {
   if (resolved.deliveryNotes === undefined) {
     resolved.deliveryNotes = '';
   }
+  if (resolved.deliveryComments === undefined) {
+    resolved.deliveryComments = '';
+  }
+  if (resolved.deliveryHistory === undefined) {
+    resolved.deliveryHistory = [];
+  }
   if (resolved.stockStatus === undefined) {
     resolved.stockStatus = 'To Be Ordered';
   }
@@ -223,7 +229,9 @@ export default function SalesTracker() {
           deliveryStatuses: new Set(),
           deliveryNotesList: [],
           areasSet: new Set(),
-          stockStatuses: new Set()
+          stockStatuses: new Set(),
+          deliveryCommentsList: [],
+          deliveryHistories: []
         };
       }
       
@@ -241,6 +249,8 @@ export default function SalesTracker() {
       const receivedDateVal = item.receivedDate !== undefined ? item.receivedDate : defaults.receivedDate;
       const receivedQtyVal = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty;
       const stockStatusVal = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus;
+      const deliveryCommentsVal = item.deliveryComments !== undefined ? item.deliveryComments : defaults.deliveryComments;
+      const deliveryHistoryVal = item.deliveryHistory !== undefined ? item.deliveryHistory : defaults.deliveryHistory;
 
       const invoiceQtyVal = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty;
       const invoiceRefVal = item.invoiceRef !== undefined ? item.invoiceRef : defaults.invoiceRef;
@@ -270,6 +280,8 @@ export default function SalesTracker() {
       if (deliveryNotesVal) g.deliveryNotesList.push(deliveryNotesVal);
       if (item.area) g.areasSet.add(`${item.area} (${item.floor || 'Ground'})`);
       if (stockStatusVal) g.stockStatuses.add(stockStatusVal);
+      if (deliveryCommentsVal) g.deliveryCommentsList.push(deliveryCommentsVal);
+      if (deliveryHistoryVal && Array.isArray(deliveryHistoryVal)) g.deliveryHistories.push(...deliveryHistoryVal);
     });
 
     return Object.values(groups).map(g => {
@@ -300,6 +312,8 @@ export default function SalesTracker() {
         deliveryDate: g.deliveryDates.size > 0 ? Array.from(g.deliveryDates)[0] : '',
         deliveryStatus: g.deliveryStatuses.size > 0 ? Array.from(g.deliveryStatuses)[0] : 'Pending',
         deliveryNotes: g.deliveryNotesList.length > 0 ? g.deliveryNotesList.filter(Boolean).join('; ') : '',
+        deliveryComments: g.deliveryCommentsList.length > 0 ? g.deliveryCommentsList.filter(Boolean).join('; ') : '',
+        deliveryHistory: g.deliveryHistories,
         area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—'
       };
     });
@@ -313,7 +327,7 @@ export default function SalesTracker() {
       return ['invoiceQty', 'invoiceRef', 'invoiceDate'];
     }
     if (activeTab === 'delivery') {
-      return ['deliveryQty', 'deliveryDate', 'deliveryStatus', 'deliveryNotes'];
+      return ['deliveryQty', 'deliveryDate', 'deliveryStatus', 'deliveryComments'];
     }
     return [];
   };
@@ -941,6 +955,41 @@ export default function SalesTracker() {
       return;
     }
 
+    // 1. Capacity Valdations Block
+    for (let docItem of items) {
+      const addQty = Math.max(0, parseInt(docItem.inputVal) || 0);
+      if (addQty === 0) continue;
+
+      const currentVal = docItem.currentVal || 0;
+      
+      // Calculate maxAllowed based on type
+      let maxAllowed = docItem.qty || 0; 
+      if (type === 'receiving') {
+        // Look up item poQtyOrdered in activeOrderItems
+        const matchingItems = activeOrderItems.filter(item => docItem.itemIds.includes(item.id));
+        const isAllStock = matchingItems.some(item => item.stockStatus === 'All Stock on Hand');
+        if (isAllStock) {
+          maxAllowed = 0;
+        } else {
+          maxAllowed = matchingItems.reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
+        }
+      } else if (type === 'delivery') {
+        // cannot exceed receivedQty
+        const matchingItems = activeOrderItems.filter(item => docItem.itemIds.includes(item.id));
+        maxAllowed = matchingItems.reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
+      }
+
+      if (currentVal + addQty > maxAllowed) {
+        alert(`Block Warning: Cannot log quantity for item "${docItem.code}".
+Attempted: ${addQty}
+Already logged: ${currentVal}
+Max Allowed: ${maxAllowed}
+You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
+        return; // BLOCK SUBMISSION
+      }
+    }
+
+    // 2. Perform Allocations
     setActiveOrderItems(prev => {
       let updatedItems = [...prev];
       items.forEach(docItem => {
@@ -954,10 +1003,8 @@ export default function SalesTracker() {
             const maxAllocatable = item.qty || 0;
             
             if (type === 'purchasing') {
-              if (item.stockStatus === 'All Stock on Hand') return item;
-              const currentVal = item.receivedQty || 0;
-              const maxAllowed = item.poQtyOrdered || 0;
-              const avail = item.stockStatus === 'Partial Stock on Hand' ? Math.max(0, maxAllowed - currentVal) : Math.max(0, maxAllocatable - currentVal);
+              const currentVal = item.poQtyOrdered || 0;
+              const avail = Math.max(0, maxAllocatable - currentVal);
               const allocated = Math.min(avail, remaining);
               remaining -= allocated;
               return {
@@ -965,6 +1012,17 @@ export default function SalesTracker() {
                 poRef: ref,
                 poDate: date,
                 poSupplier: supplier || item.poSupplier || 'Warehouse Inventory',
+                poQtyOrdered: currentVal + allocated
+              };
+            } else if (type === 'receiving') {
+              if (item.stockStatus === 'All Stock on Hand') return item;
+              const currentVal = item.receivedQty || 0;
+              const maxAllowed = item.poQtyOrdered || 0;
+              const avail = Math.max(0, maxAllowed - currentVal);
+              const allocated = Math.min(avail, remaining);
+              remaining -= allocated;
+              return {
+                ...item,
                 receivedQty: currentVal + allocated,
                 receivedDate: date
               };
@@ -987,12 +1045,16 @@ export default function SalesTracker() {
               const avail = Math.max(0, maxAllowed - currentVal);
               const allocated = Math.min(avail, remaining);
               remaining -= allocated;
+              
+              const transaction = { qty: allocated, ref: ref, date: date };
+              const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
+              
               return {
                 ...item,
                 deliveryDate: date,
-                deliveryNotes: ref,
                 deliveryQty: currentVal + allocated,
-                deliveryStatus: (currentVal + allocated) >= item.qty ? 'Delivered' : 'Partial'
+                deliveryStatus: (currentVal + allocated) >= item.qty ? 'Delivered' : 'Partial',
+                deliveryHistory: [...history, transaction]
               };
             }
           }
@@ -1003,7 +1065,7 @@ export default function SalesTracker() {
     });
 
     setShowDocLoggerModal(false);
-    alert("Bulk Document logged successfully: Allocated quantities and set references.");
+    alert("Bulk Document logged successfully: Allocated quantities and updated ledger history.");
   };
 
   // Handle stock status selection and enforce lock clearing rules
@@ -1974,15 +2036,25 @@ export default function SalesTracker() {
                               type="button"
                               className="btn btn-sm btn-ghost"
                               onClick={() => {
-                                const initialDocItems = groupedItems.map(gi => ({
-                                  itemIds: gi.itemIds,
-                                  code: gi.code,
-                                  description: gi.description,
-                                  qty: gi.qty,
-                                  currentVal: activeTab === 'purchasing' ? gi.receivedQty : 
-                                              activeTab === 'invoicing' ? gi.invoiceQty : gi.deliveryQty,
-                                  inputVal: 0
-                                }));
+                                const initialDocItems = groupedItems.map(gi => {
+                                  // Determine current value based on tab
+                                  let cVal = 0;
+                                  if (activeTab === 'purchasing') {
+                                    cVal = gi.poQtyOrdered; // PO Order qty
+                                  } else if (activeTab === 'invoicing') {
+                                    cVal = gi.invoiceQty;
+                                  } else if (activeTab === 'delivery') {
+                                    cVal = gi.deliveryQty;
+                                  }
+                                  return {
+                                    itemIds: gi.itemIds,
+                                    code: gi.code,
+                                    description: gi.description,
+                                    qty: gi.qty,
+                                    currentVal: cVal,
+                                    inputVal: 0
+                                  };
+                                });
                                 setDocLoggerForm({
                                   type: activeTab === 'purchasing' ? 'purchasing' : 
                                         activeTab === 'invoicing' ? 'invoicing' : 'delivery',
@@ -2077,7 +2149,7 @@ export default function SalesTracker() {
 
                                 {activeTab === 'delivery' && (
                                   <th 
-                                    colSpan={4} 
+                                    colSpan={5} 
                                     style={{ background: 'rgba(236, 72, 153, 0.1)', textAlign: 'center', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}
                                   >
                                     PHASE 3: DELIVERY LOGISTICS
@@ -2931,10 +3003,12 @@ export default function SalesTracker() {
                         const updatedItems = docLoggerForm.items.map(gi => {
                           let cVal = 0;
                           if (newType === 'purchasing') {
+                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
+                          } else if (newType === 'receiving') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
                           } else if (newType === 'invoicing') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.invoiceQty || 0), 0);
-                          } else {
+                          } else if (newType === 'delivery') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.deliveryQty || 0), 0);
                           }
                           return { ...gi, currentVal: cVal };
@@ -2943,7 +3017,8 @@ export default function SalesTracker() {
                       }}
                       required
                     >
-                      <option value="purchasing">PO Receipt (Purchasing)</option>
+                      <option value="purchasing">PO Order (Purchasing)</option>
+                      <option value="receiving">PO Receipt (Receiving)</option>
                       <option value="invoicing">Invoice Document</option>
                       <option value="delivery">Delivery Logistics (Waybill)</option>
                     </select>
