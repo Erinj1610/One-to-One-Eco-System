@@ -823,7 +823,9 @@ export default function SalesTracker() {
   const handleOpenWorkspace = (order) => {
     setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
-    setActiveOrderItems(order.itemsList || []);
+    // Dynamically calculate delivery properties from deliveryHistory on load to prevent overwrite
+    const loadedItems = (order.itemsList || []).map(item => getItemDefaults(item));
+    setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
     setSupplier(order.supplier);
     setOrderStatus(order.status);
