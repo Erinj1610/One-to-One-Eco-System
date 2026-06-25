@@ -3104,8 +3104,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         });
                                       });
 
-                                      const startYear = earliestDate.getFullYear();
-                                      const startMonth = earliestDate.getMonth();
+                                      const startYear = gridFinYearStart;
+                                      const startMonth = 2; // March (0-indexed is 2)
 
                                       for (let i = 0; i < 12; i++) {
                                         const sDate = new Date(startYear, startMonth + i, 1);
