@@ -739,11 +739,13 @@ export default function SalesTracker() {
       setProjectFilterKey(location.state.projectKey);
     }
     if (location.state?.openOrderId) {
-      // Find the specific quotation
       const targetOrder = allOrders.find(o => o.id === location.state.openOrderId);
       if (targetOrder) {
         handleOpenWorkspace(targetOrder);
       }
+    }
+    if (location.state) {
+      window.history.replaceState({}, document.title);
     }
   }, [location.state, allOrders]);
 
