@@ -519,7 +519,9 @@ export default function SalesTracker() {
   const [orderSupplier, setSupplier] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
   const [orderEta, setOrderEta] = useState('');
-  const [orderPaidAmount, setOrderPaidAmount] = useState(0);
+  const orderPaidAmount = useMemo(() => {
+    return (orderPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  }, [orderPayments]);
   const [orderVatRate, setOrderVatRate] = useState(15);
   const [depositValue, setDepositValue] = useState(0);
   const [balanceValue, setBalanceValue] = useState(0);
@@ -566,6 +568,17 @@ export default function SalesTracker() {
   const [progressPaymentDateSent, setProgressPaymentDateSent] = useState('');
   const [dateCompleted, setDateCompleted] = useState('');
   const [paymentResponse, setPaymentResponse] = useState('');
+  const [orderPayments, setOrderPayments] = useState([]);
+
+  const { totalMasterQty, totalStockOnHand } = useMemo(() => {
+    const qtyTotal = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+    const sohTotal = activeOrderItems.reduce((sum, item) => {
+      const defaults = getItemDefaults(item);
+      const val = item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0);
+      return sum + (Number(val) || 0);
+    }, 0);
+    return { totalMasterQty: qtyTotal, totalStockOnHand: sohTotal };
+  }, [activeOrderItems]);
 
   // DOCUMENT SCRATCHPAD & LIVING LEDGER HISTORIC CONTAINER STATE
   const [actionQuantities, setActionQuantities] = useState({}); // { itemId: number }
@@ -580,6 +593,7 @@ export default function SalesTracker() {
   // States for Document-Centric Logger Modal
   const [showDocLoggerModal, setShowDocLoggerModal] = useState(false);
   const [waybillHistoryModalItem, setWaybillHistoryModalItem] = useState(null);
+  const [showPaymentViewer, setShowPaymentViewer] = useState(false);
   const [docLoggerForm, setDocLoggerForm] = useState({
     type: 'purchasing',
     ref: '',
@@ -774,7 +788,6 @@ export default function SalesTracker() {
     setSupplier(order.supplier);
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
-    setOrderPaidAmount(order.paid || 0);
     setWorkspaceSubTab('boq');
 
     // Load living ledger historical documents list
@@ -843,6 +856,7 @@ export default function SalesTracker() {
     setProgressPaymentDateSent(toInputDate(order.progressPaymentDateSent || ''));
     setDateCompleted(toInputDate(order.dateCompleted || ''));
     setPaymentResponse(order.paymentResponse || '');
+    setOrderPayments(order.payments || []);
     setOrderVatRate(order.vatRate !== undefined ? order.vatRate : 15);
     const tempActiveItems = order.itemsList || [];
     const tempDiscount = order.discount || 0;
@@ -1261,7 +1275,10 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
     const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
     const itemsCount = activeOrderItems.reduce((s, item) => s + (Number(item.qty) || 0), 0);
-    const balanceOutstanding = Math.max(0, discountedValue - Number(orderPaidAmount));
+    const totalPriceInclVat = discountedValue * (1 + (Number(orderVatRate) / 100));
+    const balanceOutstanding = Math.max(0, totalPriceInclVat - Number(orderPaidAmount));
+    const depVal = totalPriceInclVat * 0.7;
+    const balVal = totalPriceInclVat * 0.3;
 
     const updatedOrders = (proj.orders || []).map(o => {
       if (o.id === selectedOrderId) {
@@ -1314,10 +1331,11 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
           dateCompleted,
           paymentResponse,
           vatRate: orderVatRate,
-          depositValue,
-          balanceValue,
-          depositPercent: (discountedValue * (1 + (Number(orderVatRate) / 100))) > 0 ? (depositValue / (discountedValue * (1 + (Number(orderVatRate) / 100)))) * 100 : 70,
-          balancePercent: (discountedValue * (1 + (Number(orderVatRate) / 100))) > 0 ? (balanceValue / (discountedValue * (1 + (Number(orderVatRate) / 100)))) * 100 : 30,
+          depositValue: depVal,
+          balanceValue: balVal,
+          depositPercent: 70,
+          balancePercent: 30,
+          payments: orderPayments,
           documents: orderDocumentsHistory
         };
       }
@@ -1862,14 +1880,18 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                     <option>Delivered</option>
                   </select>
                   
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginLeft: '6px' }}>Paid:</span>
-                  <input 
-                    type="number"
-                    className="form-control"
-                    style={{ width: '100px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                    value={orderPaidAmount}
-                    onChange={e => setOrderPaidAmount(Math.max(0, Number(e.target.value) || 0))}
-                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    style={{ fontSize: '11px', padding: '4px 10px', height: '30px', display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                    onClick={() => setShowPaymentViewer(true)}
+                  >
+                    💳 Paid: <strong>R {Math.round(orderPaidAmount).toLocaleString()}</strong>
+                  </button>
+
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px', fontSize: '11.5px', fontWeight: 600, padding: '4px 10px', height: '30px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)', border: '1px solid var(--border)' }}>
+                    📦 Stock on Hand: <strong>{totalStockOnHand} / {totalMasterQty}</strong>
+                  </div>
                 </div>
 
                 <button 
@@ -2095,6 +2117,11 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                   
                   const remainingToInvoice = Math.max(0, masterDiscounted - invoicedDiscounted);
                   const backOrderQty = Math.max(0, totalMasterQty - totalDeliveredQty);
+                  const totalStockOnHand = activeOrderItems.reduce((sum, item) => {
+                    const defaults = getItemDefaults(item);
+                    const val = item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0);
+                    return sum + (Number(val) || 0);
+                  }, 0);
 
                   return (
                     <>
@@ -2103,6 +2130,11 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
                           <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
                             📋 Hardware Item Ledger & Fulfillment
+                            {activeTab === 'purchasing' && (
+                              <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)' }}>
+                                Stock on Hand: {totalStockOnHand} / {totalMasterQty} total
+                              </span>
+                            )}
                           </h4>
                           
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -2633,8 +2665,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                           const priceExVat = masterDiscounted;
                           const calculatedVat = priceExVat * (Number(orderVatRate) / 100);
                           const totalPriceInclVat = priceExVat + calculatedVat;
-                          const depositInclVat = Number(depositValue);
-                          const balancePaymentInclVat = Number(balanceValue);
+                          const depositInclVat = totalPriceInclVat * 0.7;
+                          const balancePaymentInclVat = totalPriceInclVat * 0.3;
                           const outstandingBalance = totalPriceInclVat - Number(orderPaidAmount);
 
                           return (
@@ -2717,7 +2749,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
 
                                       {/* Deposit Paid Date */}
                                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                        {totalPriceInclVat > 0 ? Math.round((depositValue / totalPriceInclVat) * 100) : 70}% Deposit Paid Date
+                                        70% Deposit Paid Date
                                       </div>
                                       <div>
                                         <input 
@@ -2731,7 +2763,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
 
                                       {/* Balance Paid Date */}
                                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                        {totalPriceInclVat > 0 ? Math.round((balanceValue / totalPriceInclVat) * 100) : 30}% Balance Paid Date
+                                        30% Balance Paid Date
                                       </div>
                                       <div>
                                         <input 
@@ -2871,37 +2903,17 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       {/* Deposit Incl VAT */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', paddingTop: '6px', borderBottom: '1px solid var(--border)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Deposit (R)</span>
-                                          <input 
-                                            type="number"
-                                            className="form-control"
-                                            style={{ width: '90px', height: '22px', fontSize: '11px', padding: '1px 4px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                            value={depositValue}
-                                            onChange={e => setDepositValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                                          />
-                                          <span style={{ color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
-                                            ({totalPriceInclVat > 0 ? Math.round((depositValue / totalPriceInclVat) * 100) : 0}%)
-                                          </span>
+                                          <span style={{ color: 'var(--text-secondary)' }}>Deposit (70%)</span>
                                         </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(depositValue).toLocaleString()}</span>
+                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(depositInclVat).toLocaleString()}</span>
                                       </div>
 
                                       {/* Balance Payment */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Balance Payment (R)</span>
-                                          <input 
-                                            type="number"
-                                            className="form-control"
-                                            style={{ width: '90px', height: '22px', fontSize: '11px', padding: '1px 4px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                            value={balanceValue}
-                                            onChange={e => setBalanceValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                                          />
-                                          <span style={{ color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
-                                            ({totalPriceInclVat > 0 ? Math.round((balanceValue / totalPriceInclVat) * 100) : 0}%)
-                                          </span>
+                                          <span style={{ color: 'var(--text-secondary)' }}>Balance Payment (30%)</span>
                                         </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(balanceValue).toLocaleString()}</span>
+                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(balancePaymentInclVat).toLocaleString()}</span>
                                       </div>
 
                                       {/* Balance */}
@@ -3295,6 +3307,88 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
 
             <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" className="btn" onClick={() => setWaybillHistoryModalItem(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENTS VIEWER MODAL */}
+      {showPaymentViewer && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: '5vh', overflowY: 'auto',
+          zIndex: 1200, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '600px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                💳 Payments Log Viewer - Quotation {selectedOrderId}
+              </div>
+              <button type="button" className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowPaymentViewer(false)}>✕</button>
+            </div>
+            
+            <div style={{ padding: '20px' }}>
+              <table className="table" style={{ width: '100%', fontSize: '12.5px', marginBottom: '15px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-primary)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Date</th>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Payment Type</th>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Reference / Notes</th>
+                    <th style={{ textAlign: 'right', padding: '8px', width: '110px' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        No payments have been logged yet for this order.
+                      </td>
+                    </tr>
+                  ) : (
+                    orderPayments.map((p, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px' }}>{p.date}</td>
+                        <td style={{ padding: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(96, 165, 250, 0.15)', color: 'var(--text-info)' }}>
+                            {p.type || 'Deposit Payment'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: 'var(--text-success)', fontFamily: 'monospace' }}>
+                          R {Math.round(p.amount || 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              
+              <div style={{ background: 'var(--bg-primary)', borderRadius: '6px', padding: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600 }}>
+                <span>Total Paid Summary:</span>
+                <span style={{ color: 'var(--text-success)', fontFamily: 'monospace' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button 
+                type="button" 
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setShowPaymentViewer(false);
+                  navigate('/orders', {
+                    state: {
+                      openOrderId: selectedOrderId,
+                      initialSubTab: 'payments',
+                      projectKey: selectedProjectKey
+                    }
+                  });
+                }}
+              >
+                ➕ Add / Edit Payments
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => setShowPaymentViewer(false)}>Close</button>
             </div>
           </div>
         </div>

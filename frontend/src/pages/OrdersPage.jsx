@@ -774,6 +774,9 @@ export default function OrdersPage() {
       const targetOrder = allOrders.find(o => o.id === location.state.openOrderId);
       if (targetOrder) {
         handleOpenWorkspace(targetOrder);
+        if (location.state?.initialSubTab) {
+          setWorkspaceSubTab(location.state.initialSubTab);
+        }
       }
     }
   }, [location.state]);
@@ -3316,16 +3319,17 @@ export default function OrdersPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                            <th style={{ padding: '8px 10px' }}>Date</th>
+                            <th style={{ padding: '8px 10px', width: '120px' }}>Date</th>
+                            <th style={{ padding: '8px 10px', width: '160px' }}>Payment Type</th>
                             <th style={{ padding: '8px 10px' }}>Reference / Notes</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Amount</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right', width: '120px' }}>Amount</th>
                             <th style={{ padding: '8px 10px', textAlign: 'center', width: '80px' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {orderPayments.length === 0 ? (
                             <tr>
-                              <td colSpan={4} style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              <td colSpan={5} style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                 No payments have been logged yet for this quotation.
                               </td>
                             </tr>
@@ -3344,6 +3348,22 @@ export default function OrdersPage() {
                                       setOrderPayments(newP);
                                     }}
                                   />
+                                </td>
+                                <td style={{ padding: '8px 10px' }}>
+                                  <select 
+                                    className="form-control"
+                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                                    value={p.type || 'Deposit Payment'}
+                                    onChange={e => {
+                                      const newP = [...orderPayments];
+                                      newP[idx].type = e.target.value;
+                                      setOrderPayments(newP);
+                                    }}
+                                  >
+                                    <option value="Deposit Payment">Deposit Payment</option>
+                                    <option value="Balance Payment">Balance Payment</option>
+                                    <option value="Interim Payment">Interim Payment</option>
+                                  </select>
                                 </td>
                                 <td style={{ padding: '8px 10px' }}>
                                   <input 
@@ -3398,7 +3418,7 @@ export default function OrdersPage() {
                       type="button"
                       className="btn btn-ghost btn-sm"
                       style={{ border: '1px dashed var(--border)', marginTop: '15px', color: 'var(--text-info)' }}
-                      onClick={() => setOrderPayments(prev => [...prev, { date: new Date().toISOString().split('T')[0], amount: 0, reference: '' }])}
+                      onClick={() => setOrderPayments(prev => [...prev, { date: new Date().toISOString().split('T')[0], type: 'Deposit Payment', amount: 0, reference: '' }])}
                     >
                       + Add New Payment Entry
                     </button>
