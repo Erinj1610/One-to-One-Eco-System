@@ -543,6 +543,16 @@ export default function SalesTracker() {
   const [showCosts, setShowCosts] = useState(false); // Controls whether cost columns are visible in the ledger
   const [bulkField, setBulkField] = useState('poRef');
   const [bulkValue, setBulkValue] = useState('');
+  
+  // States for Document-Centric Logger Modal
+  const [showDocLoggerModal, setShowDocLoggerModal] = useState(false);
+  const [docLoggerForm, setDocLoggerForm] = useState({
+    type: 'purchasing',
+    ref: '',
+    date: '',
+    supplier: '',
+    items: []
+  });
 
 
 
@@ -921,6 +931,79 @@ export default function SalesTracker() {
         return item;
       }));
     }
+  };
+
+  const handleSaveDocLogger = (e) => {
+    e.preventDefault();
+    const { type, ref, date, supplier, items } = docLoggerForm;
+    if (!ref.trim()) {
+      alert("Please enter a document reference.");
+      return;
+    }
+
+    setActiveOrderItems(prev => {
+      let updatedItems = [...prev];
+      items.forEach(docItem => {
+        const itemIds = docItem.itemIds;
+        const addQty = Math.max(0, parseInt(docItem.inputVal) || 0);
+        if (addQty === 0) return;
+
+        let remaining = addQty;
+        updatedItems = updatedItems.map(item => {
+          if (itemIds.includes(item.id)) {
+            const maxAllocatable = item.qty || 0;
+            
+            if (type === 'purchasing') {
+              if (item.stockStatus === 'All Stock on Hand') return item;
+              const currentVal = item.receivedQty || 0;
+              const maxAllowed = item.poQtyOrdered || 0;
+              const avail = item.stockStatus === 'Partial Stock on Hand' ? Math.max(0, maxAllowed - currentVal) : Math.max(0, maxAllocatable - currentVal);
+              const allocated = Math.min(avail, remaining);
+              remaining -= allocated;
+              return {
+                ...item,
+                poRef: ref,
+                poDate: date,
+                poSupplier: supplier || item.poSupplier || 'Warehouse Inventory',
+                receivedQty: currentVal + allocated,
+                receivedDate: date
+              };
+            } else if (type === 'invoicing') {
+              const currentVal = item.invoiceQty || 0;
+              const avail = Math.max(0, maxAllocatable - currentVal);
+              const allocated = Math.min(avail, remaining);
+              remaining -= allocated;
+              const newInvoiceQty = currentVal + allocated;
+              return {
+                ...item,
+                invoiceRef: ref,
+                invoiceDate: date,
+                invoiceQty: newInvoiceQty,
+                invoiceValue: newInvoiceQty * (item.unitRetail || 0)
+              };
+            } else if (type === 'delivery') {
+              const currentVal = item.deliveryQty || 0;
+              const maxAllowed = item.receivedQty || 0;
+              const avail = Math.max(0, maxAllowed - currentVal);
+              const allocated = Math.min(avail, remaining);
+              remaining -= allocated;
+              return {
+                ...item,
+                deliveryDate: date,
+                deliveryNotes: ref,
+                deliveryQty: currentVal + allocated,
+                deliveryStatus: (currentVal + allocated) >= item.qty ? 'Delivered' : 'Partial'
+              };
+            }
+          }
+          return item;
+        });
+      });
+      return updatedItems;
+    });
+
+    setShowDocLoggerModal(false);
+    alert("Bulk Document logged successfully: Allocated quantities and set references.");
   };
 
   // Handle stock status selection and enforce lock clearing rules
@@ -1885,8 +1968,47 @@ export default function SalesTracker() {
                             📋 Hardware Item Ledger & Fulfillment
                           </h4>
                           
-                          {/* Phase tabs */}
-                          <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {/* Document Logger Button */}
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => {
+                                const initialDocItems = groupedItems.map(gi => ({
+                                  itemIds: gi.itemIds,
+                                  code: gi.code,
+                                  description: gi.description,
+                                  qty: gi.qty,
+                                  currentVal: activeTab === 'purchasing' ? gi.receivedQty : 
+                                              activeTab === 'invoicing' ? gi.invoiceQty : gi.deliveryQty,
+                                  inputVal: 0
+                                }));
+                                setDocLoggerForm({
+                                  type: activeTab === 'purchasing' ? 'purchasing' : 
+                                        activeTab === 'invoicing' ? 'invoicing' : 'delivery',
+                                  ref: '',
+                                  date: new Date().toISOString().split('T')[0],
+                                  supplier: '',
+                                  items: initialDocItems
+                                });
+                                setShowDocLoggerModal(true);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                height: '32px'
+                              }}
+                            >
+                              ✍️ Log Bulk Document
+                            </button>
+
+                            {/* Phase tabs */}
+                            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                             {[
                               { id: 'order', label: 'Order Spec', color: 'var(--text-primary)', bg: 'rgba(255, 255, 255, 0.05)' },
                               { id: 'purchasing', label: 'Purchasing & Receiving', color: 'var(--text-info)', bg: 'rgba(59, 130, 246, 0.15)' },
@@ -1917,13 +2039,14 @@ export default function SalesTracker() {
                               );
                             })}
                           </div>
+                          </div>
                         </div>
                         
                         <div style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px' }}>
                           <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1350px' : activeTab === 'order' ? '1100px' : activeTab === 'invoicing' ? '1100px' : '1200px' }}>
                             <thead>
                               <tr style={{ background: 'var(--bg-secondary)' }}>
-                                <th colSpan={7} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
+                                <th colSpan={8} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
                                 
                                 {activeTab === 'order' && (
                                   <th 
@@ -1968,7 +2091,8 @@ export default function SalesTracker() {
                                 <th style={{ width: '130px' }}>Item Code</th>
                                 <th style={{ width: '250px' }}>Description</th>
                                 <th style={{ width: '90px', textAlign: 'right' }}>Unit Retail</th>
-                                <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)' }}>Total Retail</th>
+                                <th style={{ width: '100px', textAlign: 'right' }}>Total Retail</th>
+                                <th style={{ width: '150px', textAlign: 'center', borderRight: '1px solid var(--border-strong)' }}>Fulfillment</th>
                                 
                                 {activeTab === 'order' && (
                                   <>
@@ -2054,7 +2178,32 @@ export default function SalesTracker() {
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
                                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.description}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>
-                                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)' }}>R {Math.round(item.qty * (item.unitRetail || 0)).toLocaleString()}</td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>R {Math.round(item.qty * (item.unitRetail || 0)).toLocaleString()}</td>
+                                    <td style={{ borderRight: '1px solid var(--border-strong)', padding: '4px 6px', verticalAlign: 'middle' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '10px' }}>
+                                        {/* Procured Badge */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
+                                          <span style={{ color: '#4ade80', fontWeight: 600 }}>Proc:</span>
+                                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`}
+                                          </span>
+                                        </div>
+                                        {/* Invoiced Badge */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(245, 158, 11, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
+                                          <span style={{ color: '#f59e0b', fontWeight: 600 }}>Inv:</span>
+                                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {`${Math.round(((item.invoiceQty || 0) / (item.qty || 1)) * 100)}%`}
+                                          </span>
+                                        </div>
+                                        {/* Delivered Badge */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(96, 165, 250, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
+                                          <span style={{ color: '#60a5fa', fontWeight: 600 }}>Del:</span>
+                                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {`${Math.round(((item.deliveryQty || 0) / (item.qty || 1)) * 100)}%`}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </td>
 
                                     {activeTab === 'order' && (
                                       <>
@@ -2189,9 +2338,13 @@ export default function SalesTracker() {
                                           <input 
                                             type="number" 
                                             className="gs-cell-input" 
+                                            style={{
+                                              border: (invoiceQtyVal > item.qty) ? '1.5px dashed #ef4444' : ''
+                                            }}
                                             value={invoiceQtyVal}
                                             data-row={rowIndex}
                                             data-col="invoiceQty"
+                                            title={(invoiceQtyVal > item.qty) ? "Warning: Qty Invoiced exceeds original item quantity" : ""}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
@@ -2231,9 +2384,13 @@ export default function SalesTracker() {
                                           <input 
                                             type="number" 
                                             className="gs-cell-input" 
+                                            style={{
+                                              border: (deliveryQtyVal > receivedQtyVal) ? '1.5px dashed #ef4444' : ''
+                                            }}
                                             value={deliveryQtyVal}
                                             data-row={rowIndex}
                                             data-col="deliveryQty"
+                                            title={(deliveryQtyVal > receivedQtyVal) ? "Warning: Qty Delivered exceeds Qty Received" : ""}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
@@ -2743,6 +2900,142 @@ export default function SalesTracker() {
         <option value="Stock in Hand" />
         <option value="Client Supplied" />
       </datalist>
+
+      {/* BULK DOCUMENT LOGGER MODAL */}
+      {showDocLoggerModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1100, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '750px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                ✍️ Log Document Receipt / Invoice
+              </div>
+              <button type="button" className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowDocLoggerModal(false)}>✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveDocLogger} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+              <div className="card-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Type</label>
+                    <select 
+                      className="form-control" 
+                      value={docLoggerForm.type} 
+                      onChange={e => {
+                        const newType = e.target.value;
+                        const updatedItems = docLoggerForm.items.map(gi => {
+                          let cVal = 0;
+                          if (newType === 'purchasing') {
+                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
+                          } else if (newType === 'invoicing') {
+                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.invoiceQty || 0), 0);
+                          } else {
+                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.deliveryQty || 0), 0);
+                          }
+                          return { ...gi, currentVal: cVal };
+                        });
+                        setDocLoggerForm({ ...docLoggerForm, type: newType, items: updatedItems });
+                      }}
+                      required
+                    >
+                      <option value="purchasing">PO Receipt (Purchasing)</option>
+                      <option value="invoicing">Invoice Document</option>
+                      <option value="delivery">Delivery Logistics (Waybill)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Reference</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. INV-00164, PO-7924..."
+                      className="form-control" 
+                      value={docLoggerForm.ref} 
+                      onChange={e => setDocLoggerForm({ ...docLoggerForm, ref: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Date</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      style={{ colorScheme: 'dark' }}
+                      value={docLoggerForm.date} 
+                      onChange={e => setDocLoggerForm({ ...docLoggerForm, date: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {docLoggerForm.type === 'purchasing' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Supplier (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Warehouse Inventory, Supplier Name..."
+                      className="form-control" 
+                      value={docLoggerForm.supplier} 
+                      onChange={e => setDocLoggerForm({ ...docLoggerForm, supplier: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                <div style={{ marginTop: '10px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Log Quantities by Item Code:</div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <table className="table" style={{ margin: 0, fontSize: '11px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-primary)' }}>
+                          <th>Item Code</th>
+                          <th>Description</th>
+                          <th style={{ width: '80px', textAlign: 'center' }}>Total Qty</th>
+                          <th style={{ width: '90px', textAlign: 'center' }}>Already Logged</th>
+                          <th style={{ width: '100px', textAlign: 'center' }}>Add Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {docLoggerForm.items.map((gi, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{gi.code}</td>
+                            <td>{gi.description}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 700 }}>{gi.qty}</td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{gi.currentVal}</td>
+                            <td style={{ padding: '2px', textAlign: 'center' }}>
+                              <input 
+                                type="number" 
+                                className="form-control" 
+                                style={{ height: '24px', width: '80px', margin: '0 auto', fontSize: '11px', textAlign: 'center', padding: '2px' }}
+                                value={gi.inputVal || ''} 
+                                placeholder="0"
+                                onChange={e => {
+                                  const updatedItems = [...docLoggerForm.items];
+                                  updatedItems[idx].inputVal = Math.max(0, parseInt(e.target.value) || 0);
+                                  setDocLoggerForm({ ...docLoggerForm, items: updatedItems });
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" className="btn" onClick={() => setShowDocLoggerModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Distribute & Log Document 📝</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
