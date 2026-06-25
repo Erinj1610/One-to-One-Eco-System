@@ -2682,7 +2682,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                         </div>
                       </div>
 
-                      {/* BOTTOM MILESTONES & FINANCIAL CALCULATIONS BLOCK */}
                       <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', marginTop: '20px' }}>
                         
                         {(() => {
@@ -2695,6 +2694,75 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                           const balancePaidVal = (orderPayments || []).filter(p => p.type === 'Balance Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                           const interimPaidVal = (orderPayments || []).filter(p => p.type === 'Interim Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                           const outstandingBalance = totalPriceInclVat - Number(orderPaidAmount);
+
+                          // 1. Spec & Cost Totals
+                          const specCost = totalMasterCost;
+                          const specRetail = totalMasterRetail;
+                          const specMargin = specRetail > 0 ? Math.round(((specRetail - specCost) / specRetail) * 100) : 0;
+
+                          // 2. Purchasing & Receiving Totals
+                          let lastReceivedDate = '—';
+                          let lastExpectedEta = '—';
+                          let allReceived = true;
+                          let valueReceived = 0;
+                          let valueOutstandingRec = 0;
+
+                          activeOrderItems.forEach(item => {
+                            const defaults = getItemDefaults(item);
+                            const receivedQty = Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0;
+                            const qty = Number(item.qty) || 0;
+                            const retail = Number(item.unitRetail) || 0;
+                            const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+
+                            if (stockStatus !== 'All Stock on Hand' && receivedQty < qty) {
+                              allReceived = false;
+                            }
+                            
+                            valueReceived += (stockStatus === 'All Stock on Hand' ? qty : receivedQty) * retail;
+                            valueOutstandingRec += (stockStatus === 'All Stock on Hand' ? 0 : Math.max(0, qty - receivedQty)) * retail;
+
+                            const rDate = item.receivedDate || defaults.receivedDate;
+                            if (rDate && rDate !== '—') {
+                              if (lastReceivedDate === '—' || new Date(rDate) > new Date(lastReceivedDate)) {
+                                lastReceivedDate = rDate;
+                              }
+                            }
+
+                            const etaDate = item.poEta || defaults.poEta;
+                            if (etaDate && etaDate !== '—') {
+                              if (lastExpectedEta === '—' || new Date(etaDate) > new Date(lastExpectedEta)) {
+                                lastExpectedEta = etaDate;
+                              }
+                            }
+                          });
+
+                          if (allReceived) {
+                            lastExpectedEta = 'None (All Received)';
+                          }
+
+                          // 3. Invoicing Totals
+                          let valueInvoiced = 0;
+                          let valueStillToInvoice = 0;
+                          activeOrderItems.forEach(item => {
+                            const defaults = getItemDefaults(item);
+                            const invoiceQty = Number(item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty) || 0;
+                            const qty = Number(item.qty) || 0;
+                            const retail = Number(item.unitRetail) || 0;
+                            valueInvoiced += invoiceQty * retail;
+                            valueStillToInvoice += Math.max(0, qty - invoiceQty) * retail;
+                          });
+
+                          // 4. Delivery Totals
+                          let valueDelivered = 0;
+                          let valueStillToDeliver = 0;
+                          activeOrderItems.forEach(item => {
+                            const defaults = getItemDefaults(item);
+                            const deliveryQty = Number(item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty) || 0;
+                            const qty = Number(item.qty) || 0;
+                            const retail = Number(item.unitRetail) || 0;
+                            valueDelivered += deliveryQty * retail;
+                            valueStillToDeliver += Math.max(0, qty - deliveryQty) * retail;
+                          });
 
                           return (
                             <>
@@ -2723,260 +2791,323 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                               </div>
 
                               {showMilestones && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '40px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 2.2fr', gap: '30px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
                                   
-                                  {/* LEFT SIDE: MILESTONES */}
+                                  {/* LEFT SIDE: PROJECT STATUS & PAYMENTS */}
                                   <div>
                                     <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                      Payment Milestones & Administration
+                                      Project Status & Payments
                                     </h4>
                                     
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px 15px', alignItems: 'center' }}>
-                                      
-                                      {/* Deposit Invoice Sent */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Deposit Invoice Sent?</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px', alignItems: 'center' }}>
                                       <div>
+                                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Project Status</label>
                                         <select 
                                           className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={depositInvoiceSent}
-                                          onChange={e => setDepositInvoiceSent(e.target.value)}
+                                          style={{ height: '32px', fontSize: '12.5px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', width: '100%', padding: '4px 8px' }}
+                                          value={orderStatus}
+                                          onChange={e => setOrderStatus(e.target.value)}
                                         >
-                                          <option value="No">No</option>
-                                          <option value="Yes">Yes</option>
+                                          <option value="Pending">Pending</option>
+                                          <option value="Delayed">Delayed</option>
+                                          <option value="Ongoing">Ongoing</option>
+                                          <option value="Complete">Complete</option>
+                                          <option value="Cancelled">Cancelled</option>
                                         </select>
                                       </div>
 
-                                      {/* PF Invoice Sent */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>PF Invoice Sent Date</div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(pfInvoiceSentDate)}
-                                          onChange={e => setPfInvoiceSentDate(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Commission */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Commission Value</div>
-                                      <div>
-                                        <div style={{ position: 'relative' }}>
-                                          <span style={{ position: 'absolute', left: '8px', top: '5px', fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
-                                          <input 
-                                            type="number"
-                                            className="form-control"
-                                            style={{ height: '28px', fontSize: '12px', padding: '2px 8px 2px 20px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                            value={commissionValue}
-                                            onChange={e => setCommissionValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Deposit Paid Date */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                        70% Deposit Paid Date
-                                      </div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(depositPaymentDate)}
-                                          onChange={e => setDepositPaymentDate(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Balance Paid Date */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                        30% Balance Paid Date
-                                      </div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(balancePaymentDate)}
-                                          onChange={e => setBalancePaymentDate(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Ongoing Time */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Ongoing Time</div>
-                                      <div>
-                                        <input 
-                                          type="text"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          placeholder="Ongoing Time Status"
-                                          value={ongoingTime}
-                                          onChange={e => setOngoingTime(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Latest Statement Sent Date */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Latest Statement Sent Date</div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(latestStatementSentDate)}
-                                          onChange={e => setLatestStatementSentDate(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Progress Payment Date Sent */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Progress Payment Date Sent</div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(progressPaymentDateSent)}
-                                          onChange={e => setProgressPaymentDateSent(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Date Completed */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Date Completed</div>
-                                      <div>
-                                        <input 
-                                          type="date"
-                                          className="form-control"
-                                          style={{ height: '28px', fontSize: '12px', padding: '2px 8px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          value={toInputDate(dateCompleted)}
-                                          onChange={e => setDateCompleted(e.target.value)}
-                                        />
-                                      </div>
-
-                                      {/* Response regarding payment */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Response regarding payment</div>
-                                      <div>
-                                        <textarea 
-                                          className="form-control"
-                                          rows={2}
-                                          style={{ fontSize: '12px', padding: '6px 8px', resize: 'none', height: '46px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                          placeholder="MD to sign off before any orders can be placed..."
-                                          value={paymentResponse}
-                                          onChange={e => setPaymentResponse(e.target.value)}
-                                        />
-                                      </div>
-
                                       {/* Payment Viewer / Action */}
-                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        💳 Order Payments
-                                      </div>
-                                      <div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          💳 Order Payments
+                                        </div>
                                         <button
                                           type="button"
                                           className="btn btn-sm btn-outline"
-                                          style={{ width: '100%', height: '28px', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-info)' }}
+                                          style={{ width: '100%', height: '32px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-info)' }}
                                           onClick={() => setShowPaymentViewer(true)}
                                         >
                                           🔍 View Payments (R {Math.round(orderPaidAmount).toLocaleString()} Paid)
                                         </button>
                                       </div>
-
                                     </div>
                                   </div>
 
-                                  {/* RIGHT SIDE: FINANCIAL SUMMARY */}
-                                  <div style={{ borderLeft: '1.5px solid var(--border)', paddingLeft: '40px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                  {/* RIGHT SIDE: FINANCIAL SUMMARY & MONTHLY REALIZATION GRID */}
+                                  <div style={{ borderLeft: '1.5px solid var(--border)', paddingLeft: '30px', display: 'flex', flexDirection: 'column' }}>
                                     <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                       Financial Calculations & Summaries
                                     </h4>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                                    {/* 4-Phase Grid Summary */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                                       
-                                      {/* Sub Total */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>SUB TOTAL</span>
-                                        <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(subTotal).toLocaleString()}</strong>
-                                      </div>
-
-                                      {/* Discount */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>DISCOUNT (%)</span>
-                                          <input 
-                                            type="number"
-                                            className="form-control"
-                                            style={{ width: '55px', height: '22px', fontSize: '11px', padding: '1px 4px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                            value={orderDiscount}
-                                            onChange={e => setOrderDiscount(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
-                                          />
-                                        </div>
-                                        <span style={{ fontFamily: 'monospace', color: discountVal > 0 ? 'var(--text-warning)' : 'var(--text-secondary)' }}>
-                                          R {Math.round(discountVal).toLocaleString()}
-                                        </span>
-                                      </div>
-
-                                      {/* Price Excl VAT */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <span style={{ color: 'var(--text-secondary)' }}>PRICE EXCL. VAT</span>
-                                        <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(priceExVat).toLocaleString()}</strong>
-                                      </div>
-
-                                      {/* VAT */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>VAT (%)</span>
-                                          <input 
-                                            type="number"
-                                            className="form-control"
-                                            style={{ width: '55px', height: '22px', fontSize: '11px', padding: '1px 4px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                                            value={orderVatRate}
-                                            onChange={e => setOrderVatRate(Math.max(0, parseFloat(e.target.value) || 0))}
-                                          />
-                                        </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>R {Math.round(calculatedVat).toLocaleString()}</span>
-                                      </div>
-
-                                      {/* Total Price Incl VAT */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '2px solid var(--border-strong)' }}>
-                                        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>TOTAL PRICE INCL. VAT</span>
-                                        <strong style={{ fontSize: '14px', color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                          R {Math.round(totalPriceInclVat).toLocaleString()}
-                                        </strong>
-                                      </div>
-
-                                      {/* Deposit Incl VAT */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', paddingTop: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Deposit Paid (70% Target: R {Math.round(totalPriceInclVat * 0.7).toLocaleString()})</span>
-                                        </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(depositPaidVal).toLocaleString()}</span>
-                                      </div>
-
-                                      {/* Balance Payment */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Balance Paid (30% Target: R {Math.round(totalPriceInclVat * 0.3).toLocaleString()})</span>
-                                        </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(balancePaidVal).toLocaleString()}</span>
-                                      </div>
-
-                                      {/* Interim Payment */}
-                                      {interimPaidVal > 0 && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{ color: 'var(--text-secondary)' }}>Interim Payment Paid</span>
+                                      {/* Cost & Spec Details */}
+                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Cost & Spec Details</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Total Cost:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specCost).toLocaleString()}</strong>
                                           </div>
-                                          <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(interimPaidVal).toLocaleString()}</span>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Total Retail:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specRetail).toLocaleString()}</strong>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '4px' }}>
+                                            <span>Blended Margin:</span>
+                                            <strong style={{ color: 'var(--text-success)' }}>{specMargin}%</strong>
+                                          </div>
                                         </div>
-                                      )}
+                                      </div>
 
-                                      {/* Balance */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px' }}>
-                                        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Outstanding Balance</span>
-                                        <strong style={{ fontSize: '14px', color: outstandingBalance > 0 ? 'var(--text-warning)' : 'var(--text-success)', fontFamily: 'monospace' }}>
-                                          R {Math.round(outstandingBalance).toLocaleString()}
-                                        </strong>
+                                      {/* Purchasing & Receiving */}
+                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Purchasing & Receiving</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Last Rec Date:</span>
+                                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastReceivedDate}</span>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Last ETA:</span>
+                                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastExpectedEta}</span>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Received Value:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueReceived).toLocaleString()}</strong>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Outstanding:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: valueOutstandingRec > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueOutstandingRec).toLocaleString()}</strong>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Invoicing */}
+                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Invoicing</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Invoiced Value:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueInvoiced).toLocaleString()}</strong>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Still to Invoice:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: valueStillToInvoice > 0 ? 'var(--text-warning)' : 'var(--text-secondary)' }}>R {Math.round(valueStillToInvoice).toLocaleString()}</strong>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Delivery */}
+                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Delivery</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Delivered Value:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueDelivered).toLocaleString()}</strong>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Still to Deliver:</span>
+                                            <strong style={{ fontFamily: 'monospace', color: valueStillToDeliver > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToDeliver).toLocaleString()}</strong>
+                                          </div>
+                                        </div>
                                       </div>
 
                                     </div>
+
+                                    {/* Monthly Realization Grid */}
+                                    {(() => {
+                                      const parseDate = (str) => {
+                                        if (!str || str === '—' || str === 'TBD') return null;
+                                        let d = new Date(str);
+                                        if (!isNaN(d.getTime())) return d;
+                                        const parts = str.split(/[-/]/);
+                                        if (parts.length === 3) {
+                                          if (parts[2].length === 4) {
+                                            const dd = parseInt(parts[0], 10);
+                                            const mm = parseInt(parts[1], 10) - 1;
+                                            const yyyy = parseInt(parts[2], 10);
+                                            d = new Date(yyyy, mm, dd);
+                                            if (!isNaN(d.getTime())) return d;
+                                          } else if (parts[0].length === 4) {
+                                            const yyyy = parseInt(parts[0], 10);
+                                            const mm = parseInt(parts[1], 10) - 1;
+                                            const dd = parseInt(parts[2], 10);
+                                            d = new Date(yyyy, mm, dd);
+                                            if (!isNaN(d.getTime())) return d;
+                                          }
+                                        }
+                                        return null;
+                                      };
+
+                                      const intervals = [];
+                                      const today = new Date();
+                                      let earliestDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+                                      activeOrderItems.forEach(item => {
+                                        const defaults = getItemDefaults(item);
+                                        const poEta = item.poEta !== undefined ? item.poEta : defaults.poEta;
+                                        const receivedDate = item.receivedDate !== undefined ? item.receivedDate : defaults.receivedDate;
+                                        const invoiceDate = item.invoiceDate !== undefined ? item.invoiceDate : defaults.invoiceDate;
+                                        
+                                        const d1 = parseDate(poEta);
+                                        const d2 = parseDate(receivedDate);
+                                        const d3 = parseDate(invoiceDate);
+                                        
+                                        if (d1 && d1 < earliestDate) earliestDate = d1;
+                                        if (d2 && d2 < earliestDate) earliestDate = d2;
+                                        if (d3 && d3 < earliestDate) earliestDate = d3;
+                                        
+                                        const history = item.deliveryHistory || defaults.deliveryHistory || [];
+                                        history.forEach(h => {
+                                          const d4 = parseDate(h.date);
+                                          if (d4 && d4 < earliestDate) earliestDate = d4;
+                                        });
+                                      });
+
+                                      const startYear = earliestDate.getFullYear();
+                                      const startMonth = earliestDate.getMonth();
+
+                                      for (let i = 0; i < 12; i++) {
+                                        const sDate = new Date(startYear, startMonth + i, 1);
+                                        const eDate = new Date(startYear, startMonth + i + 1, 0);
+                                        
+                                        const pad = (n) => String(n).padStart(2, '0');
+                                        const startStr = `${pad(sDate.getDate())}/${pad(sDate.getMonth() + 1)}/${sDate.getFullYear()}`;
+                                        const endStr = `${pad(eDate.getDate())}/${pad(eDate.getMonth() + 1)}/${eDate.getFullYear()}`;
+                                        
+                                        intervals.push({
+                                          startYear: sDate.getFullYear(),
+                                          startMonth: sDate.getMonth(),
+                                          startStr,
+                                          endStr,
+                                          expectedRec: 0,
+                                          received: 0,
+                                          expectedInv: 0,
+                                          invoiced: 0,
+                                          expectedDel: 0,
+                                          delivered: 0
+                                        });
+                                      }
+
+                                      activeOrderItems.forEach(item => {
+                                        const defaults = getItemDefaults(item);
+                                        const qty = Number(item.qty) || 0;
+                                        const retail = Number(item.unitRetail) || 0;
+                                        const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+                                        
+                                        const recQty = stockStatus === 'All Stock on Hand' ? qty : (Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0);
+                                        const recVal = recQty * retail;
+                                        const outRecVal = (stockStatus === 'All Stock on Hand' ? 0 : Math.max(0, qty - recQty)) * retail;
+                                        
+                                        const rDate = parseDate(item.receivedDate || defaults.receivedDate) || new Date();
+                                        const etaDate = parseDate(item.poEta || defaults.poEta) || new Date();
+                                        
+                                        if (recVal > 0) {
+                                          const match = intervals.find(inv => inv.startYear === rDate.getFullYear() && inv.startMonth === rDate.getMonth());
+                                          if (match) match.received += recVal;
+                                          else if (rDate < new Date(startYear, startMonth, 1)) intervals[0].received += recVal;
+                                          else intervals[11].received += recVal;
+                                        }
+                                        if (outRecVal > 0) {
+                                          const match = intervals.find(inv => inv.startYear === etaDate.getFullYear() && inv.startMonth === etaDate.getMonth());
+                                          if (match) match.expectedRec += outRecVal;
+                                          else if (etaDate < new Date(startYear, startMonth, 1)) intervals[0].expectedRec += outRecVal;
+                                          else intervals[11].expectedRec += outRecVal;
+                                        }
+                                        
+                                        const invQty = Number(item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty) || 0;
+                                        const invVal = invQty * retail;
+                                        const outInvVal = Math.max(0, qty - invQty) * retail;
+                                        const iDate = parseDate(item.invoiceDate || defaults.invoiceDate) || new Date();
+                                        
+                                        if (invVal > 0) {
+                                          const match = intervals.find(inv => inv.startYear === iDate.getFullYear() && inv.startMonth === iDate.getMonth());
+                                          if (match) match.invoiced += invVal;
+                                          else if (iDate < new Date(startYear, startMonth, 1)) intervals[0].invoiced += invVal;
+                                          else intervals[11].invoiced += invVal;
+                                        }
+                                        if (outInvVal > 0) {
+                                          const match = intervals.find(inv => inv.startYear === etaDate.getFullYear() && inv.startMonth === etaDate.getMonth());
+                                          if (match) match.expectedInv += outInvVal;
+                                          else if (etaDate < new Date(startYear, startMonth, 1)) intervals[0].expectedInv += outInvVal;
+                                          else intervals[11].expectedInv += outInvVal;
+                                        }
+                                        
+                                        const delQty = Number(item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty) || 0;
+                                        const outDelVal = Math.max(0, qty - delQty) * retail;
+                                        const history = item.deliveryHistory || defaults.deliveryHistory || [];
+                                        
+                                        history.forEach(h => {
+                                          const dVal = (Number(h.qty) || 0) * retail;
+                                          if (dVal > 0) {
+                                            const dDate = parseDate(h.date) || new Date();
+                                            const match = intervals.find(inv => inv.startYear === dDate.getFullYear() && inv.startMonth === dDate.getMonth());
+                                            if (match) match.delivered += dVal;
+                                            else if (dDate < new Date(startYear, startMonth, 1)) intervals[0].delivered += dVal;
+                                            else intervals[11].delivered += dVal;
+                                          }
+                                        });
+                                        if (outDelVal > 0) {
+                                          const match = intervals.find(inv => inv.startYear === etaDate.getFullYear() && inv.startMonth === etaDate.getMonth());
+                                          if (match) match.expectedDel += outDelVal;
+                                          else if (etaDate < new Date(startYear, startMonth, 1)) intervals[0].expectedDel += outDelVal;
+                                          else intervals[11].expectedDel += outDelVal;
+                                        }
+                                      });
+
+                                      return (
+                                        <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                                          <h5 style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                                            Estimated vs Realized Value per Month (Retail)
+                                          </h5>
+                                          <div style={{ overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                                              <thead>
+                                                <tr style={{ borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                                  <th style={{ padding: '6px 4px' }}>Start Date</th>
+                                                  <th style={{ padding: '6px 4px' }}>End Date</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Receive</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Received</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Invoice</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Invoiced</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Deliver</th>
+                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Delivered</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {intervals.map((inv, idx) => (
+                                                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                                                    <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.startStr}</td>
+                                                    <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.endStr}</td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedRec > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.expectedRec).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.received > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.received).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedInv > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.expectedInv).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.invoiced > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.invoiced).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedDel > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.expectedDel).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.delivered > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                      R {Math.round(inv.delivered).toLocaleString()}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+
                                   </div>
 
                                 </div>
