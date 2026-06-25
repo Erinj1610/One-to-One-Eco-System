@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { 
   Truck, ClipboardList, FileText, Plus, Printer, 
@@ -8,12 +8,30 @@ import {
 
 export default function LogisticsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projects, updateProject, getModuleName } = useStore();
   
   // Search & ledger navigation state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+
+  // Read filter routing parameter state on mount
+  useEffect(() => {
+    if (location.state?.filterOrderId) {
+      setSearchQuery(location.state.filterOrderId);
+    }
+    if (location.state?.openDocId) {
+      setSelectedDocId(location.state.openDocId);
+      if (location.state?.projectKey) {
+        setSelectedProjectKey(location.state.projectKey);
+      }
+    }
+    // Clear state so that refresh or navigation doesn't stick
+    if (location.state) {
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Modal display states
   const [showPlModal, setShowPlModal] = useState(false);

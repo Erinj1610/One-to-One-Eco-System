@@ -3543,7 +3543,12 @@ export default function OrdersPage() {
                             {/* Render Packing Lists */}
                             {(activeOrderObject?.packingLists || []).map((pl, idx) => (
                               <tr key={`pl-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace' }}>{pl.id}</td>
+                                <td 
+                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={() => navigate('/logistics', { state: { openDocId: pl.id, projectKey: pl.projectKey || activeOrderObject.projectKey } })}
+                                >
+                                  {pl.id}
+                                </td>
                                 <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
                                 <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
                                 <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
@@ -3553,7 +3558,12 @@ export default function OrdersPage() {
                             {/* Render Delivery Notes */}
                             {(activeOrderObject?.deliveryNotes || []).map((dn, idx) => (
                               <tr key={`dn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace' }}>{dn.id}</td>
+                                <td 
+                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={() => navigate('/logistics', { state: { openDocId: dn.id, projectKey: dn.projectKey || activeOrderObject.projectKey } })}
+                                >
+                                  {dn.id}
+                                </td>
                                 <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
                                 <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
                                 <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
