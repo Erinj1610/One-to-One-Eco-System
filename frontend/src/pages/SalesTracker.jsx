@@ -200,6 +200,7 @@ export default function SalesTracker() {
   const [activeTab, setActiveTab] = useState('order'); // 'order' | 'purchasing' | 'invoicing' | 'delivery'
   const [showHeaderDetails, setShowHeaderDetails] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
+  const [showMonthlyGrid, setShowMonthlyGrid] = useState(false);
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -2839,84 +2840,173 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       Financial Calculations & Summaries
                                     </h4>
 
-                                    {/* 4-Phase Grid Summary */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
                                       
-                                      {/* Cost & Spec Details */}
-                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Cost & Spec Details</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Total Cost:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specCost).toLocaleString()}</strong>
+                                      {/* Left Column: Traditional Financial Calculations */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                        {/* Sub Total */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>SUB TOTAL</span>
+                                          <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(subTotal).toLocaleString()}</strong>
+                                        </div>
+
+                                        {/* Discount */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>DISCOUNT (%)</span>
+                                            <input 
+                                              type="number"
+                                              className="form-control"
+                                              style={{ width: '50px', height: '20px', fontSize: '11px', padding: '1px 4px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                              value={orderDiscount}
+                                              onChange={e => setOrderDiscount(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                                            />
                                           </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Total Retail:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specRetail).toLocaleString()}</strong>
+                                          <span style={{ fontFamily: 'monospace', color: discountVal > 0 ? 'var(--text-warning)' : 'var(--text-secondary)' }}>
+                                            R {Math.round(discountVal).toLocaleString()}
+                                          </span>
+                                        </div>
+
+                                        {/* Price Excl VAT */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>PRICE EXCL. VAT</span>
+                                          <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(priceExVat).toLocaleString()}</strong>
+                                        </div>
+
+                                        {/* VAT */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>VAT (%)</span>
+                                            <input 
+                                              type="number"
+                                              className="form-control"
+                                              style={{ width: '50px', height: '20px', fontSize: '11px', padding: '1px 4px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                                              value={orderVatRate}
+                                              onChange={e => setOrderVatRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            />
                                           </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '4px' }}>
-                                            <span>Blended Margin:</span>
-                                            <strong style={{ color: 'var(--text-success)' }}>{specMargin}%</strong>
+                                          <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>R {Math.round(calculatedVat).toLocaleString()}</span>
+                                        </div>
+
+                                        {/* Total Price Incl VAT */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '2px solid var(--border-strong)' }}>
+                                          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>TOTAL PRICE INCL. VAT</span>
+                                          <strong style={{ fontSize: '13px', color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                            R {Math.round(totalPriceInclVat).toLocaleString()}
+                                          </strong>
+                                        </div>
+
+                                        {/* Deposit Incl VAT */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Deposit Paid (70% Target: R {Math.round(totalPriceInclVat * 0.7).toLocaleString()})</span>
+                                          <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(depositPaidVal).toLocaleString()}</span>
+                                        </div>
+
+                                        {/* Balance Payment */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Balance Paid (30% Target: R {Math.round(totalPriceInclVat * 0.3).toLocaleString()})</span>
+                                          <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(balancePaidVal).toLocaleString()}</span>
+                                        </div>
+
+                                        {/* Interim Payment */}
+                                        {interimPaidVal > 0 && (
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Interim Payment Paid</span>
+                                            <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(interimPaidVal).toLocaleString()}</span>
                                           </div>
+                                        )}
+
+                                        {/* Outstanding Balance */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px' }}>
+                                          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Outstanding Balance</span>
+                                          <strong style={{ fontSize: '13px', color: outstandingBalance > 0 ? 'var(--text-warning)' : 'var(--text-success)', fontFamily: 'monospace' }}>
+                                            R {Math.round(outstandingBalance).toLocaleString()}
+                                          </strong>
                                         </div>
                                       </div>
 
-                                      {/* Purchasing & Receiving */}
-                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Purchasing & Receiving</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Last Rec Date:</span>
-                                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastReceivedDate}</span>
+                                      {/* Right Column: Active Tab specific phase totals next to it */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                        {activeTab === 'order' && (
+                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Cost & Spec Details</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Total Cost:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specCost).toLocaleString()}</strong>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Total Retail:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(specRetail).toLocaleString()}</strong>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
+                                                <span>Blended Margin:</span>
+                                                <strong style={{ color: 'var(--text-success)' }}>{specMargin}%</strong>
+                                              </div>
+                                            </div>
                                           </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Last ETA:</span>
-                                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastExpectedEta}</span>
-                                          </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Received Value:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueReceived).toLocaleString()}</strong>
-                                          </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Outstanding:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: valueOutstandingRec > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueOutstandingRec).toLocaleString()}</strong>
-                                          </div>
-                                        </div>
-                                      </div>
+                                        )}
 
-                                      {/* Invoicing */}
-                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Invoicing</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Invoiced Value:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueInvoiced).toLocaleString()}</strong>
+                                        {activeTab === 'purchasing' && (
+                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Purchasing & Receiving</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Last Rec Date:</span>
+                                                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastReceivedDate}</span>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Last ETA:</span>
+                                                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{lastExpectedEta}</span>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Received Value:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueReceived).toLocaleString()}</strong>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
+                                                <span>Outstanding:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: valueOutstandingRec > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueOutstandingRec).toLocaleString()}</strong>
+                                              </div>
+                                            </div>
                                           </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Still to Invoice:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: valueStillToInvoice > 0 ? 'var(--text-warning)' : 'var(--text-secondary)' }}>R {Math.round(valueStillToInvoice).toLocaleString()}</strong>
-                                          </div>
-                                        </div>
-                                      </div>
+                                        )}
 
-                                      {/* Delivery */}
-                                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>Delivery</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Delivered Value:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueDelivered).toLocaleString()}</strong>
+                                        {activeTab === 'invoicing' && (
+                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Invoicing Totals</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Invoiced Value:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueInvoiced).toLocaleString()}</strong>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
+                                                <span>Still to Invoice:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: valueStillToInvoice > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToInvoice).toLocaleString()}</strong>
+                                              </div>
+                                            </div>
                                           </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Still to Deliver:</span>
-                                            <strong style={{ fontFamily: 'monospace', color: valueStillToDeliver > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToDeliver).toLocaleString()}</strong>
+                                        )}
+
+                                        {activeTab === 'delivery' && (
+                                          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '16px' }}>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>Delivery Logistics</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Delivered Value:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(valueDelivered).toLocaleString()}</strong>
+                                              </div>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px' }}>
+                                                <span>Still to Deliver:</span>
+                                                <strong style={{ fontFamily: 'monospace', color: valueStillToDeliver > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>R {Math.round(valueStillToDeliver).toLocaleString()}</strong>
+                                              </div>
+                                            </div>
                                           </div>
-                                        </div>
+                                        )}
                                       </div>
 
                                     </div>
 
-                                    {/* Monthly Realization Grid */}
+                                    {/* Monthly Realization Grid with collapse toggle */}
                                     {(() => {
                                       const parseDate = (str) => {
                                         if (!str || str === '—' || str === 'TBD') return null;
@@ -3058,58 +3148,69 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       });
 
                                       return (
-                                        <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-                                          <h5 style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                                            Estimated vs Realized Value per Month (Retail)
-                                          </h5>
-                                          <div style={{ overflowX: 'auto' }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                                              <thead>
-                                                <tr style={{ borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                                  <th style={{ padding: '6px 4px' }}>Start Date</th>
-                                                  <th style={{ padding: '6px 4px' }}>End Date</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Receive</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Received</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Invoice</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Invoiced</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Deliver</th>
-                                                  <th style={{ padding: '6px 4px', textAlign: 'right' }}>Delivered</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {intervals.map((inv, idx) => (
-                                                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                                                    <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.startStr}</td>
-                                                    <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.endStr}</td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedRec > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.expectedRec).toLocaleString()}
-                                                    </td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.received > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.received).toLocaleString()}
-                                                    </td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedInv > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.expectedInv).toLocaleString()}
-                                                    </td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.invoiced > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.invoiced).toLocaleString()}
-                                                    </td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedDel > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.expectedDel).toLocaleString()}
-                                                    </td>
-                                                    <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.delivered > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                                                      R {Math.round(inv.delivered).toLocaleString()}
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
+                                        <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <h5 style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                                              Estimated vs Realized Value per Month (Retail)
+                                            </h5>
+                                            <button
+                                              type="button"
+                                              className="btn btn-xs btn-ghost"
+                                              onClick={() => setShowMonthlyGrid(!showMonthlyGrid)}
+                                              style={{ fontSize: '10px', height: '22px', padding: '2px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-primary)' }}
+                                            >
+                                              {showMonthlyGrid ? 'Hide Table ▲' : 'Show Table ▼'}
+                                            </button>
                                           </div>
+                                          
+                                          {showMonthlyGrid && (
+                                            <div style={{ overflowX: 'auto', animation: 'fadeIn 0.2s ease' }}>
+                                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                                                <thead>
+                                                  <tr style={{ borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                                    <th style={{ padding: '6px 4px' }}>Start Date</th>
+                                                    <th style={{ padding: '6px 4px' }}>End Date</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Receive</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Received</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Invoice</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Invoiced</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>To Deliver</th>
+                                                    <th style={{ padding: '6px 4px', textAlign: 'right' }}>Delivered</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {intervals.map((inv, idx) => (
+                                                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                                                      <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.startStr}</td>
+                                                      <td style={{ padding: '6px 4px', color: 'var(--text-info)', fontFamily: 'monospace' }}>{inv.endStr}</td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedRec > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.expectedRec).toLocaleString()}
+                                                      </td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.received > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.received).toLocaleString()}
+                                                      </td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedInv > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.expectedInv).toLocaleString()}
+                                                      </td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.invoiced > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.invoiced).toLocaleString()}
+                                                      </td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.expectedDel > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.expectedDel).toLocaleString()}
+                                                      </td>
+                                                      <td style={{ padding: '6px 4px', textAlign: 'right', color: inv.delivered > 0 ? 'var(--text-success)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                                        R {Math.round(inv.delivered).toLocaleString()}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
                                         </div>
                                       );
                                     })()}
-
                                   </div>
-
                                 </div>
                               )}
                             </>
