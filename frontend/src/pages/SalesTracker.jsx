@@ -157,7 +157,6 @@ const getItemDefaults = (item) => {
     resolved.invoiceValue = 0;
   }
   
-  // Phase 4: Delivery Phase
   if (resolved.deliveryQty === undefined) {
     resolved.deliveryQty = 0;
   }
@@ -169,6 +168,9 @@ const getItemDefaults = (item) => {
   }
   if (resolved.deliveryNotes === undefined) {
     resolved.deliveryNotes = '';
+  }
+  if (resolved.stockStatus === undefined) {
+    resolved.stockStatus = 'To Be Ordered';
   }
   
   return resolved;
@@ -220,7 +222,8 @@ export default function SalesTracker() {
           deliveryDates: new Set(),
           deliveryStatuses: new Set(),
           deliveryNotesList: [],
-          areasSet: new Set()
+          areasSet: new Set(),
+          stockStatuses: new Set()
         };
       }
       
@@ -237,6 +240,7 @@ export default function SalesTracker() {
 
       const receivedDateVal = item.receivedDate !== undefined ? item.receivedDate : defaults.receivedDate;
       const receivedQtyVal = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty;
+      const stockStatusVal = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus;
 
       const invoiceQtyVal = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty;
       const invoiceRefVal = item.invoiceRef !== undefined ? item.invoiceRef : defaults.invoiceRef;
@@ -265,6 +269,7 @@ export default function SalesTracker() {
       if (deliveryStatusVal) g.deliveryStatuses.add(deliveryStatusVal);
       if (deliveryNotesVal) g.deliveryNotesList.push(deliveryNotesVal);
       if (item.area) g.areasSet.add(`${item.area} (${item.floor || 'Ground'})`);
+      if (stockStatusVal) g.stockStatuses.add(stockStatusVal);
     });
 
     return Object.values(groups).map(g => {
@@ -281,6 +286,7 @@ export default function SalesTracker() {
         itemIds: g.itemIds,
         poRef: g.poRefs.size > 0 ? Array.from(g.poRefs).join(', ') : '',
         poSupplier: g.poSuppliers.size > 0 ? Array.from(g.poSuppliers)[0] : g.supplier || '',
+        stockStatus: g.stockStatuses.size > 0 ? Array.from(g.stockStatuses)[0] : 'To Be Ordered',
         poDate: g.poDates.size > 0 ? Array.from(g.poDates)[0] : '',
         poQtyOrdered: g.poQtyOrdered,
         poEta: g.poEtas.size > 0 ? Array.from(g.poEtas)[0] : '',
@@ -301,7 +307,7 @@ export default function SalesTracker() {
 
   const getVisibleCols = () => {
     if (activeTab === 'purchasing') {
-      return ['poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
+      return ['stockStatus', 'poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
     }
     if (activeTab === 'invoicing') {
       return ['invoiceQty', 'invoiceRef', 'invoiceDate'];
@@ -344,8 +350,8 @@ export default function SalesTracker() {
         const valToCopy = prevRowItem[col];
         const currentItem = groupedItems[row];
         
-        if (col === 'poRef') {
-          handlePOChange(currentItem.itemIds, valToCopy);
+        if (col === 'stockStatus') {
+          handleStockStatusChange(currentItem.itemIds, valToCopy);
         } else {
           handleUpdateSpreadsheetCell(currentItem.itemIds, col, valToCopy);
         }
@@ -856,13 +862,35 @@ export default function SalesTracker() {
         let remaining = totalQty;
         return prev.map(item => {
           if (itemIds.includes(item.id)) {
-            const maxForItem = item.qty || 0;
+            // Locking rule: All Stock on Hand -> poQtyOrdered & receivedQty must be 0
+            if (item.stockStatus === 'All Stock on Hand' && (field === 'poQtyOrdered' || field === 'receivedQty')) {
+              return {
+                ...item,
+                [field]: 0
+              };
+            }
+
+            let maxForItem = item.qty || 0;
+            // Clamping rule: Partial Stock on Hand -> receivedQty cannot exceed poQtyOrdered
+            if (item.stockStatus === 'Partial Stock on Hand' && field === 'receivedQty') {
+              maxForItem = item.poQtyOrdered || 0;
+            }
+
             const allocated = Math.min(maxForItem, remaining);
             remaining -= allocated;
+            
             const extraFields = {};
             if (field === 'invoiceQty') {
               extraFields.invoiceValue = allocated * (item.unitRetail || 0);
             }
+
+            // Clamping rule: Partial Stock on Hand -> if we reduce poQtyOrdered below receivedQty, receivedQty must clamp down
+            if (item.stockStatus === 'Partial Stock on Hand' && field === 'poQtyOrdered') {
+              if ((item.receivedQty || 0) > allocated) {
+                extraFields.receivedQty = allocated;
+              }
+            }
+
             return {
               ...item,
               [field]: allocated,
@@ -876,6 +904,11 @@ export default function SalesTracker() {
       // Set all items with itemIds to the same value
       setActiveOrderItems(prev => prev.map(item => {
         if (itemIds.includes(item.id)) {
+          // Locking rule: All Stock on Hand -> no date ordered, ETA, received date
+          if (item.stockStatus === 'All Stock on Hand' && (field === 'poDate' || field === 'poEta' || field === 'receivedDate')) {
+            return item; // Do not update
+          }
+
           const updated = { ...item };
           let parsedVal = val;
           if (field === 'qty') parsedVal = Math.max(0, parseInt(val) || 0);
@@ -890,46 +923,35 @@ export default function SalesTracker() {
     }
   };
 
-  // Handle auto-filling of PO columns when Stock in Hand or Client Supplied is selected
-  const handlePOChange = (itemOrItemIds, val) => {
+  // Handle stock status selection and enforce lock clearing rules
+  const handleStockStatusChange = (itemOrItemIds, statusVal) => {
     const itemIds = Array.isArray(itemOrItemIds) ? itemOrItemIds : [itemOrItemIds];
-    
-    // Always update poRef first
-    handleUpdateSpreadsheetCell(itemIds, 'poRef', val);
+    setActiveOrderItems(prev => prev.map(item => {
+      if (itemIds.includes(item.id)) {
+        const updated = {
+          ...item,
+          stockStatus: statusVal
+        };
 
-    if (val === 'Stock in Hand') {
-      const today = new Date().toISOString().split('T')[0];
-      setActiveOrderItems(prev => prev.map(item => {
-        if (itemIds.includes(item.id)) {
-          return {
-            ...item,
-            poSupplier: 'Warehouse Inventory',
-            poDate: today,
-            poQtyOrdered: 0,
-            poEta: today,
-            receivedQty: item.qty || 0,
-            receivedDate: today
-          };
+        if (statusVal === 'All Stock on Hand') {
+          // Locked and cleared values
+          updated.poDate = '';
+          updated.poQtyOrdered = 0;
+          updated.poEta = '';
+          updated.receivedQty = 0;
+          updated.receivedDate = '';
+          updated.poRef = 'Stock on Hand';
+          updated.poSupplier = 'Warehouse Inventory';
+        } else if (statusVal === 'Partial Stock on Hand') {
+          // Ensure receivedQty does not exceed poQtyOrdered on transition
+          if ((updated.receivedQty || 0) > (updated.poQtyOrdered || 0)) {
+            updated.receivedQty = updated.poQtyOrdered || 0;
+          }
         }
-        return item;
-      }));
-    } else if (val === 'Client Supplied') {
-      const today = new Date().toISOString().split('T')[0];
-      setActiveOrderItems(prev => prev.map(item => {
-        if (itemIds.includes(item.id)) {
-          return {
-            ...item,
-            poSupplier: 'Client',
-            poDate: today,
-            poQtyOrdered: 0,
-            poEta: today,
-            receivedQty: item.qty || 0,
-            receivedDate: today
-          };
-        }
-        return item;
-      }));
-    }
+        return updated;
+      }
+      return item;
+    }));
   };
 
 
@@ -1914,7 +1936,7 @@ export default function SalesTracker() {
 
                                 {activeTab === 'purchasing' && (
                                   <th 
-                                    colSpan={8} 
+                                    colSpan={9} 
                                     style={{ background: 'rgba(59, 130, 246, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-info)' }}
                                   >
                                     PHASE 1: PROCUREMENT & RECEIVING
@@ -1961,6 +1983,7 @@ export default function SalesTracker() {
 
                                 {activeTab === 'purchasing' && (
                                   <>
+                                    <th style={{ width: '155px' }}>Stock Status</th>
                                     <th style={{ width: '100px' }}>PO Reference</th>
                                     <th style={{ width: '120px' }}>Supplier</th>
                                     <th style={{ width: '100px' }}>Date Ordered</th>
@@ -2051,18 +2074,37 @@ export default function SalesTracker() {
                                     {activeTab === 'purchasing' && (
                                       <>
                                         <td style={{ padding: 0 }}>
+                                          <select 
+                                            className="gs-cell-select" 
+                                            value={item.stockStatus || 'To Be Ordered'}
+                                            data-row={rowIndex}
+                                            data-col="stockStatus"
+                                            onChange={(e) => handleStockStatusChange(item.itemIds, e.target.value)}
+                                            style={{
+                                              fontWeight: '600',
+                                              padding: '4px',
+                                              color: (item.stockStatus === 'All Stock on Hand') ? '#4ade80' : 
+                                                     (item.stockStatus === 'Partial Stock on Hand') ? '#60a5fa' : 'var(--text-primary)',
+                                              backgroundColor: 'transparent',
+                                              border: 'none',
+                                              outline: 'none',
+                                              width: '100%',
+                                              height: '100%'
+                                            }}
+                                          >
+                                            <option value="All Stock on Hand">All Stock on Hand</option>
+                                            <option value="Partial Stock on Hand">Partial Stock on Hand</option>
+                                            <option value="To Be Ordered">To Be Ordered</option>
+                                          </select>
+                                        </td>
+                                        <td style={{ padding: 0 }}>
                                           <input 
                                             type="text" 
                                             className="gs-cell-input" 
                                             value={poRefVal}
-                                            list="po-ref-options"
                                             data-row={rowIndex}
                                             data-col="poRef"
-                                            onChange={(e) => handlePOChange(item.itemIds, e.target.value)}
-                                            style={
-                                              poRefVal === 'Stock in Hand' ? { backgroundColor: 'rgba(74, 222, 128, 0.15)', color: '#4ade80', fontWeight: 'bold' } :
-                                              poRefVal === 'Client Supplied' ? { backgroundColor: 'rgba(96, 165, 250, 0.15)', color: '#60a5fa', fontWeight: 'bold' } : {}
-                                            }
+                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poRef', e.target.value)}
                                           />
                                         </td>
                                         <td style={{ padding: 0 }}>
@@ -2079,10 +2121,11 @@ export default function SalesTracker() {
                                           <input 
                                             type="date" 
                                             className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark' }}
+                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
                                             value={toInputDate(poDateVal)}
                                             data-row={rowIndex}
                                             data-col="poDate"
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poDate', e.target.value)}
                                           />
                                         </td>
@@ -2090,9 +2133,11 @@ export default function SalesTracker() {
                                           <input 
                                             type="number" 
                                             className="gs-cell-input" 
+                                            style={{ opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
                                             value={poQtyOrderedVal}
                                             data-row={rowIndex}
                                             data-col="poQtyOrdered"
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poQtyOrdered', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
@@ -2100,10 +2145,11 @@ export default function SalesTracker() {
                                           <input 
                                             type="date" 
                                             className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark' }}
+                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
                                             value={toInputDate(poEtaVal)}
                                             data-row={rowIndex}
                                             data-col="poEta"
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poEta', e.target.value)}
                                           />
                                         </td>
@@ -2111,9 +2157,11 @@ export default function SalesTracker() {
                                           <input 
                                             type="number" 
                                             className="gs-cell-input" 
+                                            style={{ opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
                                             value={receivedQtyVal}
                                             data-row={rowIndex}
                                             data-col="receivedQty"
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'receivedQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
@@ -2121,10 +2169,11 @@ export default function SalesTracker() {
                                           <input 
                                             type="date" 
                                             className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark' }}
+                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
                                             value={toInputDate(receivedDateVal)}
                                             data-row={rowIndex}
                                             data-col="receivedDate"
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'receivedDate', e.target.value)}
                                           />
                                         </td>
