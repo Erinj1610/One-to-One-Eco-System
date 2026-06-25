@@ -1123,6 +1123,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
           updated.receivedDate = '';
           updated.poRef = 'Stock on Hand';
           updated.poSupplier = 'Warehouse Inventory';
+          updated.stockOnHand = item.qty || 0;
         } else if (statusVal === 'Partial Stock on Hand') {
           // Ensure receivedQty does not exceed poQtyOrdered on transition
           if ((updated.receivedQty || 0) > (updated.poQtyOrdered || 0)) {
@@ -1133,6 +1134,44 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
       }
       return item;
     }));
+  };
+
+  const handleDeleteWaybill = (groupedItem, waybillRef, waybillDate) => {
+    if (!window.confirm(`Are you sure you want to remove waybill "${waybillRef}"?`)) return;
+    
+    setActiveOrderItems(prev => {
+      return prev.map(item => {
+        if (groupedItem.itemIds.includes(item.id)) {
+          const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
+          const updatedHistory = history.filter(dh => !(dh.ref === waybillRef && dh.date === waybillDate));
+          const newDeliveryQty = updatedHistory.reduce((sum, dh) => sum + (dh.qty || 0), 0);
+          const latestDate = updatedHistory.map(dh => dh.date).filter(Boolean).reduce((latest, current) => current > latest ? current : latest, '');
+          
+          return {
+            ...item,
+            deliveryHistory: updatedHistory,
+            deliveryQty: newDeliveryQty,
+            deliveryDate: latestDate,
+            deliveryStatus: newDeliveryQty >= item.qty ? 'Delivered' : newDeliveryQty > 0 ? 'Partial' : 'Pending'
+          };
+        }
+        return item;
+      });
+    });
+    
+    setWaybillHistoryModalItem(prev => {
+      if (!prev) return null;
+      const updatedHistory = prev.deliveryHistory.filter(dh => !(dh.ref === waybillRef && dh.date === waybillDate));
+      const newDeliveryQty = updatedHistory.reduce((sum, dh) => sum + (dh.qty || 0), 0);
+      const latestDate = updatedHistory.map(dh => dh.date).filter(Boolean).reduce((latest, current) => current > latest ? current : latest, '');
+      return {
+        ...prev,
+        deliveryHistory: updatedHistory,
+        deliveryQty: newDeliveryQty,
+        deliveryDate: latestDate,
+        deliveryStatus: newDeliveryQty >= prev.qty ? 'Delivered' : newDeliveryQty > 0 ? 'Partial' : 'Pending'
+      };
+    });
   };
 
 
@@ -2072,7 +2111,14 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                               type="button"
                               className="btn btn-sm btn-ghost"
                               onClick={() => {
-                                const initialDocItems = groupedItems.map(gi => {
+                                // Filter out "All Stock on Hand" items if opening in purchasing (PO Order)
+                                const filteredGi = groupedItems.filter(gi => {
+                                  if (activeTab === 'purchasing') {
+                                    return gi.stockStatus !== 'All Stock on Hand';
+                                  }
+                                  return true;
+                                });
+                                const initialDocItems = filteredGi.map(gi => {
                                   // Determine current value based on tab
                                   let cVal = 0;
                                   if (activeTab === 'purchasing') {
@@ -2361,8 +2407,9 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                           <input 
                                             type="number" 
                                             className="gs-cell-input" 
-                                            style={{ textAlign: 'center', fontWeight: 'bold' }}
-                                            value={item.stockOnHand !== undefined ? item.stockOnHand : 0}
+                                            style={{ textAlign: 'center', fontWeight: 'bold', opacity: item.stockStatus === 'All Stock on Hand' ? 0.5 : 1 }}
+                                            value={item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : 0)}
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             data-row={rowIndex}
                                             data-col="stockOnHand"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'stockOnHand', Math.max(0, parseInt(e.target.value) || 0))}
@@ -2525,6 +2572,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={toInputDate(deliveryDateVal)}
                                             data-row={rowIndex}
                                             data-col="deliveryDate"
+                                            disabled={true}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryDate', e.target.value)}
                                           />
                                         </td>
@@ -3066,7 +3114,13 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                       value={docLoggerForm.type} 
                       onChange={e => {
                         const newType = e.target.value;
-                        const updatedItems = docLoggerForm.items.map(gi => {
+                        const filteredGi = groupedItems.filter(gi => {
+                          if (newType === 'purchasing' || newType === 'receiving') {
+                            return gi.stockStatus !== 'All Stock on Hand';
+                          }
+                          return true;
+                        });
+                        const updatedItems = filteredGi.map(gi => {
                           let cVal = 0;
                           if (newType === 'purchasing') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
@@ -3077,7 +3131,14 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                           } else if (newType === 'delivery') {
                             cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.deliveryQty || 0), 0);
                           }
-                          return { ...gi, currentVal: cVal };
+                          return {
+                            itemIds: gi.itemIds,
+                            code: gi.code,
+                            description: gi.description,
+                            qty: gi.qty,
+                            currentVal: cVal,
+                            inputVal: 0
+                          };
                         });
                         setDocLoggerForm({ ...docLoggerForm, type: newType, items: updatedItems });
                       }}
@@ -3205,7 +3266,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                   <tr style={{ background: 'var(--bg-primary)' }}>
                     <th style={{ textAlign: 'left', padding: '8px' }}>Waybill / Delivery Note</th>
                     <th style={{ textAlign: 'center', padding: '8px', width: '80px' }}>Qty Del</th>
-                    <th style={{ textAlign: 'right', padding: '8px', width: '120px' }}>Date</th>
+                    <th style={{ textAlign: 'right', padding: '8px', width: '100px' }}>Date</th>
+                    <th style={{ textAlign: 'center', padding: '8px', width: '50px' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3214,6 +3276,17 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                       <td style={{ padding: '8px', fontWeight: 500 }}><code>{dh.ref}</code></td>
                       <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}>{dh.qty}</td>
                       <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{dh.date}</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        <button 
+                          type="button" 
+                          className="btn btn-xs btn-ghost text-error" 
+                          style={{ minHeight: 'unset', height: '24px', padding: '0 6px' }}
+                          onClick={() => handleDeleteWaybill(waybillHistoryModalItem, dh.ref, dh.date)}
+                          title="Delete Waybill Log"
+                        >
+                          🗑️
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
