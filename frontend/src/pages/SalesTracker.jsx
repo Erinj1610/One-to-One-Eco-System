@@ -2626,7 +2626,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={deliveryQtyVal}
                                             data-row={rowIndex}
                                             data-col="deliveryQty"
-                                            disabled={true}
                                             title={(deliveryQtyVal > (item.stockStatus === 'All Stock on Hand' ? item.qty : receivedQtyVal + (item.stockStatus === 'Partial Stock on Hand' ? (item.qty - poQtyOrderedVal) : 0))) ? "Warning: Qty Delivered exceeds Qty Received/In-stock" : ""}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryQty', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
@@ -2639,7 +2638,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             value={toInputDate(deliveryDateVal)}
                                             data-row={rowIndex}
                                             data-col="deliveryDate"
-                                            disabled={true}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryDate', e.target.value)}
                                           />
                                         </td>
