@@ -570,14 +570,32 @@ export default function SalesTracker() {
   const [dateCompleted, setDateCompleted] = useState('');
   const [paymentResponse, setPaymentResponse] = useState('');
 
-  const { totalMasterQty, totalStockOnHand } = useMemo(() => {
-    const qtyTotal = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-    const sohTotal = activeOrderItems.reduce((sum, item) => {
+  const { procPct, invPct, delPct } = useMemo(() => {
+    let totalQty = 0;
+    let totalProcQty = 0;
+    let totalInvQty = 0;
+    let totalDelQty = 0;
+
+    activeOrderItems.forEach(item => {
+      const q = Number(item.qty) || 0;
+      totalQty += q;
+      
       const defaults = getItemDefaults(item);
-      const val = item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0);
-      return sum + (Number(val) || 0);
-    }, 0);
-    return { totalMasterQty: qtyTotal, totalStockOnHand: sohTotal };
+      const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
+      const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
+      const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
+      const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+
+      totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+      totalInvQty += Number(invoiced) || 0;
+      totalDelQty += Number(delivered) || 0;
+    });
+
+    const procPct = totalQty > 0 ? Math.round((totalProcQty / totalQty) * 100) : 0;
+    const invPct = totalQty > 0 ? Math.round((totalInvQty / totalQty) * 100) : 0;
+    const delPct = totalQty > 0 ? Math.round((totalDelQty / totalQty) * 100) : 0;
+
+    return { procPct, invPct, delPct };
   }, [activeOrderItems]);
 
   // DOCUMENT SCRATCHPAD & LIVING LEDGER HISTORIC CONTAINER STATE
@@ -1889,8 +1907,16 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                     💳 Paid: <strong>R {Math.round(orderPaidAmount).toLocaleString()}</strong>
                   </button>
 
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px', fontSize: '11.5px', fontWeight: 600, padding: '4px 10px', height: '30px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)', border: '1px solid var(--border)' }}>
-                    📦 Stock on Hand: <strong>{totalStockOnHand} / {totalMasterQty}</strong>
+                  <div style={{ display: 'inline-flex', gap: '4px', marginLeft: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                      Proc: <strong>{procPct}%</strong>
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                      Inv: <strong>{invPct}%</strong>
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                      Del: <strong>{delPct}%</strong>
+                    </div>
                   </div>
                 </div>
 
@@ -2665,8 +2691,9 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                           const priceExVat = masterDiscounted;
                           const calculatedVat = priceExVat * (Number(orderVatRate) / 100);
                           const totalPriceInclVat = priceExVat + calculatedVat;
-                          const depositInclVat = totalPriceInclVat * 0.7;
-                          const balancePaymentInclVat = totalPriceInclVat * 0.3;
+                          const depositPaidVal = (orderPayments || []).filter(p => p.type === 'Deposit Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                          const balancePaidVal = (orderPayments || []).filter(p => p.type === 'Balance Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                          const interimPaidVal = (orderPayments || []).filter(p => p.type === 'Interim Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                           const outstandingBalance = totalPriceInclVat - Number(orderPaidAmount);
 
                           return (
@@ -2837,6 +2864,21 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         />
                                       </div>
 
+                                      {/* Payment Viewer / Action */}
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        💳 Order Payments
+                                      </div>
+                                      <div>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline"
+                                          style={{ width: '100%', height: '28px', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-info)' }}
+                                          onClick={() => setShowPaymentViewer(true)}
+                                        >
+                                          🔍 View Payments (R {Math.round(orderPaidAmount).toLocaleString()} Paid)
+                                        </button>
+                                      </div>
+
                                     </div>
                                   </div>
 
@@ -2903,18 +2945,28 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                       {/* Deposit Incl VAT */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', paddingTop: '6px', borderBottom: '1px solid var(--border)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Deposit (70%)</span>
+                                          <span style={{ color: 'var(--text-secondary)' }}>Deposit Paid (70% Target: R {Math.round(totalPriceInclVat * 0.7).toLocaleString()})</span>
                                         </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(depositInclVat).toLocaleString()}</span>
+                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(depositPaidVal).toLocaleString()}</span>
                                       </div>
 
                                       {/* Balance Payment */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ color: 'var(--text-secondary)' }}>Balance Payment (30%)</span>
+                                          <span style={{ color: 'var(--text-secondary)' }}>Balance Paid (30% Target: R {Math.round(totalPriceInclVat * 0.3).toLocaleString()})</span>
                                         </div>
-                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(balancePaymentInclVat).toLocaleString()}</span>
+                                        <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(balancePaidVal).toLocaleString()}</span>
                                       </div>
+
+                                      {/* Interim Payment */}
+                                      {interimPaidVal > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Interim Payment Paid</span>
+                                          </div>
+                                          <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>R {Math.round(interimPaidVal).toLocaleString()}</span>
+                                        </div>
+                                      )}
 
                                       {/* Balance */}
                                       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px' }}>
