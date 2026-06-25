@@ -313,7 +313,18 @@ export default function SalesTracker() {
         deliveryStatus: g.deliveryStatuses.size > 0 ? Array.from(g.deliveryStatuses)[0] : 'Pending',
         deliveryNotes: g.deliveryNotesList.length > 0 ? g.deliveryNotesList.filter(Boolean).join('; ') : '',
         deliveryComments: g.deliveryCommentsList.length > 0 ? g.deliveryCommentsList.filter(Boolean).join('; ') : '',
-        deliveryHistory: g.deliveryHistories,
+        deliveryHistory: (() => {
+          const historyMap = {};
+          g.deliveryHistories.forEach(dh => {
+            if (!dh || !dh.ref) return;
+            const key = `${dh.ref}_${dh.date}`;
+            if (!historyMap[key]) {
+              historyMap[key] = { qty: 0, ref: dh.ref, date: dh.date };
+            }
+            historyMap[key].qty += (dh.qty || 0);
+          });
+          return Object.values(historyMap);
+        })(),
         area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—'
       };
     });
@@ -560,6 +571,7 @@ export default function SalesTracker() {
   
   // States for Document-Centric Logger Modal
   const [showDocLoggerModal, setShowDocLoggerModal] = useState(false);
+  const [waybillHistoryModalItem, setWaybillHistoryModalItem] = useState(null);
   const [docLoggerForm, setDocLoggerForm] = useState({
     type: 'purchasing',
     ref: '',
@@ -2519,15 +2531,18 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryComments', e.target.value)}
                                           />
                                         </td>
-                                        <td style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--text-secondary)', verticalAlign: 'middle', background: 'rgba(0,0,0,0.05)' }}>
+                                        <td style={{ padding: '4px 8px', fontSize: '11px', verticalAlign: 'middle', background: 'rgba(0,0,0,0.03)' }}>
                                           {item.deliveryHistory && item.deliveryHistory.length > 0 ? (
-                                            item.deliveryHistory.map((dh, idx) => (
-                                              <div key={idx} style={{ marginBottom: '2px' }}>
-                                                <strong>{dh.qty}</strong> delivered on <code>{dh.ref}</code> ({dh.date})
-                                              </div>
-                                            ))
+                                            <button
+                                              type="button"
+                                              className="btn btn-xs btn-outline"
+                                              style={{ textTransform: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+                                              onClick={() => setWaybillHistoryModalItem(item)}
+                                            >
+                                              📦 {item.deliveryHistory.length} Waybill{item.deliveryHistory.length > 1 ? 's' : ''} ({item.deliveryQty} units)
+                                            </button>
                                           ) : (
-                                            item.deliveryNotes || '—'
+                                            <span style={{ color: 'var(--text-tertiary)' }}>{item.deliveryNotes || '—'}</span>
                                           )}
                                         </td>
                                       </>
@@ -3137,6 +3152,54 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                 <button type="submit" className="btn btn-primary">Distribute & Log Document 📝</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* WAYBILL HISTORY MODAL */}
+      {waybillHistoryModalItem && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1200, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                📦 Waybill Delivery Log - {waybillHistoryModalItem.code}
+              </div>
+              <button type="button" className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setWaybillHistoryModalItem(null)}>✕</button>
+            </div>
+            
+            <div style={{ padding: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                {waybillHistoryModalItem.description}
+              </p>
+              
+              <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-primary)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Waybill / Delivery Note</th>
+                    <th style={{ textAlign: 'center', padding: '8px', width: '80px' }}>Qty Del</th>
+                    <th style={{ textAlign: 'right', padding: '8px', width: '120px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {waybillHistoryModalItem.deliveryHistory.map((dh, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px', fontWeight: 500 }}><code>{dh.ref}</code></td>
+                      <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}>{dh.qty}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{dh.date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="btn" onClick={() => setWaybillHistoryModalItem(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
