@@ -176,7 +176,10 @@ const getItemDefaults = (item) => {
     resolved.deliveryHistory = [];
   }
   if (resolved.stockStatus === undefined) {
-    resolved.stockStatus = 'To Be Ordered';
+    resolved.stockStatus = '';
+  }
+  if (resolved.stockOnHand === undefined) {
+    resolved.stockOnHand = 0;
   }
   
   return resolved;
@@ -216,6 +219,7 @@ export default function SalesTracker() {
           receivedQty: 0,
           invoiceQty: 0,
           deliveryQty: 0,
+          stockOnHand: 0,
           itemIds: [],
           poRefs: new Set(),
           poSuppliers: new Set(),
@@ -262,11 +266,14 @@ export default function SalesTracker() {
       const deliveryStatusVal = item.deliveryStatus !== undefined ? item.deliveryStatus : defaults.deliveryStatus;
       const deliveryNotesVal = item.deliveryNotes !== undefined ? item.deliveryNotes : defaults.deliveryNotes;
 
+      const stockOnHandVal = item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand;
+
       g.poQtyOrdered += Number(poQtyOrderedVal) || 0;
       g.receivedQty += Number(receivedQtyVal) || 0;
       g.invoiceQty += Number(invoiceQtyVal) || 0;
       g.invoiceValues += Number(invoiceValueVal) || 0;
       g.deliveryQty += Number(deliveryQtyVal) || 0;
+      g.stockOnHand += Number(stockOnHandVal) || 0;
 
       if (poRefVal) g.poRefs.add(poRefVal);
       if (poSupplierVal) g.poSuppliers.add(poSupplierVal);
@@ -298,7 +305,8 @@ export default function SalesTracker() {
         itemIds: g.itemIds,
         poRef: g.poRefs.size > 0 ? Array.from(g.poRefs).join(', ') : '',
         poSupplier: g.poSuppliers.size > 0 ? Array.from(g.poSuppliers)[0] : g.supplier || '',
-        stockStatus: g.stockStatuses.size > 0 ? Array.from(g.stockStatuses)[0] : 'To Be Ordered',
+        stockStatus: g.stockStatuses.size > 0 ? Array.from(g.stockStatuses)[0] : '',
+        stockOnHand: g.stockOnHand,
         poDate: g.poDates.size > 0 ? Array.from(g.poDates)[0] : '',
         poQtyOrdered: g.poQtyOrdered,
         poEta: g.poEtas.size > 0 ? Array.from(g.poEtas)[0] : '',
@@ -332,7 +340,7 @@ export default function SalesTracker() {
 
   const getVisibleCols = () => {
     if (activeTab === 'purchasing') {
-      return ['stockStatus', 'poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
+      return ['stockStatus', 'stockOnHand', 'poRef', 'poSupplier', 'poDate', 'poQtyOrdered', 'poEta', 'receivedQty', 'receivedDate'];
     }
     if (activeTab === 'invoicing') {
       return ['invoiceQty', 'invoiceRef', 'invoiceDate'];
@@ -2159,7 +2167,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
 
                                 {activeTab === 'purchasing' && (
                                   <th 
-                                    colSpan={9} 
+                                    colSpan={10} 
                                     style={{ background: 'rgba(59, 130, 246, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-info)' }}
                                   >
                                     PHASE 1: PROCUREMENT & RECEIVING
@@ -2208,6 +2216,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                 {activeTab === 'purchasing' && (
                                   <>
                                     <th style={{ width: '155px' }}>Stock Status</th>
+                                    <th style={{ width: '90px', textAlign: 'center' }}>Stock on Hand</th>
                                     <th style={{ width: '100px' }}>PO Reference</th>
                                     <th style={{ width: '120px' }}>Supplier</th>
                                     <th style={{ width: '100px' }}>Date Ordered</th>
@@ -2326,7 +2335,7 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                         <td style={{ padding: 0 }}>
                                           <select 
                                             className="gs-cell-select" 
-                                            value={item.stockStatus || 'To Be Ordered'}
+                                            value={item.stockStatus || ''}
                                             data-row={rowIndex}
                                             data-col="stockStatus"
                                             onChange={(e) => handleStockStatusChange(item.itemIds, e.target.value)}
@@ -2342,10 +2351,22 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                               height: '100%'
                                             }}
                                           >
+                                            <option value="">—</option>
                                             <option value="All Stock on Hand">All Stock on Hand</option>
                                             <option value="Partial Stock on Hand">Partial Stock on Hand</option>
                                             <option value="To Be Ordered">To Be Ordered</option>
                                           </select>
+                                        </td>
+                                        <td style={{ padding: 0 }}>
+                                          <input 
+                                            type="number" 
+                                            className="gs-cell-input" 
+                                            style={{ textAlign: 'center', fontWeight: 'bold' }}
+                                            value={item.stockOnHand !== undefined ? item.stockOnHand : 0}
+                                            data-row={rowIndex}
+                                            data-col="stockOnHand"
+                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'stockOnHand', Math.max(0, parseInt(e.target.value) || 0))}
+                                          />
                                         </td>
                                         <td style={{ padding: 0 }}>
                                           <input 
@@ -3022,7 +3043,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: '5vh', overflowY: 'auto',
           zIndex: 1100, animation: 'fadeIn 0.2s ease'
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '750px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
@@ -3161,7 +3183,8 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: '5vh', overflowY: 'auto',
           zIndex: 1200, animation: 'fadeIn 0.2s ease'
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '500px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
