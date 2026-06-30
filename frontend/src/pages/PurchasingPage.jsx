@@ -46,6 +46,12 @@ export default function PurchasingPage() {
   const [grnNotes, setGrnNotes] = useState('');
   const [grnItemInputs, setGrnItemInputs] = useState({}); // { code: { qty } }
 
+  // Form states for editing a PO
+  const [showEditPoModal, setShowEditPoModal] = useState(false);
+  const [editPoDoc, setEditPoDoc] = useState(null);
+  const [editPoNotes, setEditPoNotes] = useState('');
+  const [editPoItemEtas, setEditPoItemEtas] = useState({}); // { code: etaString }
+
   // Gather all orders
   const allOrders = Object.values(projects).flatMap(p => 
     (p.orders || []).map(o => ({
@@ -110,32 +116,21 @@ export default function PurchasingPage() {
   const getOrderOrderedQtys = (order, excludePoId = null) => {
     const map = {};
     (order.itemsList || []).forEach(item => {
-      map[item.id] = 0;
-    });
-    (order.purchaseOrders || []).forEach(po => {
-      if (excludePoId && po.id === excludePoId) return;
-      (po.items || []).forEach(pi => {
-        if (map[pi.id] !== undefined) {
-          map[pi.id] += Number(pi.qtyAction) || 0;
-        }
-      });
+      const history = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+      map[item.id] = history
+        .filter(h => !excludePoId || h.ref !== excludePoId)
+        .reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     });
     return map;
   };
 
-  // Helper: Calculate previously received quantities for an order
   const getOrderReceivedQtys = (order, excludeGrnId = null) => {
     const map = {};
     (order.itemsList || []).forEach(item => {
-      map[item.id] = 0;
-    });
-    (order.goodsReceivedNotes || []).forEach(grn => {
-      if (excludeGrnId && grn.id === excludeGrnId) return;
-      (grn.items || []).forEach(gi => {
-        if (map[gi.id] !== undefined) {
-          map[gi.id] += Number(gi.qtyAction) || 0;
-        }
-      });
+      const history = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
+      map[item.id] = history
+        .filter(h => !excludeGrnId || h.ref !== excludeGrnId)
+        .reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     });
     return map;
   };
@@ -459,6 +454,74 @@ export default function PurchasingPage() {
     setSelectedProjectKey(pKey);
   };
 
+  const handleOpenEditPoModal = (po) => {
+    setEditPoDoc(po);
+    setEditPoNotes(po.notes || '');
+    const etas = {};
+    (po.items || []).forEach(item => {
+      etas[item.code] = item.eta || '';
+    });
+    setEditPoItemEtas(etas);
+    setShowEditPoModal(true);
+  };
+
+  const handleUpdatePo = (e) => {
+    e.preventDefault();
+    if (!editPoDoc) return;
+    const pKey = editPoDoc.projectKey;
+    const oId = editPoDoc.orderId;
+    const project = projects[pKey];
+    if (!project) return;
+
+    const updatedOrders = project.orders.map(o => {
+      if (o.id === oId) {
+        const updatedPOs = (o.purchaseOrders || []).map(po => {
+          if (po.id === editPoDoc.id) {
+            const updatedItems = (po.items || []).map(item => ({
+              ...item,
+              eta: editPoItemEtas[item.code] || item.eta || ''
+            }));
+            return {
+              ...po,
+              notes: editPoNotes,
+              items: updatedItems
+            };
+          }
+          return po;
+        });
+
+        const updatedItemsList = (o.itemsList || []).map(item => {
+          const itemEta = editPoItemEtas[item.code];
+          if (itemEta !== undefined) {
+            const history = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+            const updatedHistory = history.map(h => {
+              if (h.ref === editPoDoc.id) {
+                return { ...h, eta: itemEta };
+              }
+              return h;
+            });
+            return { ...item, purchaseHistory: updatedHistory };
+          }
+          return item;
+        });
+
+        return {
+          ...o,
+          purchaseOrders: updatedPOs,
+          itemsList: updatedItemsList
+        };
+      }
+      return o;
+    });
+
+    updateProject(pKey, 'orders', updatedOrders);
+    setShowEditPoModal(false);
+    setSelectedDocId(null);
+    setTimeout(() => {
+      setSelectedDocId(editPoDoc.id);
+    }, 50);
+  };
+
   // Delete Document
   const handleDeleteDoc = (doc) => {
     if (!window.confirm(`Are you sure you want to delete ${doc.id}? This will reverse its quantities.`)) return;
@@ -658,7 +721,12 @@ export default function PurchasingPage() {
                     {activeDoc.id}
                   </h3>
                 </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {activeDoc.type === 'purchase_order' && (
+                    <button className="btn btn-xs btn-outline" onClick={() => handleOpenEditPoModal(activeDoc)} title="Edit PO details and ETAs">
+                      Edit PO
+                    </button>
+                  )}
                   <button className="btn btn-xs btn-ghost" onClick={() => window.print()} title="Print Document">
                     <Printer size={13} /> Print
                   </button>
@@ -991,6 +1059,91 @@ export default function PurchasingPage() {
           </div>
         );
       })()}
+
+      {/* EDIT PO MODAL */}
+      {showEditPoModal && editPoDoc && (
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✏️ Edit Purchase Order: {editPoDoc.id}</h3>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowEditPoModal(false)}>✕</button>
+            </div>
+            
+            <form onSubmit={handleUpdatePo} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order Reference (Read Only)</label>
+                    <input type="text" className="form-control" value={editPoDoc.orderId} disabled />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Supplier (Read Only)</label>
+                    <input type="text" className="form-control" value={editPoDoc.supplier} disabled />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Instructions</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Expedited shipping, custom order remarks..." 
+                    className="form-control" 
+                    value={editPoNotes} 
+                    onChange={e => setEditPoNotes(e.target.value)} 
+                  />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Update Item ETAs:</div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <table className="table" style={{ fontSize: '11px', margin: 0 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-primary)' }}>
+                          <th>Item Code</th>
+                          <th style={{ width: '80px', textAlign: 'center' }}>PO Qty</th>
+                          <th style={{ width: '250px' }}>Item ETA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(editPoDoc.items || []).map(item => (
+                          <tr key={item.code}>
+                            <td>
+                              <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
+                              <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '250px' }}>{item.description}</div>
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.qtyAction || 0}</td>
+                            <td style={{ padding: '2px' }}>
+                              <input 
+                                type="text" 
+                                placeholder="e.g. 3 weeks" 
+                                className="form-control" 
+                                style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
+                                value={editPoItemEtas[item.code] || ''}
+                                onChange={e => {
+                                  setEditPoItemEtas(prev => ({
+                                    ...prev,
+                                    [item.code]: e.target.value
+                                  }));
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                <button type="button" className="btn btn-sm" onClick={() => setShowEditPoModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-sm btn-primary">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
