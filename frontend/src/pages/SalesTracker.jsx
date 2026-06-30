@@ -2229,6 +2229,7 @@ export default function SalesTracker() {
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Ord</th>
                                     <th style={{ width: '100px', borderRight: '1px solid var(--border-strong)' }}>Delivery ETA</th>
                                     <th style={{ width: '70px', textAlign: 'center' }}>Qty Rec</th>
+                                    <th style={{ width: '110px' }}>GRN Reference</th>
                                     <th style={{ width: '100px' }}>Date Rec</th>
                                     <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)' }}>Rec Value</th>
                                   </>
@@ -2393,9 +2394,11 @@ export default function SalesTracker() {
                                         <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>
                                           {receivedQtyVal || 0}
                                         </td>
-                                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
+                                        <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
                                           {renderDocLinks(item.receivedRef, '/purchasing', selectedProjectKey)}
-                                          {item.receivedDate && <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{item.receivedDate}</div>}
+                                        </td>
+                                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
+                                          {receivedDateVal || '—'}
                                         </td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)', color: 'var(--text-success)', paddingRight: '10px' }}>
                                           R {Math.round(calculatedValueReceived).toLocaleString()}

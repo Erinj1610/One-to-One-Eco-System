@@ -21,6 +21,8 @@ export default function InvoicesPage() {
   const [invoiceOrderKey, setInvoiceOrderKey] = useState(''); // "projectKey_orderId"
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [invoiceItemInputs, setInvoiceItemInputs] = useState({}); // { itemId: { qty } }
+  const [customInvoiceId, setCustomInvoiceId] = useState('');
+  const [customInvoiceDate, setCustomInvoiceDate] = useState('');
 
   // 1. Gather all design invoices (those without type: 'order_invoice')
   const designInvoices = invoices.filter(i => i.type !== 'order_invoice');
@@ -123,10 +125,14 @@ export default function InvoicesPage() {
     const order = (project?.orders || []).find(o => o.id === oId);
     if (!order) return;
 
-    const formattedDate = new Date().toISOString().split('T')[0];
-    const newInvId = getNextInvoiceId();
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const dueStr = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    const formattedDate = customInvoiceDate || new Date().toISOString().split('T')[0];
+    const newInvId = customInvoiceId.trim() || getNextInvoiceId();
+    const dateObj = new Date(formattedDate);
+    const dateStr = isNaN(dateObj.getTime()) 
+      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
+      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
+    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
 
     const invoiceItems = [];
     let invoiceTotalValue = 0;
@@ -341,7 +347,14 @@ export default function InvoicesPage() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {activeTab === 'order' && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setInvoiceOrderKey(''); setInvoiceNotes(''); setInvoiceItemInputs({}); setShowIssueInvoiceModal(true); }}>
+            <button className="btn btn-sm btn-primary" onClick={() => { 
+              setInvoiceOrderKey(''); 
+              setInvoiceNotes(''); 
+              setInvoiceItemInputs({}); 
+              setCustomInvoiceId(getNextInvoiceId());
+              setCustomInvoiceDate(new Date().toISOString().split('T')[0]);
+              setShowIssueInvoiceModal(true); 
+            }}>
               + New Client Invoice
             </button>
           )}
@@ -550,6 +563,30 @@ export default function InvoicesPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. INV-2026-001" 
+                      className="form-control" 
+                      value={customInvoiceId} 
+                      onChange={e => setCustomInvoiceId(e.target.value)} 
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      value={customInvoiceDate} 
+                      onChange={e => setCustomInvoiceDate(e.target.value)} 
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
