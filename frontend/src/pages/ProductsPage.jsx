@@ -521,15 +521,52 @@ export default function ProductsPage() {
       if (res.ok) {
         const data = await res.json();
         // Map db properties to mockup properties
-        const mapped = data.map(p => ({
-          ...p,
-          unitCost: p.cost_price || 0.0,
-          retailPrice: p.retail_price || 0.0,
-          tradePrice: p.trade_price || 0.0,
-          stock: p.stock_level || 0,
-          reorderLevel: p.reorder_level || 100,
-          status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock'
-        }));
+        const mapped = data.map(p => {
+          const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - p.cost_price) / p.retail_price) * 100) : 37;
+          return {
+            ...p,
+            unitCost: p.cost_price || 0.0,
+            retailPrice: p.retail_price || 0.0,
+            tradePrice: p.trade_price || 0.0,
+            stock: p.stock_level || 0,
+            reorderLevel: p.reorder_level || 100,
+            status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock',
+            costing: p.costing || {
+              supplierSku: p.sku,
+              supplierUnitCost: p.cost_price || 0.0,
+              supplierDiscount: 0,
+              landedCost: Math.round((p.cost_price || 0.0) * 1.15),
+              lastUpdated: 'Jan 25, 2026',
+              tiers: [
+                { name: 'Retail / RRP', retailPrice: p.retail_price || 0.0, discount: 0, netRetail: p.retail_price || 0.0, margin: calculatedMargin },
+                { name: 'Trade / Partner', retailPrice: p.retail_price || 0.0, discount: 10, netRetail: p.trade_price || 0.0, margin: calculatedMargin - 5 }
+              ],
+              avgMargin: calculatedMargin,
+              profitPerUnit: (p.retail_price || 0.0) - (p.cost_price || 0.0),
+              contactInfo: {
+                company: p.brand || 'Supplier',
+                website: 'www.supplierportal.co.za',
+                email: 'orders@supplierportal.co.za',
+                phone: '+27 (0) 11 000 0000'
+              },
+              terms: 'Payment terms subject to credit application approval.'
+            },
+            supplierDetails: p.supplierDetails || {
+              name: p.brand || 'Supplier',
+              contactPerson: 'Account Team',
+              role: 'Supplier Support Representative',
+              email: 'info@supplier.co.za',
+              phone: '+27 11 000 0000',
+              address: 'Supplier Corporate Business Park, JHB',
+              leadTime: p.lead_time || '6-8 Weeks',
+              paymentTerms: 'COD',
+              shippingMethod: 'Road Freight'
+            },
+            stockHistory: p.stockHistory || [
+              { date: '05 Jun 2026', type: 'Stock In', reference: 'Initial Stock Count', qty: `+${p.stock_level || 0}`, balance: p.stock_level || 0, staff: 'Dani' }
+            ]
+          };
+        });
         setProducts(mapped);
       } else {
         console.error("Failed to fetch products from DB");
