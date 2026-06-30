@@ -42,6 +42,21 @@ class ProductBase(BaseModel):
     lighting_type: Optional[str] = None
     cutout: Optional[str] = None
     driver_spec: Optional[str] = None
+    
+    # Custom fields from client old DB
+    one_to_one_code: Optional[str] = None
+    foh_code_description: Optional[str] = None
+    client_description: Optional[str] = None
+    fitting_type: Optional[str] = None
+    consignment: Optional[str] = None
+    selection: Optional[str] = None
+    first_fix: Optional[str] = None
+    red_list: Optional[str] = None
+    markup: Optional[str] = None
+    recommended_retail_price: Optional[float] = 0.0
+    qr: Optional[str] = None
+    qr_link: Optional[str] = None
+    client_code: Optional[str] = None
 
 class ProductCreate(ProductBase):
     pass
@@ -98,6 +113,19 @@ def serialize_product(product: Product):
         "lighting_type": product.lighting_type,
         "cutout": product.cutout,
         "driver_spec": product.driver_spec,
+        "one_to_one_code": product.one_to_one_code,
+        "foh_code_description": product.foh_code_description,
+        "client_description": product.client_description,
+        "fitting_type": product.fitting_type,
+        "consignment": product.consignment,
+        "selection": product.selection,
+        "first_fix": product.first_fix,
+        "red_list": product.red_list,
+        "markup": product.markup,
+        "recommended_retail_price": product.recommended_retail_price,
+        "qr": product.qr,
+        "qr_link": product.qr_link,
+        "client_code": product.client_code,
         "files": files_list,
         "supplier": supplier_info
     }
@@ -282,7 +310,10 @@ def download_csv_template():
         "stock_level", "family", "category", "reorder_level", "lead_time",
         "origin", "color", "dimmable", "dimming_protocol", "driver_incl",
         "light_source_incl", "light_source_type", "kelvin", "beam_angle",
-        "cri", "ip_rating", "system_power", "lighting_type", "cutout", "driver_spec"
+        "cri", "ip_rating", "system_power", "lighting_type", "cutout", "driver_spec",
+        "one_to_one_code", "foh_code_description", "client_description", "fitting_type",
+        "consignment", "selection", "first_fix", "red_list", "markup",
+        "recommended_retail_price", "qr", "qr_link", "client_code"
     ]
     writer.writerow(headers)
     
@@ -291,7 +322,10 @@ def download_csv_template():
         "28402 9240 FW", "Downlight - Entero RD-S 14W 2700K 30° IP20 White", "Delta Light",
         "2416.37", "3451.95", "3835.50", "100", "Entero RD-S", "Downlight", "100", "6-8 Weeks",
         "Import", "White", "Yes", "Driver Dependent", "No", "Yes", "LED", "2700K", "30°",
-        "90", "IP20", "14.0", "Architectural", "Ø76mm", "- External or Remote Driver"
+        "90", "IP20", "14.0", "Architectural", "Ø76mm", "- External or Remote Driver",
+        "1:1-ENT-RDS", "Front of House Entero S Description", "Entero RD-S Downlight White", "Recessed Downlight",
+        "No", "Primary Selection", "First Fix", "No", "37%",
+        "3835.50", "QR-CODE", "https://example.com/qr", "CLIENT-1002"
     ]
     writer.writerow(sample_row)
     
@@ -329,6 +363,7 @@ async def import_csv_file(
             stock = int(row.get("stock_level", 0) or 0)
             reorder = int(row.get("reorder_level", 100) or 100)
             power = float(row.get("system_power", 0) or 0)
+            rrp = float(row.get("recommended_retail_price", 0) or 0)
         except ValueError:
             cost = 0.0
             trade = 0.0
@@ -336,6 +371,7 @@ async def import_csv_file(
             stock = 0
             reorder = 100
             power = 0.0
+            rrp = 0.0
             
         prod_data = {
             "name": row.get("name"),
@@ -363,7 +399,20 @@ async def import_csv_file(
             "system_power": power,
             "lighting_type": row.get("lighting_type"),
             "cutout": row.get("cutout"),
-            "driver_spec": row.get("driver_spec")
+            "driver_spec": row.get("driver_spec"),
+            "one_to_one_code": row.get("one_to_one_code"),
+            "foh_code_description": row.get("foh_code_description"),
+            "client_description": row.get("client_description"),
+            "fitting_type": row.get("fitting_type"),
+            "consignment": row.get("consignment"),
+            "selection": row.get("selection"),
+            "first_fix": row.get("first_fix"),
+            "red_list": row.get("red_list"),
+            "markup": row.get("markup"),
+            "recommended_retail_price": rrp,
+            "qr": row.get("qr"),
+            "qr_link": row.get("qr_link"),
+            "client_code": row.get("client_code")
         }
         
         existing = db.query(Product).filter(Product.sku == sku).first()

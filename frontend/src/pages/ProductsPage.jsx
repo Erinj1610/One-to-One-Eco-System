@@ -714,7 +714,20 @@ export default function ProductsPage() {
       system_power: activeProduct.systemPower || activeProduct.system_power,
       lighting_type: activeProduct.lightingType || activeProduct.lighting_type,
       cutout: activeProduct.cutout,
-      driver_spec: activeProduct.driverSpec || activeProduct.driver_spec
+      driver_spec: activeProduct.driverSpec || activeProduct.driver_spec,
+      one_to_one_code: activeProduct.one_to_one_code,
+      foh_code_description: activeProduct.foh_code_description,
+      client_description: activeProduct.client_description,
+      fitting_type: activeProduct.fitting_type,
+      consignment: activeProduct.consignment,
+      selection: activeProduct.selection,
+      first_fix: activeProduct.first_fix,
+      red_list: activeProduct.red_list,
+      markup: activeProduct.markup,
+      recommended_retail_price: activeProduct.recommended_retail_price,
+      qr: activeProduct.qr,
+      qr_link: activeProduct.qr_link,
+      client_code: activeProduct.client_code
     };
 
     try {

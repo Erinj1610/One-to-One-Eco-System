@@ -85,7 +85,20 @@ def init_db():
                     ("system_power", "FLOAT DEFAULT 0.0"),
                     ("lighting_type", "VARCHAR"),
                     ("cutout", "VARCHAR"),
-                    ("driver_spec", "VARCHAR")
+                    ("driver_spec", "VARCHAR"),
+                    ("one_to_one_code", "VARCHAR"),
+                    ("foh_code_description", "VARCHAR"),
+                    ("client_description", "VARCHAR"),
+                    ("fitting_type", "VARCHAR"),
+                    ("consignment", "VARCHAR"),
+                    ("selection", "VARCHAR"),
+                    ("first_fix", "VARCHAR"),
+                    ("red_list", "VARCHAR"),
+                    ("markup", "VARCHAR"),
+                    ("recommended_retail_price", "FLOAT DEFAULT 0.0"),
+                    ("qr", "VARCHAR"),
+                    ("qr_link", "VARCHAR"),
+                    ("client_code", "VARCHAR")
                 ]
                 for col_name, col_type in new_cols:
                     if col_name not in existing_cols:

@@ -307,6 +307,21 @@ class Product(Base):
     cutout = Column(String, nullable=True)
     driver_spec = Column(String, nullable=True)
     
+    # Custom fields from client's old database
+    one_to_one_code = Column(String, nullable=True)
+    foh_code_description = Column(String, nullable=True)
+    client_description = Column(String, nullable=True)
+    fitting_type = Column(String, nullable=True)
+    consignment = Column(String, nullable=True)
+    selection = Column(String, nullable=True)
+    first_fix = Column(String, nullable=True)
+    red_list = Column(String, nullable=True)
+    markup = Column(String, nullable=True)
+    recommended_retail_price = Column(Float, nullable=True)
+    qr = Column(String, nullable=True)
+    qr_link = Column(String, nullable=True)
+    client_code = Column(String, nullable=True)
+    
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")
