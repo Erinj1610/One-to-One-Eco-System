@@ -517,7 +517,7 @@ export default function ProductsPage() {
   // Fetch products from database
   const fetchProducts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/products`);
+      const res = await fetch(`${API_BASE}/api/products/`);
       if (res.ok) {
         const data = await res.json();
         // Map db properties to mockup properties

@@ -8,7 +8,9 @@ from database.cloud_sql import get_db
 from models.orm_models import Product, ProductFile, Supplier
 from pydantic import BaseModel
 
-router = APIRouter()
+from services.firebase_auth import verify_firebase_token
+router = APIRouter(dependencies=[Depends(verify_firebase_token)])
+public_router = APIRouter()
 
 # Schema for creating/updating products
 class ProductBase(BaseModel):
@@ -269,7 +271,7 @@ from fastapi.responses import StreamingResponse
 import io
 import csv
 
-@router.get("/template/csv")
+@public_router.get("/template/csv")
 def download_csv_template():
     output = io.StringIO()
     writer = csv.writer(output)
