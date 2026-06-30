@@ -531,10 +531,7 @@ export default function PurchasingPage() {
   const selectedPoOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === poOrderKey);
   const selectedPoOrderedQtys = selectedPoOrder ? getOrderOrderedQtys(selectedPoOrder) : {};
 
-  // Dynamic calculations for selected order in GRN form
-  const selectedGrnOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === grnOrderKey);
-  const selectedGrnOrderedQtys = selectedGrnOrder ? getOrderOrderedQtys(selectedGrnOrder) : {};
-  const selectedGrnReceivedQtys = selectedGrnOrder ? getOrderReceivedQtys(selectedGrnOrder) : {};
+
 
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
