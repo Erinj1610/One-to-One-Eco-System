@@ -1252,7 +1252,19 @@ export function StoreProvider({ children }) {
         })
         .then(data => {
           if (data && data.value !== null && data.value !== undefined) {
-            setter(data.value);
+            if (key === 'moduleConfig') {
+              const loadedVal = data.value;
+              const loadedModules = loadedVal.modules || [];
+              const mergedModules = [...loadedModules];
+              defaultModules.forEach(defM => {
+                if (!loadedModules.some(m => m.id === defM.id)) {
+                  mergedModules.push(defM);
+                }
+              });
+              setter({ ...loadedVal, modules: mergedModules });
+            } else {
+              setter(data.value);
+            }
           } else if (key === 'projectManagers') {
             setter(defaultPMs);
           }
