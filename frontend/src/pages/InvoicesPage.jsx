@@ -60,18 +60,13 @@ export default function InvoicesPage() {
   };
 
   // Helper: Calculate previously invoiced quantities for an order
-  const getOrderInvoicedQtys = (order) => {
+  const getOrderInvoicedQtys = (order, excludeInvoiceId = null) => {
     const map = {};
     (order.itemsList || []).forEach(item => {
-      map[item.id] = 0;
-    });
-    // Scan all client invoices stored on the order
-    (order.clientInvoices || []).forEach(inv => {
-      (inv.items || []).forEach(item => {
-        if (map[item.id] !== undefined) {
-          map[item.id] += Number(item.qtyAction) || 0;
-        }
-      });
+      const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+      map[item.id] = history
+        .filter(h => !excludeInvoiceId || h.ref !== excludeInvoiceId)
+        .reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     });
     return map;
   };
@@ -285,18 +280,16 @@ export default function InvoicesPage() {
           if (o.id === inv.orderId) {
             // Reverse quantities
             const updatedItemsList = (o.itemsList || []).map(item => {
-              const invItem = (inv.items || []).find(ii => ii.id === item.id);
-              if (invItem) {
-                const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-                const cleanedHistory = history.filter(h => h.ref !== inv.id);
-                return {
-                  ...item,
-                  invoiceQty: Math.max(0, (Number(item.invoiceQty) || 0) - invItem.qtyAction),
-                  invoiceValue: Math.max(0, (Number(item.invoiceValue) || 0) - invItem.value),
-                  invoiceHistory: cleanedHistory
-                };
-              }
-              return item;
+              const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+              const cleanedHistory = history.filter(h => h.ref !== inv.id);
+              const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+              const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+              return {
+                ...item,
+                invoiceQty: newInvQty,
+                invoiceValue: newInvVal,
+                invoiceHistory: cleanedHistory
+              };
             });
 
             return {
