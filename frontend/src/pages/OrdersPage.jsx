@@ -3622,7 +3622,6 @@ export default function OrdersPage() {
                           <th style={{ padding: '10px 12px' }}>Document Type</th>
                           <th style={{ padding: '10px 12px' }}>Date Issued</th>
                           <th style={{ padding: '10px 12px' }}>Amount</th>
-                          <th style={{ padding: '10px 12px' }}>Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3644,11 +3643,7 @@ export default function OrdersPage() {
                               <td style={{ padding: '10px 12px' }}>💵 Client Product Invoice</td>
                               <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{inv.date || '—'}</td>
                               <td style={{ padding: '10px 12px', fontWeight: 600 }}>R {Math.round(inv.totalValue || 0).toLocaleString()}</td>
-                              <td style={{ padding: '10px 12px' }}>
-                                <span className={`badge ${inv.paid ? 'b-success' : 'b-warning'}`}>
-                                  {inv.paid ? 'Paid' : 'Unpaid'}
-                                </span>
-                              </td>
+
                             </tr>
                           ))
                         )}

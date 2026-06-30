@@ -384,8 +384,6 @@ export default function InvoicesPage() {
                   <th>Project / Client</th>
                   <th>Amount</th>
                   <th>Issued</th>
-                  <th>Due</th>
-                  <th>Status</th>
                   <th style={{ width: '70px' }}></th>
                 </tr>
               </thead>
@@ -416,8 +414,7 @@ export default function InvoicesPage() {
                         </td>
                         <td style={{ fontWeight: 600 }}>{inv.amount}</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>
-                        <td style={{ color: inv.status === 'Overdue' ? 'var(--text-danger)' : 'var(--text-secondary)' }}>{inv.due}</td>
-                        <td><span className={`badge ${statusColor[inv.status]}`}>{inv.status}</span></td>
+
                         <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
                           <button 
                             className="btn btn-ghost text-danger" 
@@ -457,15 +454,7 @@ export default function InvoicesPage() {
                 </div>
               </div>
 
-              {/* Status Action */}
-              {!selectedInvoice.paid && selectedInvoice.status !== 'Draft' && (
-                <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245,158,11,0.2)', padding: '10px', borderRadius: '6px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-warning)', fontWeight: 500 }}>Payment Outstanding</div>
-                  <button className="btn btn-sm" onClick={() => handleMarkPaid(selectedInvoice.id)} style={{ background: 'var(--text-success)', color: '#fff', fontSize: '11px', padding: '4px 8px' }}>
-                    Mark as Paid
-                  </button>
-                </div>
-              )}
+
 
               {/* Metadata */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '11px', background: 'var(--bg-primary)', padding: '10px', borderRadius: '6px', marginBottom: '12px', flexShrink: 0 }}>
