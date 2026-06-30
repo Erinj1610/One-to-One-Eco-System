@@ -37,14 +37,14 @@ export default function PurchasingPage() {
 
   // Form states for creating a Purchase Order
   const [poOrderKey, setPoOrderKey] = useState(''); // "projectKey_orderId"
-  const [poSupplier, setPoSupplier] = useState('');
+  const [poSupplier, setPoSupplier] = useState(''); // Selected supplier from items
   const [poNotes, setPoNotes] = useState('');
-  const [poItemInputs, setPoItemInputs] = useState({}); // { itemId: { qty, eta } }
+  const [poItemInputs, setPoItemInputs] = useState({}); // { code: { qty, eta } }
 
   // Form states for creating a GRN
-  const [grnOrderKey, setGrnOrderKey] = useState(''); // "projectKey_orderId"
+  const [grnPoId, setGrnPoId] = useState(''); // Selected PO ID
   const [grnNotes, setGrnNotes] = useState('');
-  const [grnItemInputs, setGrnItemInputs] = useState({}); // { itemId: { qty } }
+  const [grnItemInputs, setGrnItemInputs] = useState({}); // { code: { qty } }
 
   // Gather all orders
   const allOrders = Object.values(projects).flatMap(p => 
@@ -140,6 +140,62 @@ export default function PurchasingPage() {
     return map;
   };
 
+  const getUniqueSuppliersForOrder = (order) => {
+    if (!order) return [];
+    const suppliers = (order.itemsList || [])
+      .filter(item => item.stockStatus !== 'All Stock on Hand')
+      .map(item => item.supplier || 'Warehouse Inventory');
+    return Array.from(new Set(suppliers));
+  };
+
+  const getConsolidatedPoItems = (order, filterSupplier) => {
+    if (!order) return [];
+    const orderedQtys = getOrderOrderedQtys(order);
+    const grouped = {};
+    (order.itemsList || [])
+      .filter(item => item.stockStatus !== 'All Stock on Hand')
+      .forEach(item => {
+        const itemSupplier = item.supplier || 'Warehouse Inventory';
+        if (filterSupplier && itemSupplier !== filterSupplier) return;
+        
+        const code = item.code || 'NO-CODE';
+        const alreadyPo = orderedQtys[item.id] || 0;
+        const maxAvailable = Math.max(0, (item.qty || 0) - alreadyPo);
+
+        if (!grouped[code]) {
+          grouped[code] = {
+            code,
+            description: item.description,
+            supplier: itemSupplier,
+            qty: 0,
+            alreadyPo: 0,
+            maxAvailable: 0,
+            originalItems: []
+          };
+        }
+        grouped[code].qty += Number(item.qty) || 0;
+        grouped[code].alreadyPo += alreadyPo;
+        grouped[code].maxAvailable += maxAvailable;
+        grouped[code].originalItems.push(item);
+      });
+    return Object.values(grouped);
+  };
+
+  const getGrnReceivedForPoItem = (order, poId, itemCode) => {
+    if (!order) return 0;
+    let totalReceived = 0;
+    (order.goodsReceivedNotes || []).forEach(grn => {
+      if (grn.poId === poId) {
+        (grn.items || []).forEach(gi => {
+          if (gi.code === itemCode) {
+            totalReceived += Number(gi.qtyAction) || 0;
+          }
+        });
+      }
+    });
+    return totalReceived;
+  };
+
   // Initialize PO Form
   const handleOpenPoModal = () => {
     setPoOrderKey('');
@@ -151,7 +207,7 @@ export default function PurchasingPage() {
 
   // Initialize GRN Form
   const handleOpenGrnModal = () => {
-    setGrnOrderKey('');
+    setGrnPoId('');
     setGrnNotes('');
     setGrnItemInputs({});
     setShowGrnModal(true);
@@ -166,6 +222,11 @@ export default function PurchasingPage() {
     const order = (project?.orders || []).find(o => o.id === oId);
     if (!order) return;
 
+    if (!poSupplier) {
+      alert('Please select a supplier for this Purchase Order.');
+      return;
+    }
+
     const formattedDate = new Date().toISOString().split('T')[0];
     const docIndex = getTotalDocCount('purchase_order') + 1;
     const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -174,22 +235,75 @@ export default function PurchasingPage() {
     const poItems = [];
     let hasQuantities = false;
 
-    (order.itemsList || []).forEach(item => {
-      if (item.stockStatus === 'All Stock on Hand') return;
-      
-      const input = poItemInputs[item.id] || {};
+    const consolidated = getConsolidatedPoItems(order, poSupplier);
+    const updatedItemsList = [...(order.itemsList || [])];
+    const orderedQtys = getOrderOrderedQtys(order);
+
+    consolidated.forEach(cItem => {
+      const input = poItemInputs[cItem.code] || {};
       const qtyAction = Math.max(0, parseInt(input.qty) || 0);
       const eta = input.eta || 'TBD';
 
       if (qtyAction > 0) {
         hasQuantities = true;
+        
         poItems.push({
-          id: item.id,
-          code: item.code,
-          description: item.description,
+          code: cItem.code,
+          description: cItem.description,
           qtyAction,
           eta
         });
+
+        // Distribute to individual items
+        let remainingToAllocate = qtyAction;
+        cItem.originalItems.forEach(origItem => {
+          if (remainingToAllocate <= 0) return;
+          const alreadyOrdered = orderedQtys[origItem.id] || 0;
+          const maxCapacity = origItem.qty || 0;
+          const avail = Math.max(0, maxCapacity - alreadyOrdered);
+          const toAlloc = Math.min(avail, remainingToAllocate);
+
+          if (toAlloc > 0) {
+            remainingToAllocate -= toAlloc;
+            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+            if (targetIdx !== -1) {
+              const history = Array.isArray(updatedItemsList[targetIdx].purchaseHistory) ? updatedItemsList[targetIdx].purchaseHistory : [];
+              updatedItemsList[targetIdx] = {
+                ...updatedItemsList[targetIdx],
+                poQtyOrdered: (Number(updatedItemsList[targetIdx].poQtyOrdered) || 0) + toAlloc,
+                purchaseHistory: [...history, {
+                  id: newPoId,
+                  ref: newPoId,
+                  date: formattedDate,
+                  qty: toAlloc,
+                  eta: eta,
+                  supplier: poSupplier
+                }]
+              };
+            }
+          }
+        });
+
+        // Overflow
+        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
+          const origItem = cItem.originalItems[0];
+          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+          if (targetIdx !== -1) {
+            const history = Array.isArray(updatedItemsList[targetIdx].purchaseHistory) ? updatedItemsList[targetIdx].purchaseHistory : [];
+            updatedItemsList[targetIdx] = {
+              ...updatedItemsList[targetIdx],
+              poQtyOrdered: (Number(updatedItemsList[targetIdx].poQtyOrdered) || 0) + remainingToAllocate,
+              purchaseHistory: [...history, {
+                id: newPoId,
+                ref: newPoId,
+                date: formattedDate,
+                qty: remainingToAllocate,
+                eta: eta,
+                supplier: poSupplier
+              }]
+            };
+          }
+        }
       }
     });
 
@@ -201,34 +315,13 @@ export default function PurchasingPage() {
     const newPo = {
       id: newPoId,
       date: dateStr,
-      supplier: poSupplier || order.supplier,
+      supplier: poSupplier,
       notes: poNotes,
       items: poItems
     };
 
     const updatedOrders = project.orders.map(o => {
       if (o.id === oId) {
-        // Sync item fields & history
-        const updatedItemsList = (o.itemsList || []).map(item => {
-          const poItem = poItems.find(pi => pi.id === item.id);
-          if (poItem) {
-            const history = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
-            const syncTransaction = {
-              qty: poItem.qtyAction,
-              ref: newPoId,
-              date: formattedDate,
-              supplier: poSupplier || order.supplier,
-              eta: poItem.eta
-            };
-            return {
-              ...item,
-              poQtyOrdered: (Number(item.poQtyOrdered) || 0) + poItem.qtyAction,
-              purchaseHistory: [...history, syncTransaction]
-            };
-          }
-          return item;
-        });
-
         return {
           ...o,
           purchaseOrders: [...(o.purchaseOrders || []), newPo],
@@ -247,8 +340,11 @@ export default function PurchasingPage() {
   // Save GRN
   const handleSaveGrn = (e) => {
     e.preventDefault();
-    if (!grnOrderKey) return;
-    const [pKey, oId] = grnOrderKey.split('_');
+    if (!grnPoId) return;
+    const poDoc = allDocs.find(d => d.type === 'purchase_order' && d.id === grnPoId);
+    if (!poDoc) return;
+    const pKey = poDoc.projectKey;
+    const oId = poDoc.orderId;
     const project = projects[pKey];
     const order = (project?.orders || []).find(o => o.id === oId);
     if (!order) return;
@@ -261,20 +357,75 @@ export default function PurchasingPage() {
     const grnItems = [];
     let hasQuantities = false;
 
-    (order.itemsList || []).forEach(item => {
-      if (item.stockStatus === 'All Stock on Hand') return;
+    const updatedItemsList = [...(order.itemsList || [])];
 
-      const input = grnItemInputs[item.id] || {};
+    (poDoc.items || []).forEach(poItem => {
+      const input = grnItemInputs[poItem.code] || {};
       const qtyAction = Math.max(0, parseInt(input.qty) || 0);
 
       if (qtyAction > 0) {
         hasQuantities = true;
         grnItems.push({
-          id: item.id,
-          code: item.code,
-          description: item.description,
+          code: poItem.code,
+          description: poItem.description,
           qtyAction
         });
+
+        // Distribute to individual items that belong to this PO
+        let remainingToAllocate = qtyAction;
+        const matchingItems = updatedItemsList.filter(item => item.code === poItem.code);
+
+        matchingItems.forEach(item => {
+          if (remainingToAllocate <= 0) return;
+
+          const pHist = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+          const orderedForPo = pHist.filter(h => h.id === poDoc.id || h.ref === poDoc.id).reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+
+          const rHist = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
+          const receivedForPo = rHist.filter(h => h.poId === poDoc.id).reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+
+          const avail = Math.max(0, orderedForPo - receivedForPo);
+          const toAlloc = Math.min(avail, remainingToAllocate);
+
+          if (toAlloc > 0) {
+            remainingToAllocate -= toAlloc;
+            const targetIdx = updatedItemsList.findIndex(x => x.id === item.id);
+            if (targetIdx !== -1) {
+              const history = Array.isArray(updatedItemsList[targetIdx].receivingHistory) ? updatedItemsList[targetIdx].receivingHistory : [];
+              updatedItemsList[targetIdx] = {
+                ...updatedItemsList[targetIdx],
+                receivedQty: (Number(updatedItemsList[targetIdx].receivedQty) || 0) + toAlloc,
+                receivedDate: formattedDate,
+                receivingHistory: [...history, {
+                  qty: toAlloc,
+                  ref: newGrnId,
+                  poId: poDoc.id,
+                  date: formattedDate
+                }]
+              };
+            }
+          }
+        });
+
+        // Overflow
+        if (remainingToAllocate > 0 && matchingItems.length > 0) {
+          const item = matchingItems[0];
+          const targetIdx = updatedItemsList.findIndex(x => x.id === item.id);
+          if (targetIdx !== -1) {
+            const history = Array.isArray(updatedItemsList[targetIdx].receivingHistory) ? updatedItemsList[targetIdx].receivingHistory : [];
+            updatedItemsList[targetIdx] = {
+              ...updatedItemsList[targetIdx],
+              receivedQty: (Number(updatedItemsList[targetIdx].receivedQty) || 0) + remainingToAllocate,
+              receivedDate: formattedDate,
+              receivingHistory: [...history, {
+                qty: remainingToAllocate,
+                ref: newGrnId,
+                poId: poDoc.id,
+                date: formattedDate
+              }]
+            };
+          }
+        }
       }
     });
 
@@ -285,6 +436,7 @@ export default function PurchasingPage() {
 
     const newGrn = {
       id: newGrnId,
+      poId: poDoc.id,
       date: dateStr,
       notes: grnNotes,
       items: grnItems
@@ -292,25 +444,6 @@ export default function PurchasingPage() {
 
     const updatedOrders = project.orders.map(o => {
       if (o.id === oId) {
-        // Sync item fields & history
-        const updatedItemsList = (o.itemsList || []).map(item => {
-          const grnItem = grnItems.find(gi => gi.id === item.id);
-          if (grnItem) {
-            const history = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
-            const syncTransaction = {
-              qty: grnItem.qtyAction,
-              ref: newGrnId,
-              date: formattedDate
-            };
-            return {
-              ...item,
-              receivedQty: (Number(item.receivedQty) || 0) + grnItem.qtyAction,
-              receivingHistory: [...history, syncTransaction]
-            };
-          }
-          return item;
-        });
-
         return {
           ...o,
           goodsReceivedNotes: [...(o.goodsReceivedNotes || []), newGrn],
@@ -617,6 +750,7 @@ export default function PurchasingPage() {
                       value={poOrderKey} 
                       onChange={e => {
                         setPoOrderKey(e.target.value);
+                        setPoSupplier('');
                         setPoItemInputs({});
                       }}
                       required
@@ -624,20 +758,28 @@ export default function PurchasingPage() {
                       <option value="">— Choose order —</option>
                       {allOrders.map(o => (
                         <option key={`${o.projectKey}_${o.id}`} value={`${o.projectKey}_${o.id}`}>
-                          [{o.projectKey.toUpperCase()}] {o.id} — {o.supplier || 'No Supplier'}
+                          [{o.projectKey.toUpperCase()}] {o.id}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Override Supplier (Optional)</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Warehouse Inventory..." 
-                      className="form-control" 
-                      value={poSupplier} 
-                      onChange={e => setPoSupplier(e.target.value)} 
-                    />
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Supplier *</label>
+                    <select
+                      className="form-control"
+                      value={poSupplier}
+                      onChange={e => {
+                        setPoSupplier(e.target.value);
+                        setPoItemInputs({});
+                      }}
+                      required
+                      disabled={!selectedPoOrder}
+                    >
+                      <option value="">— Select supplier —</option>
+                      {getUniqueSuppliersForOrder(selectedPoOrder).map(sup => (
+                        <option key={sup} value={sup}>{sup}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -667,71 +809,70 @@ export default function PurchasingPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(selectedPoOrder.itemsList || [])
-                            .filter(item => item.stockStatus !== 'All Stock on Hand')
-                            .map(item => {
-                              const alreadyPo = selectedPoOrderedQtys[item.id] || 0;
-                              const maxAvailable = Math.max(0, (item.qty || 0) - alreadyPo);
-                              const inputs = poItemInputs[item.id] || { qty: 0, eta: '' };
+                          {getConsolidatedPoItems(selectedPoOrder, poSupplier).map(cItem => {
+                            const inputs = poItemInputs[cItem.code] || { qty: 0, eta: '' };
 
-                              return (
-                                <tr key={item.id}>
-                                  <td>
-                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
-                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{item.description}</div>
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.qty || 0}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{alreadyPo}</td>
-                                  <td style={{ padding: '2px' }}>
-                                    <input 
-                                      type="number" 
-                                      className="form-control" 
-                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                      min={0}
-                                      max={maxAvailable}
-                                      value={inputs.qty || ''}
-                                      placeholder={`Max ${maxAvailable}`}
-                                      onChange={e => {
-                                        const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                        setPoItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: { ...prev[item.id], qty: val }
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '2px' }}>
-                                    <input 
-                                      type="text" 
-                                      placeholder="e.g. 3 weeks" 
-                                      className="form-control" 
-                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
-                                      value={inputs.eta || ''}
-                                      onChange={e => {
-                                        setPoItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: { ...prev[item.id], eta: e.target.value }
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                            return (
+                              <tr key={cItem.code}>
+                                <td>
+                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
+                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
+                                  <div style={{ fontSize: '9px', color: 'var(--text-info)' }}>Supplier: {cItem.supplier}</div>
+                                </td>
+                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyPo}</td>
+                                <td style={{ padding: '2px' }}>
+                                  <input 
+                                    type="number" 
+                                    className="form-control" 
+                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
+                                    min={0}
+                                    max={cItem.maxAvailable}
+                                    value={inputs.qty || ''}
+                                    placeholder={`Max ${cItem.maxAvailable}`}
+                                    disabled={!poSupplier || cItem.maxAvailable === 0}
+                                    onChange={e => {
+                                      const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
+                                      setPoItemInputs(prev => ({
+                                        ...prev,
+                                        [cItem.code]: { ...prev[cItem.code], qty: val }
+                                      }));
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: '2px' }}>
+                                  <input 
+                                    type="text" 
+                                    placeholder="e.g. 3 weeks" 
+                                    className="form-control" 
+                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
+                                    value={inputs.eta || ''}
+                                    disabled={!poSupplier}
+                                    onChange={e => {
+                                      setPoItemInputs(prev => ({
+                                        ...prev,
+                                        [cItem.code]: { ...prev[cItem.code], eta: e.target.value }
+                                      }));
+                                    }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 ) : (
                   <div style={{ padding: '24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '6px', color: 'var(--text-tertiary)', fontSize: '11.5px' }}>
-                    Select an order above to populate item specifications.
+                    Select an order above and pick a supplier to populate item specifications.
                   </div>
                 )}
 
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
                 <button type="button" className="btn btn-sm" onClick={() => setShowPoModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-sm btn-primary" disabled={!selectedPoOrder}>Issue Purchase Order</button>
+                <button type="submit" className="btn btn-sm btn-primary" disabled={!selectedPoOrder || !poSupplier}>Issue Purchase Order</button>
               </div>
             </form>
           </div>
@@ -739,77 +880,77 @@ export default function PurchasingPage() {
       )}
 
       {/* GRN ISSUE MODAL */}
-      {showGrnModal && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Issue Goods Received Note</h3>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowGrnModal(false)}>✕</button>
-            </div>
-            
-            <form onSubmit={handleSaveGrn} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Select Order Reference</label>
-                  <select 
-                    className="form-control" 
-                    value={grnOrderKey} 
-                    onChange={e => {
-                      setGrnOrderKey(e.target.value);
-                      setGrnItemInputs({});
-                    }}
-                    required
-                  >
-                    <option value="">— Choose order —</option>
-                    {allOrders.map(o => (
-                      <option key={`${o.projectKey}_${o.id}`} value={`${o.projectKey}_${o.id}`}>
-                        [{o.projectKey.toUpperCase()}] {o.id} — {o.supplier || 'No Supplier'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Remarks</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Received package in good condition, missing item 4..." 
-                    className="form-control" 
-                    value={grnNotes} 
-                    onChange={e => setGrnNotes(e.target.value)} 
-                  />
-                </div>
-
-                {selectedGrnOrder ? (
+      {showGrnModal && (() => {
+        const poDoc = allDocs.find(d => d.type === 'purchase_order' && d.id === grnPoId);
+        return (
+          <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Issue Goods Received Note</h3>
+                <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowGrnModal(false)}>✕</button>
+              </div>
+              
+              <form onSubmit={handleSaveGrn} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                  
                   <div>
-                    <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Goods Received Allocations:</div>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                      <table className="table" style={{ fontSize: '11px', margin: 0 }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-primary)' }}>
-                            <th>Item Code</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Ordered (PO)</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Already Rec</th>
-                            <th style={{ width: '100px', textAlign: 'center' }}>Qty Received</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedGrnOrder.itemsList || [])
-                            .filter(item => item.stockStatus !== 'All Stock on Hand')
-                            .map(item => {
-                              const poOrdered = selectedGrnOrderedQtys[item.id] || 0;
-                              const alreadyRec = selectedGrnReceivedQtys[item.id] || 0;
-                              const maxAvailable = Math.max(0, poOrdered - alreadyRec);
-                              const inputs = grnItemInputs[item.id] || { qty: 0 };
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Select Purchase Order Reference</label>
+                    <select 
+                      className="form-control" 
+                      value={grnPoId} 
+                      onChange={e => {
+                        setGrnPoId(e.target.value);
+                        setGrnItemInputs({});
+                      }}
+                      required
+                    >
+                      <option value="">— Choose Purchase Order —</option>
+                      {allDocs.filter(d => d.type === 'purchase_order').map(po => (
+                        <option key={po.id} value={po.id}>
+                          {po.id} ({po.supplier}) — Order {po.orderId} [{po.projectName}]
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Remarks</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Received package in good condition..." 
+                      className="form-control" 
+                      value={grnNotes} 
+                      onChange={e => setGrnNotes(e.target.value)} 
+                    />
+                  </div>
+
+                  {poDoc ? (
+                    <div>
+                      <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Goods Received Allocations (from {poDoc.id}):</div>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <table className="table" style={{ fontSize: '11px', margin: 0 }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-primary)' }}>
+                              <th>Item Code</th>
+                              <th style={{ width: '80px', textAlign: 'center' }}>Ordered (PO)</th>
+                              <th style={{ width: '80px', textAlign: 'center' }}>Already Rec</th>
+                              <th style={{ width: '100px', textAlign: 'center' }}>Qty Received</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(poDoc.items || []).map(poItem => {
+                              const orderedVal = poItem.qtyAction || 0;
+                              const alreadyRec = getGrnReceivedForPoItem(poDoc.orderObj, poDoc.id, poItem.code);
+                              const maxAvailable = Math.max(0, orderedVal - alreadyRec);
+                              const inputs = grnItemInputs[poItem.code] || { qty: 0 };
 
                               return (
-                                <tr key={item.id}>
+                                <tr key={poItem.code}>
                                   <td>
-                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
-                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '250px' }}>{item.description}</div>
+                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{poItem.code}</div>
+                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '250px' }}>{poItem.description}</div>
                                   </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{poOrdered}</td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{orderedVal}</td>
                                   <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{alreadyRec}</td>
                                   <td style={{ padding: '2px' }}>
                                     <input 
@@ -825,7 +966,7 @@ export default function PurchasingPage() {
                                         const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
                                         setGrnItemInputs(prev => ({
                                           ...prev,
-                                          [item.id]: { qty: val }
+                                          [poItem.code]: { qty: val }
                                         }));
                                       }}
                                     />
@@ -833,25 +974,26 @@ export default function PurchasingPage() {
                                 </tr>
                               );
                             })}
-                        </tbody>
-                      </table>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div style={{ padding: '24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '6px', color: 'var(--text-tertiary)', fontSize: '11.5px' }}>
-                    Select an order above to populate item specifications.
-                  </div>
-                )}
+                  ) : (
+                    <div style={{ padding: '24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '6px', color: 'var(--text-tertiary)', fontSize: '11.5px' }}>
+                      Select a Purchase Order above to populate receiving options.
+                    </div>
+                  )}
 
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                <button type="button" className="btn btn-sm" onClick={() => setShowGrnModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-sm btn-primary" disabled={!selectedGrnOrder}>Issue GRN</button>
-              </div>
-            </form>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                  <button type="button" className="btn btn-sm" onClick={() => setShowGrnModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-sm btn-primary" disabled={!poDoc}>Issue GRN</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

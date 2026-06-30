@@ -74,6 +74,46 @@ export default function InvoicesPage() {
     return map;
   };
 
+  const getConsolidatedInvoiceItems = (order) => {
+    if (!order) return [];
+    const invoicedQtys = getOrderInvoicedQtys(order);
+    const grouped = {};
+    (order.itemsList || []).forEach(item => {
+      const code = item.code || 'NO-CODE';
+      // Calculate readyQty for individual item
+      let readyQty = 0;
+      if (item.stockStatus === 'All Stock on Hand') {
+        readyQty = item.qty || 0;
+      } else if (item.stockStatus === 'Partial Stock on Hand') {
+        const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
+        readyQty = (item.receivedQty || 0) + inStock;
+      } else {
+        readyQty = item.receivedQty || 0;
+      }
+      const alreadyInv = invoicedQtys[item.id] || 0;
+      const maxAvailable = Math.max(0, readyQty - alreadyInv);
+
+      if (!grouped[code]) {
+        grouped[code] = {
+          code: code,
+          description: item.description,
+          unitRetail: item.unitRetail || 0,
+          qty: 0,
+          readyQty: 0,
+          alreadyInv: 0,
+          maxAvailable: 0,
+          originalItems: []
+        };
+      }
+      grouped[code].qty += Number(item.qty) || 0;
+      grouped[code].readyQty += readyQty;
+      grouped[code].alreadyInv += alreadyInv;
+      grouped[code].maxAvailable += maxAvailable;
+      grouped[code].originalItems.push(item);
+    });
+    return Object.values(grouped);
+  };
+
   // Issue Client Invoice for order
   const handleSaveInvoice = (e) => {
     e.preventDefault();
@@ -92,22 +132,86 @@ export default function InvoicesPage() {
     let invoiceTotalValue = 0;
     let hasQuantities = false;
 
-    (order.itemsList || []).forEach(item => {
-      const input = invoiceItemInputs[item.id] || {};
+    const consolidated = getConsolidatedInvoiceItems(order);
+    const updatedItemsList = [...(order.itemsList || [])];
+    const invoicedQtys = getOrderInvoicedQtys(order);
+
+    consolidated.forEach(cItem => {
+      const input = invoiceItemInputs[cItem.code] || {};
       const qtyAction = Math.max(0, parseInt(input.qty) || 0);
 
       if (qtyAction > 0) {
         hasQuantities = true;
-        const lineVal = qtyAction * (item.unitRetail || 0);
+        const lineVal = qtyAction * (cItem.unitRetail || 0);
         invoiceTotalValue += lineVal;
+        
         invoiceItems.push({
-          id: item.id,
-          code: item.code,
-          description: item.description,
+          code: cItem.code,
+          description: cItem.description,
           qtyAction,
-          unitRetail: item.unitRetail || 0,
+          unitRetail: cItem.unitRetail || 0,
           value: lineVal
         });
+
+        // Distribute to individual items
+        let remainingToAllocate = qtyAction;
+        cItem.originalItems.forEach(origItem => {
+          if (remainingToAllocate <= 0) return;
+          
+          let readyQty = 0;
+          if (origItem.stockStatus === 'All Stock on Hand') {
+            readyQty = origItem.qty || 0;
+          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
+            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
+            readyQty = (origItem.receivedQty || 0) + inStock;
+          } else {
+            readyQty = origItem.receivedQty || 0;
+          }
+          const alreadyInv = invoicedQtys[origItem.id] || 0;
+          const avail = Math.max(0, readyQty - alreadyInv);
+          const toAlloc = Math.min(avail, remainingToAllocate);
+
+          if (toAlloc > 0) {
+            remainingToAllocate -= toAlloc;
+            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+            if (targetIdx !== -1) {
+              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
+              const syncTransaction = {
+                qty: toAlloc,
+                ref: newInvId,
+                date: formattedDate,
+                value: toAlloc * (origItem.unitRetail || 0)
+              };
+              updatedItemsList[targetIdx] = {
+                ...updatedItemsList[targetIdx],
+                invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + toAlloc,
+                invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (toAlloc * (origItem.unitRetail || 0)),
+                invoiceHistory: [...history, syncTransaction]
+              };
+            }
+          }
+        });
+
+        // Overflow fallback
+        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
+          const origItem = cItem.originalItems[0];
+          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+          if (targetIdx !== -1) {
+            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
+            const syncTransaction = {
+              qty: remainingToAllocate,
+              ref: newInvId,
+              date: formattedDate,
+              value: remainingToAllocate * (origItem.unitRetail || 0)
+            };
+            updatedItemsList[targetIdx] = {
+              ...updatedItemsList[targetIdx],
+              invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + remainingToAllocate,
+              invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (remainingToAllocate * (origItem.unitRetail || 0)),
+              invoiceHistory: [...history, syncTransaction]
+            };
+          }
+        }
       }
     });
 
@@ -127,26 +231,6 @@ export default function InvoicesPage() {
     // Update order items & documents
     const updatedOrders = project.orders.map(o => {
       if (o.id === oId) {
-        const updatedItemsList = (o.itemsList || []).map(item => {
-          const invItem = invoiceItems.find(i => i.id === item.id);
-          if (invItem) {
-            const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-            const syncTransaction = {
-              qty: invItem.qtyAction,
-              ref: newInvId,
-              date: formattedDate,
-              value: invItem.value
-            };
-            return {
-              ...item,
-              invoiceQty: (Number(item.invoiceQty) || 0) + invItem.qtyAction,
-              invoiceValue: (Number(item.invoiceValue) || 0) + invItem.value,
-              invoiceHistory: [...history, syncTransaction]
-            };
-          }
-          return item;
-        });
-
         return {
           ...o,
           clientInvoices: [...(o.clientInvoices || []), newInvDoc],
@@ -494,46 +578,33 @@ export default function InvoicesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(selectedInvoiceOrder.itemsList || []).map(item => {
-                            // Calculate packed/received based on stock status
-                            let readyQty = 0;
-                            if (item.stockStatus === 'All Stock on Hand') {
-                              readyQty = item.qty || 0;
-                            } else if (item.stockStatus === 'Partial Stock on Hand') {
-                              const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
-                              readyQty = (item.receivedQty || 0) + inStock;
-                            } else {
-                              readyQty = item.receivedQty || 0;
-                            }
-
-                            const alreadyInv = selectedInvoiceInvoicedQtys[item.id] || 0;
-                            const maxAvailable = Math.max(0, readyQty - alreadyInv);
-                            const inputs = invoiceItemInputs[item.id] || { qty: 0 };
+                          {getConsolidatedInvoiceItems(selectedInvoiceOrder).map(cItem => {
+                            const inputs = invoiceItemInputs[cItem.code] || { qty: 0 };
 
                             return (
-                              <tr key={item.id}>
+                              <tr key={cItem.code}>
                                 <td>
-                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
-                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{item.description}</div>
+                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
+                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
                                 </td>
-                                <td style={{ textAlign: 'center' }}>{item.qty || 0}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{readyQty}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{alreadyInv}</td>
+                                <td style={{ textAlign: 'center' }}>{cItem.qty || 0}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{cItem.readyQty}</td>
+                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyInv}</td>
                                 <td style={{ padding: '2px' }}>
                                   <input 
                                     type="number" 
                                     className="form-control" 
                                     style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
                                     min={0}
-                                    max={maxAvailable}
+                                    max={cItem.maxAvailable}
                                     value={inputs.qty || ''}
-                                    placeholder={`Max ${maxAvailable}`}
-                                    disabled={maxAvailable === 0}
+                                    placeholder={`Max ${cItem.maxAvailable}`}
+                                    disabled={cItem.maxAvailable === 0}
                                     onChange={e => {
-                                      const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
+                                      const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
                                       setInvoiceItemInputs(prev => ({
                                         ...prev,
-                                        [item.id]: { qty: val }
+                                        [cItem.code]: { qty: val }
                                       }));
                                     }}
                                   />
