@@ -917,56 +917,72 @@ export default function PurchasingPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getConsolidatedPoItems(selectedPoOrder, poSupplier).map(cItem => {
-                            const inputs = poItemInputs[cItem.code] || { qty: 0, eta: '' };
+                          {(() => {
+                            const consolidatedItems = getConsolidatedPoItems(selectedPoOrder, poSupplier);
+                            return consolidatedItems.map((cItem, idx) => {
+                              const inputs = poItemInputs[cItem.code] || { qty: 0, eta: '' };
 
-                            return (
-                              <tr key={cItem.code}>
-                                <td>
-                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
-                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
-                                  <div style={{ fontSize: '9px', color: 'var(--text-info)' }}>Supplier: {cItem.supplier}</div>
-                                </td>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyPo}</td>
-                                <td style={{ padding: '2px' }}>
-                                  <input 
-                                    type="number" 
-                                    className="form-control" 
-                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                    min={0}
-                                    max={cItem.maxAvailable}
-                                    value={inputs.qty || ''}
-                                    placeholder={`Max ${cItem.maxAvailable}`}
-                                    disabled={!poSupplier || cItem.maxAvailable === 0}
-                                    onChange={e => {
-                                      const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                      setPoItemInputs(prev => ({
-                                        ...prev,
-                                        [cItem.code]: { ...prev[cItem.code], qty: val }
-                                      }));
-                                    }}
-                                  />
-                                </td>
-                                <td style={{ padding: '2px' }}>
-                                  <input 
-                                    type="text" 
-                                    placeholder="e.g. 3 weeks" 
-                                    className="form-control" 
-                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
-                                    value={inputs.eta || ''}
-                                    disabled={!poSupplier}
-                                    onChange={e => {
-                                      setPoItemInputs(prev => ({
-                                        ...prev,
-                                        [cItem.code]: { ...prev[cItem.code], eta: e.target.value }
-                                      }));
-                                    }}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
+                              return (
+                                <tr key={cItem.code}>
+                                  <td>
+                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
+                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
+                                    <div style={{ fontSize: '9px', color: 'var(--text-info)' }}>Supplier: {cItem.supplier}</div>
+                                  </td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyPo}</td>
+                                  <td style={{ padding: '2px' }}>
+                                    <input 
+                                      type="number" 
+                                      className="form-control" 
+                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
+                                      min={0}
+                                      max={cItem.maxAvailable}
+                                      value={inputs.qty || ''}
+                                      placeholder={`Max ${cItem.maxAvailable}`}
+                                      disabled={!poSupplier || cItem.maxAvailable === 0}
+                                      onChange={e => {
+                                        const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
+                                        setPoItemInputs(prev => ({
+                                          ...prev,
+                                          [cItem.code]: { ...prev[cItem.code], qty: val }
+                                        }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '2px' }}>
+                                    <input 
+                                      type="date" 
+                                      className="form-control" 
+                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
+                                      value={inputs.eta || ''}
+                                      disabled={!poSupplier}
+                                      onChange={e => {
+                                        setPoItemInputs(prev => ({
+                                          ...prev,
+                                          [cItem.code]: { ...prev[cItem.code], eta: e.target.value }
+                                        }));
+                                      }}
+                                      onKeyDown={e => {
+                                        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                                          e.preventDefault();
+                                          if (idx === 0) return;
+                                          const prevItem = consolidatedItems[idx - 1];
+                                          setPoItemInputs(prev => {
+                                            const prevVal = prev[prevItem.code]?.eta || '';
+                                            return {
+                                              ...prev,
+                                              [cItem.code]: { ...prev[cItem.code], eta: prevVal }
+                                            };
+                                          });
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -1149,7 +1165,7 @@ export default function PurchasingPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(editPoDoc.items || []).map(item => (
+                        {(editPoDoc.items || []).map((item, idx) => (
                           <tr key={item.code}>
                             <td>
                               <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
@@ -1158,8 +1174,7 @@ export default function PurchasingPage() {
                             <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.qtyAction || 0}</td>
                             <td style={{ padding: '2px' }}>
                               <input 
-                                type="text" 
-                                placeholder="e.g. 3 weeks" 
+                                type="date" 
                                 className="form-control" 
                                 style={{ height: '26px', fontSize: '11px', padding: '2px 6px' }}
                                 value={editPoItemEtas[item.code] || ''}
@@ -1168,6 +1183,17 @@ export default function PurchasingPage() {
                                     ...prev,
                                     [item.code]: e.target.value
                                   }));
+                                }}
+                                onKeyDown={e => {
+                                  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                                    e.preventDefault();
+                                    if (idx === 0) return;
+                                    const prevItem = editPoDoc.items[idx - 1];
+                                    setEditPoItemEtas(prev => ({
+                                      ...prev,
+                                      [item.code]: prev[prevItem.code] || ''
+                                    }));
+                                  }
                                 }}
                               />
                             </td>

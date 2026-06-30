@@ -138,9 +138,11 @@ const getItemDefaults = (item) => {
   const rHistory = Array.isArray(resolved.receivingHistory) ? resolved.receivingHistory : [];
   if (rHistory.length > 0) {
     resolved.receivedQty = rHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+    resolved.receivedRef = Array.from(new Set(rHistory.map(h => h.ref).filter(Boolean))).join('; ');
     resolved.receivedDate = rHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
   } else {
     resolved.receivedQty = 0;
+    resolved.receivedRef = '';
     resolved.receivedDate = '';
   }
   
@@ -208,6 +210,42 @@ export default function SalesTracker() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const handleNavigateToDoc = (page, docId, projectKey) => {
+    navigate(page, { state: { openDocId: docId, projectKey } });
+  };
+
+  const renderDocLinks = (refStr, page, projectKey) => {
+    if (!refStr) return '—';
+    const tokens = refStr.split(/[;,]+/).map(t => t.trim()).filter(Boolean);
+    if (tokens.length === 0) return '—';
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+        {tokens.map((tok, idx) => (
+          <button
+            key={idx}
+            className="btn btn-xs btn-ghost"
+            style={{
+              padding: '2px 4px',
+              fontSize: '10.5px',
+              fontFamily: 'monospace',
+              color: 'var(--text-info)',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              height: 'auto',
+              minHeight: 0
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNavigateToDoc(page, tok, projectKey);
+            }}
+          >
+            {tok}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
   const [orderPayments, setOrderPayments] = useState([]);
@@ -247,6 +285,7 @@ export default function SalesTracker() {
           poSuppliers: new Set(),
           poDates: new Set(),
           poEtas: new Set(),
+          receivedRefs: new Set(),
           receivedDates: new Set(),
           invoiceRefs: new Set(),
           invoiceDates: new Set(),
@@ -272,6 +311,7 @@ export default function SalesTracker() {
       const poQtyOrderedVal = item.poQtyOrdered !== undefined ? item.poQtyOrdered : defaults.poQtyOrdered;
       const poEtaVal = item.poEta !== undefined ? item.poEta : defaults.poEta;
 
+      const receivedRefVal = item.receivedRef !== undefined ? item.receivedRef : defaults.receivedRef;
       const receivedDateVal = item.receivedDate !== undefined ? item.receivedDate : defaults.receivedDate;
       const receivedQtyVal = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty;
       const stockStatusVal = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus;
@@ -301,6 +341,7 @@ export default function SalesTracker() {
       if (poSupplierVal) g.poSuppliers.add(poSupplierVal);
       if (poDateVal) g.poDates.add(poDateVal);
       if (poEtaVal) g.poEtas.add(poEtaVal);
+      if (receivedRefVal) g.receivedRefs.add(receivedRefVal);
       if (receivedDateVal) g.receivedDates.add(receivedDateVal);
       if (invoiceRefVal) g.invoiceRefs.add(invoiceRefVal);
       if (invoiceDateVal) g.invoiceDates.add(invoiceDateVal);
@@ -333,6 +374,7 @@ export default function SalesTracker() {
         poQtyOrdered: g.poQtyOrdered,
         poEta: g.poEtas.size > 0 ? Array.from(g.poEtas)[0] : '',
         receivedQty: g.receivedQty,
+        receivedRef: g.receivedRefs.size > 0 ? Array.from(g.receivedRefs).join(', ') : '',
         receivedDate: g.receivedDates.size > 0 ? Array.from(g.receivedDates)[0] : '',
         invoiceQty: g.invoiceQty,
         invoiceRef: g.invoiceRefs.size > 0 ? Array.from(g.invoiceRefs).join(', ') : '',
@@ -2334,7 +2376,7 @@ export default function SalesTracker() {
                                           />
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
-                                          {poRefVal || '—'}
+                                          {renderDocLinks(poRefVal, '/purchasing', selectedProjectKey)}
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                                           {poSupplierVal || '—'}
@@ -2352,7 +2394,8 @@ export default function SalesTracker() {
                                           {receivedQtyVal || 0}
                                         </td>
                                         <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
-                                          {receivedDateVal || '—'}
+                                          {renderDocLinks(item.receivedRef, '/purchasing', selectedProjectKey)}
+                                          {item.receivedDate && <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{item.receivedDate}</div>}
                                         </td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)', color: 'var(--text-success)', paddingRight: '10px' }}>
                                           R {Math.round(calculatedValueReceived).toLocaleString()}
@@ -2366,7 +2409,7 @@ export default function SalesTracker() {
                                           {invoiceQtyVal || 0}
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
-                                          {invoiceRefVal || '—'}
+                                          {renderDocLinks(invoiceRefVal, '/invoices', selectedProjectKey)}
                                         </td>
                                         <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
                                           {invoiceDateVal || '—'}
