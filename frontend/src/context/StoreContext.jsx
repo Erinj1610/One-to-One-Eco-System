@@ -1307,6 +1307,71 @@ export function StoreProvider({ children }) {
   React.useEffect(() => { saveState('moduleConfig', moduleConfig); }, [moduleConfig]);
   React.useEffect(() => { saveState('projectManagers', projectManagers); }, [projectManagers]);
 
+  // Global self-healing: clean up orphaned purchaseHistory, receivingHistory, and invoiceHistory records
+  React.useEffect(() => {
+    if (!isLoaded.current['projects'] || !projects || Object.keys(projects).length === 0) return;
+
+    let anyProjectUpdated = false;
+    const nextProjects = { ...projects };
+
+    Object.entries(nextProjects).forEach(([pKey, project]) => {
+      let projectUpdated = false;
+      const updatedOrders = (project.orders || []).map(o => {
+        const validPoIds = new Set((o.purchaseOrders || []).map(po => po.id));
+        const validGrnIds = new Set((o.goodsReceivedNotes || []).map(grn => grn.id));
+        const validInvoiceIds = new Set((invoices || []).map(inv => inv.id));
+
+        let orderUpdated = false;
+        const updatedItemsList = (o.itemsList || []).map(item => {
+          const pHist = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+          const cleanedPHist = pHist.filter(h => validPoIds.has(h.ref));
+
+          const rHist = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
+          const cleanedRHist = rHist.filter(h => validGrnIds.has(h.ref));
+
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+          const cleanedIHist = iHist.filter(h => validInvoiceIds.has(h.ref));
+
+          if (
+            cleanedPHist.length !== pHist.length ||
+            cleanedRHist.length !== rHist.length ||
+            cleanedIHist.length !== iHist.length
+          ) {
+            orderUpdated = true;
+            const newPoQty = cleanedPHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newRecQty = cleanedRHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newInvQty = cleanedIHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            return {
+              ...item,
+              poQtyOrdered: newPoQty,
+              receivedQty: newRecQty,
+              invoiceQty: newInvQty,
+              purchaseHistory: cleanedPHist,
+              receivingHistory: cleanedRHist,
+              invoiceHistory: cleanedIHist
+            };
+          }
+          return item;
+        });
+
+        if (orderUpdated) {
+          projectUpdated = true;
+          return { ...o, itemsList: updatedItemsList };
+        }
+        return o;
+      });
+
+      if (projectUpdated) {
+        anyProjectUpdated = true;
+        nextProjects[pKey] = { ...project, orders: updatedOrders };
+      }
+    });
+
+    if (anyProjectUpdated) {
+      setProjects(nextProjects);
+    }
+  }, [projects, invoices]);
+
 
 
   const addInvoice = (invoice) => {
