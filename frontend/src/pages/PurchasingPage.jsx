@@ -139,7 +139,7 @@ export default function PurchasingPage() {
     if (!order) return [];
     const suppliers = (order.itemsList || [])
       .filter(item => item.stockStatus !== 'All Stock on Hand')
-      .map(item => item.supplier || 'Warehouse Inventory');
+      .map(item => (item.supplier || 'Warehouse Inventory').trim());
     return Array.from(new Set(suppliers));
   };
 
@@ -150,8 +150,8 @@ export default function PurchasingPage() {
     (order.itemsList || [])
       .filter(item => item.stockStatus !== 'All Stock on Hand')
       .forEach(item => {
-        const itemSupplier = item.supplier || 'Warehouse Inventory';
-        if (filterSupplier && itemSupplier !== filterSupplier) return;
+        const itemSupplier = (item.supplier || 'Warehouse Inventory').trim();
+        if (filterSupplier && itemSupplier !== filterSupplier.trim()) return;
         
         const code = item.code || 'NO-CODE';
         const alreadyPo = orderedQtys[item.id] || 0;
@@ -537,19 +537,16 @@ export default function PurchasingPage() {
             return o;
           }
 
-          // Reverse quantities and remove PO
+          // Clean up purchase history entries matching doc.id
           const updatedItemsList = (o.itemsList || []).map(item => {
-            const poItem = (doc.items || []).find(pi => pi.id === item.id);
-            if (poItem) {
-              const history = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== doc.id);
-              return {
-                ...item,
-                poQtyOrdered: Math.max(0, (Number(item.poQtyOrdered) || 0) - poItem.qtyAction),
-                purchaseHistory: cleanedHistory
-              };
-            }
-            return item;
+            const history = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+            const cleanedHistory = history.filter(h => h.ref !== doc.id);
+            const newPoQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            return {
+              ...item,
+              poQtyOrdered: newPoQty,
+              purchaseHistory: cleanedHistory
+            };
           });
 
           return {
@@ -560,17 +557,14 @@ export default function PurchasingPage() {
         } else {
           // GRN deletion
           const updatedItemsList = (o.itemsList || []).map(item => {
-            const grnItem = (doc.items || []).find(gi => gi.id === item.id);
-            if (grnItem) {
-              const history = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== doc.id);
-              return {
-                ...item,
-                receivedQty: Math.max(0, (Number(item.receivedQty) || 0) - grnItem.qtyAction),
-                receivingHistory: cleanedHistory
-              };
-            }
-            return item;
+            const history = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
+            const cleanedHistory = history.filter(h => h.ref !== doc.id);
+            const newRecQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            return {
+              ...item,
+              receivedQty: newRecQty,
+              receivingHistory: cleanedHistory
+            };
           });
 
           return {
