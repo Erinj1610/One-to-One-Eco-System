@@ -38,7 +38,16 @@ def save_setting(key: str, data: SettingSave, db: Session = Depends(get_db)):
         setting = PortalSetting(key=key, value=data.value)
         db.add(setting)
     db.commit()
+    
+    # Synchronize setting value to relational SQL tables
+    try:
+        from services.db_sync_service import sync_key_to_relational
+        sync_key_to_relational(key, data.value, db)
+    except Exception as sync_err:
+        print(f"Error during relational sync for key '{key}': {sync_err}")
+        
     return {"status": "ok", "message": f"Setting '{key}' saved successfully"}
+
 
 @router.get("/support/tickets")
 def list_tickets(db: Session = Depends(get_db)):

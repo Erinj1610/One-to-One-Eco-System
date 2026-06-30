@@ -119,42 +119,43 @@ const getItemDefaults = (item) => {
   const resolved = { ...item };
   
   // Phase 1: Order Phase (Procurement)
-  if (resolved.poRef === undefined) {
-    resolved.poRef = '';
-  }
-  if (resolved.poSupplier === undefined) {
-    resolved.poSupplier = item.supplier || '';
-  }
-  if (resolved.poDate === undefined) {
-    resolved.poDate = '';
-  }
-  if (resolved.poQtyOrdered === undefined) {
-    resolved.poQtyOrdered = 0;
-  }
-  if (resolved.poEta === undefined) {
-    resolved.poEta = '';
+  const pHistory = Array.isArray(resolved.purchaseHistory) ? resolved.purchaseHistory : [];
+  if (pHistory.length > 0) {
+    resolved.poQtyOrdered = pHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+    resolved.poRef = Array.from(new Set(pHistory.map(h => h.ref).filter(Boolean))).join('; ');
+    resolved.poSupplier = Array.from(new Set(pHistory.map(h => h.supplier).filter(Boolean))).join('; ') || item.supplier || '';
+    resolved.poDate = pHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
+    resolved.poEta = pHistory.map(h => h.eta).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
+  } else {
+    if (resolved.poRef === undefined) resolved.poRef = '';
+    if (resolved.poSupplier === undefined) resolved.poSupplier = item.supplier || '';
+    if (resolved.poDate === undefined) resolved.poDate = '';
+    if (resolved.poQtyOrdered === undefined) resolved.poQtyOrdered = 0;
+    if (resolved.poEta === undefined) resolved.poEta = '';
   }
   
   // Phase 2: Receiving Phase
-  if (resolved.receivedQty === undefined) {
-    resolved.receivedQty = 0;
-  }
-  if (resolved.receivedDate === undefined) {
-    resolved.receivedDate = '';
+  const rHistory = Array.isArray(resolved.receivingHistory) ? resolved.receivingHistory : [];
+  if (rHistory.length > 0) {
+    resolved.receivedQty = rHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+    resolved.receivedDate = rHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
+  } else {
+    if (resolved.receivedQty === undefined) resolved.receivedQty = 0;
+    if (resolved.receivedDate === undefined) resolved.receivedDate = '';
   }
   
   // Phase 3: Invoicing Phase
-  if (resolved.invoiceQty === undefined) {
-    resolved.invoiceQty = 0;
-  }
-  if (resolved.invoiceRef === undefined) {
-    resolved.invoiceRef = '';
-  }
-  if (resolved.invoiceDate === undefined) {
-    resolved.invoiceDate = '';
-  }
-  if (resolved.invoiceValue === undefined) {
-    resolved.invoiceValue = 0;
+  const iHistory = Array.isArray(resolved.invoiceHistory) ? resolved.invoiceHistory : [];
+  if (iHistory.length > 0) {
+    resolved.invoiceQty = iHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+    resolved.invoiceRef = Array.from(new Set(iHistory.map(h => h.ref).filter(Boolean))).join('; ');
+    resolved.invoiceDate = iHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
+    resolved.invoiceValue = iHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+  } else {
+    if (resolved.invoiceQty === undefined) resolved.invoiceQty = 0;
+    if (resolved.invoiceRef === undefined) resolved.invoiceRef = '';
+    if (resolved.invoiceDate === undefined) resolved.invoiceDate = '';
+    if (resolved.invoiceValue === undefined) resolved.invoiceValue = 0;
   }
   
   // Process delivery history if exists to sync with warehouse documents
@@ -629,16 +630,8 @@ export default function SalesTracker() {
   const [bulkValue, setBulkValue] = useState('');
   
   // States for Document-Centric Logger Modal
-  const [showDocLoggerModal, setShowDocLoggerModal] = useState(false);
   const [waybillHistoryModalItem, setWaybillHistoryModalItem] = useState(null);
   const [showPaymentViewer, setShowPaymentViewer] = useState(false);
-  const [docLoggerForm, setDocLoggerForm] = useState({
-    type: 'purchasing',
-    ref: '',
-    date: '',
-    supplier: '',
-    items: []
-  });
 
 
 
@@ -1029,142 +1022,6 @@ export default function SalesTracker() {
     }
   };
 
-  const handleSaveDocLogger = (e) => {
-    e.preventDefault();
-    const { type, ref, date, supplier, items } = docLoggerForm;
-    if (!ref.trim()) {
-      alert("Please enter a document reference.");
-      return;
-    }
-
-    // 1. Capacity Valdations Block
-    for (let docItem of items) {
-      const addQty = Math.max(0, parseInt(docItem.inputVal) || 0);
-      if (addQty === 0) continue;
-
-      const currentVal = docItem.currentVal || 0;
-      
-      // Calculate maxAllowed based on type
-      let maxAllowed = docItem.qty || 0; 
-      if (type === 'receiving') {
-        // Look up item poQtyOrdered in activeOrderItems
-        const matchingItems = activeOrderItems.filter(item => docItem.itemIds.includes(item.id));
-        const isAllStock = matchingItems.some(item => item.stockStatus === 'All Stock on Hand');
-        if (isAllStock) {
-          maxAllowed = 0;
-        } else {
-          maxAllowed = matchingItems.reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
-        }
-      } else if (type === 'delivery') {
-        const matchingItems = activeOrderItems.filter(item => docItem.itemIds.includes(item.id));
-        maxAllowed = matchingItems.reduce((acc, curr) => {
-          if (curr.stockStatus === 'All Stock on Hand') {
-            return acc + (curr.qty || 0);
-          } else if (curr.stockStatus === 'Partial Stock on Hand') {
-            const inStock = Math.max(0, (curr.qty || 0) - (curr.poQtyOrdered || 0));
-            return acc + (curr.receivedQty || 0) + inStock;
-          } else {
-            return acc + (curr.receivedQty || 0);
-          }
-        }, 0);
-      }
-
-      if (currentVal + addQty > maxAllowed) {
-        alert(`Block Warning: Cannot log quantity for item "${docItem.code}".
-Attempted: ${addQty}
-Already logged: ${currentVal}
-Max Allowed: ${maxAllowed}
-You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
-        return; // BLOCK SUBMISSION
-      }
-    }
-
-    // 2. Perform Allocations
-    setActiveOrderItems(prev => {
-      let updatedItems = [...prev];
-      items.forEach(docItem => {
-        const itemIds = docItem.itemIds;
-        const addQty = Math.max(0, parseInt(docItem.inputVal) || 0);
-        if (addQty === 0) return;
-
-        let remaining = addQty;
-        updatedItems = updatedItems.map(item => {
-          if (itemIds.includes(item.id)) {
-            const maxAllocatable = item.qty || 0;
-            
-            if (type === 'purchasing') {
-              const currentVal = item.poQtyOrdered || 0;
-              const avail = Math.max(0, maxAllocatable - currentVal);
-              const allocated = Math.min(avail, remaining);
-              remaining -= allocated;
-              return {
-                ...item,
-                poRef: ref,
-                poDate: date,
-                poSupplier: supplier || item.poSupplier || 'Warehouse Inventory',
-                poQtyOrdered: currentVal + allocated
-              };
-            } else if (type === 'receiving') {
-              if (item.stockStatus === 'All Stock on Hand') return item;
-              const currentVal = item.receivedQty || 0;
-              const maxAllowed = item.poQtyOrdered || 0;
-              const avail = Math.max(0, maxAllowed - currentVal);
-              const allocated = Math.min(avail, remaining);
-              remaining -= allocated;
-              return {
-                ...item,
-                receivedQty: currentVal + allocated,
-                receivedDate: date
-              };
-            } else if (type === 'invoicing') {
-              const currentVal = item.invoiceQty || 0;
-              const avail = Math.max(0, maxAllocatable - currentVal);
-              const allocated = Math.min(avail, remaining);
-              remaining -= allocated;
-              const newInvoiceQty = currentVal + allocated;
-              return {
-                ...item,
-                invoiceRef: ref,
-                invoiceDate: date,
-                invoiceQty: newInvoiceQty,
-                invoiceValue: newInvoiceQty * (item.unitRetail || 0)
-              };
-            } else if (type === 'delivery') {
-              const currentVal = item.deliveryQty || 0;
-              let itemMaxAllowed = 0;
-              if (item.stockStatus === 'All Stock on Hand') {
-                itemMaxAllowed = item.qty || 0;
-              } else if (item.stockStatus === 'Partial Stock on Hand') {
-                const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
-                itemMaxAllowed = (item.receivedQty || 0) + inStock;
-              } else {
-                itemMaxAllowed = item.receivedQty || 0;
-              }
-              const avail = Math.max(0, itemMaxAllowed - currentVal);
-              const allocated = Math.min(avail, remaining);
-              remaining -= allocated;
-              
-              const transaction = { qty: allocated, ref: ref, date: date };
-              const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
-              
-              return {
-                ...item,
-                deliveryDate: date,
-                deliveryQty: currentVal + allocated,
-                deliveryStatus: (currentVal + allocated) >= item.qty ? 'Delivered' : 'Partial',
-                deliveryHistory: [...history, transaction]
-              };
-            }
-          }
-          return item;
-        });
-      });
-      return updatedItems;
-    });
-
-    setShowDocLoggerModal(false);
-    alert("Bulk Document logged successfully: Allocated quantities and updated ledger history.");
-  };
 
   // Handle stock status selection and enforce lock clearing rules
   const handleStockStatusChange = (itemOrItemIds, statusVal) => {
@@ -2194,60 +2051,33 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                           </h4>
                           
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {/* Document Logger Button */}
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-ghost"
-                              onClick={() => {
-                                // Filter out "All Stock on Hand" items if opening in purchasing (PO Order)
-                                const filteredGi = groupedItems.filter(gi => {
+                            {activeTab !== 'order' && (
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => {
                                   if (activeTab === 'purchasing') {
-                                    return gi.stockStatus !== 'All Stock on Hand';
-                                  }
-                                  return true;
-                                });
-                                const initialDocItems = filteredGi.map(gi => {
-                                  // Determine current value based on tab
-                                  let cVal = 0;
-                                  if (activeTab === 'purchasing') {
-                                    cVal = gi.poQtyOrdered; // PO Order qty
+                                    navigate('/purchasing', { state: { filterOrderId: selectedOrderId } });
                                   } else if (activeTab === 'invoicing') {
-                                    cVal = gi.invoiceQty;
+                                    navigate('/invoices');
                                   } else if (activeTab === 'delivery') {
-                                    cVal = gi.deliveryQty;
+                                    navigate('/logistics', { state: { filterOrderId: selectedOrderId } });
                                   }
-                                  return {
-                                    itemIds: gi.itemIds,
-                                    code: gi.code,
-                                    description: gi.description,
-                                    qty: gi.qty,
-                                    currentVal: cVal,
-                                    inputVal: 0
-                                  };
-                                });
-                                setDocLoggerForm({
-                                  type: activeTab === 'purchasing' ? 'purchasing' : 
-                                        activeTab === 'invoicing' ? 'invoicing' : 'delivery',
-                                  ref: '',
-                                  date: new Date().toISOString().split('T')[0],
-                                  supplier: '',
-                                  items: initialDocItems
-                                });
-                                setShowDocLoggerModal(true);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                border: '1px solid var(--border)',
-                                color: 'var(--text-primary)',
-                                height: '32px'
-                              }}
-                            >
-                              ✍️ Log Bulk Document
-                            </button>
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--text-info)',
+                                  height: '32px'
+                                }}
+                              >
+                                {activeTab === 'purchasing' ? '⚙️ Open Purchasing Ledger' : 
+                                 activeTab === 'invoicing' ? '💵 Open Invoices Ledger' : '🚚 Open Logistics Ledger'}
+                              </button>
+                            )}
 
                             {/* Phase tabs */}
                             <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
@@ -2503,85 +2333,26 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'stockOnHand', Math.max(0, parseInt(e.target.value) || 0))}
                                           />
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="text" 
-                                            className="gs-cell-input" 
-                                            value={poRefVal}
-                                            data-row={rowIndex}
-                                            data-col="poRef"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poRef', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
+                                          {poRefVal || '—'}
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="text" 
-                                            className="gs-cell-input" 
-                                            value={poSupplierVal}
-                                            data-row={rowIndex}
-                                            data-col="poSupplier"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poSupplier', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                          {poSupplierVal || '—'}
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="date" 
-                                            className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
-                                            value={toInputDate(poDateVal)}
-                                            data-row={rowIndex}
-                                            data-col="poDate"
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poDate', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                          {poDateVal || '—'}
                                         </td>
-                                        <td style={{ padding: 0, textAlign: 'center' }}>
-                                          <input 
-                                            type="number" 
-                                            className="gs-cell-input" 
-                                            style={{ opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
-                                            value={poQtyOrderedVal}
-                                            data-row={rowIndex}
-                                            data-col="poQtyOrdered"
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poQtyOrdered', Math.max(0, parseInt(e.target.value) || 0))}
-                                          />
+                                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                          {poQtyOrderedVal || 0}
                                         </td>
-                                        <td style={{ padding: 0, borderRight: '1px solid var(--border-strong)' }}>
-                                          <input 
-                                            type="date" 
-                                            className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
-                                            value={toInputDate(poEtaVal)}
-                                            data-row={rowIndex}
-                                            data-col="poEta"
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'poEta', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', borderRight: '1px solid var(--border-strong)', color: 'var(--text-info)', fontWeight: 500 }}>
+                                          {poEtaVal || '—'}
                                         </td>
-                                        <td style={{ padding: 0, textAlign: 'center' }}>
-                                          <input 
-                                            type="number" 
-                                            className="gs-cell-input" 
-                                            style={{ opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
-                                            value={receivedQtyVal}
-                                            data-row={rowIndex}
-                                            data-col="receivedQty"
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'receivedQty', Math.max(0, parseInt(e.target.value) || 0))}
-                                          />
+                                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                          {receivedQtyVal || 0}
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="date" 
-                                            className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark', opacity: item.stockStatus === 'All Stock on Hand' ? 0.4 : 1 }}
-                                            value={toInputDate(receivedDateVal)}
-                                            data-row={rowIndex}
-                                            data-col="receivedDate"
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'receivedDate', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
+                                          {receivedDateVal || '—'}
                                         </td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, borderRight: '1px solid var(--border-strong)', color: 'var(--text-success)', paddingRight: '10px' }}>
                                           R {Math.round(calculatedValueReceived).toLocaleString()}
@@ -2591,40 +2362,14 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
 
                                     {activeTab === 'invoicing' && (
                                       <>
-                                        <td style={{ padding: 0, textAlign: 'center' }}>
-                                          <input 
-                                            type="number" 
-                                            className="gs-cell-input" 
-                                            style={{
-                                              border: (invoiceQtyVal > item.qty) ? '1.5px dashed #ef4444' : ''
-                                            }}
-                                            value={invoiceQtyVal}
-                                            data-row={rowIndex}
-                                            data-col="invoiceQty"
-                                            title={(invoiceQtyVal > item.qty) ? "Warning: Qty Invoiced exceeds original item quantity" : ""}
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceQty', Math.max(0, parseInt(e.target.value) || 0))}
-                                          />
+                                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                          {invoiceQtyVal || 0}
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="text" 
-                                            className="gs-cell-input" 
-                                            value={invoiceRefVal}
-                                            data-row={rowIndex}
-                                            data-col="invoiceRef"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceRef', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
+                                          {invoiceRefVal || '—'}
                                         </td>
-                                        <td style={{ padding: 0 }}>
-                                          <input 
-                                            type="date" 
-                                            className="gs-cell-input" 
-                                            style={{ colorScheme: 'dark' }}
-                                            value={toInputDate(invoiceDateVal)}
-                                            data-row={rowIndex}
-                                            data-col="invoiceDate"
-                                            onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'invoiceDate', e.target.value)}
-                                          />
+                                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
+                                          {invoiceDateVal || '—'}
                                         </td>
                                         <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, paddingRight: '10px' }}>
                                           R {Math.round(invoiceValueVal).toLocaleString()}
@@ -3536,155 +3281,6 @@ You are exceeding the capacity by ${currentVal + addQty - maxAllowed} units.`);
         <option value="Client Supplied" />
       </datalist>
 
-      {/* BULK DOCUMENT LOGGER MODAL */}
-      {showDocLoggerModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          paddingTop: '5vh', overflowY: 'auto',
-          zIndex: 1100, animation: 'fadeIn 0.2s ease'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '750px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
-              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                ✍️ Log Document Receipt / Invoice
-              </div>
-              <button type="button" className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowDocLoggerModal(false)}>✕</button>
-            </div>
-            
-            <form onSubmit={handleSaveDocLogger} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
-              <div className="card-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Type</label>
-                    <select 
-                      className="form-control" 
-                      value={docLoggerForm.type} 
-                      onChange={e => {
-                        const newType = e.target.value;
-                        const filteredGi = groupedItems.filter(gi => {
-                          if (newType === 'purchasing' || newType === 'receiving') {
-                            return gi.stockStatus !== 'All Stock on Hand';
-                          }
-                          return true;
-                        });
-                        const updatedItems = filteredGi.map(gi => {
-                          let cVal = 0;
-                          if (newType === 'purchasing') {
-                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.poQtyOrdered || 0), 0);
-                          } else if (newType === 'receiving') {
-                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.receivedQty || 0), 0);
-                          } else if (newType === 'invoicing') {
-                            cVal = activeOrderItems.filter(item => gi.itemIds.includes(item.id)).reduce((acc, curr) => acc + (curr.invoiceQty || 0), 0);
-                          }
-                          return {
-                            itemIds: gi.itemIds,
-                            code: gi.code,
-                            description: gi.description,
-                            qty: gi.qty,
-                            currentVal: cVal,
-                            inputVal: 0
-                          };
-                        });
-                        setDocLoggerForm({ ...docLoggerForm, type: newType, items: updatedItems });
-                      }}
-                      required
-                    >
-                      <option value="purchasing">PO Order (Purchasing)</option>
-                      <option value="receiving">PO Receipt (Receiving)</option>
-                      <option value="invoicing">Invoice Document</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Reference</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. INV-00164, PO-7924..."
-                      className="form-control" 
-                      value={docLoggerForm.ref} 
-                      onChange={e => setDocLoggerForm({ ...docLoggerForm, ref: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document Date</label>
-                    <input 
-                      type="date" 
-                      className="form-control" 
-                      style={{ colorScheme: 'dark' }}
-                      value={docLoggerForm.date} 
-                      onChange={e => setDocLoggerForm({ ...docLoggerForm, date: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {docLoggerForm.type === 'purchasing' && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Supplier (Optional)</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Warehouse Inventory, Supplier Name..."
-                      className="form-control" 
-                      value={docLoggerForm.supplier} 
-                      onChange={e => setDocLoggerForm({ ...docLoggerForm, supplier: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                <div style={{ marginTop: '10px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Log Quantities by Item Code:</div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                    <table className="table" style={{ margin: 0, fontSize: '11px' }}>
-                      <thead>
-                        <tr style={{ background: 'var(--bg-primary)' }}>
-                          <th>Item Code</th>
-                          <th>Description</th>
-                          <th style={{ width: '80px', textAlign: 'center' }}>Total Qty</th>
-                          <th style={{ width: '90px', textAlign: 'center' }}>Already Logged</th>
-                          <th style={{ width: '100px', textAlign: 'center' }}>Add Quantity</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {docLoggerForm.items.map((gi, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{gi.code}</td>
-                            <td>{gi.description}</td>
-                            <td style={{ textAlign: 'center', fontWeight: 700 }}>{gi.qty}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{gi.currentVal}</td>
-                            <td style={{ padding: '2px', textAlign: 'center' }}>
-                              <input 
-                                type="number" 
-                                className="form-control" 
-                                style={{ height: '24px', width: '80px', margin: '0 auto', fontSize: '11px', textAlign: 'center', padding: '2px' }}
-                                value={gi.inputVal || ''} 
-                                placeholder="0"
-                                onChange={e => {
-                                  const updatedItems = [...docLoggerForm.items];
-                                  updatedItems[idx].inputVal = Math.max(0, parseInt(e.target.value) || 0);
-                                  setDocLoggerForm({ ...docLoggerForm, items: updatedItems });
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-              </div>
-
-              <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" className="btn" onClick={() => setShowDocLoggerModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Distribute & Log Document 📝</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* WAYBILL HISTORY MODAL */}
       {waybillHistoryModalItem && (

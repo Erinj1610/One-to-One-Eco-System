@@ -72,6 +72,19 @@ class Project(Base):
     design_fee = Column(Float, default=0.0)
     outstanding_amount = Column(Float, default=0.0)
 
+    # New columns for relational sync
+    project_key = Column(String, nullable=True)
+    client_name = Column(String, nullable=True)
+    pm_name = Column(String, nullable=True)
+    target_margin = Column(Float, default=0.0)
+    actual_margin = Column(Float, default=0.0)
+    s1 = Column(String, nullable=True)
+    s2 = Column(String, nullable=True)
+    s3 = Column(String, nullable=True)
+    s4 = Column(String, nullable=True)
+    s5 = Column(String, nullable=True)
+    days_left = Column(String, nullable=True)
+
     # 1-to-Many Relationships
     quotes = relationship("Quote", back_populates="project")
     field_values = relationship("ProjectFieldValue", back_populates="project")
@@ -110,6 +123,17 @@ class Client(Base):
     status = Column(String, default="Active")
     nps = Column(Integer, nullable=True)
     lifetime_revenue = Column(Float, default=0.0)
+
+    # New columns for relational sync
+    type = Column(String, nullable=True)
+    last_project_date = Column(String, nullable=True)
+    last_contact_date = Column(String, nullable=True)
+    last_contact_summary = Column(String, nullable=True)
+    stated_goal = Column(String, nullable=True)
+    annual_revenue = Column(Float, default=0.0)
+    order_gap_months = Column(Integer, nullable=True)
+    date_started = Column(String, nullable=True)
+    avg_payment_delay_days = Column(Integer, nullable=True)
 
 class Contact(Base):
     __tablename__ = "contacts"
@@ -173,14 +197,55 @@ class Order(Base):
     expected_delivery_date = Column(String, nullable=True)
     notes = Column(String, nullable=True)
 
+    # New columns for relational sync
+    po_number = Column(String, unique=True, nullable=True)
+    supplier_name = Column(String, nullable=True)
+    items_count = Column(Integer, default=0)
+    value = Column(Float, default=0.0)
+    paid = Column(Float, default=0.0)
+    outstanding = Column(Float, default=0.0)
+    eta = Column(String, nullable=True)
+    project_key = Column(String, nullable=True)
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
     
-    id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"))
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
-    qty_ordered = Column(Integer, default=0)
-    qty_received = Column(Integer, default=0)
+    id = Column(String, primary_key=True, index=True)
+    order_id = Column(String, nullable=True)
+    qty = Column(Integer, default=0)
+    type = Column(String, nullable=True)
+    one_one_code = Column(String, nullable=True)
+    code = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    floor = Column(String, nullable=True)
+    area = Column(String, nullable=True)
+    dimming = Column(String, nullable=True)
+    brand = Column(String, nullable=True)
+    supplier = Column(String, nullable=True)
+    unit_cost = Column(Float, default=0.0)
+    unit_trade = Column(Float, default=0.0)
+    unit_retail = Column(Float, default=0.0)
+    selection = Column(String, nullable=True)
+    stock_status = Column(String, nullable=True)
+    eta = Column(String, nullable=True)
+    po_ref = Column(String, nullable=True)
+    po_qty_ordered = Column(Integer, default=0)
+    po_eta = Column(String, nullable=True)
+    invoice_qty = Column(Integer, default=0)
+    po_supplier = Column(String, nullable=True)
+    po_date = Column(String, nullable=True)
+    received_qty = Column(Integer, default=0)
+    received_date = Column(String, nullable=True)
+    invoice_ref = Column(String, nullable=True)
+    invoice_date = Column(String, nullable=True)
+    invoice_value = Column(Float, default=0.0)
+    delivery_qty = Column(Integer, default=0)
+    delivery_date = Column(String, nullable=True)
+    delivery_status = Column(String, default="Pending")
+    delivery_history = Column(JSON, nullable=True)
+    stock_on_hand = Column(Integer, default=0)
+
 
 class OrderDocument(Base):
     __tablename__ = "order_documents"
