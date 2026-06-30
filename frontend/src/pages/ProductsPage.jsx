@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings
@@ -509,9 +510,38 @@ const StockTrendChart = ({ history }) => {
 export default function ProductsPage() {
   const { getModuleName } = useStore();
   // Local state for product list
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState([]);
   const [selectedSku, setSelectedSku] = useState(null); // String e.g. '28402 9240 FW'
   const [activeTab, setActiveTab] = useState('specs'); // 'specs' | 'costing' | 'supplier' | 'history'
+
+  // Fetch products from database
+  const fetchProducts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products`);
+      if (res.ok) {
+        const data = await res.json();
+        // Map db properties to mockup properties
+        const mapped = data.map(p => ({
+          ...p,
+          unitCost: p.cost_price || 0.0,
+          retailPrice: p.retail_price || 0.0,
+          tradePrice: p.trade_price || 0.0,
+          stock: p.stock_level || 0,
+          reorderLevel: p.reorder_level || 100,
+          status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock'
+        }));
+        setProducts(mapped);
+      } else {
+        console.error("Failed to fetch products from DB");
+      }
+    } catch (err) {
+      console.error("Error fetching products:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
   // Workspace Local Editing States to prevent Stock History bug
   const [editingStatus, setEditingStatus] = useState('In Stock');
@@ -652,53 +682,59 @@ export default function ProductsPage() {
   }, [products]);
 
   // Commit changes from Workspace Engine (Save button trigger)
-  const handleCommitChanges = () => {
+  const handleCommitChanges = async () => {
     if (!activeProduct) return;
     
     const qty = editingStock;
-    const status = editingStatus;
 
-    setProducts(prev => prev.map(p => {
-      if (p.sku === activeProduct.sku) {
-        const diff = qty - p.stock;
-        let updatedHistory = p.stockHistory || [];
+    const payload = {
+      name: activeProduct.name,
+      brand: activeProduct.brand,
+      sku: activeProduct.sku,
+      cost_price: activeProduct.unitCost || activeProduct.cost_price || 0.0,
+      retail_price: activeProduct.retailPrice || activeProduct.retail_price || 0.0,
+      trade_price: activeProduct.tradePrice || activeProduct.trade_price || 0.0,
+      stock_level: qty,
+      reorder_level: activeProduct.reorderLevel || activeProduct.reorder_level || 100,
+      supplier_id: activeProduct.supplier_id,
+      family: activeProduct.family,
+      category: activeProduct.category,
+      lead_time: activeProduct.leadTime || activeProduct.lead_time,
+      origin: activeProduct.origin,
+      color: activeProduct.color,
+      dimmable: activeProduct.dimmable,
+      dimming_protocol: activeProduct.dimmingProtocol || activeProduct.dimming_protocol,
+      driver_incl: activeProduct.driverIncl || activeProduct.driver_incl,
+      light_source_incl: activeProduct.lightSourceIncl || activeProduct.light_source_incl,
+      light_source_type: activeProduct.lightSourceType || activeProduct.light_source_type,
+      kelvin: activeProduct.kelvin,
+      beam_angle: activeProduct.beamAngle || activeProduct.beam_angle,
+      cri: activeProduct.cri,
+      ip_rating: activeProduct.ipRating || activeProduct.ip_rating,
+      system_power: activeProduct.systemPower || activeProduct.system_power,
+      lighting_type: activeProduct.lightingType || activeProduct.lighting_type,
+      cutout: activeProduct.cutout,
+      driver_spec: activeProduct.driverSpec || activeProduct.driver_spec
+    };
 
-        // If stock changed, append exactly one transaction node in logs
-        if (diff !== 0) {
-          const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-          const historyNode = {
-            date: dateStr,
-            type: diff >= 0 ? 'Stock In' : 'Stock Out',
-            reference: 'Manual Stock Adjust',
-            qty: diff >= 0 ? `+${diff}` : `${diff}`,
-            balance: qty,
-            staff: 'Dani'
-          };
-          updatedHistory = [historyNode, ...updatedHistory];
-        }
-
-        // Adjust status dynamically if they didn't override it manually
-        let finalStatus = status;
-        if (diff !== 0 && status === p.status) {
-          if (qty === 0) finalStatus = 'Out of Stock';
-          else if (qty <= p.reorderLevel) finalStatus = 'Low Stock';
-          else finalStatus = 'In Stock';
-        }
-
-        return {
-          ...p,
-          stock: qty,
-          status: finalStatus,
-          stockHistory: updatedHistory
-        };
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        triggerToast(`Changes committed successfully for ${activeProduct.sku}!`);
+        fetchProducts();
+      } else {
+        alert("Failed to commit changes to backend database");
       }
-      return p;
-    }));
-
-    triggerToast(`Changes committed successfully for ${activeProduct.sku}!`);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleCreateProduct = () => {
+  const handleCreateProduct = async () => {
     if (!newSku || !newName || !newUnitCost || !newRetailPrice) {
       alert("Please fill in all required fields (SKU, Name, Unit Cost, Retail Price).");
       return;
@@ -708,93 +744,123 @@ export default function ProductsPage() {
     const retailVal = parseFloat(newRetailPrice) || 0;
     const stockVal = parseInt(newStock) || 0;
     const reorderVal = parseInt(newReorder) || 0;
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-
-    let statusVal = 'In Stock';
-    if (stockVal === 0) statusVal = 'Out of Stock';
-    else if (stockVal <= reorderVal) statusVal = 'Low Stock';
-
-    const calculatedMargin = retailVal > 0 ? Math.round(((retailVal - costVal) / retailVal) * 100) : 37;
 
     const newProd = {
-      id: products.length + 1,
       sku: newSku,
       name: newName,
       category: newCategory,
-      supplier: newSupplier,
       brand: newBrand,
-      unitCost: costVal,
-      retailPrice: retailVal,
-      tradePrice: Math.round(retailVal * 0.9),
-      margin: calculatedMargin,
-      markup: `${Math.round(((retailVal - costVal) / costVal) * 100)}%`,
-      stock: stockVal,
-      reorderLevel: reorderVal,
-      status: statusVal,
-      leadTime: '6-8 Weeks',
+      cost_price: costVal,
+      retail_price: retailVal,
+      trade_price: Math.round(retailVal * 0.9),
+      stock_level: stockVal,
+      reorder_level: reorderVal,
+      family: newBrand,
+      lead_time: '6-8 Weeks',
       origin: 'Import',
       color: 'White',
       dimmable: 'Yes',
-      dimmingProtocol: 'Driver Dependent',
-      driverIncl: 'No',
-      lightSourceIncl: 'Yes',
-      lightSourceType: 'LED',
+      dimming_protocol: 'Driver Dependent',
+      driver_incl: 'No',
+      light_source_incl: 'Yes',
+      light_source_type: 'LED',
       kelvin: '2700K',
-      beamAngle: '30°',
+      beam_angle: '30°',
       cri: '90',
-      ipRating: 'IP20',
-      systemPower: 10.0,
-      lightingType: 'Architectural',
+      ip_rating: 'IP20',
+      system_power: 14.0,
+      lighting_type: 'Architectural',
       cutout: 'Ø76mm',
-      driverSpec: '- External or Remote Driver\n- Direct Connection',
-      accessories: [],
-      costing: {
-        supplierSku: newSku,
-        supplierUnitCost: costVal,
-        supplierDiscount: 0,
-        landedCost: Math.round(costVal * 1.15),
-        lastUpdated: dateStr,
-        tiers: [
-          { name: 'Retail / RRP', retailPrice: retailVal, discount: 0, netRetail: retailVal, margin: calculatedMargin },
-          { name: 'Trade / Partner', retailPrice: retailVal, discount: 10, netRetail: Math.round(retailVal * 0.9), margin: calculatedMargin - 5 }
-        ],
-        avgMargin: calculatedMargin,
-        profitPerUnit: retailVal - costVal,
-        contactInfo: {
-          company: newSupplier,
-          website: 'www.supplierportal.co.za',
-          email: 'orders@supplierportal.co.za',
-          phone: '+27 (0) 11 000 0000'
-        },
-        terms: 'Payment terms subject to credit application approval.'
-      },
-      supplierDetails: {
-        name: newSupplier,
-        contactPerson: 'Account Team',
-        role: 'Supplier Support Representative',
-        email: 'info@supplier.co.za',
-        phone: '+27 11 000 0000',
-        address: 'Supplier Corporate Business Park, JHB',
-        leadTime: '6-8 Weeks',
-        paymentTerms: 'COD',
-        shippingMethod: 'Road Freight'
-      },
-      stockHistory: [
-        { date: dateStr, type: 'Stock In', reference: 'Initial Stock Count', qty: `+${stockVal}`, balance: stockVal, staff: 'Dani' }
-      ]
+      driver_spec: '- External or Remote Driver\n- Direct Connection'
     };
 
-    setProducts(prev => [newProd, ...prev]);
-    setShowCreateModal(false);
-    triggerToast(`Product SKU ${newSku} created successfully!`);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProd)
+      });
+      if (res.ok) {
+        triggerToast(`Product SKU ${newSku} created successfully!`);
+        setShowCreateModal(false);
+        setNewSku('');
+        setNewName('');
+        setNewUnitCost('');
+        setNewRetailPrice('');
+        setNewStock('50');
+        setNewReorder('100');
+        fetchProducts();
+      } else {
+        const errData = await res.json();
+        alert(`Error: ${errData.detail || 'Could not create product'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error creating product: " + err.message);
+    }
+  };
+
+  const handleUploadFile = async (productId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${productId}/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        triggerToast("Document uploaded successfully!");
+        fetchProducts();
+      } else {
+        alert("Failed to upload document");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteFile = async (productId, fileId) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${productId}/files/${fileId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        triggerToast("Document deleted successfully!");
+        fetchProducts();
+      } else {
+        alert("Failed to delete document");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleBulkImport = async (e) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
     
-    // Clear Form inputs
-    setNewSku('');
-    setNewName('');
-    setNewUnitCost('');
-    setNewRetailPrice('');
-    setNewStock('50');
-    setNewReorder('100');
+    try {
+      const res = await fetch(`${API_BASE}/api/products/import/csv`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`Import Complete! Added: ${data.added}, Updated: ${data.updated}`);
+        fetchProducts();
+      } else {
+        const errData = await res.json();
+        alert(`Error: ${errData.detail || 'Import failed'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error importing CSV file: " + err.message);
+    }
+    // Reset file input
+    e.target.value = '';
   };
 
   const stockBadgeClass = (statusStr) => {
@@ -833,7 +899,14 @@ export default function ProductsPage() {
                   📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <a href={`${API_BASE}/api/products/template/csv`} download className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
+                  <Download size={14} /> Download Template
+                </a>
+                <label className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
+                  <FileText size={14} /> Bulk Import (CSV)
+                  <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleBulkImport} />
+                </label>
                 <button className="btn btn-ghost" onClick={() => triggerToast("Sales order builder initiated in background.")} style={{ border: '1px solid var(--border)' }}>
                   + Create Sales Order
                 </button>
@@ -1185,22 +1258,46 @@ export default function ProductsPage() {
                         <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
                           <h4 style={{ margin: '0 0 10px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Technical Documents</h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <FileText size={16} color="var(--text-info)" />
-                                <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
-                              </div>
-                              <Download size={14} color="var(--text-secondary)" />
-                            </div>
-                            {activeProduct.driverSpec && (
-                              <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Connection Installation Guide PDF...")}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <FileText size={16} color="var(--text-success)" />
-                                  <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Driver_Wiring_Connection_Guide.pdf</span>
+                            {activeProduct.files && activeProduct.files.length > 0 ? (
+                              activeProduct.files.map(file => (
+                                <div key={file.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px' }}>
+                                  <a href={`${API_BASE}${file.file_path}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'inherit' }}>
+                                    <FileText size={16} color={file.file_type === 'image' ? 'var(--text-warning)' : 'var(--text-info)'} />
+                                    <span style={{ fontSize: '11.5px', fontWeight: 500 }}>{file.file_name}</span>
+                                  </a>
+                                  <button style={{ background: 'none', border: 'none', color: 'var(--text-danger)', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }} onClick={() => handleDeleteFile(activeProduct.id, file.id)}>Delete</button>
                                 </div>
-                                <Download size={14} color="var(--text-secondary)" />
-                              </div>
+                              ))
+                            ) : (
+                              <>
+                                <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <FileText size={16} color="var(--text-info)" />
+                                    <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
+                                  </div>
+                                  <Download size={14} color="var(--text-secondary)" />
+                                </div>
+                                {activeProduct.driverSpec && (
+                                  <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Connection Installation Guide PDF...")}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <FileText size={16} color="var(--text-success)" />
+                                      <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Driver_Wiring_Connection_Guide.pdf</span>
+                                    </div>
+                                    <Download size={14} color="var(--text-secondary)" />
+                                  </div>
+                                )}
+                              </>
                             )}
+                            <div style={{ marginTop: '4px' }}>
+                              <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
+                                <Plus size={12} /> Upload Technical Document
+                                <input type="file" style={{ display: 'none' }} onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleUploadFile(activeProduct.id, e.target.files[0]);
+                                  }
+                                }} />
+                              </label>
+                            </div>
                           </div>
                         </div>
                       </div>

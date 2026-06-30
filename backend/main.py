@@ -15,6 +15,7 @@ from routes.documents import router as documents_router
 from routes.hr import router as hr_router
 from routes.settings import router as settings_router
 from routes.users import router as users_router
+from routes.products import router as products_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -39,22 +40,59 @@ app.include_router(documents_router, prefix="/api/documents", tags=["documents"]
 app.include_router(hr_router, prefix="/api/hr", tags=["hr"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(settings_router, prefix="/api", tags=["settings"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(users_router, prefix="/admin/users", tags=["users"])
+app.include_router(products_router, prefix="/api/products", tags=["products"], dependencies=[Depends(verify_firebase_token)])
 
+# Mount uploads static directory
+from fastapi.staticfiles import StaticFiles
+import os
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
+    from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier
     try:
         Base.metadata.create_all(bind=engine)
         
         # Run migration to add disabled column if it doesn't exist
-        from sqlalchemy import text
+        from sqlalchemy import text, inspect
         try:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;"))
                 conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
+                
+                # Migrate products table
+                inspector = inspect(engine)
+                existing_cols = [c["name"] for c in inspector.get_columns("products")]
+                new_cols = [
+                    ("family", "VARCHAR"),
+                    ("category", "VARCHAR"),
+                    ("reorder_level", "INTEGER DEFAULT 100"),
+                    ("lead_time", "VARCHAR"),
+                    ("origin", "VARCHAR"),
+                    ("color", "VARCHAR"),
+                    ("dimmable", "VARCHAR"),
+                    ("dimming_protocol", "VARCHAR"),
+                    ("driver_incl", "VARCHAR"),
+                    ("light_source_incl", "VARCHAR"),
+                    ("light_source_type", "VARCHAR"),
+                    ("kelvin", "VARCHAR"),
+                    ("beam_angle", "VARCHAR"),
+                    ("cri", "VARCHAR"),
+                    ("ip_rating", "VARCHAR"),
+                    ("system_power", "FLOAT DEFAULT 0.0"),
+                    ("lighting_type", "VARCHAR"),
+                    ("cutout", "VARCHAR"),
+                    ("driver_spec", "VARCHAR")
+                ]
+                for col_name, col_type in new_cols:
+                    if col_name not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE products ADD COLUMN {col_name} {col_type};"))
+                        conn.commit()
+                        print(f"Database migration: added column {col_name} to 'products' table.")
         except Exception as migration_err:
-            print(f"Warning: Migration failed to add 'disabled' column: {migration_err}")
+            print(f"Warning: Migration failed: {migration_err}")
 
         
         # Seed default project folders if none exist for each project
@@ -104,7 +142,88 @@ def init_db():
                         name="CAD Layouts"
                     )
                     db.add(fld_cad)
-                    db.commit()
+                    
+            # Seed default suppliers if none exist
+            supplier_count = db.query(Supplier).count()
+            if supplier_count == 0:
+                seed_suppliers = [
+                    {"id": 1, "name": "ELDC Lighting Distribution", "contact_details": "Alex Venter (Technical Procurement Lead)"},
+                    {"id": 2, "name": "Delta Light", "contact_details": "Corporate Sales"},
+                    {"id": 3, "name": "Supplier Corporate Business Park, JHB", "contact_details": "Account Team"}
+                ]
+                for s_data in seed_suppliers:
+                    db_s = Supplier(**s_data)
+                    db.add(db_s)
+                db.commit()
+                print("Database seeded with default suppliers.")
+
+            # Seed default products if none exist
+            product_count = db.query(Product).count()
+            if product_count == 0:
+                seed_products = [
+                    {
+                        "sku": "28402 9240 FW",
+                        "name": "Downlight - Entero RD-S 14W 2700K 30° IP20 White",
+                        "family": "Entero RD-S",
+                        "category": "Downlight",
+                        "brand": "Delta Light",
+                        "cost_price": 2416.37,
+                        "retail_price": 3835.50,
+                        "trade_price": 3451.95,
+                        "stock_level": 100,
+                        "reorder_level": 100,
+                        "lead_time": "6-8 Weeks",
+                        "origin": "Import",
+                        "color": "White",
+                        "dimmable": "Yes",
+                        "dimming_protocol": "Driver Dependent",
+                        "driver_incl": "No",
+                        "light_source_incl": "Yes",
+                        "light_source_type": "LED",
+                        "kelvin": "2700K",
+                        "beam_angle": "30°",
+                        "cri": "90",
+                        "ip_rating": "IP20",
+                        "system_power": 14.0,
+                        "lighting_type": "Architectural",
+                        "cutout": "Ø76mm",
+                        "driver_spec": "- External or Remote Driver (Check Driver Wetworks)\n- 1 Fitting per Driver\n- Direct Connection\n- Max Distance(Driver>Fitting): 1m away using 0.5mm cable"
+                    },
+                    {
+                        "sku": "28402 9240 B",
+                        "name": "Downlight - Entero RD-S 14W 2700K 30° IP20 Black",
+                        "family": "Entero RD-S",
+                        "category": "Downlight",
+                        "brand": "Delta Light",
+                        "cost_price": 2416.37,
+                        "retail_price": 3835.50,
+                        "trade_price": 3451.95,
+                        "stock_level": 85,
+                        "reorder_level": 100,
+                        "lead_time": "6-8 Weeks",
+                        "origin": "Import",
+                        "color": "Black",
+                        "dimmable": "Yes",
+                        "dimming_protocol": "Driver Dependent",
+                        "driver_incl": "No",
+                        "light_source_incl": "Yes",
+                        "light_source_type": "LED",
+                        "kelvin": "2700K",
+                        "beam_angle": "30°",
+                        "cri": "90",
+                        "ip_rating": "IP20",
+                        "system_power": 14.0,
+                        "lighting_type": "Architectural",
+                        "cutout": "Ø76mm",
+                        "driver_spec": "- External or Remote Driver (Check Driver Wetworks)\n- 1 Fitting per Driver\n- Direct Connection\n- Max Distance(Driver>Fitting): 1m away using 0.5mm cable"
+                    }
+                ]
+                for p_data in seed_products:
+                    db_p = Product(**p_data)
+                    db.add(db_p)
+                db.commit()
+                print("Database seeded with default lighting products.")
+
             print("Database initialized & seeded with default folders.")
         except Exception as seed_err:
             print(f"Seeding error: {seed_err}")

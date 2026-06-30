@@ -285,6 +285,43 @@ class Product(Base):
     retail_price = Column(Float, default=0.0)
     stock_level = Column(Integer, default=0)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    
+    # Newly expanded fields
+    family = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+    reorder_level = Column(Integer, default=100)
+    lead_time = Column(String, nullable=True)
+    origin = Column(String, nullable=True)
+    color = Column(String, nullable=True)
+    dimmable = Column(String, nullable=True)
+    dimming_protocol = Column(String, nullable=True)
+    driver_incl = Column(String, nullable=True)
+    light_source_incl = Column(String, nullable=True)
+    light_source_type = Column(String, nullable=True)
+    kelvin = Column(String, nullable=True)
+    beam_angle = Column(String, nullable=True)
+    cri = Column(String, nullable=True)
+    ip_rating = Column(String, nullable=True)
+    system_power = Column(Float, default=0.0)
+    lighting_type = Column(String, nullable=True)
+    cutout = Column(String, nullable=True)
+    driver_spec = Column(String, nullable=True)
+    
+    # Relationships
+    files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
+    supplier = relationship("Supplier", back_populates="products")
+
+class ProductFile(Base):
+    __tablename__ = "product_files"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    file_path = Column(String, nullable=False)
+    file_name = Column(String, nullable=False)
+    file_type = Column(String, nullable=False) # e.g. "image", "pdf"
+    uploaded_at = Column(String, nullable=True)
+    
+    product = relationship("Product", back_populates="files")
 
 class Supplier(Base):
     __tablename__ = "suppliers"
@@ -292,6 +329,8 @@ class Supplier(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     contact_details = Column(String, nullable=True)
+    
+    products = relationship("Product", back_populates="supplier")
 
 class Employee(Base):
     __tablename__ = "employees"
