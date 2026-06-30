@@ -24,6 +24,14 @@ export default function InvoicesPage() {
   const [customInvoiceId, setCustomInvoiceId] = useState('');
   const [customInvoiceDate, setCustomInvoiceDate] = useState('');
 
+  // Form states for editing a Client Invoice
+  const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
+  const [editInvoiceDoc, setEditInvoiceDoc] = useState(null);
+  const [editInvoiceNotes, setEditInvoiceNotes] = useState('');
+  const [editInvoiceId, setEditInvoiceId] = useState('');
+  const [editInvoiceDate, setEditInvoiceDate] = useState('');
+  const [editInvoiceItemInputs, setEditInvoiceItemInputs] = useState({});
+
   // 1. Gather all design invoices (those without type: 'order_invoice')
   const designInvoices = invoices.filter(i => i.type !== 'order_invoice');
 
@@ -310,6 +318,205 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleOpenEditInvoiceModal = (inv) => {
+    setEditInvoiceDoc(inv);
+    setEditInvoiceNotes(inv.notes || '');
+    setEditInvoiceId(inv.id);
+    let rawDate = '';
+    if (inv.date) {
+      const parsed = Date.parse(inv.date);
+      if (!isNaN(parsed)) {
+        rawDate = new Date(parsed).toISOString().split('T')[0];
+      }
+    }
+    setEditInvoiceDate(rawDate || new Date().toISOString().split('T')[0]);
+
+    const inputs = {};
+    (inv.items || []).forEach(item => {
+      inputs[item.code] = item.qtyAction;
+    });
+    setEditInvoiceItemInputs(inputs);
+    setShowEditInvoiceModal(true);
+  };
+
+  const handleSaveEditInvoice = (e) => {
+    e.preventDefault();
+    if (!editInvoiceDoc) return;
+
+    const pKey = editInvoiceDoc.projectKey;
+    const oId = editInvoiceDoc.orderId;
+    const project = projects[pKey];
+    if (!project) return;
+    const order = (project.orders || []).find(o => o.id === oId);
+    if (!order) return;
+
+    const formattedDate = editInvoiceDate || new Date().toISOString().split('T')[0];
+    const newInvId = editInvoiceId.trim() || editInvoiceDoc.id;
+    const dateObj = new Date(formattedDate);
+    const dateStr = isNaN(dateObj.getTime()) 
+      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
+      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
+    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    const invoiceItems = [];
+    let invoiceTotalValue = 0;
+    let hasQuantities = false;
+
+    const consolidated = getConsolidatedInvoiceItems(order);
+    const updatedItemsList = [...(order.itemsList || [])];
+    const otherInvoicedQtys = getOrderInvoicedQtys(order, editInvoiceDoc.id);
+
+    consolidated.forEach(cItem => {
+      const qtyAction = Math.max(0, parseInt(editInvoiceItemInputs[cItem.code]) || 0);
+
+      if (qtyAction > 0) {
+        hasQuantities = true;
+        const lineVal = qtyAction * (cItem.unitRetail || 0);
+        invoiceTotalValue += lineVal;
+        
+        invoiceItems.push({
+          code: cItem.code,
+          description: cItem.description,
+          qtyAction,
+          unitRetail: cItem.unitRetail || 0,
+          value: lineVal
+        });
+
+        let remainingToAllocate = qtyAction;
+        cItem.originalItems.forEach(origItem => {
+          if (remainingToAllocate <= 0) return;
+          
+          let readyQty = 0;
+          if (origItem.stockStatus === 'All Stock on Hand') {
+            readyQty = origItem.qty || 0;
+          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
+            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
+            readyQty = (origItem.receivedQty || 0) + inStock;
+          } else {
+            readyQty = origItem.receivedQty || 0;
+          }
+          const avail = Math.max(0, readyQty - (otherInvoicedQtys[origItem.id] || 0));
+          const toAlloc = Math.min(avail, remainingToAllocate);
+
+          if (toAlloc > 0) {
+            remainingToAllocate -= toAlloc;
+            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+            if (targetIdx !== -1) {
+              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
+              const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
+              const syncTransaction = {
+                qty: toAlloc,
+                ref: newInvId,
+                date: formattedDate,
+                value: toAlloc * (origItem.unitRetail || 0)
+              };
+              const nextHistory = [...cleanedHistory, syncTransaction];
+              const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+              const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+
+              updatedItemsList[targetIdx] = {
+                ...updatedItemsList[targetIdx],
+                invoiceQty: newInvQty,
+                invoiceValue: newInvVal,
+                invoiceHistory: nextHistory
+              };
+            }
+          }
+        });
+
+        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
+          const origItem = cItem.originalItems[0];
+          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+          if (targetIdx !== -1) {
+            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
+            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
+            const syncTransaction = {
+              qty: remainingToAllocate,
+              ref: newInvId,
+              date: formattedDate,
+              value: remainingToAllocate * (origItem.unitRetail || 0)
+            };
+            const nextHistory = [...cleanedHistory, syncTransaction];
+            const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+
+            updatedItemsList[targetIdx] = {
+              ...updatedItemsList[targetIdx],
+              invoiceQty: newInvQty,
+              invoiceValue: newInvVal,
+              invoiceHistory: nextHistory
+            };
+          }
+        }
+      } else {
+        cItem.originalItems.forEach(origItem => {
+          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
+          if (targetIdx !== -1) {
+            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
+            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
+            const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
+            updatedItemsList[targetIdx] = {
+              ...updatedItemsList[targetIdx],
+              invoiceQty: newInvQty,
+              invoiceValue: newInvVal,
+              invoiceHistory: cleanedHistory
+            };
+          }
+        });
+      }
+    });
+
+    if (!hasQuantities) {
+      alert('Please enter at least one quantity to invoice.');
+      return;
+    }
+
+    const updatedInvDoc = {
+      ...editInvoiceDoc,
+      id: newInvId,
+      date: dateStr,
+      notes: editInvoiceNotes,
+      items: invoiceItems,
+      totalValue: invoiceTotalValue
+    };
+
+    const updatedOrders = project.orders.map(o => {
+      if (o.id === oId) {
+        return {
+          ...o,
+          clientInvoices: (o.clientInvoices || []).map(i => i.id === editInvoiceDoc.id ? updatedInvDoc : i),
+          itemsList: updatedItemsList
+        };
+      }
+      return o;
+    });
+
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id === editInvoiceDoc.id) {
+        return {
+          ...inv,
+          id: newInvId,
+          amount: `R ${Math.round(invoiceTotalValue).toLocaleString()}`,
+          issued: dateStr,
+          due: dueStr,
+          notes: editInvoiceNotes,
+          items: invoiceItems,
+          totalValue: invoiceTotalValue
+        };
+      }
+      return inv;
+    }));
+
+    updateProject(pKey, 'orders', updatedOrders);
+    setShowEditInvoiceModal(false);
+    setSelectedInvoiceId(null);
+    setTimeout(() => {
+      setSelectedInvoiceId(newInvId);
+    }, 50);
+  };
+
   // Calculations for selected order in Invoice form
   const selectedInvoiceOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === invoiceOrderKey);
   const selectedInvoiceInvoicedQtys = selectedInvoiceOrder ? getOrderInvoicedQtys(selectedInvoiceOrder) : {};
@@ -448,6 +655,11 @@ export default function InvoicesPage() {
                   </h3>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
+                  {selectedInvoice.type === 'order_invoice' && (
+                    <button className="btn btn-xs btn-outline" onClick={() => handleOpenEditInvoiceModal(selectedInvoice)} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                      ✍️ Edit
+                    </button>
+                  )}
                   <button className="btn btn-xs btn-ghost" onClick={() => window.print()}>
                     <Printer size={13} /> Print
                   </button>
@@ -650,6 +862,142 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+      {/* EDIT CLIENT INVOICE MODAL */}
+      {showEditInvoiceModal && editInvoiceDoc && (() => {
+        const project = projects[editInvoiceDoc.projectKey];
+        const order = (project?.orders || []).find(o => o.id === editInvoiceDoc.orderId);
+        const consolidated = order ? getConsolidatedInvoiceItems(order) : [];
+        const otherInvoicedQtys = order ? getOrderInvoicedQtys(order, editInvoiceDoc.id) : {};
+
+        return (
+          <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Edit Client Product Invoice</h3>
+                <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowEditInvoiceModal(false)}>✕</button>
+              </div>
+              
+              <form onSubmit={handleSaveEditInvoice} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. INV-2026-001" 
+                        className="form-control" 
+                        value={editInvoiceId} 
+                        onChange={e => setEditInvoiceId(e.target.value)} 
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
+                      <input 
+                        type="date" 
+                        className="form-control" 
+                        value={editInvoiceDate} 
+                        onChange={e => setEditInvoiceDate(e.target.value)} 
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Terms</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Standard 15-day payment terms..." 
+                      className="form-control" 
+                      value={editInvoiceNotes} 
+                      onChange={e => setEditInvoiceNotes(e.target.value)} 
+                    />
+                  </div>
+
+                  {order ? (
+                    <div>
+                      <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Update Invoice Quantity Allocation:</div>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <table className="table" style={{ fontSize: '11px', margin: 0 }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-primary)' }}>
+                              <th>Item Code</th>
+                              <th style={{ width: '80px', textAlign: 'center' }}>Total Spec</th>
+                              <th style={{ width: '80px', textAlign: 'center' }}>Packed/Rec</th>
+                              <th style={{ width: '80px', textAlign: 'center' }}>Other Inv</th>
+                              <th style={{ width: '100px', textAlign: 'center' }}>Qty to Invoice</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {consolidated.map(cItem => {
+                              let readyQtySum = 0;
+                              cItem.originalItems.forEach(origItem => {
+                                if (origItem.stockStatus === 'All Stock on Hand') {
+                                  readyQtySum += origItem.qty || 0;
+                                } else if (origItem.stockStatus === 'Partial Stock on Hand') {
+                                  const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
+                                  readyQtySum += (origItem.receivedQty || 0) + inStock;
+                                } else {
+                                  readyQtySum += origItem.receivedQty || 0;
+                                }
+                              });
+
+                              let otherInvQty = 0;
+                              cItem.originalItems.forEach(origItem => {
+                                otherInvQty += otherInvoicedQtys[origItem.id] || 0;
+                              });
+
+                              const maxAvailable = Math.max(0, readyQtySum - otherInvQty);
+                              const currentVal = editInvoiceItemInputs[cItem.code] || 0;
+
+                              return (
+                                <tr key={cItem.code}>
+                                  <td>
+                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
+                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)' }}>{cItem.description}</div>
+                                  </td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{readyQtySum}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{otherInvQty}</td>
+                                  <td style={{ padding: '2px' }}>
+                                    <input 
+                                      type="number" 
+                                      className="form-control" 
+                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
+                                      min={0}
+                                      max={maxAvailable}
+                                      value={currentVal || ''}
+                                      placeholder={`Max ${maxAvailable}`}
+                                      disabled={maxAvailable === 0}
+                                      onChange={e => {
+                                        const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
+                                        setEditInvoiceItemInputs(prev => ({
+                                          ...prev,
+                                          [cItem.code]: val
+                                        }));
+                                      }}
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+                  <button type="button" className="btn btn-sm" onClick={() => setShowEditInvoiceModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-sm btn-primary">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
