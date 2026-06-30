@@ -1771,6 +1771,20 @@ export default function OrdersPage() {
                 <DollarSign size={14} /> 💳 Payments
               </button>
               <button 
+                className={`btn btn-sm ${workspaceSubTab === 'purchasing' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('purchasing')}
+              >
+                <ClipboardList size={14} /> 📋 Purchasing & Receiving
+              </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('invoices')}
+              >
+                <FileText size={14} /> 💵 Invoicing
+              </button>
+              <button 
                 className={`btn btn-sm ${workspaceSubTab === 'logistics' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
                 onClick={() => setWorkspaceSubTab('logistics')}
@@ -3495,6 +3509,152 @@ export default function OrdersPage() {
                       </div>
                     );
                   })()}
+                </div>
+              </div>
+            )}
+
+            {workspaceSubTab === 'purchasing' && (
+              /* SUB-TAB 5: PURCHASING & RECEIVING REFERENCE VIEW */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
+                        📋 Purchasing & Receiving Documents
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Purchase Orders and Goods Received Notes issued for this quotation order.</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => navigate('/purchasing', { state: { filterOrderId: selectedOrderId } })}
+                    >
+                      <ClipboardList size={14} /> Open Purchasing Dashboard
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Document ID</th>
+                          <th style={{ padding: '10px 12px' }}>Document Type</th>
+                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                          <th style={{ padding: '10px 12px' }}>Items Count</th>
+                          <th style={{ padding: '10px 12px' }}>Supplier</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(!activeOrderObject?.purchaseOrders?.length && !activeOrderObject?.goodsReceivedNotes?.length) ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No purchase orders or goods received notes have been generated for this order yet. Go to Purchasing & Receiving to draft one.
+                            </td>
+                          </tr>
+                        ) : (
+                          <>
+                            {/* Render POs */}
+                            {(activeOrderObject?.purchaseOrders || []).map((po, idx) => (
+                              <tr key={`po-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                                <td 
+                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={() => navigate('/purchasing', { state: { openDocId: po.id, projectKey: activeOrderObject.projectKey } })}
+                                >
+                                  {po.id}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>📋 Purchase Order</td>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{po.date || '—'}</td>
+                                <td style={{ padding: '10px 12px' }}>{(po.items || []).length} items</td>
+                                <td style={{ padding: '10px 12px' }}>{po.supplier || '—'}</td>
+                              </tr>
+                            ))}
+                            {/* Render GRNs */}
+                            {(activeOrderObject?.goodsReceivedNotes || []).map((grn, idx) => (
+                              <tr key={`grn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                                <td 
+                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={() => navigate('/purchasing', { state: { openDocId: grn.id, projectKey: activeOrderObject.projectKey } })}
+                                >
+                                  {grn.id}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>📥 Goods Received Note</td>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{grn.date || '—'}</td>
+                                <td style={{ padding: '10px 12px' }}>{(grn.items || []).length} items</td>
+                                <td style={{ padding: '10px 12px' }}>{activeOrderObject.supplier || '—'}</td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {workspaceSubTab === 'invoices' && (
+              /* SUB-TAB 6: INVOICING REFERENCE VIEW */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
+                        💵 Client Product Invoices
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Client product invoices generated for this quotation order.</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => navigate('/invoices')}
+                    >
+                      <FileText size={14} /> Open Invoices Dashboard
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Invoice ID</th>
+                          <th style={{ padding: '10px 12px' }}>Document Type</th>
+                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                          <th style={{ padding: '10px 12px' }}>Amount</th>
+                          <th style={{ padding: '10px 12px' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {!activeOrderObject?.clientInvoices?.length ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No product invoices have been issued for this order yet. Go to Invoices ledger to create one.
+                            </td>
+                          </tr>
+                        ) : (
+                          activeOrderObject.clientInvoices.map((inv, idx) => (
+                            <tr key={`inv-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                              <td 
+                                style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => navigate('/invoices')}
+                              >
+                                {inv.id}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>💵 Client Product Invoice</td>
+                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{inv.date || '—'}</td>
+                              <td style={{ padding: '10px 12px', fontWeight: 600 }}>R {Math.round(inv.totalValue || 0).toLocaleString()}</td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span className={`badge ${inv.paid ? 'b-success' : 'b-warning'}`}>
+                                  {inv.paid ? 'Paid' : 'Unpaid'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}

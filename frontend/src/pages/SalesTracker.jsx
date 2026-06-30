@@ -127,11 +127,11 @@ const getItemDefaults = (item) => {
     resolved.poDate = pHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
     resolved.poEta = pHistory.map(h => h.eta).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
   } else {
-    if (resolved.poRef === undefined) resolved.poRef = '';
-    if (resolved.poSupplier === undefined) resolved.poSupplier = item.supplier || '';
-    if (resolved.poDate === undefined) resolved.poDate = '';
-    if (resolved.poQtyOrdered === undefined) resolved.poQtyOrdered = 0;
-    if (resolved.poEta === undefined) resolved.poEta = '';
+    resolved.poRef = '';
+    resolved.poSupplier = '';
+    resolved.poDate = '';
+    resolved.poQtyOrdered = 0;
+    resolved.poEta = '';
   }
   
   // Phase 2: Receiving Phase
@@ -140,8 +140,8 @@ const getItemDefaults = (item) => {
     resolved.receivedQty = rHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     resolved.receivedDate = rHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
   } else {
-    if (resolved.receivedQty === undefined) resolved.receivedQty = 0;
-    if (resolved.receivedDate === undefined) resolved.receivedDate = '';
+    resolved.receivedQty = 0;
+    resolved.receivedDate = '';
   }
   
   // Phase 3: Invoicing Phase
@@ -152,10 +152,10 @@ const getItemDefaults = (item) => {
     resolved.invoiceDate = iHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
     resolved.invoiceValue = iHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
   } else {
-    if (resolved.invoiceQty === undefined) resolved.invoiceQty = 0;
-    if (resolved.invoiceRef === undefined) resolved.invoiceRef = '';
-    if (resolved.invoiceDate === undefined) resolved.invoiceDate = '';
-    if (resolved.invoiceValue === undefined) resolved.invoiceValue = 0;
+    resolved.invoiceQty = 0;
+    resolved.invoiceRef = '';
+    resolved.invoiceDate = '';
+    resolved.invoiceValue = 0;
   }
   
   // Process delivery history if exists to sync with warehouse documents
