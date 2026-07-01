@@ -75,6 +75,52 @@ def convert_docx_to_pdf_local(docx_path, pdf_path):
         _word_app = None
         return False
 
+def convert_docx_to_pdf_libreoffice(docx_path, pdf_path):
+    """
+    Converts docx to PDF using headless LibreOffice (available in Docker/Linux containers).
+    """
+    import subprocess
+    import shutil
+    
+    # Check if libreoffice is available
+    if not shutil.which("libreoffice"):
+        logger.debug("LibreOffice is not installed on this system.")
+        return False
+        
+    try:
+        outdir = os.path.dirname(pdf_path)
+        logger.info(f"Converting {docx_path} to PDF via LibreOffice headless...")
+        
+        # Command: libreoffice --headless --convert-to pdf --outdir [outdir] [docx_path]
+        cmd = [
+            "libreoffice",
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", outdir,
+            docx_path
+        ]
+        
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        if result.returncode != 0:
+            logger.error(f"LibreOffice conversion failed: {result.stderr}")
+            return False
+            
+        # LibreOffice names the output file same as docx but with .pdf extension in outdir
+        default_output_name = os.path.basename(docx_path).replace(".docx", ".pdf")
+        generated_pdf_path = os.path.join(outdir, default_output_name)
+        
+        if os.path.exists(generated_pdf_path):
+            if generated_pdf_path != pdf_path:
+                shutil.move(generated_pdf_path, pdf_path)
+            logger.info("LibreOffice conversion successful.")
+            return True
+        else:
+            logger.error("LibreOffice ran but the output PDF file was not found.")
+            return False
+    except Exception as e:
+        logger.error(f"LibreOffice conversion crashed: {e}")
+        return False
+
 def clean_docx_xml(xml_content):
     """
     Cleans up Microsoft Word XML run-split templates where placeholder braces
@@ -263,6 +309,18 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
     
     logger.info("Attempting local Word to PDF conversion...")
     if convert_docx_to_pdf_local(temp_docx_path, local_pdf.name):
+        try:
+            if os.path.exists(temp_docx_path):
+                os.remove(temp_docx_path)
+            if os.path.exists(temp_dir):
+                os.rmdir(temp_dir)
+        except Exception as e:
+            logger.warn(f"Failed to delete temp local docx files: {e}")
+        return local_pdf.name
+
+    # 2b. Try LibreOffice conversion (on Linux/Docker)
+    logger.info("Attempting LibreOffice to PDF conversion...")
+    if convert_docx_to_pdf_libreoffice(temp_docx_path, local_pdf.name):
         try:
             if os.path.exists(temp_docx_path):
                 os.remove(temp_docx_path)
