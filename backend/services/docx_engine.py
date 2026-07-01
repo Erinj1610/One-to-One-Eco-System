@@ -146,6 +146,24 @@ def clean_docx_xml(xml_content):
     xml_content = re.sub(r'(\{\{[^}]+\}\})', strip_tags_inside_braces, xml_content)
     return xml_content
 
+def escape_for_xml(data):
+    """
+    Recursively escapes special XML characters in string values to keep the DOCX XML valid.
+    """
+    if isinstance(data, dict):
+        return {k: escape_for_xml(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [escape_for_xml(item) for item in data]
+    elif isinstance(data, str):
+        return (data
+                .replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;')
+                .replace('"', '&quot;')
+                .replace("'", '&apos;'))
+    else:
+        return data
+
 def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json=None):
     """
     Reads a .docx template from disk, performs placeholder replacement
@@ -153,6 +171,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
     locally (if on Windows) or uploads to Google Drive as fallback, and returns the PDF path.
     """
     logger.info(f"Merging docx template: {template_path}")
+    tokens = escape_for_xml(tokens)
     
     # 1. Unzip .docx and read/modify the XML components
     temp_dir = tempfile.mkdtemp()
