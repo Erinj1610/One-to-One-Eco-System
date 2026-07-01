@@ -874,8 +874,8 @@ export default function OrdersPage() {
     const formattedToday = new Date().toLocaleDateString('en-GB'); // "dd/mm/yyyy"
     setOrderDate(order.orderDate || formattedToday);
 
-    setDeliveryAddress(order.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
-    setBillingDetails(order.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
+    setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
+    setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
   };
 
   // Cell modification in the spreadsheet workspace
@@ -1983,6 +1983,13 @@ export default function OrdersPage() {
                                     setProjectSize(proj.sqm || '—');
                                     setPmName(proj.pm || '');
                                     
+                                    if (proj.deliveryAddress) {
+                                      setDeliveryAddress(proj.deliveryAddress);
+                                    }
+                                    if (proj.billingDetails) {
+                                      setBillingDetails(proj.billingDetails);
+                                    }
+
                                     // Lock client details to this project's client contact
                                     if (proj.client) {
                                       setClientContact(proj.client);
@@ -1998,6 +2005,8 @@ export default function OrdersPage() {
                                     setProjectTier('');
                                     setProjectSize('—');
                                     setPmName('');
+                                    setDeliveryAddress('');
+                                    setBillingDetails('');
                                   }
                                 }}
                               >

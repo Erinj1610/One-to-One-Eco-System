@@ -952,8 +952,8 @@ export default function SalesTracker() {
     setDepositValue(order.depositValue !== undefined ? order.depositValue : (tempTotalPriceInclVat * 0.7));
     setBalanceValue(order.balanceValue !== undefined ? order.balanceValue : (tempTotalPriceInclVat * 0.3));
 
-    setDeliveryAddress(order.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
-    setBillingDetails(order.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
+    setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
+    setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
   };
 
   const handleApplyBulkValue = () => {
