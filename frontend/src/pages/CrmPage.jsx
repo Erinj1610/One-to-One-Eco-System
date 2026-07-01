@@ -95,6 +95,11 @@ export default function CrmPage() {
   const [projSortField, setProjSortField] = useState('name');
   const [projSortDirection, setProjSortDirection] = useState('asc');
 
+  // Project tab date filters
+  const [projDatePreset, setProjDatePreset] = useState('all');
+  const [projStartDate, setProjStartDate] = useState('');
+  const [projEndDate, setProjEndDate] = useState('');
+
   const handleProjSort = (field) => {
     if (projSortField === field) {
       setProjSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -461,7 +466,36 @@ export default function CrmPage() {
 
   const clientProjects = useMemo(() => {
     if (!selectedClient) return [];
-    const rawList = Object.values(projects).filter(p => p.client === selectedClient?.name);
+    let rawList = Object.values(projects).filter(p => p.client === selectedClient?.name);
+
+    // Apply date range filters based on start date
+    if (projDatePreset === 'week') {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      rawList = rawList.filter(p => p.start && new Date(p.start) >= oneWeekAgo);
+    } else if (projDatePreset === 'month') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      rawList = rawList.filter(p => p.start && new Date(p.start) >= thirtyDaysAgo);
+    } else if (projDatePreset === 'fy') {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const fyStart = now.getMonth() >= 2 ? new Date(currentYear, 2, 1) : new Date(currentYear - 1, 2, 1);
+      const fyEnd = now.getMonth() >= 2 ? new Date(currentYear + 1, 1, 28) : new Date(currentYear, 1, 28);
+      rawList = rawList.filter(p => {
+        if (!p.start) return false;
+        const d = new Date(p.start);
+        return d >= fyStart && d <= fyEnd;
+      });
+    } else if (projDatePreset === 'custom') {
+      if (projStartDate) {
+        rawList = rawList.filter(p => p.start && new Date(p.start) >= new Date(projStartDate));
+      }
+      if (projEndDate) {
+        rawList = rawList.filter(p => p.start && new Date(p.start) <= new Date(projEndDate + 'T23:59:59'));
+      }
+    }
+
     if (!projSortField) return rawList;
     const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
 
@@ -522,7 +556,7 @@ export default function CrmPage() {
       if (valA > valB) return projSortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [projects, selectedClient?.name, projSortField, projSortDirection]);
+  }, [projects, selectedClient?.name, projSortField, projSortDirection, projDatePreset, projStartDate, projEndDate]);
 
   const velocityRhythm = useMemo(() => {
     if (!clientProjects || clientProjects.length <= 1) {
@@ -1525,33 +1559,81 @@ export default function CrmPage() {
         {activeTab === 'projects' && (
           <div className="card">
             <div className="card-head" style={{ background: 'none', borderBottom: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title">ALL Portfolio Projects for {selectedClient.name}</div>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => {
-                  const newKey = addProject({
-                    name: '',
-                    client: selectedClient.name,
-                    projectType: 'Design & Orders',
-                    offering: 'Signature',
-                    sqm: '',
-                    pm: 'Dani',
-                    targetMargin: 39,
-                    actualMargin: 39,
-                    designFees: [],
-                    orders: [],
-                    isDraft: true,
-                    stage: '—',
-                    status: 'Draft',
-                    start: '—',
-                    deadline: '—'
-                  });
-                  navigate(`/projects/${newKey}`);
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                <Plus size={16} /> New Project
-              </button>
+              <div className="card-title">Projects for the client</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <button 
+                    onClick={() => { setProjDatePreset('all'); setProjStartDate(''); setProjEndDate(''); }} 
+                    style={{ background: projDatePreset === 'all' ? 'var(--text-info)' : 'none', color: projDatePreset === 'all' ? '#fff' : 'var(--text-primary)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    All Time
+                  </button>
+                  <button 
+                    onClick={() => { setProjDatePreset('week'); setProjStartDate(''); setProjEndDate(''); }} 
+                    style={{ background: projDatePreset === 'week' ? 'var(--text-info)' : 'none', color: projDatePreset === 'week' ? '#fff' : 'var(--text-primary)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    Last Week
+                  </button>
+                  <button 
+                    onClick={() => { setProjDatePreset('month'); setProjStartDate(''); setProjEndDate(''); }} 
+                    style={{ background: projDatePreset === 'month' ? 'var(--text-info)' : 'none', color: projDatePreset === 'month' ? '#fff' : 'var(--text-primary)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    Last 30 Days
+                  </button>
+                  <button 
+                    onClick={() => { setProjDatePreset('fy'); setProjStartDate(''); setProjEndDate(''); }} 
+                    style={{ background: projDatePreset === 'fy' ? 'var(--text-info)' : 'none', color: projDatePreset === 'fy' ? '#fff' : 'var(--text-primary)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    Financial Year
+                  </button>
+                </div>
+
+                <div style={{ height: '20px', width: '1px', background: 'var(--border)' }}></div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  <Calendar size={14} />
+                  <input 
+                    type="date" 
+                    value={projStartDate}
+                    onChange={(e) => { setProjStartDate(e.target.value); setProjDatePreset('custom'); }}
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', color: 'var(--text-primary)', outline: 'none' }}
+                  />
+                  <span>to</span>
+                  <input 
+                    type="date" 
+                    value={projEndDate}
+                    onChange={(e) => { setProjEndDate(e.target.value); setProjDatePreset('custom'); }}
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', color: 'var(--text-primary)', outline: 'none' }}
+                  />
+                </div>
+
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    const newKey = addProject({
+                      name: '',
+                      client: selectedClient.name,
+                      projectType: 'Design & Orders',
+                      offering: 'Signature',
+                      sqm: '',
+                      pm: 'Dani',
+                      targetMargin: 39,
+                      actualMargin: 39,
+                      designFees: [],
+                      orders: [],
+                      isDraft: true,
+                      stage: '—',
+                      status: 'Draft',
+                      start: '—',
+                      deadline: '—'
+                    });
+                    navigate(`/projects/${newKey}`);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Plus size={16} /> New Project
+                </button>
+              </div>
             </div>
              <table className="table" style={{ margin: 0 }}>
                <colgroup>
