@@ -1289,7 +1289,8 @@ export default function OrdersPage() {
     const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
     const itemsCount = activeOrderItems.reduce((s, item) => s + (Number(item.qty) || 0), 0);
-    const balanceOutstanding = Math.max(0, discountedValue - Number(orderPaidAmount));
+    const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
 
     const updatedOrders = (proj.orders || []).map(o => {
       if (o.id === selectedOrderId) {
@@ -1302,7 +1303,7 @@ export default function OrdersPage() {
           value: Math.round(discountedValue),
           costValue: Math.round(totalCostTotal),
           discount: Number(orderDiscount) || 0,
-          paid: Number(orderPaidAmount) || 0,
+          paid: paidSum,
           payments: orderPayments,
           outstanding: Math.round(balanceOutstanding),
           itemsList: activeOrderItems,
