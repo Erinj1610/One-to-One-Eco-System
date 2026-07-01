@@ -12,7 +12,12 @@ _word_app = None
 
 def get_word_app():
     global _word_app
-    import win32com.client
+    try:
+        import win32com.client
+    except (ImportError, ModuleNotFoundError):
+        logger.debug("win32com is not available (non-Windows platform).")
+        return None
+
     if _word_app is not None:
         try:
             # Test if the application is still responsive and valid
@@ -44,9 +49,13 @@ def convert_docx_to_pdf_local(docx_path, pdf_path):
     Attempts to convert docx to PDF locally using Microsoft Word via win32com.
     Reuses a cached Word instance for high performance.
     """
-    import pythoncom
-    pythoncom.CoInitialize()
-    
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+    except (ImportError, ModuleNotFoundError):
+        logger.error("pythoncom/win32com not available (likely non-Windows platform).")
+        return False
+        
     word = get_word_app()
     if not word:
         logger.error("Could not obtain a Word application instance.")
