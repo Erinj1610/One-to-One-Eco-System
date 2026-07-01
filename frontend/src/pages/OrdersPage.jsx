@@ -1839,15 +1839,6 @@ export default function OrdersPage() {
                     <option>Delivered</option>
                     <option>Cancelled</option>
                   </select>
-                  
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginLeft: '6px' }}>Paid:</span>
-                  <input 
-                    type="number"
-                    className="form-control"
-                    style={{ width: '100px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                    value={orderPaidAmount}
-                    onChange={e => setOrderPaidAmount(Math.max(0, Number(e.target.value) || 0))}
-                  />
                 </div>
 
                 <button 
@@ -4000,24 +3991,7 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {/* Stoic Logistical Advisory Banner */}
-            <div style={{ 
-              background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-              border: '1.5px dashed var(--border-info)', 
-              borderRadius: 'var(--radius-lg)', 
-              padding: '14px 18px', 
-              marginTop: '20px', 
-              display: 'flex', 
-              gap: '12px', 
-              alignItems: 'center' 
-            }}>
-              <HelpCircle size={18} color="var(--text-info)" style={{ flexShrink: 0 }} />
-              <div style={{ fontSize: '12px' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '2px' }}>Stoic Logistical Advisory ({PHI_ADVISORIES.orders.author})</span>
-                <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>"{PHI_ADVISORIES.orders.quote}"</span>
-                <span style={{ color: 'var(--text-info)', display: 'block', marginTop: '4px' }}><strong>Strategic Practice:</strong> {PHI_ADVISORIES.orders.advice}</span>
-              </div>
-            </div>
+
 
           </div>
         </div>
