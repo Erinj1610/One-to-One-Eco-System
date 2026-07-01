@@ -360,6 +360,11 @@ export default function OrdersPage() {
   const [pmPhone, setPmPhone] = useState('083 570 7795');
   const [pmEmail, setPmEmail] = useState('merlyn.mittins@1-to-1.world');
   const [orderDate, setOrderDate] = useState('');
+  const [pfNumber, setPfNumber] = useState('');
+  const [pfDate, setPfDate] = useState('');
+  const [fileSource, setFileSource] = useState('');
+  const [projectClass, setProjectClass] = useState('');
+  const [quotationSentDate, setQuotationSentDate] = useState('');
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
@@ -970,6 +975,12 @@ export default function OrdersPage() {
     const formattedToday = new Date().toLocaleDateString('en-GB'); // "dd/mm/yyyy"
     setOrderDate(order.orderDate || formattedToday);
 
+    setPfNumber(order.pfNumber || '');
+    setPfDate(order.pfDate || '');
+    setFileSource(order.fileSource || '');
+    setProjectClass(order.projectClass || '');
+    setQuotationSentDate(order.quotationSentDate || '');
+
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
   };
@@ -1327,7 +1338,12 @@ export default function OrdersPage() {
           pmEmail,
           deliveryAddress,
           billingDetails,
-          orderDate
+          orderDate,
+          pfNumber,
+          pfDate,
+          fileSource,
+          projectClass,
+          quotationSentDate
         };
       }
       return o;
@@ -2148,6 +2164,59 @@ export default function OrdersPage() {
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
                                 value={projectSize} 
                                 onChange={e => setProjectSize(e.target.value)} 
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
+                            <div style={{ gridColumn: 'span 2' }}>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>PF Number & Date</label>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  placeholder="PF Number" 
+                                  className="form-control" 
+                                  style={{ height: '24px', fontSize: '11px', flex: 1, padding: '2px 6px' }}
+                                  value={pfNumber} 
+                                  onChange={e => setPfNumber(e.target.value)}
+                                />
+                                <input 
+                                  type="date" 
+                                  className="form-control" 
+                                  style={{ height: '24px', fontSize: '11px', width: '95px', padding: '2px 4px', colorScheme: 'dark' }}
+                                  value={pfDate} 
+                                  onChange={e => setPfDate(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Project Class</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
+                                value={projectClass} 
+                                onChange={e => setProjectClass(e.target.value)} 
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Quotation Sent</label>
+                              <input 
+                                type="date" 
+                                className="form-control" 
+                                style={{ height: '24px', fontSize: '11px', padding: '2px 6px', colorScheme: 'dark' }}
+                                value={quotationSentDate} 
+                                onChange={e => setQuotationSentDate(e.target.value)} 
+                              />
+                            </div>
+                            <div style={{ gridColumn: 'span 4' }}>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>File Source</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
+                                value={fileSource} 
+                                onChange={e => setFileSource(e.target.value)} 
                               />
                             </div>
                           </div>

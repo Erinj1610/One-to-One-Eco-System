@@ -1480,7 +1480,7 @@ export default function SalesTracker() {
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Quotations & Area-by-Area BOQ Builder</span>
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  📈 {getModuleName('sales_tracker', 'Sales Tracker')} Dashboard
+                  📈 Sales Tracker Mirror View Dashboard
                 </h1>
               </div>
 
@@ -1798,13 +1798,13 @@ export default function SalesTracker() {
                     className="btn btn-ghost btn-sm" 
                     style={{ padding: '4px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
                     onClick={() => {
-                      if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
+                      if (confirm('Exit Workspace?')) setSelectedOrderId(null);
                     }}
                   >
                     <ArrowLeft size={12} /> Back to Ledger
                   </button>
-                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(59,130,246,0.15)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    Sales Tracker Workspace Engine
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                    Sales Tracker Mirror View (Read-Only)
                   </span>
                 </div>
                 <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1819,6 +1819,7 @@ export default function SalesTracker() {
                     className="form-control"
                     style={{ width: '110px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
                     value={orderStatus}
+                    disabled={true}
                     onChange={e => setOrderStatus(e.target.value)}
                   >
                     <option>Pending</option>
@@ -1851,20 +1852,14 @@ export default function SalesTracker() {
 
                 <button 
                   className="btn btn-ghost btn-sm" 
-                  onClick={() => {
-                    if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
-                  }}
+                  onClick={() => setSelectedOrderId(null)}
                 >
-                  Cancel
+                  Close View
                 </button>
                 
-                <button 
-                  className="btn btn-primary btn-sm" 
-                  onClick={handleSaveOrderSpreadsheet}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <Save size={14} /> Save & Sync Sales Record
-                </button>
+                <span style={{ fontSize: '11px', fontWeight: 600, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  🔒 Read-Only Mirror
+                </span>
               </div>
             </div>
 
@@ -1893,156 +1888,72 @@ export default function SalesTracker() {
                     onClick={() => setShowHeaderDetails(!showHeaderDetails)}
                     style={{ fontSize: '11px', padding: '4px 10px', border: '1px solid var(--border)', height: '28px', borderRadius: '6px' }}
                   >
-                    {showHeaderDetails ? 'Collapse Details ▲' : 'Edit Details ▼'}
+                    {showHeaderDetails ? 'Collapse Details ▲' : 'View Details ▼'}
                   </button>
                 </div>
                 
                 {showHeaderDetails && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px 15px', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px 18px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
                     {/* Company */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Company</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={clientCompany} 
-                        onChange={e => setClientCompany(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Company</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>{clientCompany || '—'}</span>
                     </div>
 
                     {/* Project */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Project Details</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={projectFullName} 
-                        onChange={e => setProjectFullName(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Project Details</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>{projectFullName || '—'}</span>
                     </div>
 
                     {/* Delivery Address */}
                     <div style={{ gridColumn: 'span 2' }}>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Delivery Address</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={deliveryAddress} 
-                        onChange={e => setDeliveryAddress(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Delivery Address</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{deliveryAddress || '—'}</span>
                     </div>
 
                     {/* PM Name */}
                     <div style={{ gridColumn: 'span 2' }}>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>PM Name</label>
-                      <select 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={pmName} 
-                        onChange={e => {
-                          const val = e.target.value;
-                          setPmName(val);
-                          setOneOneRep(val); // Keep synchronized
-                          const found = (projectManagers || []).find(pm => pm.name === val);
-                          if (found) {
-                            setPmPhone(found.phone || '');
-                            setPmEmail(found.email || '');
-                          }
-                        }}
-                      >
-                        <option value="">Select Project Manager...</option>
-                        {(projectManagers || []).map(pm => (
-                          <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
-                        ))}
-                      </select>
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>PM Name</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>{pmName || '—'}</span>
                     </div>
 
                     {/* Date Created */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Date Created</label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={orderDate} 
-                        onChange={e => setOrderDate(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Date Created</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{orderDate || '—'}</span>
                     </div>
 
                     {/* Quotation Sent */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Quotation Sent</label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={quotationSentDate} 
-                        onChange={e => setQuotationSentDate(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Quotation Sent</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{quotationSentDate || '—'}</span>
                     </div>
 
                     {/* Class */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Class</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={projectClass} 
-                        onChange={e => setProjectClass(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Class</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{projectClass || '—'}</span>
                     </div>
 
                     {/* Tier */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Tier</label>
-                      <select 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={projectTier} 
-                        onChange={e => setProjectTier(e.target.value)}
-                      >
-                        <option>Portfolio</option>
-                        <option>Signature</option>
-                        <option>Premium</option>
-                      </select>
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Tier</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{projectTier || '—'}</span>
                     </div>
 
                     {/* File Source */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>File Source</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value={fileSource} 
-                        onChange={e => setFileSource(e.target.value)}
-                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>File Source</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{fileSource || '—'}</span>
                     </div>
 
                     {/* PF Number & Date */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>PF Number & Date</label>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <input 
-                          type="text" 
-                          placeholder="PF Number" 
-                          className="form-control" 
-                          style={{ height: '26px', fontSize: '11px', flex: 1, padding: '2px 4px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                          value={pfNumber} 
-                          onChange={e => setPfNumber(e.target.value)}
-                        />
-                        <input 
-                          type="date" 
-                          className="form-control" 
-                          style={{ height: '26px', fontSize: '11px', width: '90px', padding: '2px 4px', colorScheme: 'dark', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                          value={toInputDate(pfDate)} 
-                          onChange={e => setPfDate(e.target.value)}
-                        />
-                      </div>
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>PF Number & Date</span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        {pfNumber ? `${pfNumber} (${pfDate || '—'})` : '—'}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -2345,6 +2256,7 @@ export default function SalesTracker() {
                                             value={item.stockStatus || ''}
                                             data-row={rowIndex}
                                             data-col="stockStatus"
+                                            disabled={true}
                                             onChange={(e) => handleStockStatusChange(item.itemIds, e.target.value)}
                                             style={{
                                               fontWeight: '600',
@@ -2370,7 +2282,7 @@ export default function SalesTracker() {
                                             className="gs-cell-input" 
                                             style={{ textAlign: 'center', fontWeight: 'bold', opacity: item.stockStatus === 'All Stock on Hand' ? 0.5 : 1 }}
                                             value={item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : 0)}
-                                            disabled={item.stockStatus === 'All Stock on Hand'}
+                                            disabled={true}
                                             data-row={rowIndex}
                                             data-col="stockOnHand"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'stockOnHand', Math.max(0, parseInt(e.target.value) || 0))}
@@ -2477,6 +2389,7 @@ export default function SalesTracker() {
                                             value={item.deliveryComments || ''}
                                             data-row={rowIndex}
                                             data-col="deliveryComments"
+                                            disabled={true}
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'deliveryComments', e.target.value)}
                                           />
                                         </td>
