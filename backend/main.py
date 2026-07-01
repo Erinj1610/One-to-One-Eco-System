@@ -65,6 +65,18 @@ def init_db():
                 conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
                 
+                # Migrate template_configs table to ensure docx_binary exists
+                try:
+                    db_type = engine.name
+                    if db_type == 'sqlite':
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN docx_binary BLOB;"))
+                    else:
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN IF NOT EXISTS docx_binary BYTEA;"))
+                    conn.commit()
+                    print("Database migration: ensured 'docx_binary' column exists on 'template_configs' table.")
+                except Exception as alter_err:
+                    print(f"Database migration (non-critical info): {alter_err}")
+                
                 # Migrate products table
                 inspector = inspect(engine)
                 existing_cols = [c["name"] for c in inspector.get_columns("products")]

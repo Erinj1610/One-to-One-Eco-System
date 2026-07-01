@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime, LargeBinary
 from sqlalchemy.orm import relationship
 import enum
 import sys
@@ -12,6 +12,7 @@ class TemplateConfig(Base):
     id = Column(Integer, primary_key=True, index=True)
     template_key = Column(String, unique=True, index=True) # e.g., "DESIGN_FEE_PROPOSAL"
     config_json = Column(JSON, nullable=False) # Stores all visual/text settings
+    docx_binary = Column(LargeBinary, nullable=True) # Binary data of the uploaded docx template
 
 class FeeStatus(str, enum.Enum):
     unpaid = "unpaid"

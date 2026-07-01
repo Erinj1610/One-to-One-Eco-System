@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Depends, Response
 from fastapi.responses import FileResponse, JSONResponse
 import os
 import shutil
+from database.cloud_sql import get_db
+from sqlalchemy.orm import Session
+from models.orm_models import TemplateConfig
 
 router = APIRouter()
 
@@ -12,11 +15,22 @@ def get_template_path(doc_type: str):
     return os.path.abspath(os.path.join(TEMPLATES_BASE_DIR, doc_type, 'template.docx'))
 
 @router.get("/templates/{doc_type}/download")
-async def download_template(doc_type: str):
+async def download_template(doc_type: str, db: Session = Depends(get_db)):
     """
     Downloads the current .docx template for the specified document type.
-    If it doesn't exist, it auto-initializes it with a starter template from DESIGN_FEE_PROPOSAL.
+    First checks the database. If not found, falls back to the filesystem.
+    If filesystem doesn't exist, it auto-initializes it with a starter template from DESIGN_FEE_PROPOSAL.
     """
+    # 1. Check database first
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    if config and config.docx_binary:
+        return Response(
+            content=config.docx_binary,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={"Content-Disposition": f"attachment; filename={doc_type.lower()}_template.docx"}
+        )
+
+    # 2. Fall back to local file
     path = get_template_path(doc_type)
     if not os.path.exists(path):
         starter_path = get_template_path("DESIGN_FEE_PROPOSAL")
@@ -34,25 +48,24 @@ async def download_template(doc_type: str):
     )
 
 @router.post("/templates/{doc_type}/upload")
-async def upload_template(doc_type: str, file: UploadFile = File(...)):
+async def upload_template(doc_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
-    Uploads a new .docx template for a specific document type.
+    Uploads a new .docx template for a specific document type and stores it in the database.
     """
     if not file.filename.lower().endswith('.docx'):
         raise HTTPException(status_code=400, detail="Only .docx files are allowed")
     
-    path = get_template_path(doc_type)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    contents = await file.read()
     
-    with open(path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    if config:
+        config.docx_binary = contents
+    else:
+        config = TemplateConfig(template_key=doc_type, docx_binary=contents, config_json={})
+        db.add(config)
     
-    return {"message": f"Template for {doc_type} uploaded successfully"}
-
-from models.orm_models import TemplateConfig
-from database.cloud_sql import get_db
-from sqlalchemy.orm import Session
-from fastapi import Depends
+    db.commit()
+    return {"message": f"Template for {doc_type} uploaded successfully to database"}
 
 # --- TEMPLATE CONFIGURATION ENDPOINTS (NO-CODE) ---
 
@@ -97,10 +110,20 @@ async def save_template_config(template_key: str, request: Request, db: Session 
 
 
 @router.get("/templates/{doc_type}/metadata")
-async def get_template_metadata(doc_type: str):
+async def get_template_metadata(doc_type: str, db: Session = Depends(get_db)):
     """
     Returns metadata about specified template.
     """
+    # 1. Check database first
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    if config and config.docx_binary:
+        return {
+            "exists": True,
+            "size": len(config.docx_binary),
+            "last_modified": None
+        }
+        
+    # 2. Fall back to local file
     path = get_template_path(doc_type)
     if not os.path.exists(path):
         return {"exists": False}
@@ -125,13 +148,29 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
     """
     print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())} for page: {page}")
     
-    # Check if a direct docx template exists
+    # Check if a direct docx template exists (either in DB or on disk)
     from services.docx_engine import merge_docx_template
-    docx_template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.docx'))
     
-    if os.path.exists(docx_template_path):
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    
+    custom_template_temp_path = None
+    temp_dir = None
+    docx_template_path = None
+    
+    if config and config.docx_binary:
+        print(f"DEBUG: Using custom template from database for {doc_type}")
+        temp_dir = tempfile.mkdtemp()
+        custom_template_temp_path = os.path.join(temp_dir, "db_template.docx")
+        with open(custom_template_temp_path, "wb") as f:
+            f.write(config.docx_binary)
+        docx_template_path = custom_template_temp_path
+    else:
+        disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.docx'))
+        if os.path.exists(disk_path):
+            docx_template_path = disk_path
+    
+    if docx_template_path:
         print(f"DEBUG: Found direct docx template at {docx_template_path}. Using docx_engine...")
-        config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
         custom_creds = None
         if config:
             custom_creds = config.config_json.get("google_credentials_json")
@@ -200,6 +239,18 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
         except Exception as docx_err:
             print(f"Error generating {doc_type} via docx: {docx_err}")
             raise HTTPException(status_code=500, detail=f"Word Template Conversion Error: {docx_err}")
+        finally:
+            # Clean up the custom template temp files if they were written
+            if custom_template_temp_path and os.path.exists(custom_template_temp_path):
+                try:
+                    os.remove(custom_template_temp_path)
+                except Exception:
+                    pass
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    os.rmdir(temp_dir)
+                except Exception:
+                    pass
 
     # Fetch template settings to get the linked Google Doc ID and Credentials
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
