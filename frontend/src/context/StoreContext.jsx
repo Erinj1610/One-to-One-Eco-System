@@ -1441,8 +1441,8 @@ export function StoreProvider({ children }) {
         ...projectData,
         key: finalKey,
         isDraft: false,
-        stage: 'Stage 1',
-        status: 'On track'
+        stage: projectData.stage || existingDraft.stage || 'Pending',
+        status: projectData.status || existingDraft.status || 'On track'
       };
       return next;
     });

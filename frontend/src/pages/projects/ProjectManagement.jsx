@@ -957,15 +957,11 @@ export default function ProjectManagement() {
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
                     <select 
                       className="form-control" 
-                      value={p.stage || 'Stage 1'} 
+                      value={p.stage || 'Pending'} 
                       onChange={(e) => updateProject(id, 'stage', e.target.value)}
                     >
-                      <option value="Stage 1">Stage 1</option>
-                      <option value="Stage 2">Stage 2</option>
-                      <option value="Stage 3">Stage 3</option>
-                      <option value="Stage 4">Stage 4</option>
-                      <option value="Stage 5">Stage 5</option>
-                      <option value="Snags">Snags</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Ongoing">Ongoing</option>
                       <option value="Complete">Complete</option>
                     </select>
                   </div>
