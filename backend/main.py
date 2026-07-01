@@ -16,6 +16,7 @@ from routes.hr import router as hr_router
 from routes.settings import router as settings_router
 from routes.users import router as users_router
 from routes.products import router as products_router, public_router as products_public_router
+from routes.lookups import router as lookups_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -42,6 +43,7 @@ app.include_router(settings_router, prefix="/api", tags=["settings"], dependenci
 app.include_router(users_router, prefix="/admin/users", tags=["users"])
 app.include_router(products_router, prefix="/api/products", tags=["products"])
 app.include_router(products_public_router, prefix="/api/products", tags=["products"])
+app.include_router(lookups_router, prefix="/api/lookups", tags=["lookups"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -51,7 +53,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
-    from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier
+    from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier, LookupValue
     try:
         Base.metadata.create_all(bind=engine)
         
@@ -235,8 +237,40 @@ def init_db():
                 for p_data in seed_products:
                     db_p = Product(**p_data)
                     db.add(db_p)
-                db.commit()
                 print("Database seeded with default lighting products.")
+
+            # Seed default lookup values if none exist
+            lookup_count = db.query(LookupValue).count()
+            if lookup_count == 0:
+                default_lookups = [
+                    # client_type
+                    {"category": "client_type", "label": "Architect", "value": "Architect", "sort_order": 1, "metadata_json": {"color": "info"}},
+                    {"category": "client_type", "label": "Developer", "value": "Developer", "sort_order": 2, "metadata_json": {"color": "success"}},
+                    {"category": "client_type", "label": "Interior", "value": "Interior", "sort_order": 3, "metadata_json": {"color": "warning"}},
+                    {"category": "client_type", "label": "Private", "value": "Private", "sort_order": 4, "metadata_json": {"color": "default"}},
+                    # loss_reason
+                    {"category": "loss_reason", "label": "Price too high", "value": "Price too high", "sort_order": 1, "metadata_json": None},
+                    {"category": "loss_reason", "label": "Competitor selected", "value": "Competitor selected", "sort_order": 2, "metadata_json": None},
+                    {"category": "loss_reason", "label": "Project cancelled", "value": "Project cancelled", "sort_order": 3, "metadata_json": None},
+                    {"category": "loss_reason", "label": "No response", "value": "No response", "sort_order": 4, "metadata_json": None},
+                    {"category": "loss_reason", "label": "Other", "value": "Other", "sort_order": 5, "metadata_json": None},
+                    # project_status
+                    {"category": "project_status", "label": "On track", "value": "On track", "sort_order": 1, "metadata_json": {"color": "success"}},
+                    {"category": "project_status", "label": "Delayed", "value": "Delayed", "sort_order": 2, "metadata_json": {"color": "warning"}},
+                    {"category": "project_status", "label": "At risk", "value": "At risk", "sort_order": 3, "metadata_json": {"color": "danger"}},
+                    {"category": "project_status", "label": "Completed", "value": "Completed", "sort_order": 4, "metadata_json": {"color": "info"}},
+                    # delay_reason
+                    {"category": "delay_reason", "label": "Client approval delay", "value": "Client approval delay", "sort_order": 1, "metadata_json": None},
+                    {"category": "delay_reason", "label": "Supply chain delay", "value": "Supply chain delay", "sort_order": 2, "metadata_json": None},
+                    {"category": "delay_reason", "label": "Site condition", "value": "Site condition", "sort_order": 3, "metadata_json": None},
+                    {"category": "delay_reason", "label": "Budget constraint", "value": "Budget constraint", "sort_order": 4, "metadata_json": None},
+                    {"category": "delay_reason", "label": "Other", "value": "Other", "sort_order": 5, "metadata_json": None},
+                ]
+                for l_data in default_lookups:
+                    db_l = LookupValue(**l_data)
+                    db.add(db_l)
+                db.commit()
+                print("Database seeded with default lookup values.")
 
             print("Database initialized & seeded with default folders.")
         except Exception as seed_err:

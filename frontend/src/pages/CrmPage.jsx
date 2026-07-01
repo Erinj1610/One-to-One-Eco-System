@@ -11,8 +11,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
-
-const typeColors = { Architect: 'b-info', Developer: 'b-success', Interior: 'b-warning', Private: 'b-default' };
+import { API_BASE } from '../api_config';
 
 // Date anchor and comparison helpers
 const today = new Date('2026-05-19');
@@ -36,6 +35,33 @@ export default function CrmPage() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Dynamic client types state
+  const [clientTypes, setClientTypes] = useState([
+    { label: 'Architect', value: 'Architect', metadata_json: { color: 'info' } },
+    { label: 'Developer', value: 'Developer', metadata_json: { color: 'success' } },
+    { label: 'Interior', value: 'Interior', metadata_json: { color: 'warning' } },
+    { label: 'Private', value: 'Private', metadata_json: { color: 'default' } }
+  ]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/lookups?category=client_type`)
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Failed to fetch client types');
+      })
+      .then(data => {
+        if (data && data.length > 0) {
+          setClientTypes(data);
+        }
+      })
+      .catch(err => console.error("Error loading dynamic client types:", err));
+  }, []);
+
+  const typeColors = {};
+  clientTypes.forEach(t => {
+    typeColors[t.value] = `b-${t.metadata_json?.color || 'default'}`;
+  });
 
   // Page States
   const [selectedClient, setSelectedClient] = useState(null);
@@ -1204,7 +1230,9 @@ export default function CrmPage() {
                 </div>
                 <div className="form-row"><label className="form-label">Type</label>
                   <select className="form-control" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
-                    <option>Architect</option><option>Developer</option><option>Interior</option><option>Private</option>
+                    {clientTypes.map(t => (
+                      <option key={t.id || t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="row-2">
@@ -2008,10 +2036,9 @@ export default function CrmPage() {
                 value={editClientData.type} 
                 onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
               >
-                <option value="Architect">Architect</option>
-                <option value="Developer">Developer</option>
-                <option value="Interior">Interior</option>
-                <option value="Private">Private</option>
+                {clientTypes.map(t => (
+                  <option key={t.id || t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
             </div>
             <div className="row-2">

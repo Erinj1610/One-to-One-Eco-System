@@ -6,7 +6,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.cloud_sql import Base
-from models.orm_models import Project, Client, Quote, FeeStatus
+from models.orm_models import Project, Client, Quote, FeeStatus, LookupValue
 
 # Create in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
@@ -65,3 +65,17 @@ def test_create_quote(db_session):
     assert quote.project_id == project.id
     assert quote.phase_name == "Concept Design"
     assert quote.fulfillment_percentage == 50.0
+
+def test_create_lookup_value(db_session):
+    lookup = LookupValue(category="client_type", label="Consultant", value="Consultant", sort_order=5, metadata_json={"color": "purple"})
+    db_session.add(lookup)
+    db_session.commit()
+    db_session.refresh(lookup)
+
+    assert lookup.id is not None
+    assert lookup.category == "client_type"
+    assert lookup.label == "Consultant"
+    assert lookup.value == "Consultant"
+    assert lookup.sort_order == 5
+    assert lookup.metadata_json == {"color": "purple"}
+

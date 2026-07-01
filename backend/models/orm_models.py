@@ -505,3 +505,16 @@ class SupportTicket(Base):
     created_at = Column(String, nullable=True)
 
 
+class LookupValue(Base):
+    __tablename__ = "lookup_values"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, index=True, nullable=False) # e.g. "client_type", "loss_reason"
+    label = Column(String, nullable=False)                 # Display name, e.g. "Architect"
+    value = Column(String, nullable=False)                 # Stored system code, e.g. "Architect"
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    metadata_json = Column(JSON, nullable=True)            # Optional additional configuration / colors etc.
+
+
+

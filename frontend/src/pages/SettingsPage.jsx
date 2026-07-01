@@ -22,7 +22,7 @@ export default function SettingsPage() {
   const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig, projectManagers, setProjectManagers } = useStore();
 
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Project managers', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? ['General', 'Users', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
@@ -30,6 +30,16 @@ export default function SettingsPage() {
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
   const [general, setGeneral] = useState({ companyName: '1-to-1 World', email: 'studio@1-to-1.world', phone: '+27 21 000 0000', address: 'Woodstock, Cape Town', vat: '4880123456', currency: 'ZAR' });
+
+  // Dynamic Dropdowns Lookup State
+  const [lookups, setLookups] = useState([]);
+  const [lookupCategories, setLookupCategories] = useState([]);
+  const [selectedLookupCategory, setSelectedLookupCategory] = useState('client_type');
+  const [lookupsLoading, setLookupsLoading] = useState(false);
+  const [newLookup, setNewLookup] = useState({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
+  const [editingLookup, setEditingLookup] = useState(null);
+  const [lookupError, setLookupError] = useState('');
+  const [lookupSuccess, setLookupSuccess] = useState('');
 
   // Users Management State
   const [users, setUsers] = useState([]);
@@ -72,6 +82,119 @@ export default function SettingsPage() {
       fetchUsers();
     }
   }, [activeTab]);
+
+  const fetchLookups = async () => {
+    setLookupsLoading(true);
+    setLookupError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/lookups/admin/all`);
+      if (res.ok) {
+        const data = await res.json();
+        setLookups(data);
+      } else {
+        setLookupError('Failed to load lookup configurations.');
+      }
+    } catch (err) {
+      setLookupError('Network error loading lookups.');
+    } finally {
+      setLookupsLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/lookups/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        setLookupCategories(data);
+      }
+    } catch (err) {
+      console.error("Error loading lookup categories", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'Dropdowns') {
+      fetchLookups();
+      fetchCategories();
+    }
+  }, [activeTab]);
+
+  const handleSaveLookup = async (e) => {
+    e.preventDefault();
+    setLookupError('');
+    setLookupSuccess('');
+    try {
+      const payload = {
+        category: selectedLookupCategory,
+        label: newLookup.label,
+        value: newLookup.value || newLookup.label,
+        is_active: newLookup.is_active,
+        sort_order: Number(newLookup.sort_order),
+        metadata_json: newLookup.color ? { color: newLookup.color } : null
+      };
+
+      let url = `${API_BASE}/api/lookups/admin`;
+      let method = 'POST';
+
+      if (editingLookup) {
+        url = `${API_BASE}/api/lookups/admin/${editingLookup.id}`;
+        method = 'PUT';
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setLookupSuccess(editingLookup ? 'Option updated successfully!' : 'Option added successfully!');
+        setNewLookup({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
+        setEditingLookup(null);
+        fetchLookups();
+        fetchCategories();
+      } else {
+        const errData = await res.json();
+        setLookupError(errData.detail || 'Failed to save lookup option.');
+      }
+    } catch (err) {
+      setLookupError('Network error saving option.');
+    }
+  };
+
+  const handleEditLookupClick = (item) => {
+    setEditingLookup(item);
+    setNewLookup({
+      label: item.label,
+      value: item.value,
+      sort_order: item.sort_order,
+      is_active: item.is_active,
+      color: item.metadata_json?.color || 'default'
+    });
+  };
+
+  const handleDeleteLookup = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this option?')) return;
+    setLookupError('');
+    setLookupSuccess('');
+    try {
+      const res = await fetch(`${API_BASE}/api/lookups/admin/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setLookupSuccess('Option deleted successfully!');
+        fetchLookups();
+        fetchCategories();
+      } else {
+        const errData = await res.json();
+        setLookupError(errData.detail || 'Failed to delete lookup option.');
+      }
+    } catch (err) {
+      setLookupError('Network error deleting option.');
+    }
+  };
+
 
   const handleInvite = async (e) => {
     e.preventDefault();
@@ -1383,6 +1506,268 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {activeTab === 'Dropdowns' && isAdmin && (
+        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+          <div className="section-label">System Dropdowns & Lookup Lists</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Configure and manage dynamic values for all dropdown lists and status fields in the portal. Any changes will immediately reflect in the respective modules.
+          </div>
+
+          {lookupError && (
+            <div className="alert alert-danger" style={{ marginBottom: '15px', padding: '10px 15px', borderRadius: '4px', fontSize: '12.5px' }}>
+              {lookupError}
+            </div>
+          )}
+          {lookupSuccess && (
+            <div className="alert alert-success" style={{ marginBottom: '15px', padding: '10px 15px', borderRadius: '4px', fontSize: '12.5px' }}>
+              {lookupSuccess}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '20px' }}>
+            {/* Category selection list */}
+            <div>
+              <div className="card" style={{ marginBottom: '15px' }}>
+                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', fontWeight: 600 }}>Select Lookup List</div>
+                </div>
+                <div className="card-body" style={{ padding: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {lookupCategories.map(cat => {
+                      const displayNames = {
+                        client_type: 'Client Types',
+                        loss_reason: 'Loss Reasons',
+                        project_status: 'Project Statuses',
+                        delay_reason: 'Delay Reasons'
+                      };
+                      const isSelected = selectedLookupCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => {
+                            setSelectedLookupCategory(cat);
+                            setEditingLookup(null);
+                            setNewLookup({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 12px',
+                            background: isSelected ? 'var(--bg-active)' : 'transparent',
+                            color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12.5px',
+                            fontWeight: isSelected ? 600 : 500
+                          }}
+                        >
+                          {displayNames[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Create new category */}
+              <div className="card">
+                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13px', fontWeight: 600 }}>New Dropdown List</div>
+                </div>
+                <div className="card-body" style={{ padding: '12px' }}>
+                  <input
+                    type="text"
+                    placeholder="e.g. lead_source..."
+                    className="form-control"
+                    style={{ fontSize: '12px', marginBottom: '8px' }}
+                    id="new-category-input"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && e.target.value.trim()) {
+                        const newCat = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+                        if (lookupCategories.includes(newCat)) {
+                          alert('Lookup category already exists');
+                          return;
+                        }
+                        setLookupCategories(prev => [...prev, newCat].sort());
+                        setSelectedLookupCategory(newCat);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Type key name (lowercase, no spaces) and press Enter to initialize a new dropdown.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* List and form */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Form card */}
+              <div className="card">
+                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>
+                    {editingLookup ? 'Edit Option' : 'Add New Option'} to list: <strong style={{ color: 'var(--text-primary)' }}>{selectedLookupCategory}</strong>
+                  </div>
+                  {editingLookup && (
+                    <button
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => {
+                        setEditingLookup(null);
+                        setNewLookup({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
+                      }}
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
+                <div className="card-body" style={{ padding: '16px' }}>
+                  <form onSubmit={handleSaveLookup} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Display Label</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-control"
+                        placeholder="e.g. Consultant"
+                        value={newLookup.label}
+                        onChange={e => setNewLookup(prev => ({ ...prev, label: e.target.value, value: prev.value ? prev.value : e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>System Value</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-control"
+                        placeholder="e.g. Consultant"
+                        value={newLookup.value}
+                        onChange={e => setNewLookup(prev => ({ ...prev, value: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row" style={{ maxWidth: '100px' }}>
+                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Sort Order</label>
+                      <input
+                        type="number"
+                        required
+                        className="form-control"
+                        value={newLookup.sort_order}
+                        onChange={e => setNewLookup(prev => ({ ...prev, sort_order: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Color Badge (Optional)</label>
+                      <select
+                        className="form-control"
+                        value={newLookup.color}
+                        onChange={e => setNewLookup(prev => ({ ...prev, color: e.target.value }))}
+                      >
+                        <option value="default">Default (Gray)</option>
+                        <option value="primary">Primary (Blue)</option>
+                        <option value="success">Success (Green)</option>
+                        <option value="info">Info (Cyan)</option>
+                        <option value="warning">Warning (Orange/Yellow)</option>
+                        <option value="danger">Danger (Red)</option>
+                      </select>
+                    </div>
+                    <div className="form-row" style={{ display: 'flex', gap: '10px', alignItems: 'center', height: 'var(--form-control-height)' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={newLookup.is_active}
+                          onChange={e => setNewLookup(prev => ({ ...prev, is_active: e.target.checked }))}
+                        />
+                        Active
+                      </label>
+                    </div>
+                    <div>
+                      <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+                        {editingLookup ? 'Update Option' : 'Add Option'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* Data Table */}
+              <div className="card">
+                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Active options in selected list</div>
+                </div>
+                <div className="card-body" style={{ padding: 0 }}>
+                  {lookupsLoading ? (
+                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '13px', color: 'var(--text-secondary)' }}>Loading dropdown items...</div>
+                  ) : (
+                    <table className="table" style={{ margin: 0 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '60px' }}>Sort</th>
+                          <th>Display Label</th>
+                          <th>Value</th>
+                          <th>Color Badge</th>
+                          <th>Status</th>
+                          <th style={{ width: '120px', textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lookups
+                          .filter(item => item.category === selectedLookupCategory)
+                          .map(item => (
+                            <tr key={item.id} style={{ opacity: item.is_active ? 1 : 0.5 }}>
+                              <td style={{ fontWeight: 600 }}>{item.sort_order}</td>
+                              <td style={{ fontWeight: 600 }}>{item.label}</td>
+                              <td><code>{item.value}</code></td>
+                              <td>
+                                {item.metadata_json?.color && (
+                                  <span className={`badge b-${item.metadata_json.color}`}>
+                                    {item.metadata_json.color}
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`} style={{
+                                  background: item.is_active ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                  color: item.is_active ? '#10b981' : '#ef4444',
+                                  border: item.is_active ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                                }}>
+                                  {item.is_active ? 'Active' : 'Disabled'}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <button
+                                  onClick={() => handleEditLookupClick(item)}
+                                  style={{ background: 'transparent', border: 'none', color: '#e09924', cursor: 'pointer', fontSize: '11px', padding: '4px 6px', marginRight: '4px' }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteLookup(item.id)}
+                                  style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '11px', padding: '4px 6px' }}
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        {lookups.filter(item => item.category === selectedLookupCategory).length === 0 && (
+                          <tr>
+                            <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              No options configured for this category yet. Add one above!
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ADD CUSTOM ALERT RULE MODAL */}
       {showRuleModal && (
