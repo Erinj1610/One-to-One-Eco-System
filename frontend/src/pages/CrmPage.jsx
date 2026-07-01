@@ -1354,7 +1354,7 @@ export default function CrmPage() {
                         <span>R {client2025Spend.toLocaleString()}</span>
                       </div>
                       <div style={{ height: '24px', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, Math.max(10, (client2025Spend / clientLtv) * 100))}%`, background: 'linear-gradient(90deg, var(--text-info) 0%, rgba(24,95,165,0.7) 100%)', borderRadius: '6px', transition: 'width 0.8s ease' }}></div>
+                        <div style={{ height: '100%', width: `${clientLtv > 0 ? (client2025Spend / clientLtv) * 100 : 0}%`, background: 'linear-gradient(90deg, var(--text-info) 0%, rgba(24,95,165,0.7) 100%)', borderRadius: '6px', transition: 'width 0.8s ease' }}></div>
                       </div>
                     </div>
 
@@ -1364,7 +1364,7 @@ export default function CrmPage() {
                         <span>R {clientYtd.toLocaleString()}</span>
                       </div>
                       <div style={{ height: '24px', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, Math.max(10, (clientYtd / clientLtv) * 100))}%`, background: 'linear-gradient(90deg, #22c55e 0%, rgba(34,197,94,0.7) 100%)', borderRadius: '6px', transition: 'width 0.8s ease' }}></div>
+                        <div style={{ height: '100%', width: `${clientLtv > 0 ? (clientYtd / clientLtv) * 100 : 0}%`, background: 'linear-gradient(90deg, #22c55e 0%, rgba(34,197,94,0.7) 100%)', borderRadius: '6px', transition: 'width 0.8s ease' }}></div>
                       </div>
                     </div>
                   </div>
@@ -1384,11 +1384,11 @@ export default function CrmPage() {
                 </div>
                 <div className="card-body">
                   <div className="kv"><span className="kv-key">Full Name</span><span className="kv-val">{selectedClient.name}</span></div>
-                  <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{selectedClient.company}</span></div>
-                  <div className="kv"><span className="kv-key">Client Category</span><span className="kv-val">{selectedClient.type}</span></div>
-                  <div className="kv"><span className="kv-key">Key Business Areas</span><span className="kv-val">Interior Design, Luxury Eco-Builds</span></div>
-                  <div className="kv"><span className="kv-key">Date Started as Client</span><span className="kv-val">{selectedClient.dateStarted ? new Date(selectedClient.dateStarted).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '15 Jan 2024'}</span></div>
-                  <div className="kv"><span className="kv-key">Client Satisfaction (NPS)</span><span className="kv-val" style={{ fontWeight: 700, color: selectedClient.nps >= 8 ? '#22c55e' : selectedClient.nps >= 6 ? '#eab308' : '#ef4444' }}>{selectedClient.nps || 8}/10 CSAT</span></div>
+                  <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{selectedClient.company || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Client Category</span><span className="kv-val">{selectedClient.type || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Key Business Areas</span><span className="kv-val">{selectedClient.keyBusinessAreas || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Date Started as Client</span><span className="kv-val">{selectedClient.dateStarted ? new Date(selectedClient.dateStarted).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'No date registered'}</span></div>
+                  <div className="kv"><span className="kv-key">Client Satisfaction (NPS)</span><span className="kv-val" style={{ fontWeight: 700, color: selectedClient.nps ? (selectedClient.nps >= 8 ? '#22c55e' : selectedClient.nps >= 6 ? '#eab308' : '#ef4444') : 'var(--text-secondary)' }}>{selectedClient.nps ? `${selectedClient.nps}/10 CSAT` : 'No rating yet'}</span></div>
                 </div>
               </div>
             </div>
@@ -1401,22 +1401,24 @@ export default function CrmPage() {
                   <div className="card-body" style={{ padding: '16px' }}>
                     <div className="kv"><span className="kv-key">YTD Spend</span><span className="kv-val" style={{ fontWeight: 700, color: '#22c55e' }}>R {clientYtd.toLocaleString()}</span></div>
                     <div className="kv"><span className="kv-key">All-Time Spend</span><span className="kv-val" style={{ fontWeight: 700 }}>R {clientLtv.toLocaleString()}</span></div>
-                    <div className="kv"><span className="kv-key">Velocity Rhythm</span><span className="kv-val">Averages every {selectedClient.orderGapMonths || 8} months</span></div>
+                    <div className="kv"><span className="kv-key">Velocity Rhythm</span><span className="kv-val">{clientProjects.length > 0 ? `Averages every ${selectedClient.orderGapMonths || 8} months` : '—'}</span></div>
                     <div className="kv">
                       <span className="kv-key">Last Completed Project</span>
                       <span 
                         className="kv-val" 
                         onClick={() => {
-                          const proj = Object.values(projects).find(pr => pr.name === selectedClient.lastCompletedProjectName);
-                          if (proj) navigate(`/projects/${proj.key || proj.id || proj.name.toLowerCase().replace(/\s+/g, '-')}`);
+                          if (selectedClient.lastCompletedProjectName) {
+                            const proj = Object.values(projects).find(pr => pr.name === selectedClient.lastCompletedProjectName);
+                            if (proj) navigate(`/projects/${proj.key || proj.id || proj.name.toLowerCase().replace(/\s+/g, '-')}`);
+                          }
                         }}
                         style={{ 
                           fontWeight: 600, 
-                          color: Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'var(--text-info)' : 'inherit',
-                          cursor: Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'pointer' : 'default'
+                          color: selectedClient.lastCompletedProjectName && Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'var(--text-info)' : 'inherit',
+                          cursor: selectedClient.lastCompletedProjectName && Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'pointer' : 'default'
                         }}
                       >
-                        {selectedClient.lastCompletedProjectName}
+                        {selectedClient.lastCompletedProjectName || '—'}
                       </span>
                     </div>
                     <div className="kv"><span className="kv-key">Relationship Status</span><span>{renderHealthBadge(selectedClient.health)}</span></div>
@@ -1441,14 +1443,14 @@ export default function CrmPage() {
                         <Target size={16} color="#eab308" style={{ flexShrink: 0 }} />
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '12px' }}>Expected Milestone Approval</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Design Phase 2 alignment sign-off</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{clientProjects.length > 0 ? 'Design Phase 2 alignment sign-off' : '—'}</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', borderTop: '0.5px solid var(--border)', paddingTop: '8px' }}>
                         <Activity size={16} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '12px' }}>Last Human Contact touchpoint</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{selectedClient.lastContactDate} - {selectedClient.lastContactSummary}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{selectedClient.lastContactDate ? `${selectedClient.lastContactDate} - ${selectedClient.lastContactSummary}` : '—'}</div>
                         </div>
                       </div>
                     </div>
