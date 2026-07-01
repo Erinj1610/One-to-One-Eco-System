@@ -1798,13 +1798,13 @@ export default function SalesTracker() {
                     className="btn btn-ghost btn-sm" 
                     style={{ padding: '4px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
                     onClick={() => {
-                      if (confirm('Exit Workspace?')) setSelectedOrderId(null);
+                      if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
                     }}
                   >
                     <ArrowLeft size={12} /> Back to Ledger
                   </button>
-                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    Sales Tracker Mirror View (Read-Only)
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(59,130,246,0.15)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                    Sales Tracker Workspace Engine
                   </span>
                 </div>
                 <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1819,7 +1819,6 @@ export default function SalesTracker() {
                     className="form-control"
                     style={{ width: '110px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
                     value={orderStatus}
-                    disabled={true}
                     onChange={e => setOrderStatus(e.target.value)}
                   >
                     <option>Pending</option>
@@ -1852,18 +1851,27 @@ export default function SalesTracker() {
 
                 <button 
                   className="btn btn-ghost btn-sm" 
-                  onClick={() => setSelectedOrderId(null)}
+                  onClick={() => {
+                    if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
+                  }}
                 >
-                  Close View
+                  Cancel
                 </button>
                 
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  🔒 Read-Only Mirror
-                </span>
+                <button 
+                  className="btn btn-primary btn-sm" 
+                  onClick={handleSaveOrderSpreadsheet}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Save size={14} /> Save & Sync Sales Record
+                </button>
               </div>
             </div>
 
-            /* SALES TRACKER MIRROR VIEW */
+            {/* SALES TRACKER MIRROR VIEW TITLE */}
+            <div style={{ padding: '0 4px', fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              📈 Sales Tracker Mirror View
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
               {/* COMPACT ORDER DETAILS HEADER */}
@@ -2256,7 +2264,6 @@ export default function SalesTracker() {
                                             value={item.stockStatus || ''}
                                             data-row={rowIndex}
                                             data-col="stockStatus"
-                                            disabled={true}
                                             onChange={(e) => handleStockStatusChange(item.itemIds, e.target.value)}
                                             style={{
                                               fontWeight: '600',
@@ -2282,7 +2289,7 @@ export default function SalesTracker() {
                                             className="gs-cell-input" 
                                             style={{ textAlign: 'center', fontWeight: 'bold', opacity: item.stockStatus === 'All Stock on Hand' ? 0.5 : 1 }}
                                             value={item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : 0)}
-                                            disabled={true}
+                                            disabled={item.stockStatus === 'All Stock on Hand'}
                                             data-row={rowIndex}
                                             data-col="stockOnHand"
                                             onChange={(e) => handleUpdateSpreadsheetCell(item.itemIds, 'stockOnHand', Math.max(0, parseInt(e.target.value) || 0))}

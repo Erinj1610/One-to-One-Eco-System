@@ -2210,10 +2210,23 @@ export default function OrdersPage() {
                               />
                             </div>
                             <div style={{ gridColumn: 'span 4' }}>
-                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>File Source</label>
+                              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+                                <span>File Source</span>
+                                {fileSource && (
+                                  <a 
+                                    href={fileSource.startsWith('http') ? fileSource : `https://${fileSource}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    style={{ color: 'var(--text-info)', textDecoration: 'underline', fontWeight: 600, fontSize: '9.5px' }}
+                                  >
+                                    🔗 Open Link
+                                  </a>
+                                )}
+                              </label>
                               <input 
                                 type="text" 
                                 className="form-control" 
+                                placeholder="Paste link to file source here..."
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
                                 value={fileSource} 
                                 onChange={e => setFileSource(e.target.value)} 
