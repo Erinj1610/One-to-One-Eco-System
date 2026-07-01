@@ -822,8 +822,8 @@ export default function ProjectManagement() {
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Blended Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
-              {p.isDraft ? '—' : `${blendedMargin}%`}
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+              {p.isDraft || grandContractValue === 0 ? '—' : `${blendedMargin}%`}
             </span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
@@ -957,11 +957,15 @@ export default function ProjectManagement() {
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
                     <select 
                       className="form-control" 
-                      value={p.stage || 'Pending'} 
+                      value={p.stage || 'Stage 1'} 
                       onChange={(e) => updateProject(id, 'stage', e.target.value)}
                     >
-                      <option value="Pending">Pending</option>
-                      <option value="Ongoing">Ongoing</option>
+                      <option value="Stage 1">Stage 1</option>
+                      <option value="Stage 2">Stage 2</option>
+                      <option value="Stage 3">Stage 3</option>
+                      <option value="Stage 4">Stage 4</option>
+                      <option value="Stage 5">Stage 5</option>
+                      <option value="Snags">Snags</option>
                       <option value="Complete">Complete</option>
                     </select>
                   </div>
@@ -1528,60 +1532,36 @@ export default function ProjectManagement() {
 
               {/* Integrated Plaque & Health Console Below */}
               {!p.isDraft && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px', marginTop: '24px' }}>
-                  
-                  {/* Philosophical Advisor Plaque */}
-                  <div style={{ 
-                    background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                    border: '1.5px dashed var(--border-info)', 
-                    borderRadius: 'var(--radius-lg)', 
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center'
-                  }}>
-                    <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stoic Advisory Context (Marcus Aurelius)</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{PHI_ADVISORIES.overview.author}</span>
-                    </div>
-                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontStyle: 'italic', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
-                      "{PHI_ADVISORIES.overview.quote}"
-                    </p>
-                    <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: '8px', fontSize: '11.5px', color: 'var(--text-info)', lineHeight: 1.4 }}>
-                      <strong>Strategic Practice:</strong> {PHI_ADVISORIES.overview.advice}
-                    </div>
-                  </div>
-
+                <div style={{ marginTop: '24px' }}>
                   {/* Project Health Score Card */}
-                  <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px' }}>
                     <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'block' }}>Project Health Scoring</span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Deadline Risk Index</span>
-                          <span style={{ fontWeight: 600, color: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {p.status === 'Off track' ? 'Critical' : 'Stable'}
+                          <span style={{ fontWeight: 600, color: (!p.start || p.start === '—' || p.start === '') ? 'var(--text-secondary)' : (p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)') }}>
+                            {(!p.start || p.start === '—' || p.start === '') ? 'No data' : (p.status === 'Off track' ? 'Critical' : 'Stable')}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: p.status === 'Off track' ? '90%' : '15%', height: '100%', background: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: (!p.start || p.start === '—' || p.start === '') ? '0%' : (p.status === 'Off track' ? '90%' : '15%'), height: '100%', background: (!p.start || p.start === '—' || p.start === '') ? 'var(--border)' : (p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)'), borderRadius: '2.5px' }} />
                         </div>
                       </div>
 
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Blended Margin Index</span>
-                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal'}
+                          <span style={{ fontWeight: 600, color: grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {grandContractValue === 0 ? 'No data' : (blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal')}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: blendedMargin < (p.targetMargin || 39) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: grandContractValue === 0 ? '0%' : (blendedMargin < (p.targetMargin || 39) ? '80%' : '100%'), height: '100%', background: grandContractValue === 0 ? 'var(--border)' : (blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)'), borderRadius: '2.5px' }} />
                         </div>
                       </div>
                     </div>
                   </div>
-
                 </div>
               )}
             </div>
@@ -2038,7 +2018,7 @@ export default function ProjectManagement() {
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Blended Margin</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{blendedMargin}%</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{grandContractValue === 0 ? '—' : `${blendedMargin}%`}</div>
                   </div>
                 </div>
 
@@ -2116,60 +2096,36 @@ export default function ProjectManagement() {
                 </div>
 
                 {/* Sun Tzu Advisory Banner & Project Health scoring grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px', marginTop: '24px' }}>
-                  
-                  {/* Sun Tzu plaque */}
-                  <div style={{ 
-                    background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                    border: '1.5px dashed var(--border-info)', 
-                    borderRadius: 'var(--radius-lg)', 
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center'
-                  }}>
-                    <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stoic Strategic Advisory (Sun Tzu)</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{PHI_ADVISORIES.summary.author}</span>
-                    </div>
-                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontStyle: 'italic', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
-                      "{PHI_ADVISORIES.summary.quote}"
-                    </p>
-                    <div style={{ borderTop: '0.5px solid var(--border)', paddingTop: '8px', fontSize: '11.5px', color: 'var(--text-info)', lineHeight: 1.4 }}>
-                      <strong>Strategic Practice:</strong> {PHI_ADVISORIES.summary.advice}
-                    </div>
-                  </div>
-
+                <div style={{ marginTop: '24px' }}>
                   {/* Vitals Console */}
-                  <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="card" style={{ margin: 0, border: '1px solid var(--border)', padding: '16px 20px' }}>
                     <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'block' }}>Project Health Scoring</span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Deadline Risk Index</span>
-                          <span style={{ fontWeight: 600, color: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {p.status === 'Off track' ? 'Critical' : 'Stable'}
+                          <span style={{ fontWeight: 600, color: (!p.start || p.start === '—' || p.start === '') ? 'var(--text-secondary)' : (p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)') }}>
+                            {(!p.start || p.start === '—' || p.start === '') ? 'No data' : (p.status === 'Off track' ? 'Critical' : 'Stable')}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: p.status === 'Off track' ? '90%' : '15%', height: '100%', background: p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: (!p.start || p.start === '—' || p.start === '') ? '0%' : (p.status === 'Off track' ? '90%' : '15%'), height: '100%', background: (!p.start || p.start === '—' || p.start === '') ? 'var(--border)' : (p.status === 'Off track' ? 'var(--text-danger)' : 'var(--text-success)'), borderRadius: '2.5px' }} />
                         </div>
                       </div>
 
                       <div>
                         <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '4px' }}>
                           <span>Blended Margin Index</span>
-                          <span style={{ fontWeight: 600, color: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal'}
+                          <span style={{ fontWeight: 600, color: grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {grandContractValue === 0 ? 'No data' : (blendedMargin < (p.targetMargin || 39) ? 'Under Target' : 'Optimal')}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '5px', background: 'var(--bg-secondary)', borderRadius: '2.5px' }}>
-                          <div style={{ width: blendedMargin < (p.targetMargin || 39) ? '80%' : '100%', height: '100%', background: blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', borderRadius: '2.5px' }} />
+                          <div style={{ width: grandContractValue === 0 ? '0%' : (blendedMargin < (p.targetMargin || 39) ? '80%' : '100%'), height: '100%', background: grandContractValue === 0 ? 'var(--border)' : (blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)'), borderRadius: '2.5px' }} />
                         </div>
                       </div>
                     </div>
                   </div>
-
                 </div>
               </div>
             )}
