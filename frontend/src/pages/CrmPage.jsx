@@ -124,7 +124,7 @@ export default function CrmPage() {
         email: selectedClient.email || '',
         phone: selectedClient.phone || '',
         statedGoal: selectedClient.statedGoal || '',
-        nps: selectedClient.nps || 8,
+        nps: selectedClient.nps || '',
         totalValue: selectedClient.totalValue || 0,
         annualRevenue: selectedClient.annualRevenue || 0
       });
@@ -149,7 +149,7 @@ export default function CrmPage() {
           email: editClientData.email,
           phone: editClientData.phone,
           statedGoal: editClientData.statedGoal,
-          nps: Number(editClientData.nps),
+          nps: editClientData.nps !== '' && editClientData.nps !== null ? Number(editClientData.nps) : null,
           totalValue: Number(editClientData.totalValue),
           annualRevenue: Number(editClientData.annualRevenue)
         };
@@ -417,16 +417,16 @@ export default function CrmPage() {
       id: Date.now(), 
       projects: 0, 
       status: 'Active',
-      lastProjectDate: '2026-05-19',
+      lastProjectDate: null,
       lastContactDate: '2026-05-19',
       lastContactSummary: 'Added new account profile to CRM',
       statedGoal: '',
       annualRevenue: 0,
       lifetimeRevenue: 0,
-      orderGapMonths: 8,
-      nps: 8,
+      orderGapMonths: null,
+      nps: null,
       dateStarted: '2026-05-19',
-      avgPaymentDelayDays: 5
+      avgPaymentDelayDays: null
     }]);
     setForm({ name: '', company: '', type: 'Architect', email: '', phone: '' });
     setShowModal(false);
