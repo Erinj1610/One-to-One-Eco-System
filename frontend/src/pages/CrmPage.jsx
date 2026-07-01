@@ -524,6 +524,34 @@ export default function CrmPage() {
     });
   }, [projects, selectedClient?.name, projSortField, projSortDirection]);
 
+  const velocityRhythm = useMemo(() => {
+    if (!clientProjects || clientProjects.length === 0) {
+      return '—';
+    }
+    if (clientProjects.length === 1) {
+      return selectedClient?.orderGapMonths ? `Averages every ${selectedClient.orderGapMonths} months` : '—';
+    }
+
+    const dates = clientProjects
+      .map(p => p.start ? new Date(p.start) : null)
+      .filter(d => d && !isNaN(d.getTime()))
+      .sort((a, b) => a - b);
+    
+    if (dates.length <= 1) {
+      return selectedClient?.orderGapMonths ? `Averages every ${selectedClient.orderGapMonths} months` : '—';
+    }
+
+    let totalDiffMonths = 0;
+    for (let i = 1; i < dates.length; i++) {
+      const diffTime = Math.abs(dates[i] - dates[i-1]);
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      totalDiffMonths += (diffDays / 30.4);
+    }
+    const avgGap = Math.max(1, Math.round(totalDiffMonths / (dates.length - 1)));
+    return `Averages every ${avgGap} ${avgGap === 1 ? 'month' : 'months'}`;
+  }, [clientProjects, selectedClient?.orderGapMonths]);
+
+
   // GLOBAL VIEW
   if (!selectedClient) {
     return (
@@ -1401,7 +1429,7 @@ export default function CrmPage() {
                   <div className="card-body" style={{ padding: '16px' }}>
                     <div className="kv"><span className="kv-key">YTD Spend</span><span className="kv-val" style={{ fontWeight: 700, color: '#22c55e' }}>R {clientYtd.toLocaleString()}</span></div>
                     <div className="kv"><span className="kv-key">All-Time Spend</span><span className="kv-val" style={{ fontWeight: 700 }}>R {clientLtv.toLocaleString()}</span></div>
-                    <div className="kv"><span className="kv-key">Velocity Rhythm</span><span className="kv-val">{clientProjects.length > 0 ? `Averages every ${selectedClient.orderGapMonths || 8} months` : '—'}</span></div>
+                    <div className="kv"><span className="kv-key">Velocity Rhythm</span><span className="kv-val">{velocityRhythm}</span></div>
                     <div className="kv">
                       <span className="kv-key">Last Completed Project</span>
                       <span 
