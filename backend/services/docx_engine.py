@@ -78,6 +78,7 @@ def convert_docx_to_pdf_local(docx_path, pdf_path):
 def convert_docx_to_pdf_libreoffice(docx_path, pdf_path):
     """
     Converts docx to PDF using headless LibreOffice (available in Docker/Linux containers).
+    Requires HOME env variable to point to a writable directory like /tmp in serverless environments.
     """
     import subprocess
     import shutil
@@ -100,9 +101,13 @@ def convert_docx_to_pdf_libreoffice(docx_path, pdf_path):
             docx_path
         ]
         
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        # Set HOME=/tmp to give LibreOffice a writable profile directory
+        env = os.environ.copy()
+        env["HOME"] = "/tmp"
+        
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30, env=env)
         if result.returncode != 0:
-            logger.error(f"LibreOffice conversion failed: {result.stderr}")
+            logger.error(f"LibreOffice conversion failed (code {result.returncode}): {result.stderr}\nStdout: {result.stdout}")
             return False
             
         # LibreOffice names the output file same as docx but with .pdf extension in outdir
@@ -115,7 +120,7 @@ def convert_docx_to_pdf_libreoffice(docx_path, pdf_path):
             logger.info("LibreOffice conversion successful.")
             return True
         else:
-            logger.error("LibreOffice ran but the output PDF file was not found.")
+            logger.error(f"LibreOffice ran but the output PDF file was not found. Outdir: {outdir}, Default output: {default_output_name}, Stdout: {result.stdout}, Stderr: {result.stderr}")
             return False
     except Exception as e:
         logger.error(f"LibreOffice conversion crashed: {e}")
