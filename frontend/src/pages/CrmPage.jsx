@@ -525,11 +525,8 @@ export default function CrmPage() {
   }, [projects, selectedClient?.name, projSortField, projSortDirection]);
 
   const velocityRhythm = useMemo(() => {
-    if (!clientProjects || clientProjects.length === 0) {
+    if (!clientProjects || clientProjects.length <= 1) {
       return '—';
-    }
-    if (clientProjects.length === 1) {
-      return selectedClient?.orderGapMonths ? `Averages every ${selectedClient.orderGapMonths} months` : '—';
     }
 
     const dates = clientProjects
@@ -538,7 +535,7 @@ export default function CrmPage() {
       .sort((a, b) => a - b);
     
     if (dates.length <= 1) {
-      return selectedClient?.orderGapMonths ? `Averages every ${selectedClient.orderGapMonths} months` : '—';
+      return '—';
     }
 
     let totalDiffMonths = 0;
@@ -549,7 +546,42 @@ export default function CrmPage() {
     }
     const avgGap = Math.max(1, Math.round(totalDiffMonths / (dates.length - 1)));
     return `Averages every ${avgGap} ${avgGap === 1 ? 'month' : 'months'}`;
-  }, [clientProjects, selectedClient?.orderGapMonths]);
+  }, [clientProjects]);
+
+  const dateStartedDisplay = useMemo(() => {
+    if (!selectedClient) return '';
+    const projectDates = clientProjects
+      .map(p => p.start ? new Date(p.start) : null)
+      .filter(d => d && !isNaN(d.getTime()))
+      .sort((a, b) => a - b);
+    
+    if (projectDates.length > 0) {
+      return projectDates[0].toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    
+    if (selectedClient.dateStarted && selectedClient.dateStarted !== '2026-05-19') {
+      try {
+        return new Date(selectedClient.dateStarted).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+      } catch (e) {
+        return selectedClient.dateStarted;
+      }
+    }
+    return 'No date registered';
+  }, [clientProjects, selectedClient]);
+
+  const lastContactDisplay = useMemo(() => {
+    if (!selectedClient) return '';
+    if (selectedClient.activities && selectedClient.activities.length > 0) {
+      const sortedActs = [...selectedClient.activities].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const latest = sortedActs[0];
+      return `${latest.date} - ${latest.text}`;
+    }
+    if (selectedClient.lastContactDate && selectedClient.lastContactDate !== '2026-05-19') {
+      return `${selectedClient.lastContactDate} - ${selectedClient.lastContactSummary || 'Contact touchpoint'}`;
+    }
+    return '—';
+  }, [selectedClient]);
+
 
 
   // GLOBAL VIEW
@@ -1415,7 +1447,7 @@ export default function CrmPage() {
                   <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{selectedClient.company || '—'}</span></div>
                   <div className="kv"><span className="kv-key">Client Category</span><span className="kv-val">{selectedClient.type || '—'}</span></div>
                   <div className="kv"><span className="kv-key">Key Business Areas</span><span className="kv-val">{selectedClient.keyBusinessAreas || '—'}</span></div>
-                  <div className="kv"><span className="kv-key">Date Started as Client</span><span className="kv-val">{selectedClient.dateStarted ? new Date(selectedClient.dateStarted).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'No date registered'}</span></div>
+                  <div className="kv"><span className="kv-key">Date Started as Client</span><span className="kv-val">{dateStartedDisplay}</span></div>
                   <div className="kv"><span className="kv-key">Client Satisfaction (NPS)</span><span className="kv-val" style={{ fontWeight: 700, color: selectedClient.nps ? (selectedClient.nps >= 8 ? '#22c55e' : selectedClient.nps >= 6 ? '#eab308' : '#ef4444') : 'var(--text-secondary)' }}>{selectedClient.nps ? `${selectedClient.nps}/10 CSAT` : 'No rating yet'}</span></div>
                 </div>
               </div>
@@ -1478,7 +1510,7 @@ export default function CrmPage() {
                         <Activity size={16} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '12px' }}>Last Human Contact touchpoint</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{selectedClient.lastContactDate ? `${selectedClient.lastContactDate} - ${selectedClient.lastContactSummary}` : '—'}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lastContactDisplay}</div>
                         </div>
                       </div>
                     </div>
