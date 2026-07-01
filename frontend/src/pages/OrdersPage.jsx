@@ -348,6 +348,49 @@ export default function OrdersPage() {
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [showRegForm, setShowRegForm] = useState(true);
+  
+  // Product Catalogue Tab & Filter States
+  const [sidePanelTab, setSidePanelTab] = useState('breakdown'); // 'breakdown' | 'catalog'
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogCategory, setCatalogCategory] = useState('All');
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [selectedCatalogProduct, setSelectedCatalogProduct] = useState(null);
+
+  // Fetch products dynamically when catalogue search or category changes
+  useEffect(() => {
+    if (sidePanelTab !== 'catalog') return;
+    
+    const fetchCatalogProducts = async () => {
+      setCatalogLoading(true);
+      try {
+        const queryParams = [];
+        if (catalogSearch.trim()) {
+          queryParams.push(`q=${encodeURIComponent(catalogSearch.trim())}`);
+        }
+        if (catalogCategory && catalogCategory !== 'All') {
+          queryParams.push(`category=${encodeURIComponent(catalogCategory)}`);
+        }
+        const urlStr = `${API_BASE}/api/products/${queryParams.length ? '?' + queryParams.join('&') : ''}`;
+        const res = await fetch(urlStr);
+        if (res.ok) {
+          const data = await res.json();
+          setCatalogProducts(data);
+        }
+      } catch (err) {
+        console.error("Failed to load catalog products", err);
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      fetchCatalogProducts();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [sidePanelTab, catalogSearch, catalogCategory]);
+
   const activeDocType = workspaceSubTab === 'boq' ? 'quote' : selectedDocType;
   const [customTerms, setCustomTerms] = useState('Payment: 50% deposit to initiate order, 40% on delivery, 10% post-installation sign-off. Validity: 30 days from date of issue.');
 
@@ -1115,6 +1158,31 @@ export default function OrdersPage() {
       // Apply single update directly
       handleUpdateSpreadsheetCell(itemId, field, parsedVal);
     }
+  };
+
+  const handleAddProductToOrder = (product) => {
+    const newId = 'I-' + Date.now();
+    const newRow = {
+      id: newId,
+      qty: 1,
+      type: product.category || 'NEW',
+      oneOneCode: product.one_to_one_code || '',
+      code: product.sku || '',
+      description: product.name || '',
+      floor: 'Ground',
+      area: 'TBD Area',
+      dimming: product.dimmable || 'Non-dim',
+      brand: product.brand || '',
+      supplier: product.supplier || orderSupplier || 'Molecule Dist.',
+      unitCost: product.cost_price || 0,
+      unitTrade: product.trade_price || 0,
+      unitRetail: product.retail_price || 0,
+      selection: 'Selection',
+      stockStatus: product.stock_level > 0 ? 'Stock' : 'Ordered',
+      eta: product.lead_time || '4 weeks'
+    };
+    setActiveOrderItems(prev => [...prev, newRow]);
+    alert(`Added "${product.sku || product.name}" to the order!`);
   };
 
   // Add a new row to the active spreadsheet
@@ -2252,7 +2320,7 @@ export default function OrdersPage() {
                       `}</style>
 
                       {/* TWO-COLUMN SPREADSHEET + AREA BREAKDOWN LAYOUT */}
-                      <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 280px' : '1fr', gap: '20px', marginBottom: '20px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 340px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
                         {/* LEFT COLUMN: INTERACTIVE HIGH-DENSITY SPREADSHEET */}
                         <div 
@@ -2560,13 +2628,45 @@ export default function OrdersPage() {
                           </table>
                         </div>
 
-                        {/* RIGHT COLUMN: BOQ AREA FINANCIAL SUMMARY */}
+                        {/* RIGHT COLUMN: BOQ AREA FINANCIAL SUMMARY / PRODUCT CATALOGUE */}
                         {showAreaBreakdown && (
-                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Layers size={14} color="var(--text-info)" /> Area BOQ Breakdown
-                              </h4>
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', minWidth: '340px' }}>
+                            {/* Tab selector */}
+                            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', paddingBottom: '8px', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  style={{
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    border: 'none',
+                                    background: 'none',
+                                    color: sidePanelTab === 'breakdown' ? 'var(--text-info)' : 'var(--text-tertiary)',
+                                    borderBottom: sidePanelTab === 'breakdown' ? '2px solid var(--text-info)' : 'none',
+                                    padding: '4px 2px',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => setSidePanelTab('breakdown')}
+                                >
+                                  Breakdown
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    border: 'none',
+                                    background: 'none',
+                                    color: sidePanelTab === 'catalog' ? 'var(--text-info)' : 'var(--text-tertiary)',
+                                    borderBottom: sidePanelTab === 'catalog' ? '2px solid var(--text-info)' : 'none',
+                                    padding: '4px 2px',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => setSidePanelTab('catalog')}
+                                >
+                                  Catalogue 📖
+                                </button>
+                              </div>
                               <button 
                                 type="button" 
                                 className="btn btn-ghost btn-sm" 
@@ -2576,29 +2676,130 @@ export default function OrdersPage() {
                                 Collapse ✕
                               </button>
                             </div>
-                            
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
-                              {Object.entries(areaTotals).map(([areaName, totals]) => {
-                                const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
-                                return (
-                                  <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                      <span>Billed Retail:</span>
-                                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                      <span>Margin:</span>
-                                      <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
-                                    </div>
+
+                            {sidePanelTab === 'breakdown' ? (
+                              <>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Layers size={14} color="var(--text-info)" /> Area BOQ Breakdown
+                                  </h4>
+                                </div>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                                  {Object.entries(areaTotals).map(([areaName, totals]) => {
+                                    const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
+                                    return (
+                                      <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                          <span>Billed Retail:</span>
+                                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                          <span>Margin:</span>
+                                          <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                
+                                <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                  Allows PM to review spacing budgets before output generation.
+                                </div>
+                              </>
+                            ) : (
+                              /* PRODUCT CATALOGUE VIEW */
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <input
+                                    type="text"
+                                    className="form-control"
+                                    style={{ height: '28px', fontSize: '11px', padding: '4px 8px', flex: 1 }}
+                                    placeholder="Search catalog..."
+                                    value={catalogSearch}
+                                    onChange={e => setCatalogSearch(e.target.value)}
+                                  />
+                                  <select
+                                    className="form-control"
+                                    style={{ height: '28px', fontSize: '11px', padding: '2px 4px', width: '90px' }}
+                                    value={catalogCategory}
+                                    onChange={e => setCatalogCategory(e.target.value)}
+                                  >
+                                    <option value="All">All Categories</option>
+                                    <option value="Downlight">Downlight</option>
+                                    <option value="Linear">Linear</option>
+                                    <option value="Track">Track</option>
+                                    <option value="Wall">Wall</option>
+                                    <option value="Pendant">Pendant</option>
+                                    <option value="Decorative">Decorative</option>
+                                    <option value="Outer">Outer</option>
+                                    <option value="Power">Power</option>
+                                  </select>
+                                </div>
+
+                                {catalogLoading ? (
+                                  <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                    Loading Catalogue...
                                   </div>
-                                );
-                              })}
-                            </div>
-                            
-                            <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                              Allows PM to review spacing budgets before output generation.
-                            </div>
+                                ) : catalogProducts.length === 0 ? (
+                                  <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                    No products found
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                                    {catalogProducts.map(prod => (
+                                      <div 
+                                        key={prod.id} 
+                                        style={{ 
+                                          padding: '8px', 
+                                          background: 'var(--bg-primary)', 
+                                          border: '1px solid var(--border)', 
+                                          borderRadius: '6px', 
+                                          fontSize: '11px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '4px'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{prod.sku}</span>
+                                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', background: 'var(--bg-secondary)', padding: '2px 4px', borderRadius: '3px' }}>{prod.category}</span>
+                                        </div>
+                                        <div style={{ color: 'var(--text-secondary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={prod.name}>
+                                          {prod.name}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
+                                          <span>Brand: {prod.brand || '—'}</span>
+                                          <span style={{ color: prod.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>{prod.stock_level > 0 ? `${prod.stock_level} In Stock` : 'Out of Stock'}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border)' }}>
+                                          <span style={{ fontWeight: 700, color: 'var(--text-info)', fontSize: '11.5px' }}>R {Math.round(prod.retail_price || 0).toLocaleString()}</span>
+                                          <div style={{ display: 'flex', gap: '4px' }}>
+                                            <button
+                                              type="button"
+                                              className="btn btn-xs btn-ghost"
+                                              style={{ fontSize: '10px', padding: '2px 6px', border: '1px solid var(--border)' }}
+                                              onClick={() => setSelectedCatalogProduct(prod)}
+                                            >
+                                              Specs
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-xs btn-primary"
+                                              style={{ fontSize: '10px', padding: '2px 6px' }}
+                                              onClick={() => handleAddProductToOrder(prod)}
+                                            >
+                                              Add
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -4111,6 +4312,134 @@ export default function OrdersPage() {
                 }}
               >
                 Log Post-Mortem & Cancel Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCatalogProduct && (
+        <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100 }}>
+          <div className="modal-container" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', width: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <div className="modal-header" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-info)' }}>📖 Fitting Specifications: {selectedCatalogProduct.sku}</h3>
+              <button style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setSelectedCatalogProduct(null)}>✕</button>
+            </div>
+            
+            <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Product Info Heading */}
+              <div>
+                <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 600 }}>Product Name / Description</span>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>{selectedCatalogProduct.name}</div>
+              </div>
+
+              {/* Technical Grid */}
+              <div>
+                <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '8px' }}>Technical Parameters</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11.5px' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Category:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.category || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Family:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.family || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Brand:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.brand || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Dimmable:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.dimmable || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Dimming Protocol:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.dimming_protocol || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Driver:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.driver_incl || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Kelvin:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.kelvin || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Beam Angle:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.beam_angle || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>CRI:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.cri || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>IP Rating:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.ip_rating || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>System Power:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.system_power ? `${selectedCatalogProduct.system_power}W` : '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Cutout:</span>
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.cutout || '—'}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial & Logistics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '8px' }}>Pricing (ZAR)</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11.5px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Cost Price:</span>
+                      <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>R {Math.round(selectedCatalogProduct.cost_price || 0).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Trade Price:</span>
+                      <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>R {Math.round(selectedCatalogProduct.trade_price || 0).toLocaleString()}</div>
+                    </div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Retail Price:</span>
+                      <div style={{ fontWeight: 700, color: 'var(--text-info)', fontSize: '13px' }}>R {Math.round(selectedCatalogProduct.retail_price || 0).toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '8px' }}>Inventory & Supplier</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11.5px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Stock level:</span>
+                      <div style={{ fontWeight: 700, color: selectedCatalogProduct.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
+                        {selectedCatalogProduct.stock_level > 0 ? `${selectedCatalogProduct.stock_level} Qty` : 'Out of Stock'}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Lead Time:</span>
+                      <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.lead_time || '—'}</div>
+                    </div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Origin Country:</span>
+                      <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.origin || '—'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '12px 16px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn" style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setSelectedCatalogProduct(null)}>Close</button>
+              <button 
+                className="btn btn-primary" 
+                style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} 
+                onClick={() => {
+                  handleAddProductToOrder(selectedCatalogProduct);
+                  setSelectedCatalogProduct(null);
+                }}
+              >
+                Add to Order
               </button>
             </div>
           </div>
