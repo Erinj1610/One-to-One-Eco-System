@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../api_config';
-import { Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, ArrowUp, ArrowDown, Plus, LayoutGrid, CheckCircle } from 'lucide-react';
+import { Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, ArrowUp, ArrowDown, LayoutGrid, Image, Border, CheckCircle } from 'lucide-react';
 
 const SHARED_ORDER_TOKENS = {
   "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
@@ -84,13 +84,20 @@ const DEFAULT_BLOCKS = {
       col1: '<strong>Client & Customer Details</strong><br>{{CLIENT_COMPANY}}<br>Attn: {{CLIENT_CONTACT_PERSON}}<br>Email: {{CLIENT_EMAIL}}<br>Phone: {{CLIENT_PHONE}}',
       col2: '<strong>Document Vitals</strong><br>Quote Number: {{DOCUMENT_NUMBER}}<br>Date: {{DATE}}<br>Project Name: {{PROJECT_NAME}}<br>Status: {{ORDER_STATUS}}'
     },
-    { id: '3', type: 'text', content: '<h3 style="color: #111827; margin-bottom: 5px;">Itemized Pricing</h3>', fontSize: '12pt', color: '#111827', bold: true },
+    { id: '3', type: 'text', content: '<h3 style="color: #111827; margin-bottom: 5px;">Itemized Pricing</h3>', fontSize: '12pt', color: '#111827' },
     {
       id: '4',
       type: 'table',
       fontSize: '9.5pt',
-      borderColor: '#e5e7eb',
       headerBg: '#111827',
+      outerBorderWidth: 1,
+      outerBorderColor: '#cbd5e1',
+      outerBorderStyle: 'solid',
+      showHorizontalLines: true,
+      showVerticalLines: false,
+      innerBorderWidth: 1,
+      innerBorderColor: '#e5e7eb',
+      innerBorderStyle: 'solid',
       columns: [
         { title: '#', value: '{{item.index}}', width: '8%' },
         { title: 'Code', value: '{{item.code}}', width: '22%' },
@@ -179,7 +186,6 @@ function compileBlocksToHtml(blocks) {
   }
   .data-table td {
     padding: 10px;
-    border-bottom: 1px solid #e5e7eb;
     word-wrap: break-word;
     word-break: break-word; /* Prevents overflow & overlaps */
     overflow-wrap: break-word;
@@ -197,7 +203,6 @@ function compileBlocksToHtml(blocks) {
   .summary-total {
     font-weight: 700;
     font-size: 12pt;
-    border-bottom: 2px double #10b981 !important;
   }
   .footer-box {
     padding: 15px;
@@ -235,26 +240,67 @@ function compileBlocksToHtml(blocks) {
 </div>
       `;
     } else if (block.type === 'text') {
-      const styles = `
-        font-size: ${block.fontSize || '11pt'};
-        color: ${block.color || '#333333'};
-        font-weight: ${block.bold ? '700' : 'normal'};
-        font-style: ${block.italic ? 'italic' : 'normal'};
-      `;
       bodyContent += `
-<div class="block-container" style="${styles}">
+<div class="block-container">
   ${block.content}
+</div>
+      `;
+    } else if (block.type === 'image') {
+      const align = block.align || 'center';
+      const width = block.width || '150px';
+      bodyContent += `
+<div class="block-container" style="text-align: ${align};">
+  <img src="${block.src}" style="width: ${width}; max-width: 100%; height: auto;" />
 </div>
       `;
     } else if (block.type === 'table') {
       const headerBg = block.headerBg || '#111827';
-      const colGroup = block.columns.map(col => `<col style="width: ${col.width};" />`).join('');
+      const colGroup = block.columns.map(col => `<col style="width: ${col.width || 'auto'};" />`).join('');
       const headers = block.columns.map(col => `<th>${col.title}</th>`).join('');
       const cells = block.columns.map(col => `<td>${col.value}</td>`).join('');
       
+      const tableId = `table-${block.id}`;
+      
+      // Outer border styling
+      const oWidth = block.outerBorderWidth !== undefined ? block.outerBorderWidth : 1;
+      const oStyle = block.outerBorderStyle || 'solid';
+      const oColor = block.outerBorderColor || '#cbd5e1';
+      const outerBorderCss = oWidth > 0 ? `border: ${oWidth}px ${oStyle} ${oColor};` : 'border: none;';
+      
+      // Inner borders styling
+      const iWidth = block.innerBorderWidth !== undefined ? block.innerBorderWidth : 1;
+      const iStyle = block.innerBorderStyle || 'solid';
+      const iColor = block.innerBorderColor || '#e5e7eb';
+      
+      const showH = block.showHorizontalLines !== undefined ? block.showHorizontalLines : true;
+      const showV = block.showVerticalLines !== undefined ? block.showVerticalLines : false;
+      
+      const borderBottomCss = showH ? `border-bottom: ${iWidth}px ${iStyle} ${iColor};` : 'border-bottom: none;';
+      const borderRightCss = showV ? `border-right: ${iWidth}px ${iStyle} ${iColor};` : 'border-right: none;';
+      
+      styleBlock += `
+        #${tableId} {
+          ${outerBorderCss}
+        }
+        #${tableId} th {
+          ${borderRightCss}
+          border-bottom: ${iWidth}px ${iStyle} ${iColor};
+        }
+        #${tableId} td {
+          ${borderBottomCss}
+          ${borderRightCss}
+        }
+        #${tableId} tr:last-child td {
+          ${showH && oWidth > 0 ? 'border-bottom: none;' : ''}
+        }
+        #${tableId} td:last-child, #${tableId} th:last-child {
+          border-right: none;
+        }
+      `;
+      
       bodyContent += `
 <div class="block-container">
-  <table class="data-table" style="font-size: ${block.fontSize || '9.5pt'}; border: 1px solid ${block.borderColor || '#e5e7eb'};">
+  <table id="${tableId}" class="data-table" style="font-size: ${block.fontSize || '9.5pt'};">
     ${colGroup}
     <thead>
       <tr style="background: ${headerBg};">
@@ -282,7 +328,7 @@ function compileBlocksToHtml(blocks) {
       <td>VAT (15%):</td>
       <td style="text-align: right;">${block.vat}</td>
     </tr>
-    <tr class="summary-total" style="border-bottom-color: ${themeColor};">
+    <tr class="summary-total" style="border-bottom: 2px double ${themeColor} !important;">
       <td style="color: ${themeColor};"><strong>Grand Total:</strong></td>
       <td style="text-align: right; color: ${themeColor};"><strong>${block.grandTotal}</strong></td>
     </tr>
@@ -330,16 +376,13 @@ export default function TemplateHub() {
   const fetchConfigAndMetadata = async (docType) => {
     setLoading(true);
     try {
-      // 1. Fetch visual config
       const resConf = await fetch(`${API_BASE}/admin/configs/${docType}`);
       if (resConf.ok) {
         const dataConf = await resConf.json();
         setConfig(dataConf.config_json || {});
-        // Load layout blocks if they exist in config_json
         setBlocks(dataConf.config_json?.layout_blocks || []);
       }
       
-      // 2. Fetch docx file metadata
       const resMeta = await fetch(`${API_BASE}/admin/templates/${docType}/metadata`);
       if (resMeta.ok) {
         const dataMeta = await resMeta.json();
@@ -367,7 +410,7 @@ export default function TemplateHub() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...config,
-          layout_blocks: blocks // Store block schema in config
+          layout_blocks: blocks
         })
       });
       if (res.ok) {
@@ -385,19 +428,15 @@ export default function TemplateHub() {
   const handleSaveVisualTemplate = async () => {
     setSaving(true);
     setMessage(null);
-    
-    // 1. Compile blocks to HTML
     const compiledHtml = compileBlocksToHtml(blocks);
 
     try {
-      // Save compiled HTML
       const resHtml = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/html`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: compiledHtml })
       });
       
-      // Save structured blocks in config
       const resConfig = await fetch(`${API_BASE}/admin/configs/${selectedDoc}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -422,11 +461,10 @@ export default function TemplateHub() {
 
   const handleLoadStarter = () => {
     const starter = DEFAULT_BLOCKS[selectedDoc] || DEFAULT_BLOCKS.QUOTATION;
-    // Deep clone starter block configuration
     const clonedStarter = JSON.parse(JSON.stringify(starter));
     setBlocks(clonedStarter);
     setSelectedBlockId(clonedStarter[0]?.id || null);
-    setMessage({ type: 'success', text: 'Loaded visual starter blocks! Adjust settings and save to apply.' });
+    setMessage({ type: 'success', text: 'Loaded visual starter blocks! Click Save to apply.' });
   };
 
   const handleClearVisualTemplate = async () => {
@@ -450,7 +488,6 @@ export default function TemplateHub() {
     }
   };
 
-  // Block Manipulation functions
   const addBlock = (type) => {
     const newId = String(Date.now());
     let newBlock = { id: newId, type };
@@ -458,15 +495,24 @@ export default function TemplateHub() {
     if (type === 'header') {
       newBlock = { ...newBlock, companyName: '1-to-1 World', docTitle: 'Quotation', colorTheme: '#10b981' };
     } else if (type === 'grid') {
-      newBlock = { ...newBlock, col1: 'Client info here', col2: 'Order details here' };
+      newBlock = { ...newBlock, col1: 'Click here to edit Client details', col2: 'Click here to edit Document vitals' };
     } else if (type === 'text') {
-      newBlock = { ...newBlock, content: 'Insert custom description or title here', fontSize: '11pt', color: '#333333', bold: false, italic: false };
+      newBlock = { ...newBlock, content: 'Type custom layout paragraphs directly on the canvas page.' };
+    } else if (type === 'image') {
+      newBlock = { ...newBlock, src: 'https://placehold.co/150x50/e2e8f0/64748b?text=Upload+Logo', width: '150px', align: 'center' };
     } else if (type === 'table') {
       newBlock = {
         ...newBlock,
         fontSize: '9.5pt',
-        borderColor: '#e5e7eb',
         headerBg: '#111827',
+        outerBorderWidth: 1,
+        outerBorderColor: '#cbd5e1',
+        outerBorderStyle: 'solid',
+        showHorizontalLines: true,
+        showVerticalLines: false,
+        innerBorderWidth: 1,
+        innerBorderColor: '#e5e7eb',
+        innerBorderStyle: 'solid',
         columns: [
           { title: '#', value: '{{item.index}}', width: '10%' },
           { title: 'Description', value: '{{item.description}}', width: '70%' },
@@ -505,26 +551,30 @@ export default function TemplateHub() {
   };
 
   const insertToken = (token) => {
-    // Inserts target token into whichever text property is relevant to active block
     if (!selectedBlockId) return;
     const block = blocks.find(b => b.id === selectedBlockId);
     if (!block) return;
     
     const tokenStr = `{{${token}}}`;
+    
+    // Auto-inserts token into focus window or clipboard
+    setMessage({ type: 'success', text: `Copy-paste token: ${tokenStr}` });
+    navigator.clipboard.writeText(tokenStr);
+    setTimeout(() => setMessage(null), 3000);
+  };
 
-    if (block.type === 'text') {
-      updateBlockVal(selectedBlockId, 'content', (block.content || '') + ' ' + tokenStr);
-    } else if (block.type === 'grid') {
-      // Append to the active field (default to col1)
-      updateBlockVal(selectedBlockId, 'col1', (block.col1 || '') + ' ' + tokenStr);
-    } else if (block.type === 'footer') {
-      updateBlockVal(selectedBlockId, 'content', (block.content || '') + ' ' + tokenStr);
-    } else if (block.type === 'table') {
-      // In table, we can append to the last column value or prompt to select
-      setMessage({ type: 'success', text: `Copy-paste token: ${tokenStr}` });
-      navigator.clipboard.writeText(tokenStr);
-      setTimeout(() => setMessage(null), 3000);
-    }
+  const handleImageLocalSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      updateBlockVal(selectedBlockId, 'src', event.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const runCommand = (command, value = null) => {
+    document.execCommand(command, false, value);
   };
 
   const handleFileUpload = async (e) => {
@@ -790,22 +840,23 @@ export default function TemplateHub() {
                   {/* Block Adder Menu */}
                   <div>
                     <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '8px' }}>Add Layout Block</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                      <button onClick={() => addBlock('header')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ Logo Header</button>
-                      <button onClick={() => addBlock('grid')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ 2-Col Grid</button>
-                      <button onClick={() => addBlock('text')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ Paragraph Text</button>
-                      <button onClick={() => addBlock('table')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ Dynamic Table</button>
-                      <button onClick={() => addBlock('summary')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ Pricing Summary</button>
-                      <button onClick={() => addBlock('footer')} className="btn btn-sm" style={{ fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>+ Footer / Terms</button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+                      <button onClick={() => addBlock('header')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>Header</button>
+                      <button onClick={() => addBlock('grid')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>2-Col Grid</button>
+                      <button onClick={() => addBlock('text')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>Text</button>
+                      <button onClick={() => addBlock('image')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>Image</button>
+                      <button onClick={() => addBlock('table')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>Table</button>
+                      <button onClick={() => addBlock('summary')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}>Summary</button>
+                      <button onClick={() => addBlock('footer')} className="btn btn-sm" style={{ fontSize: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }} style={{ gridColumn: 'span 3' }}>+ Add Footer / Terms</button>
                     </div>
                   </div>
 
                   {/* Settings Panel for SELECTED Block */}
                   {selectedBlock ? (
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-info)' }}>Edit {selectedBlock.type} block</span>
-                        <button onClick={() => deleteBlock(selectedBlockId)} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-danger)', padding: '2px 6px', height: 'auto' }} title="Delete Block">Delete Block</button>
+                      <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-info)' }}>Edit {selectedBlock.type} settings</span>
+                        <button onClick={() => deleteBlock(selectedBlockId)} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-danger)', padding: '2px 6px', height: 'auto' }}>Delete</button>
                       </div>
 
                       {/* Render block-specific input controls */}
@@ -826,61 +877,87 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {selectedBlock.type === 'grid' && (
+                      {selectedBlock.type === 'image' && (
                         <>
                           <div>
-                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Left Column HTML/Content</label>
-                            <textarea rows={4} className="form-control" style={{ fontSize: '11.5px', fontFamily: 'monospace' }} value={selectedBlock.col1 || ''} onChange={e => updateBlockVal(selectedBlockId, 'col1', e.target.value)} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Right Column HTML/Content</label>
-                            <textarea rows={4} className="form-control" style={{ fontSize: '11.5px', fontFamily: 'monospace' }} value={selectedBlock.col2 || ''} onChange={e => updateBlockVal(selectedBlockId, 'col2', e.target.value)} />
-                          </div>
-                        </>
-                      )}
-
-                      {selectedBlock.type === 'text' && (
-                        <>
-                          <div>
-                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Text Editor (HTML/Tokens)</label>
-                            <textarea rows={4} className="form-control" style={{ fontSize: '12px' }} value={selectedBlock.content || ''} onChange={e => updateBlockVal(selectedBlockId, 'content', e.target.value)} />
+                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Upload Image Logo</label>
+                            <input type="file" accept="image/*" onChange={handleImageLocalSelect} style={{ fontSize: '12px', color: 'var(--text-secondary)' }} />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Font Size</label>
-                              <select className="form-control" style={{ height: '30px', fontSize: '12px' }} value={selectedBlock.fontSize || '11pt'} onChange={e => updateBlockVal(selectedBlockId, 'fontSize', e.target.value)}>
-                                <option value="9pt">9pt (Small)</option>
-                                <option value="11pt">11pt (Normal)</option>
-                                <option value="14pt">14pt (Large)</option>
-                                <option value="18pt">18pt (Heading)</option>
-                              </select>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Width (e.g. 150px)</label>
+                              <input type="text" className="form-control" style={{ height: '30px', fontSize: '12px' }} value={selectedBlock.width || '150px'} onChange={e => updateBlockVal(selectedBlockId, 'width', e.target.value)} />
                             </div>
                             <div>
-                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Font Color</label>
-                              <input type="color" style={{ width: '100%', height: '30px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.color || '#333333'} onChange={e => updateBlockVal(selectedBlockId, 'color', e.target.value)} />
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alignment</label>
+                              <select className="form-control" style={{ height: '30px', fontSize: '12px' }} value={selectedBlock.align || 'center'} onChange={e => updateBlockVal(selectedBlockId, 'align', e.target.value)}>
+                                <option value="left">Left</option>
+                                <option value="center">Center</option>
+                                <option value="right">Right</option>
+                              </select>
                             </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-                            <label style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                              <input type="checkbox" checked={selectedBlock.bold || false} onChange={e => updateBlockVal(selectedBlockId, 'bold', e.target.checked)} /> Bold
-                            </label>
-                            <label style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                              <input type="checkbox" checked={selectedBlock.italic || false} onChange={e => updateBlockVal(selectedBlockId, 'italic', e.target.checked)} /> Italic
-                            </label>
                           </div>
                         </>
                       )}
 
                       {selectedBlock.type === 'table' && (
                         <>
+                          {/* Advanced Gridlines & Border Settings */}
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>Outer Border</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: '6px', alignItems: 'center' }}>
+                              <input type="color" style={{ width: '100%', height: '24px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.outerBorderColor || '#cbd5e1'} onChange={e => updateBlockVal(selectedBlockId, 'outerBorderColor', e.target.value)} />
+                              <select className="form-control" style={{ height: '26px', fontSize: '11px', padding: '0 4px' }} value={selectedBlock.outerBorderWidth !== undefined ? selectedBlock.outerBorderWidth : 1} onChange={e => updateBlockVal(selectedBlockId, 'outerBorderWidth', Number(e.target.value))}>
+                                <option value={0}>None</option>
+                                <option value={1}>1px</option>
+                                <option value={2}>2px</option>
+                                <option value={3}>3px</option>
+                              </select>
+                              <select className="form-control" style={{ height: '26px', fontSize: '11px', padding: '0 4px' }} value={selectedBlock.outerBorderStyle || 'solid'} onChange={e => updateBlockVal(selectedBlockId, 'outerBorderStyle', e.target.value)}>
+                                <option value="solid">Solid</option>
+                                <option value="dashed">Dashed</option>
+                                <option value="double">Double</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>Inside Gridlines</div>
+                            <div style={{ display: 'flex', gap: '12px', marginBottom: '6px' }}>
+                              <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={selectedBlock.showHorizontalLines !== undefined ? selectedBlock.showHorizontalLines : true} onChange={e => updateBlockVal(selectedBlockId, 'showHorizontalLines', e.target.checked)} /> Horizontal Lines
+                              </label>
+                              <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={selectedBlock.showVerticalLines !== undefined ? selectedBlock.showVerticalLines : false} onChange={e => updateBlockVal(selectedBlockId, 'showVerticalLines', e.target.checked)} /> Vertical Lines
+                              </label>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: '6px', alignItems: 'center' }}>
+                              <input type="color" style={{ width: '100%', height: '24px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.innerBorderColor || '#e5e7eb'} onChange={e => updateBlockVal(selectedBlockId, 'innerBorderColor', e.target.value)} />
+                              <select className="form-control" style={{ height: '26px', fontSize: '11px', padding: '0 4px' }} value={selectedBlock.innerBorderWidth !== undefined ? selectedBlock.innerBorderWidth : 1} onChange={e => updateBlockVal(selectedBlockId, 'innerBorderWidth', Number(e.target.value))}>
+                                <option value={1}>1px</option>
+                                <option value={2}>2px</option>
+                                <option value={3}>3px</option>
+                              </select>
+                              <select className="form-control" style={{ height: '26px', fontSize: '11px', padding: '0 4px' }} value={selectedBlock.innerBorderStyle || 'solid'} onChange={e => updateBlockVal(selectedBlockId, 'innerBorderStyle', e.target.value)}>
+                                <option value="solid">Solid</option>
+                                <option value="dashed">Dashed</option>
+                              </select>
+                            </div>
+                          </div>
+
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Header Bg Color</label>
-                              <input type="color" style={{ width: '100%', height: '30px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.headerBg || '#111827'} onChange={e => updateBlockVal(selectedBlockId, 'headerBg', e.target.value)} />
+                              <input type="color" style={{ width: '100%', height: '26px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.headerBg || '#111827'} onChange={e => updateBlockVal(selectedBlockId, 'headerBg', e.target.value)} />
                             </div>
                             <div>
-                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Border Color</label>
-                              <input type="color" style={{ width: '100%', height: '30px', padding: 0, border: 'none', cursor: 'pointer', background: 'none' }} value={selectedBlock.borderColor || '#e5e7eb'} onChange={e => updateBlockVal(selectedBlockId, 'borderColor', e.target.value)} />
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Table Font Size</label>
+                              <select className="form-control" style={{ height: '28px', fontSize: '11px' }} value={selectedBlock.fontSize || '9.5pt'} onChange={e => updateBlockVal(selectedBlockId, 'fontSize', e.target.value)}>
+                                <option value="8pt">8pt</option>
+                                <option value="9.5pt">9.5pt</option>
+                                <option value="11pt">11pt</option>
+                              </select>
                             </div>
                           </div>
 
@@ -899,7 +976,7 @@ export default function TemplateHub() {
                               </button>
                             </div>
                             
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
                               {(selectedBlock.columns || []).map((col, idx) => (
                                 <div key={idx} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-primary)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border)' }}>
                                   <input 
@@ -962,10 +1039,6 @@ export default function TemplateHub() {
 
                       {selectedBlock.type === 'footer' && (
                         <>
-                          <div>
-                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Terms HTML/Content</label>
-                            <textarea rows={5} className="form-control" style={{ fontSize: '11.5px' }} value={selectedBlock.content || ''} onChange={e => updateBlockVal(selectedBlockId, 'content', e.target.value)} />
-                          </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                               <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Bg Color</label>
@@ -979,9 +1052,8 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Click Token Help Label */}
                       <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontStyle: 'italic', background: 'var(--bg-primary)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                        💡 Tip: You can click tokens below to insert them into your text boxes!
+                        💡 Select text inside a block to color or format specific words separately!
                       </div>
                     </div>
                   ) : (
@@ -990,10 +1062,10 @@ export default function TemplateHub() {
                     </div>
                   )}
 
-                  {/* Available Token Click to Copy / Insert Panel */}
+                  {/* Available Token Click to Copy Panel */}
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Available Template Tokens</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '140px', overflowY: 'auto' }}>
                       {activeDoc.tokens && Object.entries(activeDoc.tokens).flatMap(([_, list]) => list).map(token => (
                         <button
                           key={token}
@@ -1005,7 +1077,7 @@ export default function TemplateHub() {
                             fontSize: '10.5px', color: 'var(--text-info)', cursor: 'pointer',
                             height: 'auto', minHeight: 0
                           }}
-                          title="Click to insert (or copy)"
+                          title="Click to copy token"
                         >
                           {`+ {{${token}}}`}
                         </button>
@@ -1018,6 +1090,54 @@ export default function TemplateHub() {
                 {/* CENTER: INTERACTIVE BLOCK CANVAS WORKSPACE */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '620px' }}>
                   
+                  {/* Visual Formatting Toolbar */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', background: 'var(--bg-secondary)', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', alignItems: 'center' }}>
+                    <button onClick={() => runCommand('bold')} className="btn btn-sm btn-ghost" style={{ fontWeight: 'bold', minWidth: '30px', padding: '2px' }}>B</button>
+                    <button onClick={() => runCommand('italic')} className="btn btn-sm btn-ghost" style={{ fontStyle: 'italic', minWidth: '30px', padding: '2px' }}>I</button>
+                    <button onClick={() => runCommand('underline')} className="btn btn-sm btn-ghost" style={{ textDecoration: 'underline', minWidth: '30px', padding: '2px' }}>U</button>
+                    
+                    <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
+                    
+                    <button onClick={() => runCommand('justifyLeft')} className="btn btn-sm btn-ghost" style={{ fontSize: '11px' }}>Left</button>
+                    <button onClick={() => runCommand('justifyCenter')} className="btn btn-sm btn-ghost" style={{ fontSize: '11px' }}>Center</button>
+                    <button onClick={() => runCommand('justifyRight')} className="btn btn-sm btn-ghost" style={{ fontSize: '11px' }}>Right</button>
+
+                    <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
+
+                    <select 
+                      onChange={(e) => runCommand('fontSize', e.target.value)} 
+                      className="form-control"
+                      style={{ height: '24px', fontSize: '11px', padding: '0 4px', width: '90px' }}
+                    >
+                      <option value="3">Size Normal</option>
+                      <option value="1">Small</option>
+                      <option value="4">Large</option>
+                      <option value="5">Huge</option>
+                      <option value="6">Heading</option>
+                    </select>
+
+                    <select 
+                      onChange={(e) => runCommand('fontName', e.target.value)} 
+                      className="form-control"
+                      style={{ height: '24px', fontSize: '11px', padding: '0 4px', width: '100px' }}
+                    >
+                      <option value="sans-serif">Clean Sans</option>
+                      <option value="Outfit">Outfit</option>
+                      <option value="Inter">Inter</option>
+                      <option value="Georgia">Georgia</option>
+                      <option value="monospace">Monospace</option>
+                    </select>
+                    
+                    <div style={{ width: '1px', height: '16px', background: 'var(--border)', margin: '0 4px' }} />
+                    
+                    <input 
+                      type="color" 
+                      onChange={(e) => runCommand('foreColor', e.target.value)}
+                      style={{ width: '22px', height: '22px', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: 0, background: 'none' }}
+                      title="Selection Text Color"
+                    />
+                  </div>
+
                   {/* Canvas Outer scrolling container */}
                   <div style={{ background: '#334155', border: '1px solid var(--border)', borderRadius: '8px', padding: '30px', overflowY: 'auto', flex: 1 }}>
                     
@@ -1070,36 +1190,85 @@ export default function TemplateHub() {
 
                               {block.type === 'grid' && (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '11px' }}>
-                                  <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px' }} dangerouslySetInnerHTML={{ __html: block.col1 }} />
-                                  <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px' }} dangerouslySetInnerHTML={{ __html: block.col2 }} />
+                                  <div 
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    onInput={(e) => updateBlockVal(block.id, 'col1', e.currentTarget.innerHTML)}
+                                    style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px', outline: 'none' }} 
+                                    dangerouslySetInnerHTML={{ __html: block.col1 }} 
+                                  />
+                                  <div 
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    onInput={(e) => updateBlockVal(block.id, 'col2', e.currentTarget.innerHTML)}
+                                    style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px', outline: 'none' }} 
+                                    dangerouslySetInnerHTML={{ __html: block.col2 }} 
+                                  />
                                 </div>
                               )}
 
                               {block.type === 'text' && (
                                 <div 
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onInput={(e) => updateBlockVal(block.id, 'content', e.currentTarget.innerHTML)}
                                   style={{
-                                    fontSize: block.fontSize || '11pt',
-                                    color: block.color || '#333333',
-                                    fontWeight: block.bold ? '700' : 'normal',
-                                    fontStyle: block.italic ? 'italic' : 'normal'
+                                    outline: 'none',
+                                    minHeight: '20px'
                                   }} 
                                   dangerouslySetInnerHTML={{ __html: block.content }}
                                 />
                               )}
 
+                              {block.type === 'image' && (
+                                <div style={{ display: 'flex', justifyContent: block.align === 'left' ? 'flex-start' : block.align === 'right' ? 'flex-end' : 'center' }}>
+                                  <img src={block.src} style={{ width: block.width || '150px', height: 'auto', border: '1px solid #e2e8f0', borderRadius: '4px' }} alt="Visual Logo Block" />
+                                </div>
+                              )}
+
                               {block.type === 'table' && (
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: block.fontSize || '9pt', tableLayout: 'fixed', border: `1px solid ${block.borderColor || '#e5e7eb'}` }}>
+                                <table style={{ 
+                                  width: '100%', 
+                                  borderCollapse: 'collapse', 
+                                  fontSize: block.fontSize || '9pt', 
+                                  tableLayout: 'fixed', 
+                                  border: (block.outerBorderWidth || 0) > 0 ? `${block.outerBorderWidth}px ${block.outerBorderStyle || 'solid'} ${block.outerBorderColor || '#cbd5e1'}` : 'none'
+                                }}>
                                   <thead>
                                     <tr style={{ background: block.headerBg || '#111827', color: 'white' }}>
                                       {(block.columns || []).map((col, cidx) => (
-                                        <th key={cidx} style={{ padding: '8px', textAlign: 'left', fontSize: '10px', textTransform: 'uppercase', width: col.width }}>{col.title}</th>
+                                        <th 
+                                          key={cidx} 
+                                          style={{ 
+                                            padding: '8px', 
+                                            textAlign: 'left', 
+                                            fontSize: '10px', 
+                                            textTransform: 'uppercase', 
+                                            width: col.width,
+                                            borderRight: (block.showVerticalLines) ? `${block.innerBorderWidth || 1}px ${block.innerBorderStyle || 'solid'} ${block.innerBorderColor || '#e5e7eb'}` : 'none',
+                                            borderBottom: `${block.innerBorderWidth || 1}px ${block.innerBorderStyle || 'solid'} ${block.innerBorderColor || '#e5e7eb'}`
+                                          }}
+                                        >
+                                          {col.title}
+                                        </th>
                                       ))}
                                     </tr>
                                   </thead>
                                   <tbody>
                                     <tr style={{ background: '#ffffff', color: '#4b5563' }}>
                                       {(block.columns || []).map((col, cidx) => (
-                                        <td key={cidx} style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', wordBreak: 'break-all', overflowWrap: 'break-word' }}>{col.value}</td>
+                                        <td 
+                                          key={cidx} 
+                                          style={{ 
+                                            padding: '8px', 
+                                            wordBreak: 'break-all', 
+                                            overflowWrap: 'break-word',
+                                            borderRight: (block.showVerticalLines && cidx !== block.columns.length - 1) ? `${block.innerBorderWidth || 1}px ${block.innerBorderStyle || 'solid'} ${block.innerBorderColor || '#e5e7eb'}` : 'none',
+                                            borderBottom: (block.showHorizontalLines) ? `${block.innerBorderWidth || 1}px ${block.innerBorderStyle || 'solid'} ${block.innerBorderColor || '#e5e7eb'}` : 'none'
+                                          }}
+                                        >
+                                          {col.value}
+                                        </td>
                                       ))}
                                     </tr>
                                   </tbody>
@@ -1128,7 +1297,21 @@ export default function TemplateHub() {
                               )}
 
                               {block.type === 'footer' && (
-                                <div style={{ background: block.bg || '#f3f4f6', borderLeft: `4px solid ${block.borderColor || '#10b981'}`, padding: '10px', borderRadius: '4px', fontSize: '10px', color: '#4b5563' }} dangerouslySetInnerHTML={{ __html: block.content }} />
+                                <div 
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onInput={(e) => updateBlockVal(block.id, 'content', e.currentTarget.innerHTML)}
+                                  style={{ 
+                                    background: block.bg || '#f3f4f6', 
+                                    borderLeft: `4px solid ${block.borderColor || '#10b981'}`, 
+                                    padding: '10px', 
+                                    borderRadius: '4px', 
+                                    fontSize: '10px', 
+                                    color: '#4b5563',
+                                    outline: 'none'
+                                  }} 
+                                  dangerouslySetInnerHTML={{ __html: block.content }} 
+                                />
                               )}
 
                             </div>
