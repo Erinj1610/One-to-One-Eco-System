@@ -92,10 +92,11 @@ def convert_docx_to_pdf_libreoffice(docx_path, pdf_path):
         outdir = os.path.dirname(pdf_path)
         logger.info(f"Converting {docx_path} to PDF via LibreOffice headless...")
         
-        # Command: libreoffice --headless --convert-to pdf --outdir [outdir] [docx_path]
+        # Command: libreoffice --headless -env:UserInstallation=file:///tmp/libreoffice --convert-to pdf --outdir [outdir] [docx_path]
         cmd = [
             "libreoffice",
             "--headless",
+            "-env:UserInstallation=file:///tmp/libreoffice",
             "--convert-to", "pdf",
             "--outdir", outdir,
             docx_path

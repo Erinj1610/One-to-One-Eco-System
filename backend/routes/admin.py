@@ -89,7 +89,12 @@ async def get_template_config(template_key: str, db: Session = Depends(get_db)):
                 "color_theme": "#10b981"
             }
         }
-    return config
+    return {
+        "id": config.id,
+        "template_key": config.template_key,
+        "config_json": config.config_json,
+        "html_content": config.html_content
+    }
 
 @router.post("/configs/{template_key}")
 async def save_template_config(template_key: str, request: Request, db: Session = Depends(get_db)):
