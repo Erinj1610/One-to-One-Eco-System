@@ -1201,7 +1201,7 @@ export function StoreProvider({ children }) {
     { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 11 },
     { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 12 },
     { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 13 },
-    { id: 'reports', label: 'Reports', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 14 },
+    { id: 'reports', label: 'Sales & KPIs', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 14 },
     { id: 'support', label: 'Support', icon: 'Headset', path: '/support', sectionId: 'other_modules', visible: true, order: 15 }
   ];
   const defaultSections = [
