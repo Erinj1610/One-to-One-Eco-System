@@ -365,6 +365,7 @@ export default function OrdersPage() {
   const [fileSource, setFileSource] = useState('');
   const [projectClass, setProjectClass] = useState('');
   const [quotationSentDate, setQuotationSentDate] = useState('');
+  const [division, setDivision] = useState('');
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
@@ -988,6 +989,7 @@ export default function OrdersPage() {
     setFileSource(order.fileSource || '');
     setProjectClass(order.projectClass || '');
     setQuotationSentDate(order.quotationSentDate || '');
+    setDivision(order.division || proj.division || '');
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
@@ -1351,7 +1353,8 @@ export default function OrdersPage() {
           pfDate,
           fileSource,
           projectClass,
-          quotationSentDate
+          quotationSentDate,
+          division
         };
       }
       return o;
@@ -1975,6 +1978,25 @@ export default function OrdersPage() {
                             {(projectManagers || []).map(pm => (
                               <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
                             ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px', textTransform: 'uppercase' }}>Division / Team</label>
+                          <select 
+                            className="form-control" 
+                            style={{ height: '26px', fontSize: '11.5px', padding: '2px 6px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                            value={division} 
+                            onChange={e => setDivision(e.target.value)}
+                          >
+                            <option value="">Auto-Detect (PM Name)</option>
+                            <option value="MODUS PROFESSIONAL ( Ryan )">MODUS PROFESSIONAL ( Ryan )</option>
+                            <option value="MOOD STORES">MOOD STORES</option>
+                            <option value="MODUS PROJECTS ( Dani )">MODUS PROJECTS ( Dani )</option>
+                            <option value="PROJECTS (Dani own)">PROJECTS (Dani own)</option>
+                            <option value="MODUS SIGNATURE ( Thando )">MODUS SIGNATURE ( Thando )</option>
+                            <option value="MADE ( Jon-Peer)">MADE ( Jon-Peer)</option>
+                            <option value="LUXELINE">LUXELINE</option>
+                            <option value="INTERNAL - Office">INTERNAL - Office</option>
                           </select>
                         </div>
                         <div>
