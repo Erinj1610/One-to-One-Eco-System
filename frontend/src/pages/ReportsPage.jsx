@@ -834,10 +834,9 @@ export default function ReportsPage() {
                   <thead>
                     <tr style={{ textAlign: 'left', borderBottom: '2px solid #cbd5e1', color: '#475569', background: '#f1f5f9' }}>
                       <th style={{ padding: '12px', fontWeight: 700 }}>Project Name</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Order Ref ID</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Operational Status</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Date Registered</th>
-                      <th style={{ padding: '12px', fontWeight: 700, textAlign: 'right' }}>Total Value (ZAR)</th>
+                      <th style={{ padding: '12px', fontWeight: 700 }}>Order</th>
+                      <th style={{ padding: '12px', fontWeight: 700 }}>Date</th>
+                      <th style={{ padding: '12px', fontWeight: 700, textAlign: 'right' }}>Value</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -845,20 +844,9 @@ export default function ReportsPage() {
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
                         <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
                         <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>{item.orderId}</td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700,
-                            background: item.status === 'Delivered' ? 'rgba(16, 185, 129, 0.15)' : 
-                                        item.status === 'Processing' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                            color: item.status === 'Delivered' ? '#059669' : 
-                                   item.status === 'Processing' ? '#2563eb' : '#d97706'
-                          }}>
-                            {item.status || 'Draft'}
-                          </span>
-                        </td>
                         <td style={{ padding: '12px', color: '#475569', fontWeight: 500 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={12} /> {item.date}
+                            <Calendar size={12} style={{ color: '#64748b' }} /> {item.date}
                           </div>
                         </td>
                         <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, fontSize: '13px', color: '#059669' }}>{formatZar(item.value)}</td>
