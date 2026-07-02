@@ -164,45 +164,7 @@ export default function ReportsPage() {
     });
   });
 
-  // Hardcode base spreadsheet values as fallbacks/baselines for unfilled categories to avoid blank dashboard
-  DIVISIONS.forEach(div => {
-    if (dynamicInvoiced[div].actual === 0 && selectedMonth === 'July') {
-      // Fallback baseline for demo integrity
-      const baselineMap = {
-        'MODUS PROFESSIONAL ( Ryan )': 9034.98,
-        'MOOD STORES': 0,
-        'MODUS PROJECTS ( Dani )': 0,
-        'PROJECTS (Dani own)': 0,
-        'MODUS SIGNATURE ( Thando )': 0,
-        'MADE ( Jon-Peer)': 0,
-        'LUXELINE': 0,
-        'INTERNAL - Office': 0
-      };
-      dynamicInvoiced[div].actual = baselineMap[div] || 0;
-    }
-    if (dynamicInvoiced[div].ytdActual === 0) {
-      const ytdBaseline = {
-        'MODUS PROFESSIONAL ( Ryan )': 3552618.82,
-        'MODUS PROJECTS ( Dani )': 1404613.69,
-        'PROJECTS (Dani own)': 158413.44,
-        'MODUS SIGNATURE ( Thando )': 699659.09,
-        'MADE ( Jon-Peer)': 837167.34,
-        'INTERNAL - Office': -76269.45
-      };
-      dynamicInvoiced[div].ytdActual = ytdBaseline[div] || 0;
-      dynamicAnnual[div].invoiced = ytdBaseline[div] || 0;
-    }
-    if (dynamicAwaiting[div].jul === 0) {
-      const julAwaiting = {
-        'MODUS PROFESSIONAL ( Ryan )': 156092.95,
-        'MODUS PROJECTS ( Dani )': 965820.18,
-        'PROJECTS (Dani own)': 47601.47,
-        'MODUS SIGNATURE ( Thando )': 282621.28,
-        'MADE ( Jon-Peer)': 416666.67
-      };
-      dynamicAwaiting[div].jul = julAwaiting[div] || 0;
-    }
-  });
+
 
   // Stock Values
   const stockValues = [
