@@ -6,7 +6,7 @@ import {
   Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, 
   ArrowUp, ArrowDown, LayoutGrid, Image as ImageIcon, CheckCircle, Plus, 
   Copy, Layers, Type, Table, AlignLeft, AlignCenter, AlignRight, FilePlus, 
-  Move, Bold, Italic, Underline, Palette, Sliders, Hash
+  Move, Bold, Italic, Underline, Palette, Sliders, Hash, RotateCcw, RotateCw, Sparkles
 } from 'lucide-react';
 
 const SHARED_ORDER_TOKENS = {
@@ -129,7 +129,6 @@ const DEFAULT_BLOCKS = {
   ]
 };
 
-// Compiles visual layout blocks into A4 clean HTML
 function compileBlocksToHtml(blocks, settings = {}) {
   const fontFam = settings.fontFamily || "'Outfit', 'Inter', sans-serif";
   const marginV = settings.marginSize || '20mm';
@@ -281,13 +280,11 @@ function compileBlocksToHtml(blocks, settings = {}) {
       
       const tableId = `table-${block.id}`;
       
-      // Outer borders
       const oWidth = block.outerBorderWidth !== undefined ? block.outerBorderWidth : 1;
       const oStyle = block.outerBorderStyle || 'solid';
       const oColor = block.outerBorderColor || '#cbd5e1';
       const outerBorderCss = oWidth > 0 ? `border: ${oWidth}px ${oStyle} ${oColor};` : 'border: none;';
       
-      // Inner borders
       const iWidth = block.innerBorderWidth !== undefined ? block.innerBorderWidth : 1;
       const iStyle = block.innerBorderStyle || 'solid';
       const iColor = block.innerBorderColor || '#e5e7eb';
@@ -382,29 +379,78 @@ export default function TemplateHub() {
   const [message, setMessage] = useState(null);
   const [uploading, setUploading] = useState(false);
   
-  // Tabs and Visual Designer Configuration
-  const [activeTab, setActiveTab] = useState('visual'); // Defaulting to visual builder tab
-  const [sidebarTab, setSidebarTab] = useState('elements'); // 'elements', 'outline', 'tokens', 'settings'
+  // Tab states
+  const [activeTab, setActiveTab] = useState('visual'); 
+  const [sidebarTab, setSidebarTab] = useState('elements');
   
   const [blocks, setBlocks] = useState([]);
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   
-  // Global Designer Settings
+  // Undo/Redo states
+  const [history, setHistory] = useState([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Notion-style inline token dropdown overlay
+  const [suggestMenu, setSuggestMenu] = useState({ visible: false, x: 0, y: 0, query: '', targetBlockId: null, targetKey: 'content' });
+  const suggestMenuRef = useRef(null);
+
+  // Global A4 variables
   const [globalSettings, setGlobalSettings] = useState({
     fontFamily: "'Outfit', 'Inter', sans-serif",
     marginSize: '20mm',
     marginSide: '15mm'
   });
 
-  // Drag and drop tracking refs
-  const dragItem = useRef();
-  const dragOverItem = useRef();
+  // HTML5 Drag tracking refs
+  const dragItem = useRef(null);
+  const dragOverItem = useRef(null);
 
   const activeDoc = DOCUMENT_TYPES[selectedDoc];
 
   useEffect(() => {
     if (!isAdmin) navigate('/');
   }, [isAdmin, navigate]);
+
+  const updateBlocksState = (newBlocks, pushHistory = true) => {
+    setBlocks(newBlocks);
+    if (pushHistory) {
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(newBlocks)));
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      setHistoryIndex(prevIndex);
+      setBlocks(JSON.parse(JSON.stringify(history[prevIndex])));
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      setBlocks(JSON.parse(JSON.stringify(history[nextIndex])));
+    }
+  };
+
+  // Bind Ctrl+Z / Ctrl+Y
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [history, historyIndex]);
 
   const fetchConfigAndMetadata = async (docType) => {
     setLoading(true);
@@ -413,7 +459,10 @@ export default function TemplateHub() {
       if (resConf.ok) {
         const dataConf = await resConf.json();
         setConfig(dataConf.config_json || {});
-        setBlocks(dataConf.config_json?.layout_blocks || []);
+        const layout = dataConf.config_json?.layout_blocks || [];
+        setBlocks(layout);
+        setHistory([JSON.parse(JSON.stringify(layout))]);
+        setHistoryIndex(0);
         if (dataConf.config_json?.global_settings) {
           setGlobalSettings(dataConf.config_json.global_settings);
         }
@@ -451,10 +500,10 @@ export default function TemplateHub() {
         })
       });
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Word configuration saved!' });
+        setMessage({ type: 'success', text: 'MS Word configuration updated!' });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save settings.' });
+      setMessage({ type: 'error', text: 'Failed to update settings.' });
     } finally {
       setSaving(false);
     }
@@ -483,13 +532,13 @@ export default function TemplateHub() {
       });
 
       if (resHtml.ok && resConfig.ok) {
-        setMessage({ type: 'success', text: 'Template published and saved live!' });
+        setMessage({ type: 'success', text: 'Visual builder template published live!' });
         setTimeout(() => setMessage(null), 3000);
       } else {
         throw new Error();
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to publish live template.' });
+      setMessage({ type: 'error', text: 'Failed to compile and publish template.' });
     } finally {
       setSaving(false);
     }
@@ -498,9 +547,9 @@ export default function TemplateHub() {
   const handleLoadStarter = () => {
     const starter = DEFAULT_BLOCKS[selectedDoc] || DEFAULT_BLOCKS.QUOTATION;
     const clonedStarter = JSON.parse(JSON.stringify(starter));
-    setBlocks(clonedStarter);
+    updateBlocksState(clonedStarter);
     setSelectedBlockId(clonedStarter[0]?.id || null);
-    setMessage({ type: 'success', text: 'Loaded starter template.' });
+    setMessage({ type: 'success', text: 'Loaded starter template!' });
   };
 
   const handleClearVisualTemplate = async () => {
@@ -513,7 +562,7 @@ export default function TemplateHub() {
         body: JSON.stringify({ html: "" })
       });
       if (res.ok) {
-        setBlocks([]);
+        updateBlocksState([]);
         setSelectedBlockId(null);
         setMessage({ type: 'success', text: 'Reverted template engine to MS Word.' });
       }
@@ -565,34 +614,36 @@ export default function TemplateHub() {
       newBlock = { ...newBlock, content: 'Enter terms, notes, and footer items here.', bg: '#f3f4f6', borderColor: '#10b981' };
     }
 
-    setBlocks(prev => {
-      const copy = [...prev];
-      if (index !== null) {
-        copy.splice(index, 0, newBlock);
-      } else {
-        copy.push(newBlock);
-      }
-      return copy;
-    });
+    const copy = [...blocks];
+    if (index !== null) {
+      copy.splice(index, 0, newBlock);
+    } else {
+      copy.push(newBlock);
+    }
+    updateBlocksState(copy);
     setSelectedBlockId(newId);
   };
 
+  // Direct canvas element drag operations
   const handleDragStart = (e, index) => {
     dragItem.current = index;
+    e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragEnter = (e, index) => {
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
     dragOverItem.current = index;
   };
 
   const handleDragEnd = () => {
+    if (dragItem.current === null || dragOverItem.current === null) return;
     const copy = [...blocks];
     const itemToMove = copy[dragItem.current];
     copy.splice(dragItem.current, 1);
     copy.splice(dragOverItem.current, 0, itemToMove);
     dragItem.current = null;
     dragOverItem.current = null;
-    setBlocks(copy);
+    updateBlocksState(copy);
   };
 
   const duplicateBlock = (block, idx) => {
@@ -600,31 +651,134 @@ export default function TemplateHub() {
     const cloned = JSON.parse(JSON.stringify(block));
     cloned.id = newId;
     
-    setBlocks(prev => {
-      const copy = [...prev];
-      copy.splice(idx + 1, 0, cloned);
-      return copy;
-    });
+    const copy = [...blocks];
+    copy.splice(idx + 1, 0, cloned);
+    updateBlocksState(copy);
     setSelectedBlockId(newId);
   };
 
   const deleteBlock = (id) => {
-    setBlocks(prev => prev.filter(b => b.id !== id));
+    const copy = blocks.filter(b => b.id !== id);
+    updateBlocksState(copy);
     if (selectedBlockId === id) setSelectedBlockId(null);
   };
 
-  const updateBlockVal = (id, key, val) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, [key]: val } : b));
+  const updateBlockVal = (id, key, val, pushHistory = true) => {
+    const copy = blocks.map(b => b.id === id ? { ...b, [key]: val } : b);
+    updateBlocksState(copy, pushHistory);
   };
 
+  // Cursor-Based direct token insertion
   const insertToken = (token) => {
     const tokenStr = `{{${token}}}`;
+    const selection = window.getSelection();
+    
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      
+      // Verify selection cursor is inside our contentEditable canvas
+      let container = range.commonAncestorContainer;
+      while (container) {
+        if (container.nodeType === 1 && container.hasAttribute('contenteditable')) {
+          range.deleteContents();
+          const node = document.createTextNode(tokenStr);
+          range.insertNode(node);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Trigger updates on active block content
+          const blockId = container.getAttribute('data-block-id');
+          const key = container.getAttribute('data-block-key') || 'content';
+          if (blockId) {
+            updateBlockVal(blockId, key, container.innerHTML);
+          }
+          return;
+        }
+        container = container.parentNode;
+      }
+    }
+
+    // Fallback: Copy to clipboard if cursor is not active
     navigator.clipboard.writeText(tokenStr);
-    setMessage({ type: 'success', text: `Copied ${tokenStr} to clipboard!` });
+    setMessage({ type: 'success', text: `Clipboard copy: ${tokenStr}. Click inside text box to insert directly!` });
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleImageLocalSelect = (e) => {
+  // Notion style autocomplete '@' listener
+  const handleContentInput = (e, blockId, key) => {
+    const text = e.currentTarget.innerText || '';
+    const html = e.currentTarget.innerHTML || '';
+    
+    updateBlockVal(blockId, key, html, false); // Update state silently without pushing to history for every letter typed
+
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const cursorOffset = range.startOffset;
+    
+    // Check if user just typed '@' or '@search_query'
+    const textBeforeCursor = range.startContainer.textContent?.slice(0, cursorOffset) || '';
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (atIndex !== -1 && atIndex >= textBeforeCursor.length - 15) {
+      const query = textBeforeCursor.slice(atIndex + 1);
+      const rect = range.getBoundingClientRect();
+      
+      setSuggestMenu({
+        visible: true,
+        x: rect.left + window.scrollX,
+        y: rect.bottom + window.scrollY + 5,
+        query,
+        targetBlockId: blockId,
+        targetKey: key
+      });
+    } else {
+      setSuggestMenu(prev => ({ ...prev, visible: false }));
+    }
+  };
+
+  const handleSelectAutocompleteToken = (token) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    
+    // Find text node and replace '@query' with token
+    const textNode = range.startContainer;
+    const cursorOffset = range.startOffset;
+    const textContent = textNode.textContent || '';
+    const atIndex = textContent.lastIndexOf('@', cursorOffset);
+    
+    if (atIndex !== -1) {
+      const beforeAt = textContent.slice(0, atIndex);
+      const afterCursor = textContent.slice(cursorOffset);
+      textNode.textContent = beforeAt + `{{${token}}}` + afterCursor;
+      
+      // Restore range after token
+      range.setStart(textNode, atIndex + `{{${token}}}`.length);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      // Update React State
+      let parent = textNode.parentNode;
+      while (parent && !parent.hasAttribute('contenteditable')) {
+        parent = parent.parentNode;
+      }
+      if (parent) {
+        updateBlockVal(suggestMenu.targetBlockId, suggestMenu.targetKey, parent.innerHTML);
+      }
+    }
+    
+    setSuggestMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const handleBlockChangeDone = (e, blockId, key) => {
+    // Push final typed block contents to history when they focus away
+    updateBlockVal(blockId, key, e.currentTarget.innerHTML, true);
+  };
+
+  const handleImageLocalSelectDone = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -632,10 +786,6 @@ export default function TemplateHub() {
       updateBlockVal(selectedBlockId, 'src', event.target.result);
     };
     reader.readAsDataURL(file);
-  };
-
-  const runCommand = (command, value = null) => {
-    document.execCommand(command, false, value);
   };
 
   const handleFileUpload = async (e) => {
@@ -652,7 +802,7 @@ export default function TemplateHub() {
         body: formData
       });
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Word template file uploaded!' });
+        setMessage({ type: 'success', text: 'MS Word template file uploaded!' });
         const resMeta = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/metadata`);
         if (resMeta.ok) {
           const dataMeta = await resMeta.json();
@@ -688,43 +838,97 @@ export default function TemplateHub() {
 
   const selectedBlock = blocks.find(b => b.id === selectedBlockId);
 
+  // Close autocomplete menu when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (suggestMenuRef.current && !suggestMenuRef.current.contains(e.target)) {
+        setSuggestMenu(prev => ({ ...prev, visible: false }));
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Filter autocomplete tokens
+  const allTokensList = activeDoc ? Object.values(activeDoc.tokens).flat() : [];
+  const filteredTokens = suggestMenu.visible 
+    ? allTokensList.filter(t => t.toLowerCase().includes(suggestMenu.query.toLowerCase()))
+    : [];
+
   if (!isAdmin) return null;
 
   return (
-    <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto' }}>
+    <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', position: 'relative' }}>
       
-      {/* Sub Header Section */}
+      {/* Autocomplete Suggested Tokens Menu (Floating Portal) */}
+      {suggestMenu.visible && filteredTokens.length > 0 && (
+        <div 
+          ref={suggestMenuRef}
+          style={{
+            position: 'absolute', left: `${suggestMenu.x}px', top: '${suggestMenu.y}px`,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '6px', boxShadow: '0 8px 16px -2px rgba(0,0,0,0.5)',
+            maxHeight: '180px', overflowY: 'auto', zIndex: 1000,
+            padding: '4px', minWidth: '160px'
+          }}
+        >
+          <div style={{ padding: '4px 8px', fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Suggestions</div>
+          {filteredTokens.map(t => (
+            <button
+              key={t}
+              onClick={() => handleSelectAutocompleteToken(t)}
+              className="btn btn-ghost"
+              style={{
+                width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '11px',
+                borderRadius: '4px', display: 'block', height: 'auto', justifyContent: 'flex-start'
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Header Studio Section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
           <button onClick={() => navigate('/')} className="btn btn-ghost btn-sm" style={{ marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>← Back to Dashboard</button>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'white', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            ✨ Layout Studio
+            🎨 Layout Studio <span style={{ fontSize: '12px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px' }}>V2 Editor</span>
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
-            Design and configure visual A4 template configurations or adjust Microsoft Word engine fields.
+            Design visual template sheets with inline drag-reordering, Notion-style cursor variables, and custom column selectors.
           </p>
         </div>
 
-        {/* Global Save Action Bar */}
-        <div style={{ display: 'flex', gap: '10px' }}>
+        {/* Global actions */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {activeTab === 'visual' && (
-            <button 
-              className="btn btn-primary" 
-              onClick={handleSaveVisualTemplate} 
-              disabled={saving || blocks.length === 0}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 600 }}
-            >
-              <Save size={16} /> {saving ? 'Saving...' : 'Publish Live Template'}
-            </button>
+            <>
+              {/* Undo / Redo controls */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)', marginRight: '10px' }}>
+                <button disabled={historyIndex === 0} onClick={handleUndo} className="btn btn-sm btn-ghost" style={{ padding: '4px 8px', minWidth: '32px' }} title="Undo (Ctrl+Z)"><RotateCcw size={14} /></button>
+                <button disabled={historyIndex === history.length - 1} onClick={handleRedo} className="btn btn-sm btn-ghost" style={{ padding: '4px 8px', minWidth: '32px' }} title="Redo (Ctrl+Y)"><RotateCw size={14} /></button>
+              </div>
+
+              <button 
+                className="btn btn-primary" 
+                onClick={handleSaveVisualTemplate} 
+                disabled={saving || blocks.length === 0}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontWeight: 600 }}
+              >
+                <Save size={15} /> {saving ? 'Publishing...' : 'Save & Publish Live'}
+              </button>
+            </>
           )}
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: '20px', alignItems: 'start' }}>
         
-        {/* Document Type Selector (Left-most) */}
+        {/* Document Left Selector */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '16px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Select Document</div>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Templates</div>
           {Object.values(DOCUMENT_TYPES).map(doc => (
             <button
               key={doc.id}
@@ -732,7 +936,7 @@ export default function TemplateHub() {
               className="btn btn-ghost"
               style={{
                 textAlign: 'left', padding: '10px 12px', borderRadius: '6px',
-                width: '100%', justifyContent: 'flex-start', fontSize: '13px',
+                width: '100%', justifyContent: 'flex-start', fontSize: '12.5px',
                 border: '1px solid',
                 borderColor: selectedDoc === doc.id ? 'var(--border-info)' : 'transparent',
                 background: selectedDoc === doc.id ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
@@ -745,7 +949,7 @@ export default function TemplateHub() {
           ))}
         </div>
 
-        {/* Main Workspace Frame */}
+        {/* Builder Workbench Frame */}
         <div className="card" style={{ padding: '20px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '20px', background: 'var(--bg-card)' }}>
           
           {/* Main Top Tab Header */}
@@ -760,7 +964,7 @@ export default function TemplateHub() {
                 display: 'flex', alignItems: 'center', gap: '8px'
               }}
             >
-              <LayoutGrid size={16} /> Drag-and-Drop Layout Editor
+              <Sparkles size={15} /> Visual Drag-and-Drop Editor
             </button>
             <button 
               onClick={() => setActiveTab('word')}
@@ -772,7 +976,7 @@ export default function TemplateHub() {
                 display: 'flex', alignItems: 'center', gap: '8px'
               }}
             >
-              <Settings size={16} /> MS Word (.docx) Fallback
+              <Settings size={15} /> MS Word Config Fallback
             </button>
           </div>
 
@@ -780,7 +984,7 @@ export default function TemplateHub() {
             <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Loading template details...</div>
           ) : activeTab === 'word' ? (
             
-            /* WORD CONFIG TAB */
+            /* WORD ENGINE CONFIG */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -810,7 +1014,7 @@ export default function TemplateHub() {
                     className="btn"
                     style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
                   >
-                    <Download size={13} /> Download Current File
+                    <Download size={13} /> Download File
                   </button>
 
                   <label className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
@@ -870,23 +1074,23 @@ export default function TemplateHub() {
             </div>
           ) : (
             
-            /* VISUAL DRAG AND DROP BUILDER */
+            /* VISUAL DESIGNER BENCH */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>A4 Visual Print Layout Settings</h4>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Visual Layout Builder</h4>
                   <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {blocks.length > 0 ? '🟢 Visual Template layout is currently active.' : '⚪ Word layout active. Load a starter layout below.'}
+                    {blocks.length > 0 ? '🟢 Visual Template layout is active.' : '⚪ Word layout active. Load a starter layout below.'}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={handleLoadStarter} className="btn btn-sm" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                    <RefreshCw size={12} /> Load Starter Layout
+                    <RefreshCw size={12} /> Load Starter Template
                   </button>
                   {blocks.length > 0 && (
                     <button onClick={handleClearVisualTemplate} className="btn btn-sm btn-ghost" style={{ color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                      <Trash2 size={12} /> Clear Visual Designer
+                      <Trash2 size={12} /> Revert to Word
                     </button>
                   )}
                 </div>
@@ -895,10 +1099,9 @@ export default function TemplateHub() {
               {/* THREE-COLUMN WORK BENCH */}
               <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr 340px', gap: '20px', minHeight: '750px', alignItems: 'stretch' }}>
                 
-                {/* 1. LEFT WORKPANEL (Tabs: Add Elements, Outline, Token Index, Settings) */}
+                {/* 1. LEFT PANEL (Add Elements, Outline, Token directory, Settings) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
                   
-                  {/* Left panel subtabs */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', background: 'var(--bg-primary)', padding: '3px', borderRadius: '6px' }}>
                     <button onClick={() => setSidebarTab('elements')} title="Add Elements" style={{ padding: '8px 2px', background: sidebarTab === 'elements' ? 'var(--bg-card)' : 'transparent', border: 'none', borderRadius: '4px', color: sidebarTab === 'elements' ? 'white' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                       <FilePlus size={14} />
@@ -986,7 +1189,7 @@ export default function TemplateHub() {
                                 key={block.id}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, idx)}
-                                onDragEnter={(e) => handleDragEnter(e, idx)}
+                                onDragEnter={(e) => handleDragOver(e, idx)}
                                 onDragEnd={handleDragEnd}
                                 onDragOver={(e) => e.preventDefault()}
                                 onClick={() => setSelectedBlockId(block.id)}
@@ -1014,11 +1217,11 @@ export default function TemplateHub() {
                       </div>
                     )}
 
-                    {/* TAB: TOKENS */}
+                    {/* TAB: VARIABLE TOKENS */}
                     {sidebarTab === 'tokens' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Insert Variables</div>
-                        <p style={{ fontSize: '10px', color: 'var(--text-secondary)', margin: 0 }}>Click any variable below to instantly copy it for pasting in text blocks.</p>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Available Dynamic Tokens</div>
+                        <p style={{ fontSize: '10px', color: 'var(--text-secondary)', margin: 0 }}>Click any variable below to insert it directly at your blinking cursor on the A4 page.</p>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '450px', overflowY: 'auto' }}>
                           {activeDoc.tokens && Object.entries(activeDoc.tokens).map(([cat, list]) => (
@@ -1030,12 +1233,12 @@ export default function TemplateHub() {
                                     key={t}
                                     onClick={() => insertToken(t)}
                                     style={{
-                                      padding: '2px 4px', background: 'rgba(59, 130, 246, 0.05)',
+                                      padding: '3px 6px', background: 'rgba(59, 130, 246, 0.05)',
                                       border: '1px solid rgba(59, 130, 246, 0.15)', borderRadius: '3px',
-                                      fontSize: '9.5px', color: 'var(--text-info)', cursor: 'pointer'
+                                      fontSize: '10px', color: 'var(--text-info)', cursor: 'pointer'
                                     }}
                                   >
-                                    {`{{${t}}}`}
+                                    {`+ {{${t}}}`}
                                   </button>
                                 ))}
                               </div>
@@ -1045,7 +1248,7 @@ export default function TemplateHub() {
                       </div>
                     )}
 
-                    {/* TAB: GLOBAL SETTINGS */}
+                    {/* TAB: PAGE SETTINGS */}
                     {sidebarTab === 'settings' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>A4 Page Settings</div>
@@ -1087,10 +1290,10 @@ export default function TemplateHub() {
 
                 </div>
 
-                {/* 2. CENTER: A4 INTERACTIVE CANVAS */}
+                {/* 2. CENTER: SIMULATED A4 CANVAS */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflow: 'hidden' }}>
                   
-                  {/* Floating Styling Toolbar */}
+                  {/* Text Formatting Bar */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', background: 'var(--bg-secondary)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', alignItems: 'center' }}>
                     <button onClick={() => runCommand('bold')} className="btn btn-sm btn-ghost" style={{ fontWeight: 'bold', padding: '2px 6px', fontSize: '12px' }}><Bold size={13} /></button>
                     <button onClick={() => runCommand('italic')} className="btn btn-sm btn-ghost" style={{ fontStyle: 'italic', padding: '2px 6px', fontSize: '12px' }}><Italic size={13} /></button>
@@ -1116,11 +1319,15 @@ export default function TemplateHub() {
                       type="color" 
                       onChange={(e) => runCommand('foreColor', e.target.value)}
                       style={{ width: '22px', height: '22px', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: 0, background: 'none' }}
-                      title="Highlighted Text Color"
+                      title="Selection Color"
                     />
+                    
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginLeft: 'auto', fontStyle: 'italic' }}>
+                      💡 Type @ inside any box to search and insert values inline!
+                    </div>
                   </div>
 
-                  {/* A4 Sheet Board */}
+                  {/* A4 Slate Board */}
                   <div style={{ background: '#0f172a', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px', overflowY: 'auto', flex: 1 }}>
                     
                     <div style={{ 
@@ -1142,9 +1349,16 @@ export default function TemplateHub() {
                           const isSelected = block.id === selectedBlockId;
                           
                           return (
-                            <div key={block.id}>
+                            <div 
+                              key={block.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, idx)}
+                              onDragOver={(e) => handleDragOver(e, idx)}
+                              onDragEnd={handleDragEnd}
+                              style={{ position: 'relative' }}
+                            >
                               
-                              {/* Hover & Drop Interactive Line (+) */}
+                              {/* Hover & Drop Insert Line (+) */}
                               <div 
                                 className="hover-plus-line"
                                 style={{
@@ -1162,13 +1376,13 @@ export default function TemplateHub() {
                                     borderRadius: '50%', width: '18px', height: '18px', display: 'flex',
                                     alignItems: 'center', justifySelf: 'center', justifyContent: 'center', cursor: 'pointer'
                                   }}
-                                  title="Add block here"
+                                  title="Insert block here"
                                 >
                                   <Plus size={10} />
                                 </button>
                               </div>
 
-                              {/* Block Container Wrapper */}
+                              {/* Canvas Block Render Frame */}
                               <div
                                 onClick={(e) => { e.stopPropagation(); setSelectedBlockId(block.id); }}
                                 style={{
@@ -1183,7 +1397,19 @@ export default function TemplateHub() {
                                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.border = '1px dashed #3b82f6'; }}
                                 onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.border = '1px dashed transparent'; }}
                               >
-                                {/* Drag Handles / Floating Bar */}
+                                {/* Draggable Grab Indicator handle (Left-side bar) */}
+                                <div 
+                                  style={{ 
+                                    position: 'absolute', left: '-18px', top: 'calc(50% - 10px)', 
+                                    opacity: isSelected ? 1 : 0, transition: 'opacity 0.2s', 
+                                    cursor: 'grab', color: '#94a3b8' 
+                                  }}
+                                  title="Drag block to reorder on page"
+                                >
+                                  <Move size={14} />
+                                </div>
+
+                                {/* Floating control handles */}
                                 {isSelected && (
                                   <div style={{ position: 'absolute', right: '4px', top: '-14px', display: 'flex', gap: '3px', background: '#3b82f6', padding: '2px', borderRadius: '4px', zIndex: 10 }}>
                                     <button onClick={(e) => { e.stopPropagation(); duplicateBlock(block, idx); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: '2px' }} title="Duplicate"><Copy size={11} /></button>
@@ -1191,7 +1417,7 @@ export default function TemplateHub() {
                                   </div>
                                 )}
 
-                                {/* BLOCK SPECIFIC RENDERERS */}
+                                {/* BLOCK RENDERERS */}
                                 {block.type === 'header' && (
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '20px', fontWeight: 800 }}>{block.companyName}<span style={{ color: block.colorTheme || '#10b981' }}>.</span></span>
@@ -1204,14 +1430,20 @@ export default function TemplateHub() {
                                     <div 
                                       contentEditable
                                       suppressContentEditableWarning
-                                      onInput={(e) => updateBlockVal(block.id, 'col1', e.currentTarget.innerHTML)}
+                                      data-block-id={block.id}
+                                      data-block-key="col1"
+                                      onInput={(e) => handleContentInput(e, block.id, 'col1')}
+                                      onBlur={(e) => handleBlockChangeDone(e, block.id, 'col1')}
                                       style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px', outline: 'none' }} 
                                       dangerouslySetInnerHTML={{ __html: block.col1 }} 
                                     />
                                     <div 
                                       contentEditable
                                       suppressContentEditableWarning
-                                      onInput={(e) => updateBlockVal(block.id, 'col2', e.currentTarget.innerHTML)}
+                                      data-block-id={block.id}
+                                      data-block-key="col2"
+                                      onInput={(e) => handleContentInput(e, block.id, 'col2')}
+                                      onBlur={(e) => handleBlockChangeDone(e, block.id, 'col2')}
                                       style={{ background: '#f9fafb', border: '1px solid #e5e7eb', padding: '10px', borderRadius: '4px', outline: 'none' }} 
                                       dangerouslySetInnerHTML={{ __html: block.col2 }} 
                                     />
@@ -1222,7 +1454,10 @@ export default function TemplateHub() {
                                   <div 
                                     contentEditable
                                     suppressContentEditableWarning
-                                    onInput={(e) => updateBlockVal(block.id, 'content', e.currentTarget.innerHTML)}
+                                    data-block-id={block.id}
+                                    data-block-key="content"
+                                    onInput={(e) => handleContentInput(e, block.id, 'content')}
+                                    onBlur={(e) => handleBlockChangeDone(e, block.id, 'content')}
                                     style={{ outline: 'none', minHeight: '20px' }} 
                                     dangerouslySetInnerHTML={{ __html: block.content }}
                                   />
@@ -1230,7 +1465,7 @@ export default function TemplateHub() {
 
                                 {block.type === 'image' && (
                                   <div style={{ display: 'flex', justifyContent: block.align === 'left' ? 'flex-start' : block.align === 'right' ? 'flex-end' : 'center' }}>
-                                    <img src={block.src} style={{ width: block.width || '150px', height: 'auto', border: '1px solid #e2e8f0', borderRadius: '4px' }} alt="Visual Logo Upload" />
+                                    <img src={block.src} style={{ width: block.width || '150px', height: 'auto', border: '1px solid #e2e8f0', borderRadius: '4px' }} alt="Visual Logo Block" />
                                   </div>
                                 )}
 
@@ -1321,7 +1556,10 @@ export default function TemplateHub() {
                                   <div 
                                     contentEditable
                                     suppressContentEditableWarning
-                                    onInput={(e) => updateBlockVal(block.id, 'content', e.currentTarget.innerHTML)}
+                                    data-block-id={block.id}
+                                    data-block-key="content"
+                                    onInput={(e) => handleContentInput(e, block.id, 'content')}
+                                    onBlur={(e) => handleBlockChangeDone(e, block.id, 'content')}
                                     style={{ 
                                       background: block.bg || '#f3f4f6', 
                                       borderLeft: `4px solid ${block.borderColor || '#10b981'}`, 
@@ -1347,18 +1585,18 @@ export default function TemplateHub() {
 
                 </div>
 
-                {/* 3. RIGHT WORKPANEL (Selected Block Properties Settings) */}
+                {/* 3. RIGHT PANEL (Dynamic Block Settings Editor) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px', overflowY: 'auto' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>Element Properties</div>
                   
                   {selectedBlock ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                       <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-info)', textTransform: 'uppercase' }}>{selectedBlock.type} settings</span>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-info)', textTransform: 'uppercase' }}>{selectedBlock.type} Settings</span>
                         <button onClick={() => deleteBlock(selectedBlockId)} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-danger)', height: 'auto', padding: '2px 6px' }}>Delete</button>
                       </div>
 
-                      {/* Header Controls */}
+                      {/* Header block settings */}
                       {selectedBlock.type === 'header' && (
                         <>
                           <div>
@@ -1376,11 +1614,11 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Grid Split Config */}
+                      {/* 2-Col Grid Split ratios */}
                       {selectedBlock.type === 'grid' && (
                         <>
                           <div>
-                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Column Width Ratio</label>
+                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Column Split Ratio</label>
                             <select className="form-control" style={{ height: '30px', fontSize: '12px' }} value={selectedBlock.ratio || '50/50'} onChange={e => updateBlockVal(selectedBlockId, 'ratio', e.target.value)}>
                               <option value="50/50">Equal Split (50/50)</option>
                               <option value="60/40">60% / 40% Width</option>
@@ -1390,7 +1628,7 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Spacer Height Slider */}
+                      {/* Spacer height */}
                       {selectedBlock.type === 'spacer' && (
                         <>
                           <div>
@@ -1411,12 +1649,12 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Image Block */}
+                      {/* Image Logo blocks */}
                       {selectedBlock.type === 'image' && (
                         <>
                           <div>
                             <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Upload Image Logo</label>
-                            <input type="file" accept="image/*" onChange={handleImageLocalSelect} style={{ fontSize: '12px', color: 'var(--text-secondary)' }} />
+                            <input type="file" accept="image/*" onChange={handleImageLocalSelectDone} style={{ fontSize: '12px', color: 'var(--text-secondary)' }} />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
@@ -1435,7 +1673,7 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Table Border Gridlines & Column Controls */}
+                      {/* Table Column Mapping and Styles */}
                       {selectedBlock.type === 'table' && (
                         <>
                           <div>
@@ -1552,17 +1790,46 @@ export default function TemplateHub() {
                                     </select>
                                   </div>
                                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                    <input 
-                                      type="text" 
-                                      placeholder="Token Value" 
-                                      style={{ flex: 1, height: '22px', fontSize: '11px', padding: '2px' }} 
-                                      value={col.value} 
+                                    {/* USABILITY: Token Dropdown Selector */}
+                                    <select
+                                      style={{ flex: 1, height: '22px', fontSize: '11px', padding: '0 2px' }}
+                                      value={col.value.startsWith('{{') && col.value.endsWith('}}') ? col.value : 'custom'}
                                       onChange={e => {
+                                        const val = e.target.value;
                                         const newCols = [...selectedBlock.columns];
-                                        newCols[idx].value = e.target.value;
+                                        if (val !== 'custom') {
+                                          newCols[idx].value = val;
+                                        }
                                         updateBlockVal(selectedBlockId, 'columns', newCols);
                                       }}
-                                    />
+                                    >
+                                      <option value="{{item.index}}"># Index</option>
+                                      <option value="{{item.code}}">Item Code</option>
+                                      <option value="{{item.description}}">Description</option>
+                                      <option value="{{item.qty}}">Quantity</option>
+                                      <option value="{{item.brand}}">Brand</option>
+                                      <option value="{{item.totalRetail}}">Total Retail</option>
+                                      <option value="{{item.unitCost}}">Unit Cost</option>
+                                      <option value="{{item.stockStatus}}">Stock Status</option>
+                                      <option value="{{item.eta}}">ETA</option>
+                                      <option value="custom">Custom Text...</option>
+                                    </select>
+
+                                    {/* Show text input only if 'custom' is selected */}
+                                    {(!col.value.startsWith('{{') || !col.value.endsWith('}}')) && (
+                                      <input 
+                                        type="text" 
+                                        placeholder="Value" 
+                                        style={{ width: '45%', height: '22px', fontSize: '11px', padding: '2px' }} 
+                                        value={col.value} 
+                                        onChange={e => {
+                                          const newCols = [...selectedBlock.columns];
+                                          newCols[idx].value = e.target.value;
+                                          updateBlockVal(selectedBlockId, 'columns', newCols);
+                                        }}
+                                      />
+                                    )}
+
                                     <button 
                                       onClick={() => {
                                         const newCols = selectedBlock.columns.filter((_, cidx) => cidx !== idx);
@@ -1580,7 +1847,7 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Pricing Summary */}
+                      {/* Pricing summary */}
                       {selectedBlock.type === 'summary' && (
                         <>
                           <div>
@@ -1590,7 +1857,7 @@ export default function TemplateHub() {
                         </>
                       )}
 
-                      {/* Footer controls */}
+                      {/* Footer terms */}
                       {selectedBlock.type === 'footer' && (
                         <>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
