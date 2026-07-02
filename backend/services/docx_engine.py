@@ -147,6 +147,54 @@ def clean_docx_xml(xml_content):
     xml_content = re.sub(r'(\{\{[^}]+\}\})', strip_tags_inside_braces, xml_content)
     return xml_content
 
+def fix_template_loop_positions(xml_content):
+    """
+    Shifts misplaced {{#floor}}, {{#area}}, {{/area}}, and {{/floor}} tags 
+    outside containing XML table rows (<w:tr>) or tables (<w:tbl>) to keep the XML balanced.
+    """
+    # 1. Shift {{#floor}} to be before its containing <w:tbl>
+    m_floor = re.search(r'{{\s*#floor\s*}}', xml_content, re.IGNORECASE)
+    if m_floor:
+        start_pos = m_floor.start()
+        tbl_match = list(re.finditer(r'<w:tbl\b', xml_content[:start_pos]))
+        if tbl_match:
+            tbl_pos = tbl_match[-1].start()
+            xml_content = xml_content[:start_pos] + xml_content[m_floor.end():]
+            xml_content = xml_content[:tbl_pos] + "{{#floor}}" + xml_content[tbl_pos:]
+
+    # 2. Shift {{#area}} to be before its containing <w:tr>
+    m_area = re.search(r'{{\s*#area\s*}}', xml_content, re.IGNORECASE)
+    if m_area:
+        start_pos = m_area.start()
+        tr_match = list(re.finditer(r'<w:tr\b', xml_content[:start_pos]))
+        if tr_match:
+            tr_pos = tr_match[-1].start()
+            xml_content = xml_content[:start_pos] + xml_content[m_area.end():]
+            xml_content = xml_content[:tr_pos] + "{{#area}}" + xml_content[tr_pos:]
+
+    # 3. Shift {{/area}} to be before the preceding </w:tbl>
+    m_area_end = re.search(r'{{\s*/area\s*}}', xml_content, re.IGNORECASE)
+    if m_area_end:
+        end_pos = m_area_end.start()
+        tbl_end_match = list(re.finditer(r'</w:tbl>', xml_content[:end_pos]))
+        if tbl_end_match:
+            tbl_end_pos = tbl_end_match[-1].start()
+            xml_content = xml_content[:end_pos] + xml_content[m_area_end.end():]
+            xml_content = xml_content[:tbl_end_pos] + "{{/area}}" + xml_content[tbl_end_pos:]
+
+    # 4. Shift {{/floor}} to be after the preceding </w:tbl>
+    m_floor_end = re.search(r'{{\s*/floor\s*}}', xml_content, re.IGNORECASE)
+    if m_floor_end:
+        end_pos = m_floor_end.start()
+        tbl_end_match = list(re.finditer(r'</w:tbl>', xml_content[:end_pos]))
+        if tbl_end_match:
+            tbl_end_pos = tbl_end_match[-1].end()
+            xml_content = xml_content[:end_pos] + xml_content[m_floor_end.end():]
+            xml_content = xml_content[:tbl_end_pos] + "{{/floor}}" + xml_content[tbl_end_pos:]
+
+    return xml_content
+
+
 def escape_for_xml(data):
     """
     Recursively escapes special XML characters in string values to keep the DOCX XML valid.
@@ -197,6 +245,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                     # Double Nested Block loops parser for custom Word Layouts (Floors & Areas grouping)
                     # Syntax: {{#floor}} ... {{/floor}} and inside: {{#area}} ... {{/area}}
                     if item.filename == 'word/document.xml':
+                        xml_content = fix_template_loop_positions(xml_content)
                         floors_data = tokens.get("floors", [])
                         
                         # 1. First Parse Floor Block loops
