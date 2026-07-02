@@ -65,8 +65,13 @@ def render_html_template_to_pdf(html_content, tokens, output_pdf_path):
                 html_content = re.sub(pattern, str(val or ""), html_content, flags=re.IGNORECASE)
                 
         # 4. Compile HTML to PDF using xhtml2pdf
+        import io
         with open(output_pdf_path, "wb") as pdf_file:
-            pisa_status = pisa.CreatePDF(html_content, dest_file=pdf_file)
+            pisa_status = pisa.CreatePDF(
+                io.BytesIO(html_content.encode('utf-8')), 
+                dest=pdf_file,
+                encoding='utf-8'
+            )
             
         if pisa_status.err:
             logger.error(f"xhtml2pdf error: {pisa_status.err}")
