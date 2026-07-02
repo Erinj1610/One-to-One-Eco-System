@@ -273,7 +273,8 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
                 docx_template_path,
                 data,
                 f"{doc_type.lower()}.pdf",
-                credentials_json=custom_creds
+                credentials_json=custom_creds,
+                google_doc_id=config.config_json.get("google_doc_id") if config else None
             )
             print(f"DEBUG: Generation successful from docx! PDF path: {pdf_path}")
             

@@ -164,7 +164,7 @@ def escape_for_xml(data):
     else:
         return data
 
-def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json=None):
+def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json=None, google_doc_id=None):
     """
     Reads a .docx template from disk, performs placeholder replacement
     (including table row repetition for list items), converts it to a PDF
@@ -364,12 +364,13 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
         
         # Get parent of a known Google Doc template to inherit storage quota from the shared folder
         parent_folders = []
+        target_doc_id = google_doc_id or "1E6tnSk6jxXUM100lVJDUb_7ezYDQwo8TBpL975tr6Og"
         try:
-            known_doc_id = "1E6tnSk6jxXUM100lVJDUb_7ezYDQwo8TBpL975tr6Og"
-            file_info = drive_service.files().get(fileId=known_doc_id, fields="parents").execute()
+            logger.info(f"Fetching parent folders for Google Doc ID: {target_doc_id}")
+            file_info = drive_service.files().get(fileId=target_doc_id, fields="parents").execute()
             parent_folders = file_info.get("parents", [])
         except Exception as pe:
-            logger.warn(f"Could not retrieve parents for template: {pe}")
+            logger.warn(f"Could not retrieve parents for template {target_doc_id}: {pe}")
             
         file_metadata = {
             'name': f"TEMP_GEN_{output_pdf_name.replace('.pdf', '')}",
