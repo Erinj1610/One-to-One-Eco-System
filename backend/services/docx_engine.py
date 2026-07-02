@@ -244,7 +244,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                                     row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
                                                     for item_key, item_val in list_item.items():
                                                         pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
-                                                        row_copy = re.sub(pattern, str(item_val), row_copy, flags=re.IGNORECASE)
+                                                        row_copy = re.sub(pattern, lambda m, val=item_val: str(val), row_copy, flags=re.IGNORECASE)
                                                     repeated_rows.append(row_copy)
                                                 return "".join(repeated_rows)
                                             return row_xml
@@ -282,7 +282,8 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                         floor_row = row_xml
                                         for key in list_item.keys():
                                             floor_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', floor_row, flags=re.IGNORECASE)
-                                        floor_row = re.sub(r'{{\s*item\.description\s*}}', f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>", floor_row, flags=re.IGNORECASE)
+                                        floor_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>"
+                                        floor_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=floor_desc_val: val, floor_row, flags=re.IGNORECASE)
                                         floor_row = re.sub(r'{{\s*item\.index\s*}}', '', floor_row, flags=re.IGNORECASE)
                                         floor_row = floor_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F1F5F9\"/></w:tcPr>')
                                         repeated_rows.append(floor_row)
@@ -292,7 +293,8 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                         area_row = row_xml
                                         for key in list_item.keys():
                                             area_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', area_row, flags=re.IGNORECASE)
-                                        area_row = re.sub(r'{{\s*item\.description\s*}}', f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>", area_row, flags=re.IGNORECASE)
+                                        area_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>"
+                                        area_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=area_desc_val: val, area_row, flags=re.IGNORECASE)
                                         area_row = re.sub(r'{{\s*item\.index\s*}}', '', area_row, flags=re.IGNORECASE)
                                         area_row = area_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F8FAFC\"/></w:tcPr>')
                                         repeated_rows.append(area_row)
@@ -301,7 +303,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                     row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
                                     for item_key, item_val in list_item.items():
                                         pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
-                                        row_copy = re.sub(pattern, str(item_val), row_copy, flags=re.IGNORECASE)
+                                        row_copy = re.sub(pattern, lambda m, val=item_val: str(val), row_copy, flags=re.IGNORECASE)
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
                             elif 'payment.' in row_xml and payments_list:
@@ -311,7 +313,68 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                     row_copy = re.sub(r'{{\s*payment\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
                                     for pay_key, pay_val in list_payment.items():
                                         pattern = r'{{\s*payment\.' + re.escape(pay_key) + r'\s*}}'
-                                        row_copy = re.sub(pattern, str(pay_val), row_copy, flags=re.IGNORECASE)
+                                        row_copy = re.sub(pattern, lambda m, val=pay_val: str(val), row_copy, flags=re.IGNORECASE)
+                                    repeated_rows.append(row_copy)
+                                return "".join(repeated_rows)
+                            return row_xml
+                            
+                        xml_content = tr_pattern.sub(replace_row if 'replace_row' in locals() else replace_flat_row, xml_content)
+                        
+                        # 2. Fallback / Flat Table Repeater (if flat template remains or flat payment list is used)
+                        tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
+                        payments_list = tokens.get("payments", [])
+                        if not isinstance(payments_list, list):
+                            payments_list = []
+                            
+                        def replace_flat_row(match):
+                            row_xml = match.group(1)
+                            # Fallback item parser for non-nested flat list templates
+                            if 'item.' in row_xml and items_list and '#floor' not in xml_content:
+                                repeated_rows = []
+                                last_floor = None
+                                last_area = None
+                                for idx, list_item in enumerate(items_list):
+                                    current_floor = list_item.get('floor', '').strip()
+                                    current_area = list_item.get('area', '').strip()
+                                    
+                                    if current_floor and current_floor != last_floor:
+                                        last_floor = current_floor
+                                        last_area = None
+                                        floor_row = row_xml
+                                        for key in list_item.keys():
+                                            floor_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', floor_row, flags=re.IGNORECASE)
+                                        floor_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>"
+                                        floor_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=floor_desc_val: val, floor_row, flags=re.IGNORECASE)
+                                        floor_row = re.sub(r'{{\s*item\.index\s*}}', '', floor_row, flags=re.IGNORECASE)
+                                        floor_row = floor_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F1F5F9\"/></w:tcPr>')
+                                        repeated_rows.append(floor_row)
+                                        
+                                    if current_area and current_area != last_area:
+                                        last_area = current_area
+                                        area_row = row_xml
+                                        for key in list_item.keys():
+                                            area_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', area_row, flags=re.IGNORECASE)
+                                        area_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>"
+                                        area_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=area_desc_val: val, area_row, flags=re.IGNORECASE)
+                                        area_row = re.sub(r'{{\s*item\.index\s*}}', '', area_row, flags=re.IGNORECASE)
+                                        area_row = area_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F8FAFC\"/></w:tcPr>')
+                                        repeated_rows.append(area_row)
+                                        
+                                    row_copy = row_xml
+                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
+                                    for item_key, item_val in list_item.items():
+                                        pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
+                                        row_copy = re.sub(pattern, lambda m, val=item_val: str(val), row_copy, flags=re.IGNORECASE)
+                                    repeated_rows.append(row_copy)
+                                return "".join(repeated_rows)
+                            elif 'payment.' in row_xml and payments_list:
+                                repeated_rows = []
+                                for idx, list_payment in enumerate(payments_list):
+                                    row_copy = row_xml
+                                    row_copy = re.sub(r'{{\s*payment\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
+                                    for pay_key, pay_val in list_payment.items():
+                                        pattern = r'{{\s*payment\.' + re.escape(pay_key) + r'\s*}}'
+                                        row_copy = re.sub(pattern, lambda m, val=pay_val: str(val), row_copy, flags=re.IGNORECASE)
                                     repeated_rows.append(row_copy)
                                 return "".join(repeated_rows)
                             return row_xml
@@ -322,7 +385,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                     for key, val in tokens.items():
                         if key not in ["items", "payments", "floors"]:
                             pattern = r'{{\s*' + re.escape(str(key)) + r'\s*}}'
-                            xml_content = re.sub(pattern, str(val), xml_content, flags=re.IGNORECASE)
+                            xml_content = re.sub(pattern, lambda m, v=val: str(v), xml_content, flags=re.IGNORECASE)
                             
                     data = xml_content.encode('utf-8')
                 zout.writestr(item, data)
