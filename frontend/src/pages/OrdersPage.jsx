@@ -537,6 +537,8 @@ export default function OrdersPage() {
         finalItems = sortedItems.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
@@ -553,6 +555,8 @@ export default function OrdersPage() {
         finalItems = activeOrderItems.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
@@ -727,6 +731,8 @@ export default function OrdersPage() {
         finalItems = sortedItems.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
@@ -743,6 +749,8 @@ export default function OrdersPage() {
         finalItems = activeOrderItems.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
