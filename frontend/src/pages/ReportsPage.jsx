@@ -60,9 +60,38 @@ const BUDGETS_KPI4 = {
   'INTERNAL - Office': 0.00
 };
 
+const MONTHS_LIST = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export default function ReportsPage() {
   const { projects, supportTickets } = useStore();
-  const [selectedMonth, setSelectedMonth] = useState('July');
+  
+  // Choose month & year state
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState('6_2026'); // Format: monthIndex_year (default: July 2026)
+
+  const [selectedMonthIdx, selectedYear] = selectedPeriodKey.split('_').map(Number);
+  const selectedMonthName = MONTHS_LIST[selectedMonthIdx];
+
+  // Generate dynamic rolling 4 months based on selected month & year
+  const getRolling4Months = (startMonthIdx, startYear) => {
+    const list = [];
+    for (let i = 0; i < 4; i++) {
+      const totalMonths = startMonthIdx + i;
+      const idx = totalMonths % 12;
+      const yearOffset = Math.floor(totalMonths / 12);
+      list.push({
+        label: `${MONTHS_LIST[idx]} ${startYear + yearOffset}`,
+        monthName: MONTHS_LIST[idx],
+        monthIdx: idx,
+        year: startYear + yearOffset
+      });
+    }
+    return list;
+  };
+
+  const rollingMonths = getRolling4Months(selectedMonthIdx, selectedYear);
 
   // Helper to map PM name to Division
   const mapPmToDivision = (pmName, projName = '') => {
@@ -88,21 +117,22 @@ export default function ReportsPage() {
   };
 
   // Parse order date to determine month
-  const getOrderMonth = (order) => {
-    if (!order.orderDate) return 'July';
+  const getOrderMonthAndYear = (order) => {
+    if (!order.orderDate) return { monthName: 'July', year: 2026, monthIdx: 6 };
     const dateParts = order.orderDate.split('/');
     if (dateParts.length === 3) {
       const monthIndex = parseInt(dateParts[1], 10) - 1;
-      const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-      ];
-      return monthNames[monthIndex] || 'July';
+      const year = parseInt(dateParts[2], 10);
+      return { 
+        monthName: MONTHS_LIST[monthIndex] || 'July', 
+        year: year || 2026, 
+        monthIdx: monthIndex 
+      };
     }
-    return 'July';
+    return { monthName: 'July', year: 2026, monthIdx: 6 };
   };
 
-  // Initialize aggregated KPI maps with baseline target structures
+  // Initialize dynamic summaries
   const dynamicInvoiced = {};
   const dynamicAwaiting = {};
   const dynamicPipeline = {};
@@ -110,12 +140,12 @@ export default function ReportsPage() {
 
   DIVISIONS.forEach(div => {
     dynamicInvoiced[div] = { actual: 0, budget: BUDGETS_KPI1[div].monthly, ytdActual: 0, ytdBudget: BUDGETS_KPI1[div].ytd };
-    dynamicAwaiting[div] = { jul: 0, aug: 0, sep: 0, oct: 0, target: TARGETS_KPI2[div] };
-    dynamicPipeline[div] = { jul: 0, aug: 0, sep: 0, oct: 0, target: TARGETS_KPI3[div] };
+    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: TARGETS_KPI2[div] };
+    dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: TARGETS_KPI3[div] };
     dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: BUDGETS_KPI4[div] };
   });
 
-  // Calculate dynamic actual sums from projects and order ledger
+  // Aggregate values dynamically
   Object.values(projects || {}).forEach(proj => {
     const orders = proj.orders || [];
     orders.forEach(order => {
@@ -123,48 +153,51 @@ export default function ReportsPage() {
       if (!dynamicInvoiced[div]) return;
 
       const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
-      const orderMonth = getOrderMonth(order);
+      const { monthName: orderMonth, year: orderYear } = getOrderMonthAndYear(order);
 
-      // 1. Sales Invoiced (Status Delivered / Processing represents invoice generated)
+      // 1. Sales Invoiced
       if (order.status === 'Delivered' || order.status === 'Processing') {
-        if (orderMonth === selectedMonth) {
+        if (orderMonth === selectedMonthName && orderYear === selectedYear) {
           dynamicInvoiced[div].actual += orderValue;
         }
-        dynamicInvoiced[div].ytdActual += orderValue;
+        if (orderYear === selectedYear) {
+          dynamicInvoiced[div].ytdActual += orderValue;
+        }
         dynamicAnnual[div].invoiced += orderValue;
       }
 
-      // 2. To Be Invoiced (Awaiting Stock - Status Pending)
+      // Check rolling months index matching
+      const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
+
+      // 2. To Be Invoiced (Awaiting Stock)
       if (order.status === 'Pending') {
-        if (orderMonth === 'July') {
-          dynamicAwaiting[div].jul += orderValue;
-        } else if (orderMonth === 'August') {
-          dynamicAwaiting[div].aug += orderValue;
-        } else if (orderMonth === 'September') {
-          dynamicAwaiting[div].sep += orderValue;
-        } else if (orderMonth === 'October') {
-          dynamicAwaiting[div].oct += orderValue;
+        if (rollingIdx !== -1) {
+          dynamicAwaiting[div][`col${rollingIdx}`] += orderValue;
         }
         dynamicAnnual[div].toInvoice += orderValue;
       }
 
-      // 3. Pipeline Projections (Stage Pipeline / Lead / Draft status)
+      // 3. Pipeline Projections
       if (order.status === 'Draft' || !order.status) {
-        if (orderMonth === 'July') {
-          dynamicPipeline[div].jul += orderValue;
-        } else if (orderMonth === 'August') {
-          dynamicPipeline[div].aug += orderValue;
-        } else if (orderMonth === 'September') {
-          dynamicPipeline[div].sep += orderValue;
-        } else if (orderMonth === 'October') {
-          dynamicPipeline[div].oct += orderValue;
+        if (rollingIdx !== -1) {
+          dynamicPipeline[div][`col${rollingIdx}`] += orderValue;
         }
         dynamicAnnual[div].pipeline += orderValue;
       }
     });
   });
 
-
+  // Generate Year/Month period selector options (Jan 2024 to Dec 2028)
+  const selectorPeriods = [];
+  const years = [2024, 2025, 2026, 2027, 2028];
+  years.forEach(y => {
+    MONTHS_LIST.forEach((m, idx) => {
+      selectorPeriods.push({
+        key: `${idx}_${y}`,
+        label: `${m} ${y}`
+      });
+    });
+  });
 
   // Stock Values
   const stockValues = [
@@ -186,11 +219,10 @@ export default function ReportsPage() {
     return isGood ? '#10b981' : '#f43f5e';
   };
 
-  const sumAwaitingStockTotal = (row) => (row.jul || 0) + (row.aug || 0) + (row.sep || 0) + (row.oct || 0);
-  const sumPipelineTotal = (row) => (row.jul || 0) + (row.aug || 0) + (row.sep || 0) + (row.oct || 0);
+  const sumAwaitingStockTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
+  const sumPipelineTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
   const sumAnnualTotal = (row) => (row.invoiced || 0) + (row.toInvoice || 0) + (row.pipeline || 0) + (row.tbc || 0);
 
-  // Dynamic ticket counter for faults panel
   const newFaultsCount = (supportTickets || []).filter(t => t.status === 'New' || t.status === 'Open').length;
   const closedFaultsCount = (supportTickets || []).filter(t => t.status === 'Closed' || t.status === 'Resolved').length;
 
@@ -204,15 +236,14 @@ export default function ReportsPage() {
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <select 
-            value={selectedMonth} 
-            onChange={(e) => setSelectedMonth(e.target.value)} 
+            value={selectedPeriodKey} 
+            onChange={(e) => setSelectedPeriodKey(e.target.value)} 
             className="form-control" 
-            style={{ width: '160px', height: '40px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'inherit', padding: '0 10px', fontSize: '13px' }}
+            style={{ width: '220px', height: '40px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'inherit', padding: '0 10px', fontSize: '13px' }}
           >
-            <option value="July">July (Active Month)</option>
-            <option value="August">August</option>
-            <option value="September">September</option>
-            <option value="October">October</option>
+            {selectorPeriods.map(p => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -223,19 +254,19 @@ export default function ReportsPage() {
           <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#3b82f6' }}>
             {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}
           </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Invoiced ({selectedMonth})</div>
+          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Invoiced ({selectedMonthName} {selectedYear})</div>
         </div>
         <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#10b981' }}>
-            {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.jul, 0))}
+            {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}
           </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Awaiting Stock (July)</div>
+          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Awaiting Stock ({rollingMonths[0].label})</div>
         </div>
         <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#eab308' }}>
-            {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.jul, 0))}
+            {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}
           </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Pipeline Target (July)</div>
+          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Pipeline Target ({rollingMonths[0].label})</div>
         </div>
         <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700 }}>
@@ -248,7 +279,7 @@ export default function ReportsPage() {
       {/* KPI 1: SALES INVOICED */}
       <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
         <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 1: Sales Invoiced ({selectedMonth})</div>
+          <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 1: Sales Invoiced ({selectedMonthName} {selectedYear})</div>
           <span style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>Active Period</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -310,10 +341,10 @@ export default function ReportsPage() {
             <thead>
               <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                 <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>July</th>
-                <th style={{ padding: '12px 16px' }}>August</th>
-                <th style={{ padding: '12px 16px' }}>September</th>
-                <th style={{ padding: '12px 16px' }}>October</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
                 <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
                 <th style={{ padding: '12px 16px' }}>Target</th>
                 <th style={{ padding: '12px 16px' }}>Variance</th>
@@ -321,16 +352,16 @@ export default function ReportsPage() {
             </thead>
             <tbody>
               {DIVISIONS.map((div) => {
-                const row = dynamicAwaiting[div] || { jul: 0, aug: 0, sep: 0, oct: 0, target: 0 };
+                const row = dynamicAwaiting[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
                 const total = sumAwaitingStockTotal(row);
                 const variance = total - row.target;
                 return (
                   <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.jul)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.aug)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.sep)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.oct)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col0)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col1)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col2)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col3)}</td>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(total)}</td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
                     <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
@@ -340,10 +371,10 @@ export default function ReportsPage() {
               {/* TOTAL ROW */}
               <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                 <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.jul, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.aug, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.sep, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.oct, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0))}</td>
                 <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0))}</td>
                 <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}</td>
                 <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0)) }}>
@@ -365,10 +396,10 @@ export default function ReportsPage() {
             <thead>
               <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
                 <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>July</th>
-                <th style={{ padding: '12px 16px' }}>August</th>
-                <th style={{ padding: '12px 16px' }}>September</th>
-                <th style={{ padding: '12px 16px' }}>October</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
+                <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
                 <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
                 <th style={{ padding: '12px 16px' }}>Target</th>
                 <th style={{ padding: '12px 16px' }}>Variance</th>
@@ -376,16 +407,16 @@ export default function ReportsPage() {
             </thead>
             <tbody>
               {DIVISIONS.map((div) => {
-                const row = dynamicPipeline[div] || { jul: 0, aug: 0, sep: 0, oct: 0, target: 0 };
+                const row = dynamicPipeline[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
                 const total = sumPipelineTotal(row);
                 const variance = total - row.target;
                 return (
                   <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.jul)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.aug)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.sep)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.oct)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col0)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col1)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col2)}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(row.col3)}</td>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(total)}</td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
                     <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
@@ -395,10 +426,10 @@ export default function ReportsPage() {
               {/* TOTAL ROW */}
               <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                 <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.jul, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.aug, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.sep, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.oct, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0))}</td>
+                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0))}</td>
                 <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0))}</td>
                 <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}</td>
                 <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0)) }}>
