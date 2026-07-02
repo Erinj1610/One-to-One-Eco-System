@@ -268,13 +268,22 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
                     print(f"DEBUG: JSON credentials load error: {j_err}")
                     custom_creds = None
                     
+        doc_id_to_use = config.config_json.get("google_doc_id") if config else None
+        if not doc_id_to_use:
+            all_configs = db.query(TemplateConfig).all()
+            for ac in all_configs:
+                if ac.config_json and ac.config_json.get("google_doc_id"):
+                    doc_id_to_use = ac.config_json.get("google_doc_id")
+                    print(f"DEBUG: Falling back to google_doc_id '{doc_id_to_use}' from config {ac.template_key}")
+                    break
+
         try:
             pdf_path = merge_docx_template(
                 docx_template_path,
                 data,
                 f"{doc_type.lower()}.pdf",
                 credentials_json=custom_creds,
-                google_doc_id=config.config_json.get("google_doc_id") if config else None
+                google_doc_id=doc_id_to_use
             )
             print(f"DEBUG: Generation successful from docx! PDF path: {pdf_path}")
             
