@@ -13,6 +13,7 @@ class TemplateConfig(Base):
     template_key = Column(String, unique=True, index=True) # e.g., "DESIGN_FEE_PROPOSAL"
     config_json = Column(JSON, nullable=False) # Stores all visual/text settings
     docx_binary = Column(LargeBinary, nullable=True) # Binary data of the uploaded docx template
+    html_content = Column(String, nullable=True) # Visually designed HTML template content
 
 class FeeStatus(str, enum.Enum):
     unpaid = "unpaid"

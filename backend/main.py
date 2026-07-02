@@ -77,6 +77,18 @@ def init_db():
                 except Exception as alter_err:
                     print(f"Database migration (non-critical info): {alter_err}")
                 
+                # Migrate template_configs table to ensure html_content exists
+                try:
+                    db_type = engine.name
+                    if db_type == 'sqlite':
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN html_content TEXT;"))
+                    else:
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN IF NOT EXISTS html_content TEXT;"))
+                    conn.commit()
+                    print("Database migration: ensured 'html_content' column exists on 'template_configs' table.")
+                except Exception as alter_err:
+                    print(f"Database migration (non-critical info): {alter_err}")
+                
                 # Migrate products table
                 inspector = inspect(engine)
                 existing_cols = [c["name"] for c in inspector.get_columns("products")]

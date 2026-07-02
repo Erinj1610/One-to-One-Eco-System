@@ -108,6 +108,34 @@ async def save_template_config(template_key: str, request: Request, db: Session 
     db.commit()
     return {"message": "Design settings saved successfully"}
 
+@router.get("/templates/{doc_type}/html")
+async def get_template_html(doc_type: str, db: Session = Depends(get_db)):
+    """
+    Returns the visually designed HTML template content for a document type.
+    """
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    if not config or not config.html_content:
+        return {"html": ""}
+    return {"html": config.html_content}
+
+@router.post("/templates/{doc_type}/html")
+async def save_template_html(doc_type: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Saves the visually designed HTML template content for a document type.
+    """
+    data = await request.json()
+    html_val = data.get("html")
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    
+    if config:
+        config.html_content = html_val
+    else:
+        config = TemplateConfig(template_key=doc_type, html_content=html_val, config_json={})
+        db.add(config)
+        
+    db.commit()
+    return {"message": "Visual HTML template saved successfully"}
+
 
 @router.get("/templates/{doc_type}/metadata")
 async def get_template_metadata(doc_type: str, db: Session = Depends(get_db)):
@@ -148,10 +176,68 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
     """
     print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())} for page: {page}")
     
-    # Check if a direct docx template exists (either in DB or on disk)
-    from services.docx_engine import merge_docx_template
-    
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    
+    # 1. First check if a custom visual HTML template exists in the database
+    if config and config.html_content:
+        print(f"DEBUG: Found custom visual HTML template in DB. Rendering using html_engine...")
+        from services.html_engine import render_html_template_to_pdf
+        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+        try:
+            success = render_html_template_to_pdf(config.html_content, data, pdf_path)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to compile PDF from visual HTML template")
+            
+            # Handle page extraction if page is specified
+            if page is not None:
+                import pypdf
+                try:
+                    reader = pypdf.PdfReader(pdf_path)
+                    total_pages = len(reader.pages)
+                    idx = max(0, min(page - 1, total_pages - 1))
+                    
+                    writer = pypdf.PdfWriter()
+                    writer.add_page(reader.pages[idx])
+                    
+                    single_page_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    single_page_pdf_path = single_page_pdf.name
+                    single_page_pdf.close()
+                    
+                    with open(single_page_pdf_path, "wb") as f:
+                        writer.write(f)
+                    
+                    try:
+                        os.remove(pdf_path)
+                    except Exception:
+                        pass
+                    pdf_path = single_page_pdf_path
+                    print(f"DEBUG: Successfully extracted page {page} to {pdf_path}")
+                except Exception as pypdf_err:
+                    print(f"Error extracting page {page} with pypdf: {pypdf_err}")
+
+            # Naming convention
+            filename = f"Document_{doc_type.lower()}.pdf"
+            naming_conv = config.config_json.get("naming_convention") if config.config_json else None
+            if naming_conv:
+                temp_name = naming_conv
+                for k, v in data.items():
+                    temp_name = temp_name.replace("{{" + k + "}}", str(v))
+                import re
+                filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
+                if not filename.lower().endswith(".pdf"):
+                    filename += ".pdf"
+                    
+            return FileResponse(
+                pdf_path,
+                media_type='application/pdf',
+                filename=filename
+            )
+        except Exception as html_err:
+            print(f"Error generating visual HTML PDF: {html_err}")
+            raise HTTPException(status_code=500, detail=f"Visual HTML Template Conversion Error: {html_err}")
+
+    # 2. Check if a direct docx template exists (either in DB or on disk)
+    from services.docx_engine import merge_docx_template
     
     custom_template_temp_path = None
     temp_dir = None
