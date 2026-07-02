@@ -61,9 +61,22 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
     template_id = extract_file_id(template_source)
     
     try:
+        # Get parents of the template to inherit storage quota from the shared folder
+        try:
+            file_info = drive_service.files().get(fileId=template_id, fields="parents").execute()
+            parents = file_info.get("parents", [])
+        except Exception as pe:
+            logger.warn(f"Failed to fetch parents for template {template_id}: {pe}")
+            parents = []
+
         # 1. Clone the template
         logger.info(f"Cloning template {template_id}...")
-        copy_metadata = {'name': f"TEMP_GEN_{output_pdf_name}"}
+        copy_metadata = {
+            'name': f"TEMP_GEN_{output_pdf_name}"
+        }
+        if parents:
+            copy_metadata['parents'] = parents
+            
         cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
         cloned_id = cloned_file.get('id')
         

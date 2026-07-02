@@ -361,10 +361,23 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
     cloned_file_id = None
     try:
         logger.info("Uploading temporary docx to Google Drive for PDF conversion...")
+        
+        # Get parent of a known Google Doc template to inherit storage quota from the shared folder
+        parent_folders = []
+        try:
+            known_doc_id = "1E6tnSk6jxXUM100lVJDUb_7ezYDQwo8TBpL975tr6Og"
+            file_info = drive_service.files().get(fileId=known_doc_id, fields="parents").execute()
+            parent_folders = file_info.get("parents", [])
+        except Exception as pe:
+            logger.warn(f"Could not retrieve parents for template: {pe}")
+            
         file_metadata = {
             'name': f"TEMP_GEN_{output_pdf_name.replace('.pdf', '')}",
             'mimeType': 'application/vnd.google-apps.document' # Injects conversion to Google Docs format
         }
+        if parent_folders:
+            file_metadata['parents'] = parent_folders
+            
         media = MediaFileUpload(
             temp_docx_path,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
