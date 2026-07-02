@@ -3,7 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
-  ChevronDown, ChevronUp, X
+  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck
 } from 'lucide-react';
 
 const DIVISIONS = [
@@ -278,7 +278,8 @@ export default function ReportsPage() {
 
     setDrilldownModal({
       isOpen: true,
-      title: `${title} (${division})`,
+      title: `${title}`,
+      subtitle: division,
       items: list
     });
   };
@@ -772,67 +773,93 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* DRILLDOWN POPUP MODAL */}
+      {/* DRILLDOWN POPUP MODAL (CENTERED VIEWPORT FIXED BACKDROP WITH BLUR) */}
       {drilldownModal.isOpen && (
         <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.6)', display: 'flex', justifyContent: 'center',
-          alignItems: 'center', zIndex: 1000, padding: '20px'
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 9999, padding: '24px', boxSizing: 'border-box'
         }}>
           <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '12px', width: '100%', maxWidth: '700px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column'
+            borderRadius: '16px', width: '100%', maxWidth: '750px',
+            boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.5)', display: 'flex', 
+            flexDirection: 'column', overflow: 'hidden', animation: 'modalEntry 0.25s ease-out',
+            maxHeight: '85vh'
           }}>
             {/* Modal Header */}
             <div style={{
-              padding: '16px 20px', borderBottom: '1px solid var(--border)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              padding: '20px 24px', borderBottom: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              background: 'rgba(0, 0, 0, 0.02)'
             }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-title)' }}>
-                {drilldownModal.title}
-              </h3>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <ShieldCheck size={14} /> KPI Metric Source Drill-down
+                </div>
+                <h3 style={{ margin: '4px 0 0 0', fontSize: '18px', fontWeight: 800, color: 'var(--text-title)' }}>
+                  {drilldownModal.title}
+                </h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 500 }}>
+                  Team Division: {drilldownModal.subtitle}
+                </div>
+              </div>
               <button 
                 onClick={() => setDrilldownModal({ isOpen: false, title: '', items: [] })}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                style={{ 
+                  background: 'var(--bg-primary)', border: '1px solid var(--border)', 
+                  color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', 
+                  alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', 
+                  borderRadius: '50%', transition: 'all 0.2s' 
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.color = '#ef4444'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'var(--bg-primary)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
             {/* Modal Content */}
-            <div style={{ padding: '20px', overflowY: 'auto', maxHeight: '400px' }}>
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
               {drilldownModal.items.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', padding: '20px' }}>
-                  No projects or orders found making up this value.
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', padding: '40px 20px' }}>
+                  <FolderOpen size={36} style={{ margin: '0 auto 12px auto', color: 'var(--text-tertiary)' }} />
+                  No database project orders found contributing to this calculation.
                 </div>
               ) : (
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                   <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)' }}>
-                      <th style={{ padding: '8px 12px' }}>Project Name</th>
-                      <th style={{ padding: '8px 12px' }}>Order ID</th>
-                      <th style={{ padding: '8px 12px' }}>Status</th>
-                      <th style={{ padding: '8px 12px' }}>Date</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right' }}>Value</th>
+                    <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Project Name</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Order Ref ID</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Operational Status</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Date Registered</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600, textAlign: 'right' }}>Total Value (ZAR)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {drilldownModal.items.map((item, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{item.projectName}</td>
-                        <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{item.orderId}</td>
-                        <td style={{ padding: '8px 12px' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.02)'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
+                        <td style={{ padding: '12px', fontWeight: 700, color: 'var(--text-title)' }}>{item.projectName}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace', color: 'var(--text-secondary)', fontWeight: 500 }}>{item.orderId}</td>
+                        <td style={{ padding: '12px' }}>
                           <span style={{
-                            padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 600,
-                            background: item.status === 'Delivered' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                            color: item.status === 'Delivered' ? '#10b981' : '#3b82f6'
+                            padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700,
+                            background: item.status === 'Delivered' ? 'rgba(16, 185, 129, 0.1)' : 
+                                        item.status === 'Processing' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 179, 8, 0.1)',
+                            color: item.status === 'Delivered' ? '#10b981' : 
+                                   item.status === 'Processing' ? '#3b82f6' : '#eab308'
                           }}>
                             {item.status || 'Draft'}
                           </span>
                         </td>
-                        <td style={{ padding: '8px 12px' }}>{item.date}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>{formatZar(item.value)}</td>
+                        <td style={{ padding: '12px', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar size={12} /> {item.date}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, fontSize: '13px', color: '#10b981' }}>{formatZar(item.value)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -842,21 +869,28 @@ export default function ReportsPage() {
 
             {/* Modal Footer */}
             <div style={{
-              padding: '12px 20px', borderTop: '1px solid var(--border)',
-              display: 'flex', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.02)',
-              borderRadius: '0 0 12px 12px'
+              padding: '16px 24px', borderTop: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'flex-end', background: 'rgba(0, 0, 0, 0.02)'
             }}>
               <button 
                 className="btn btn-secondary" 
                 onClick={() => setDrilldownModal({ isOpen: false, title: '', items: [] })}
-                style={{ fontSize: '12px', padding: '6px 16px', cursor: 'pointer' }}
+                style={{ fontSize: '13px', padding: '8px 20px', cursor: 'pointer', borderRadius: '8px', fontWeight: 600 }}
               >
-                Close
+                Close View
               </button>
             </div>
           </div>
         </div>
       )}
+      
+      {/* Dynamic Keyframes injection for entry animation */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes modalEntry {
+          from { opacity: 0; transform: scale(0.95) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+      `}} />
     </div>
   );
 }
