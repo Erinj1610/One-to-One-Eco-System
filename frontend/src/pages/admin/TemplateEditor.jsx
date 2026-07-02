@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../api_config';
-import { Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, ArrowUp, ArrowDown, LayoutGrid, Image, Border, CheckCircle } from 'lucide-react';
+import { Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, ArrowUp, ArrowDown, LayoutGrid, Image, CheckCircle } from 'lucide-react';
 
 const SHARED_ORDER_TOKENS = {
   "Project Info": ["PROJECT_NAME", "CLIENT_NAME", "DATE", "DOCUMENT_NUMBER", "ORDER_STATUS"],
