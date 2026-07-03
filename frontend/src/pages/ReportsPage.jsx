@@ -1,102 +1,139 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { API_BASE } from '../api_config';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
-  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck
+  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2
 } from 'lucide-react';
-
-const DIVISIONS = [
-  'MODUS PROFESSIONAL ( Ryan )',
-  'MOOD STORES',
-  'MODUS PROJECTS ( Dani )',
-  'PROJECTS (Dani own)',
-  'MODUS SIGNATURE ( Thando )',
-  'MADE ( Jon-Peer)',
-  'LUXELINE',
-  'INTERNAL - Office'
-];
-
-const BUDGETS_KPI1 = {
-  'MODUS PROFESSIONAL ( Ryan )': { monthly: 1020000.00, ytd: 6953000.00 },
-  'MOOD STORES': { monthly: 0.00, ytd: 0.00 },
-  'MODUS PROJECTS ( Dani )': { monthly: 1200000.00, ytd: 4560000.00 },
-  'PROJECTS (Dani own)': { monthly: 400000.00, ytd: 2800000.00 },
-  'MODUS SIGNATURE ( Thando )': { monthly: 37500.00, ytd: 682500.00 },
-  'MADE ( Jon-Peer)': { monthly: 120000.00, ytd: 840000.00 },
-  'LUXELINE': { monthly: 120000.00, ytd: 400000.00 },
-  'INTERNAL - Office': { monthly: 0.00, ytd: 0.00 }
-};
-
-const TARGETS_KPI2 = {
-  'MODUS PROFESSIONAL ( Ryan )': 3400381.18,
-  'MOOD STORES': 0.00,
-  'MODUS PROJECTS ( Dani )': 3155386.31,
-  'PROJECTS (Dani own)': 2641586.56,
-  'MODUS SIGNATURE ( Thando )': 0.00,
-  'MADE ( Jon-Peer)': 2832.66,
-  'LUXELINE': 400000.00,
-  'INTERNAL - Office': 76269.45
-};
-
-const TARGETS_KPI3 = {
-  'MODUS PROFESSIONAL ( Ryan )': 3031966.55,
-  'MOOD STORES': 0.00,
-  'MODUS PROJECTS ( Dani )': 1823997.81,
-  'PROJECTS (Dani own)': 2567090.19,
-  'MODUS SIGNATURE ( Thando )': -1176583.38,
-  'MADE ( Jon-Peer)': -413834.01,
-  'LUXELINE': 400000.00,
-  'INTERNAL - Office': 76269.45
-};
-
-const BUDGETS_KPI4 = {
-  'MODUS PROFESSIONAL ( Ryan )': 17000000.00,
-  'MOOD STORES': 0.00,
-  'MODUS PROJECTS ( Dani )': 16000000.00,
-  'PROJECTS (Dani own)': 4000000.00,
-  'MODUS SIGNATURE ( Thando )': 2500000.00,
-  'MADE ( Jon-Peer)': 2000000.00,
-  'LUXELINE': 1000000.00,
-  'INTERNAL - Office': 0.00
-};
 
 const MONTHS_LIST = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+// Baseline fallback config if database settings are empty
+const DEFAULT_BUDGETS_CONFIG = {
+  "2026-2027": {
+    divisions: [
+      'MODUS PROFESSIONAL ( Ryan )',
+      'MOOD STORES',
+      'MODUS PROJECTS ( Dani )',
+      'PROJECTS (Dani own)',
+      'MODUS SIGNATURE ( Thando )',
+      'MADE ( Jon-Peer)',
+      'LUXELINE',
+      'INTERNAL - Office'
+    ],
+    budgetsKPI1: {
+      'MODUS PROFESSIONAL ( Ryan )': { monthly: 1020000.00, ytd: 6953000.00 },
+      'MOOD STORES': { monthly: 0.00, ytd: 0.00 },
+      'MODUS PROJECTS ( Dani )': { monthly: 1200000.00, ytd: 4560000.00 },
+      'PROJECTS (Dani own)': { monthly: 400000.00, ytd: 2800000.00 },
+      'MODUS SIGNATURE ( Thando )': { monthly: 37500.00, ytd: 682500.00 },
+      'MADE ( Jon-Peer)': { monthly: 120000.00, ytd: 840000.00 },
+      'LUXELINE': { monthly: 120000.00, ytd: 400000.00 },
+      'INTERNAL - Office': { monthly: 0.00, ytd: 0.00 }
+    },
+    targetsKPI2: {
+      'MODUS PROFESSIONAL ( Ryan )': 3400381.18,
+      'MOOD STORES': 0.00,
+      'MODUS PROJECTS ( Dani )': 3155386.31,
+      'PROJECTS (Dani own)': 2641586.56,
+      'MODUS SIGNATURE ( Thando )': 0.00,
+      'MADE ( Jon-Peer)': 2832.66,
+      'LUXELINE': 400000.00,
+      'INTERNAL - Office': 76269.45
+    },
+    targetsKPI3: {
+      'MODUS PROFESSIONAL ( Ryan )': 3031966.55,
+      'MOOD STORES': 0.00,
+      'MODUS PROJECTS ( Dani )': 1823997.81,
+      'PROJECTS (Dani own)': 2567090.19,
+      'MODUS SIGNATURE ( Thando )': -1176583.38,
+      'MADE ( Jon-Peer)': -413834.01,
+      'LUXELINE': 400000.00,
+      'INTERNAL - Office': 76269.45
+    },
+    budgetsKPI4: {
+      'MODUS PROFESSIONAL ( Ryan )': 17000000.00,
+      'MOOD STORES': 0.00,
+      'MODUS PROJECTS ( Dani )': 16000000.00,
+      'PROJECTS (Dani own)': 4000000.00,
+      'MODUS SIGNATURE ( Thando )': 2500000.00,
+      'MADE ( Jon-Peer)': 2000000.00,
+      'LUXELINE': 1000000.00,
+      'INTERNAL - Office': 0.00
+    }
+  }
+};
+
 export default function ReportsPage() {
   const { projects, supportTickets } = useStore();
   
-  // Year & Month Selector
-  const [selectedPeriodKey, setSelectedPeriodKey] = useState('6_2026'); // (default: July 2026)
+  // Selection States
+  const [activeReport, setActiveReport] = useState('sales_kpi'); // 'sales_kpi', 'budget_manager', 'operational_kpis', 'stock_valuation'
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState('6_2026'); // July 2026
+  const [collapsedTables, setCollapsedTables] = useState({ kpi1: false, kpi2: false, kpi3: false, kpi4: false, stock: false });
+  const [drilldownModal, setDrilldownModal] = useState({ isOpen: false, title: '', subtitle: '', items: [] });
 
-  const [selectedMonthIdx, selectedYear] = selectedPeriodKey.split('_').map(Number);
-  const selectedMonthName = MONTHS_LIST[selectedMonthIdx];
+  // Persistent budget settings loading
+  const [budgetsConfig, setBudgetsConfig] = useState(null);
+  const [isLoadingBudgets, setIsLoadingBudgets] = useState(true);
 
-  // Collapsible tables states
-  const [collapsedTables, setCollapsedTables] = useState({
-    kpi1: false,
-    kpi2: false,
-    kpi3: false,
-    kpi4: false,
-    stock: false
-  });
+  // Budget Manager Active Editing States
+  const [mgmtFy, setMgmtFy] = useState('2026-2027');
+  const [newDivisionName, setNewDivisionName] = useState('');
+
+  // Load budgets config from db
+  useEffect(() => {
+    fetch(`${API_BASE}/api/settings/budgetsConfig`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.value) {
+          setBudgetsConfig(data.value);
+        } else {
+          setBudgetsConfig(DEFAULT_BUDGETS_CONFIG);
+        }
+        setIsLoadingBudgets(false);
+      })
+      .catch(() => {
+        setBudgetsConfig(DEFAULT_BUDGETS_CONFIG);
+        setIsLoadingBudgets(false);
+      });
+  }, []);
+
+  const saveBudgetsConfig = (newConfig) => {
+    setBudgetsConfig(newConfig);
+    fetch(`${API_BASE}/api/settings/budgetsConfig`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: newConfig })
+    }).catch(err => console.error('Error saving budgetsConfig:', err));
+  };
 
   const toggleCollapse = (tableKey) => {
     setCollapsedTables(prev => ({ ...prev, [tableKey]: !prev[tableKey] }));
   };
 
-  // Drilldown modal state
-  const [drilldownModal, setDrilldownModal] = useState({
-    isOpen: false,
-    title: '',
-    subtitle: '',
-    items: []
-  });
+  const [selectedMonthIdx, selectedYear] = selectedPeriodKey.split('_').map(Number);
+  const selectedMonthName = MONTHS_LIST[selectedMonthIdx];
 
-  // Dynamic rolling 4 months based on selector
+  // Financial Year Selector (March - February logic)
+  const getFinancialYearForPeriod = (mIdx, yr) => {
+    return mIdx >= 2 ? `${yr}-${yr + 1}` : `${yr - 1}-${yr}`;
+  };
+
+  const currentFinancialYear = getFinancialYearForPeriod(selectedMonthIdx, selectedYear);
+
+  // Financial Year chronological month sequence (March = 0, ..., February = 11)
+  const getFyMonthSequenceVal = (mIdx) => {
+    return mIdx >= 2 ? mIdx - 2 : mIdx + 10;
+  };
+
+  const selectedSeqIndex = getFyMonthSequenceVal(selectedMonthIdx);
+
+  // Generate dynamic rolling 4 months based on selected month & year
   const getRolling4Months = (startMonthIdx, startYear) => {
     const list = [];
     for (let i = 0; i < 4; i++) {
@@ -115,7 +152,20 @@ export default function ReportsPage() {
 
   const rollingMonths = getRolling4Months(selectedMonthIdx, selectedYear);
 
-  // PM to Division helper
+  // Retrieve Active Financial Year Config from db settings, fallback to baseline
+  const activeFyConfig = budgetsConfig && budgetsConfig[currentFinancialYear] 
+    ? budgetsConfig[currentFinancialYear] 
+    : (DEFAULT_BUDGETS_CONFIG[currentFinancialYear] || {
+        divisions: DIVISIONS,
+        budgetsKPI1: {},
+        targetsKPI2: {},
+        targetsKPI3: {},
+        budgetsKPI4: {}
+      });
+
+  const activeDivisionsList = activeFyConfig.divisions || [];
+
+  // PM Name to Division auto-mapper helper
   const mapPmToDivision = (pmName, projName = '') => {
     if (!pmName) return 'INTERNAL - Office';
     const name = pmName.toLowerCase();
@@ -149,20 +199,28 @@ export default function ReportsPage() {
     return { monthName: 'July', year: 2026, monthIdx: 6 };
   };
 
-  // Initialize summary variables
+  // Initialize Aggregated KPI Models
   const dynamicInvoiced = {};
   const dynamicAwaiting = {};
   const dynamicPipeline = {};
   const dynamicAnnual = {};
 
-  DIVISIONS.forEach(div => {
-    dynamicInvoiced[div] = { actual: 0, budget: BUDGETS_KPI1[div].monthly, ytdActual: 0, ytdBudget: BUDGETS_KPI1[div].ytd };
-    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: TARGETS_KPI2[div] };
-    dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: TARGETS_KPI3[div] };
-    dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: BUDGETS_KPI4[div] };
+  activeDivisionsList.forEach(div => {
+    const baselineKPI1 = (activeFyConfig.budgetsKPI1 && activeFyConfig.budgetsKPI1[div]) || { monthly: 0, ytd: 0 };
+    const baselineKPI2 = (activeFyConfig.targetsKPI2 && activeFyConfig.targetsKPI2[div]) || 0;
+    const baselineKPI3 = (activeFyConfig.targetsKPI3 && activeFyConfig.targetsKPI3[div]) || 0;
+    const baselineKPI4 = (activeFyConfig.budgetsKPI4 && activeFyConfig.budgetsKPI4[div]) || 0;
+
+    // YTD Budget logic: monthly_budget * number of elapsed months in FY sequence (selectedSeqIndex + 1)
+    const computedYtdBudget = baselineKPI1.monthly * (selectedSeqIndex + 1);
+
+    dynamicInvoiced[div] = { actual: 0, budget: baselineKPI1.monthly, ytdActual: 0, ytdBudget: computedYtdBudget };
+    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI2 };
+    dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI3 };
+    dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: baselineKPI4 };
   });
 
-  // Process dynamic aggregations from Store projects
+  // Calculate Order Aggregations
   Object.values(projects || {}).forEach(proj => {
     const orders = proj.orders || [];
     orders.forEach(order => {
@@ -170,17 +228,22 @@ export default function ReportsPage() {
       if (!dynamicInvoiced[div]) return;
 
       const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
-      const { monthName: orderMonth, year: orderYear } = getOrderMonthAndYear(order);
+      const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = getOrderMonthAndYear(order);
+      const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
 
       // KPI 1 & Annual Invoiced
       if (order.status === 'Delivered' || order.status === 'Processing') {
         if (orderMonth === selectedMonthName && orderYear === selectedYear) {
           dynamicInvoiced[div].actual += orderValue;
         }
-        if (orderYear === selectedYear) {
-          dynamicInvoiced[div].ytdActual += orderValue;
+        // Match only within same Financial Year YTD sequence (March -> Selected Month)
+        if (orderFy === currentFinancialYear) {
+          const orderSeqVal = getFyMonthSequenceVal(orderMonthIdx);
+          if (orderSeqVal <= selectedSeqIndex) {
+            dynamicInvoiced[div].ytdActual += orderValue;
+          }
+          dynamicAnnual[div].invoiced += orderValue;
         }
-        dynamicAnnual[div].invoiced += orderValue;
       }
 
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
@@ -190,7 +253,9 @@ export default function ReportsPage() {
         if (rollingIdx !== -1) {
           dynamicAwaiting[div][`col${rollingIdx}`] += orderValue;
         }
-        dynamicAnnual[div].toInvoice += orderValue;
+        if (orderFy === currentFinancialYear) {
+          dynamicAnnual[div].toInvoice += orderValue;
+        }
       }
 
       // KPI 3 & Annual Pipeline
@@ -198,12 +263,14 @@ export default function ReportsPage() {
         if (rollingIdx !== -1) {
           dynamicPipeline[div][`col${rollingIdx}`] += orderValue;
         }
-        dynamicAnnual[div].pipeline += orderValue;
+        if (orderFy === currentFinancialYear) {
+          dynamicAnnual[div].pipeline += orderValue;
+        }
       }
     });
   });
 
-  // Drilldown modal filter logic
+  // Trigger drilldown popup details handler
   const triggerDrilldown = (title, division, type, extraFilter = null) => {
     const list = [];
     Object.values(projects || {}).forEach(proj => {
@@ -213,18 +280,22 @@ export default function ReportsPage() {
         if (div !== division) return;
 
         const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
-        const { monthName: orderMonth, year: orderYear } = getOrderMonthAndYear(order);
+        const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = getOrderMonthAndYear(order);
+        const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
 
         // Sales Invoiced
         if (type === 'invoiced') {
           if (order.status === 'Delivered' || order.status === 'Processing') {
             if (extraFilter === 'ytd') {
-              if (orderYear === selectedYear) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+              if (orderFy === currentFinancialYear) {
+                const orderSeqVal = getFyMonthSequenceVal(orderMonthIdx);
+                if (orderSeqVal <= selectedSeqIndex) {
+                  list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
+                }
               }
             } else {
               if (orderMonth === selectedMonthName && orderYear === selectedYear) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -236,12 +307,12 @@ export default function ReportsPage() {
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
               }
             } else {
               const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
               if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -253,12 +324,12 @@ export default function ReportsPage() {
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
               }
             } else {
               const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
               if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -266,12 +337,14 @@ export default function ReportsPage() {
 
         // Annual consolidated totals
         if (type === 'annual') {
-          if (extraFilter === 'invoiced' && (order.status === 'Delivered' || order.status === 'Processing')) {
-            list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
-          } else if (extraFilter === 'toInvoice' && order.status === 'Pending') {
-            list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
-          } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status)) {
-            list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', status: order.status, date: order.orderDate || 'N/A', value: orderValue });
+          if (orderFy === currentFinancialYear) {
+            if (extraFilter === 'invoiced' && (order.status === 'Delivered' || order.status === 'Processing')) {
+              list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
+            } else if (extraFilter === 'toInvoice' && order.status === 'Pending') {
+              list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
+            } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status)) {
+              list.push({ projectName: proj.name, orderId: order.orderId || 'N/A', date: order.orderDate || 'N/A', value: orderValue });
+            }
           }
         }
       });
@@ -285,7 +358,7 @@ export default function ReportsPage() {
     });
   };
 
-  // Generate selector period options
+  // Generate Selector options (Jan 2024 to Dec 2028)
   const selectorPeriods = [];
   const years = [2024, 2025, 2026, 2027, 2028];
   years.forEach(y => {
@@ -297,7 +370,65 @@ export default function ReportsPage() {
     });
   });
 
-  // Stock values
+  // Budget Manager: Edit cell changes in state config
+  const handleBudgetValueChange = (division, field, subfield, val) => {
+    const num = parseFloat(val) || 0;
+    const configCopy = { ...budgetsConfig };
+    if (!configCopy[mgmtFy]) {
+      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
+    }
+    const fyConf = configCopy[mgmtFy];
+
+    if (field === 'budgetsKPI1') {
+      if (!fyConf.budgetsKPI1[division]) fyConf.budgetsKPI1[division] = { monthly: 0, ytd: 0 };
+      fyConf.budgetsKPI1[division][subfield] = num;
+    } else if (field === 'targetsKPI2') {
+      fyConf.targetsKPI2[division] = num;
+    } else if (field === 'targetsKPI3') {
+      fyConf.targetsKPI3[division] = num;
+    } else if (field === 'budgetsKPI4') {
+      fyConf.budgetsKPI4[division] = num;
+    }
+    setBudgetsConfig(configCopy);
+  };
+
+  // Budget Manager: Add Team Division
+  const addTeamDivision = () => {
+    if (!newDivisionName.trim()) return;
+    const configCopy = { ...budgetsConfig };
+    if (!configCopy[mgmtFy]) {
+      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
+    }
+    const fyConf = configCopy[mgmtFy];
+    if (!fyConf.divisions) fyConf.divisions = [];
+    if (fyConf.divisions.includes(newDivisionName)) return;
+
+    fyConf.divisions.push(newDivisionName);
+    fyConf.budgetsKPI1[newDivisionName] = { monthly: 0, ytd: 0 };
+    fyConf.targetsKPI2[newDivisionName] = 0;
+    fyConf.targetsKPI3[newDivisionName] = 0;
+    fyConf.budgetsKPI4[newDivisionName] = 0;
+
+    saveBudgetsConfig(configCopy);
+    setNewDivisionName('');
+  };
+
+  // Budget Manager: Delete Division
+  const deleteTeamDivision = (division) => {
+    const configCopy = { ...budgetsConfig };
+    const fyConf = configCopy[mgmtFy];
+    if (!fyConf) return;
+
+    fyConf.divisions = (fyConf.divisions || []).filter(d => d !== division);
+    delete fyConf.budgetsKPI1[division];
+    delete fyConf.targetsKPI2[division];
+    delete fyConf.targetsKPI3[division];
+    delete fyConf.budgetsKPI4[division];
+
+    saveBudgetsConfig(configCopy);
+  };
+
+  // Stock Metrics baseline
   const stockValues = [
     { label: 'Deadstock Value (stock > 120days)', current: 883579.86, target: 600000.00 },
     { label: 'Consignment Value (from 3.4mil)', current: 1269328.48, target: 1000000.00 },
@@ -324,455 +455,637 @@ export default function ReportsPage() {
   const newFaultsCount = (supportTickets || []).filter(t => t.status === 'New' || t.status === 'Open').length;
   const closedFaultsCount = (supportTickets || []).filter(t => t.status === 'Closed' || t.status === 'Resolved').length;
 
+  if (isLoadingBudgets) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <p>Loading reports and dynamic budget configurations...</p>
+      </div>
+    );
+  }
+
+  // Active view of editing config
+  const mgmtFyConfig = budgetsConfig[mgmtFy] || { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
+
   return (
     <div className="animation-fade-in" style={{ padding: '24px', background: 'var(--bg-primary)', minHeight: '100vh', color: 'var(--text-primary)' }}>
-      {/* HEADER SECTION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      
+      {/* HEADER CONTROLS (Report view selector dropdown) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--text-title)' }}>Sales & KPI Ledger Engine</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>Corporate financial tracking, pipeline projections, and stock valuation sheet.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <BarChart2 size={24} style={{ color: '#3b82f6' }} />
+            <select 
+              value={activeReport} 
+              onChange={(e) => setActiveReport(e.target.value)} 
+              style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-title)', background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none', padding: 0 }}
+            >
+              <option value="sales_kpi">Sales & KPI Ledger Engine</option>
+              <option value="budget_manager">Budget & Target Manager (Historical & YTD)</option>
+              <option value="operational_kpis">Operational KPIs Dashboard</option>
+              <option value="stock_valuation">Inventory & Stock Valuation</option>
+            </select>
+          </div>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            {activeReport === 'sales_kpi' && `Financial year: ${currentFinancialYear} (March to February alignment).`}
+            {activeReport === 'budget_manager' && 'Manage team divisions, annual limits, and YTD baseline budgets per financial year.'}
+            {activeReport === 'operational_kpis' && 'Client faults, site visit reports, and response times tracking.'}
+            {activeReport === 'stock_valuation' && 'Deadstock, consignment values, and warehouse performance matrix.'}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <select 
-            value={selectedPeriodKey} 
-            onChange={(e) => setSelectedPeriodKey(e.target.value)} 
-            className="form-control" 
-            style={{ width: '220px', height: '40px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'inherit', padding: '0 10px', fontSize: '13px' }}
-          >
-            {selectorPeriods.map(p => (
-              <option key={p.key} value={p.key}>{p.label}</option>
-            ))}
-          </select>
-        </div>
+
+        {activeReport === 'sales_kpi' && (
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Period:</span>
+            <select 
+              value={selectedPeriodKey} 
+              onChange={(e) => setSelectedPeriodKey(e.target.value)} 
+              className="form-control" 
+              style={{ width: '180px', height: '38px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'inherit', padding: '0 10px', fontSize: '13px' }}
+            >
+              {selectorPeriods.map(p => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* KPI TOP LEVEL SUMMARY CARDS */}
-      <div className="stat-grid stat-grid-4" style={{ marginBottom: '28px' }}>
-        <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#3b82f6' }}>
-            {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}
+      {/* VIEW 1: SALES & KPI LEDGER ENGINE */}
+      {activeReport === 'sales_kpi' && (
+        <>
+          {/* KPI TOP LEVEL SUMMARY CARDS */}
+          <div className="stat-grid stat-grid-4" style={{ marginBottom: '28px' }}>
+            <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#3b82f6' }}>
+                {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}
+              </div>
+              <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Invoiced ({selectedMonthName} {selectedYear})</div>
+            </div>
+            <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#10b981' }}>
+                {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}
+              </div>
+              <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Awaiting Stock ({rollingMonths[0].label})</div>
+            </div>
+            <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#eab308' }}>
+                {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}
+              </div>
+              <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Pipeline Target ({rollingMonths[0].label})</div>
+            </div>
+            <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700 }}>
+                {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}
+              </div>
+              <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Total Projected YTD</div>
+            </div>
           </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Invoiced ({selectedMonthName} {selectedYear})</div>
-        </div>
-        <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#10b981' }}>
-            {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}
-          </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Awaiting Stock ({rollingMonths[0].label})</div>
-        </div>
-        <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#eab308' }}>
-            {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}
-          </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Pipeline Target ({rollingMonths[0].label})</div>
-        </div>
-        <div className="stat" style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700 }}>
-            {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}
-          </div>
-          <div className="stat-label" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '4px' }}>Total Projected Annual</div>
-        </div>
-      </div>
 
-      {/* KPI 1: SALES INVOICED */}
-      <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-        <div 
-          onClick={() => toggleCollapse('kpi1')}
-          style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {collapsedTables.kpi1 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-            <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 1: Sales Invoiced ({selectedMonthName} {selectedYear})</div>
-          </div>
-          <span style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>Active Period</span>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>Actual Invoiced</th>
-                <th style={{ padding: '12px 16px' }}>Budget</th>
-                <th style={{ padding: '12px 16px' }}>Variance</th>
-                <th style={{ padding: '12px 16px' }}>YTD Actual</th>
-                <th style={{ padding: '12px 16px' }}>YTD Budget</th>
-                <th style={{ padding: '12px 16px' }}>YTD Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!collapsedTables.kpi1 && DIVISIONS.map((div) => {
-                const row = dynamicInvoiced[div] || { actual: 0, budget: 0, ytdActual: 0, ytdBudget: 0 };
-                const variance = row.actual - row.budget;
-                const ytdVariance = row.ytdActual - row.ytdBudget;
-                return (
-                  <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td 
-                      onClick={() => row.actual > 0 && triggerDrilldown('Actual Invoiced', div, 'invoiced')}
-                      style={{ padding: '12px 16px', cursor: row.actual > 0 ? 'pointer' : 'default', textDecoration: row.actual > 0 ? 'underline' : 'none', color: row.actual > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.actual)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.budget)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
-                    <td 
-                      onClick={() => row.ytdActual > 0 && triggerDrilldown('YTD Actual Invoiced', div, 'invoiced', 'ytd')}
-                      style={{ padding: '12px 16px', cursor: row.ytdActual > 0 ? 'pointer' : 'default', textDecoration: row.ytdActual > 0 ? 'underline' : 'none', color: row.ytdActual > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.ytdActual)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.ytdBudget)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(ytdVariance) }}>{formatZar(ytdVariance)}</td>
+          {/* KPI 1: SALES INVOICED */}
+          <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div 
+              onClick={() => toggleCollapse('kpi1')}
+              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {collapsedTables.kpi1 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 1: Sales Invoiced ({selectedMonthName} {selectedYear})</div>
+              </div>
+              <span style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>FY: {currentFinancialYear}</span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
+                    <th style={{ padding: '12px 16px' }}>Actual Invoiced</th>
+                    <th style={{ padding: '12px 16px' }}>Budget</th>
+                    <th style={{ padding: '12px 16px' }}>Variance</th>
+                    <th style={{ padding: '12px 16px' }}>YTD Actual (from March)</th>
+                    <th style={{ padding: '12px 16px' }}>YTD Budget ({selectedSeqIndex + 1} mos)</th>
+                    <th style={{ padding: '12px 16px' }}>YTD Variance</th>
                   </tr>
-                );
-              })}
-              {/* TOTAL ROW */}
-              <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
-                <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}</td>
-                <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0)) }}>
-                  {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}
-                </td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}</td>
-                <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0)) }}>
-                  {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* KPI 2: TO BE INVOICED */}
-      <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-        <div 
-          onClick={() => toggleCollapse('kpi2')}
-          style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
-        >
-          {collapsedTables.kpi2 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-          <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 2: To Be Invoiced (Awaiting Stock)</div>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
-                <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
-                <th style={{ padding: '12px 16px' }}>Target</th>
-                <th style={{ padding: '12px 16px' }}>Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!collapsedTables.kpi2 && DIVISIONS.map((div) => {
-                const row = dynamicAwaiting[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
-                const total = sumAwaitingStockTotal(row);
-                const variance = total - row.target;
-                return (
-                  <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td 
-                      onClick={() => row.col0 > 0 && triggerDrilldown(rollingMonths[0].label, div, 'awaiting', 0)}
-                      style={{ padding: '12px 16px', cursor: row.col0 > 0 ? 'pointer' : 'default', textDecoration: row.col0 > 0 ? 'underline' : 'none', color: row.col0 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col0)}
+                </thead>
+                <tbody>
+                  {!collapsedTables.kpi1 && activeDivisionsList.map((div) => {
+                    const row = dynamicInvoiced[div] || { actual: 0, budget: 0, ytdActual: 0, ytdBudget: 0 };
+                    const variance = row.actual - row.budget;
+                    const ytdVariance = row.ytdActual - row.ytdBudget;
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
+                        <td 
+                          onClick={() => row.actual > 0 && triggerDrilldown('Actual Invoiced', div, 'invoiced')}
+                          style={{ padding: '12px 16px', cursor: row.actual > 0 ? 'pointer' : 'default', textDecoration: row.actual > 0 ? 'underline' : 'none', color: row.actual > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.actual)}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.budget)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
+                        <td 
+                          onClick={() => row.ytdActual > 0 && triggerDrilldown('YTD Actual Invoiced', div, 'invoiced', 'ytd')}
+                          style={{ padding: '12px 16px', cursor: row.ytdActual > 0 ? 'pointer' : 'default', textDecoration: row.ytdActual > 0 ? 'underline' : 'none', color: row.ytdActual > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.ytdActual)}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.ytdBudget)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(ytdVariance) }}>{formatZar(ytdVariance)}</td>
+                      </tr>
+                    );
+                  })}
+                  {/* TOTAL ROW */}
+                  <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
+                    <td style={{ padding: '12px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}</td>
+                    <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0)) }}>
+                      {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}
                     </td>
-                    <td 
-                      onClick={() => row.col1 > 0 && triggerDrilldown(rollingMonths[1].label, div, 'awaiting', 1)}
-                      style={{ padding: '12px 16px', cursor: row.col1 > 0 ? 'pointer' : 'default', textDecoration: row.col1 > 0 ? 'underline' : 'none', color: row.col1 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col1)}
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}</td>
+                    <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0)) }}>
+                      {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}
                     </td>
-                    <td 
-                      onClick={() => row.col2 > 0 && triggerDrilldown(rollingMonths[2].label, div, 'awaiting', 2)}
-                      style={{ padding: '12px 16px', cursor: row.col2 > 0 ? 'pointer' : 'default', textDecoration: row.col2 > 0 ? 'underline' : 'none', color: row.col2 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col2)}
-                    </td>
-                    <td 
-                      onClick={() => row.col3 > 0 && triggerDrilldown(rollingMonths[3].label, div, 'awaiting', 3)}
-                      style={{ padding: '12px 16px', cursor: row.col3 > 0 ? 'pointer' : 'default', textDecoration: row.col3 > 0 ? 'underline' : 'none', color: row.col3 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col3)}
-                    </td>
-                    <td 
-                      onClick={() => total > 0 && triggerDrilldown('Total Awaiting Stock', div, 'awaiting')}
-                      style={{ padding: '12px 16px', fontWeight: 600, cursor: total > 0 ? 'pointer' : 'default', textDecoration: total > 0 ? 'underline' : 'none', color: total > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(total)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
                   </tr>
-                );
-              })}
-              {/* TOTAL ROW */}
-              <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
-                <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}</td>
-                <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0)) }}>
-                  {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* KPI 3: PIPELINE */}
-      <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-        <div 
-          onClick={() => toggleCollapse('kpi3')}
-          style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
-        >
-          {collapsedTables.kpi3 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-          <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 3: Sales Pipeline Projections</div>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
-                <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
-                <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
-                <th style={{ padding: '12px 16px' }}>Target</th>
-                <th style={{ padding: '12px 16px' }}>Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!collapsedTables.kpi3 && DIVISIONS.map((div) => {
-                const row = dynamicPipeline[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
-                const total = sumPipelineTotal(row);
-                const variance = total - row.target;
-                return (
-                  <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td 
-                      onClick={() => row.col0 > 0 && triggerDrilldown(rollingMonths[0].label, div, 'pipeline', 0)}
-                      style={{ padding: '12px 16px', cursor: row.col0 > 0 ? 'pointer' : 'default', textDecoration: row.col0 > 0 ? 'underline' : 'none', color: row.col0 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col0)}
-                    </td>
-                    <td 
-                      onClick={() => row.col1 > 0 && triggerDrilldown(rollingMonths[1].label, div, 'pipeline', 1)}
-                      style={{ padding: '12px 16px', cursor: row.col1 > 0 ? 'pointer' : 'default', textDecoration: row.col1 > 0 ? 'underline' : 'none', color: row.col1 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col1)}
-                    </td>
-                    <td 
-                      onClick={() => row.col2 > 0 && triggerDrilldown(rollingMonths[2].label, div, 'pipeline', 2)}
-                      style={{ padding: '12px 16px', cursor: row.col2 > 0 ? 'pointer' : 'default', textDecoration: row.col2 > 0 ? 'underline' : 'none', color: row.col2 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col2)}
-                    </td>
-                    <td 
-                      onClick={() => row.col3 > 0 && triggerDrilldown(rollingMonths[3].label, div, 'pipeline', 3)}
-                      style={{ padding: '12px 16px', cursor: row.col3 > 0 ? 'pointer' : 'default', textDecoration: row.col3 > 0 ? 'underline' : 'none', color: row.col3 > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.col3)}
-                    </td>
-                    <td 
-                      onClick={() => total > 0 && triggerDrilldown('Total Pipeline Projections', div, 'pipeline')}
-                      style={{ padding: '12px 16px', fontWeight: 600, cursor: total > 0 ? 'pointer' : 'default', textDecoration: total > 0 ? 'underline' : 'none', color: total > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(total)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
-                  </tr>
-                );
-              })}
-              {/* TOTAL ROW */}
-              <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
-                <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}</td>
-                <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0)) }}>
-                  {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* KPI 4: ANNUAL TOTALS */}
-      <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-        <div 
-          onClick={() => toggleCollapse('kpi4')}
-          style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
-        >
-          {collapsedTables.kpi4 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-          <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 4: Annual Totals Combination (YTD)</div>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
-                <th style={{ padding: '12px 16px' }}>Invoiced (YTD)</th>
-                <th style={{ padding: '12px 16px' }}>To Be Invoiced</th>
-                <th style={{ padding: '12px 16px' }}>Pipeline</th>
-                <th style={{ padding: '12px 16px' }}>Blank / TBC</th>
-                <th style={{ padding: '12px 16px' }}>Total Projected</th>
-                <th style={{ padding: '12px 16px' }}>Budget Limit</th>
-                <th style={{ padding: '12px 16px' }}>Annual Variance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!collapsedTables.kpi4 && DIVISIONS.map((div) => {
-                const row = dynamicAnnual[div] || { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: 0 };
-                const total = sumAnnualTotal(row);
-                const variance = total - row.budget;
-                return (
-                  <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
-                    <td 
-                      onClick={() => row.invoiced > 0 && triggerDrilldown('Annual Billed Actual', div, 'annual', 'invoiced')}
-                      style={{ padding: '12px 16px', cursor: row.invoiced > 0 ? 'pointer' : 'default', textDecoration: row.invoiced > 0 ? 'underline' : 'none', color: row.invoiced > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.invoiced)}
-                    </td>
-                    <td 
-                      onClick={() => row.toInvoice > 0 && triggerDrilldown('Annual Awaiting Invoice', div, 'annual', 'toInvoice')}
-                      style={{ padding: '12px 16px', cursor: row.toInvoice > 0 ? 'pointer' : 'default', textDecoration: row.toInvoice > 0 ? 'underline' : 'none', color: row.toInvoice > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.toInvoice)}
-                    </td>
-                    <td 
-                      onClick={() => row.pipeline > 0 && triggerDrilldown('Annual Pipeline Target', div, 'annual', 'pipeline')}
-                      style={{ padding: '12px 16px', cursor: row.pipeline > 0 ? 'pointer' : 'default', textDecoration: row.pipeline > 0 ? 'underline' : 'none', color: row.pipeline > 0 ? '#3b82f6' : 'inherit' }}
-                    >
-                      {formatZar(row.pipeline)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.tbc)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(total)}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(row.budget)}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
-                  </tr>
-                );
-              })}
-              {/* TOTAL ROW */}
-              <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
-                <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}</td>
-                <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}</td>
-                <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0)) }}>
-                  {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* TWO COLUMN ROW FOR STOCK & OPERATIONAL METRICS */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {/* STOCK VALUES TABLE */}
-        <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-          <div 
-            onClick={() => toggleCollapse('stock')}
-            style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
-          >
-            {collapsedTables.stock ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-            <div style={{ fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Inventory & Stock Values (KPI 2)</div>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div style={{ padding: '16px' }}>
-            <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+
+          {/* KPI 2: TO BE INVOICED */}
+          <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div 
+              onClick={() => toggleCollapse('kpi2')}
+              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              {collapsedTables.kpi2 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 2: To Be Invoiced (Awaiting Stock)</div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
+                    <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
+                    <th style={{ padding: '12px 16px' }}>Target</th>
+                    <th style={{ padding: '12px 16px' }}>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!collapsedTables.kpi2 && activeDivisionsList.map((div) => {
+                    const row = dynamicAwaiting[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
+                    const total = sumAwaitingStockTotal(row);
+                    const variance = total - row.target;
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
+                        <td 
+                          onClick={() => row.col0 > 0 && triggerDrilldown(rollingMonths[0].label, div, 'awaiting', 0)}
+                          style={{ padding: '12px 16px', cursor: row.col0 > 0 ? 'pointer' : 'default', textDecoration: row.col0 > 0 ? 'underline' : 'none', color: row.col0 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col0)}
+                        </td>
+                        <td 
+                          onClick={() => row.col1 > 0 && triggerDrilldown(rollingMonths[1].label, div, 'awaiting', 1)}
+                          style={{ padding: '12px 16px', cursor: row.col1 > 0 ? 'pointer' : 'default', textDecoration: row.col1 > 0 ? 'underline' : 'none', color: row.col1 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col1)}
+                        </td>
+                        <td 
+                          onClick={() => row.col2 > 0 && triggerDrilldown(rollingMonths[2].label, div, 'awaiting', 2)}
+                          style={{ padding: '12px 16px', cursor: row.col2 > 0 ? 'pointer' : 'default', textDecoration: row.col2 > 0 ? 'underline' : 'none', color: row.col2 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col2)}
+                        </td>
+                        <td 
+                          onClick={() => row.col3 > 0 && triggerDrilldown(rollingMonths[3].label, div, 'awaiting', 3)}
+                          style={{ padding: '12px 16px', cursor: row.col3 > 0 ? 'pointer' : 'default', textDecoration: row.col3 > 0 ? 'underline' : 'none', color: row.col3 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col3)}
+                        </td>
+                        <td 
+                          onClick={() => total > 0 && triggerDrilldown('Total Awaiting Stock', div, 'awaiting')}
+                          style={{ padding: '12px 16px', fontWeight: 600, cursor: total > 0 ? 'pointer' : 'default', textDecoration: total > 0 ? 'underline' : 'none', color: total > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(total)}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
+                      </tr>
+                    );
+                  })}
+                  {/* TOTAL ROW */}
+                  <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
+                    <td style={{ padding: '12px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}</td>
+                    <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0)) }}>
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* KPI 3: PIPELINE */}
+          <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div 
+              onClick={() => toggleCollapse('kpi3')}
+              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              {collapsedTables.kpi3 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 3: Sales Pipeline Projections</div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[0].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[1].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[2].label}</th>
+                    <th style={{ padding: '12px 16px' }}>{rollingMonths[3].label}</th>
+                    <th style={{ padding: '12px 16px' }}>Total Pipeline</th>
+                    <th style={{ padding: '12px 16px' }}>Target</th>
+                    <th style={{ padding: '12px 16px' }}>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!collapsedTables.kpi3 && activeDivisionsList.map((div) => {
+                    const row = dynamicPipeline[div] || { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
+                    const total = sumPipelineTotal(row);
+                    const variance = total - row.target;
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
+                        <td 
+                          onClick={() => row.col0 > 0 && triggerDrilldown(rollingMonths[0].label, div, 'pipeline', 0)}
+                          style={{ padding: '12px 16px', cursor: row.col0 > 0 ? 'pointer' : 'default', textDecoration: row.col0 > 0 ? 'underline' : 'none', color: row.col0 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col0)}
+                        </td>
+                        <td 
+                          onClick={() => row.col1 > 0 && triggerDrilldown(rollingMonths[1].label, div, 'pipeline', 1)}
+                          style={{ padding: '12px 16px', cursor: row.col1 > 0 ? 'pointer' : 'default', textDecoration: row.col1 > 0 ? 'underline' : 'none', color: row.col1 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col1)}
+                        </td>
+                        <td 
+                          onClick={() => row.col2 > 0 && triggerDrilldown(rollingMonths[2].label, div, 'pipeline', 2)}
+                          style={{ padding: '12px 16px', cursor: row.col2 > 0 ? 'pointer' : 'default', textDecoration: row.col2 > 0 ? 'underline' : 'none', color: row.col2 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col2)}
+                        </td>
+                        <td 
+                          onClick={() => row.col3 > 0 && triggerDrilldown(rollingMonths[3].label, div, 'pipeline', 3)}
+                          style={{ padding: '12px 16px', cursor: row.col3 > 0 ? 'pointer' : 'default', textDecoration: row.col3 > 0 ? 'underline' : 'none', color: row.col3 > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.col3)}
+                        </td>
+                        <td 
+                          onClick={() => total > 0 && triggerDrilldown('Total Pipeline Projections', div, 'pipeline')}
+                          style={{ padding: '12px 16px', fontWeight: 600, cursor: total > 0 ? 'pointer' : 'default', textDecoration: total > 0 ? 'underline' : 'none', color: total > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(total)}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.target)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
+                      </tr>
+                    );
+                  })}
+                  {/* TOTAL ROW */}
+                  <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
+                    <td style={{ padding: '12px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}</td>
+                    <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0)) }}>
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* KPI 4: ANNUAL TOTALS */}
+          <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div 
+              onClick={() => toggleCollapse('kpi4')}
+              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              {collapsedTables.kpi4 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 4: Annual Totals Combination (YTD)</div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '12px 16px' }}>Division / Team Manager</th>
+                    <th style={{ padding: '12px 16px' }}>Invoiced (YTD)</th>
+                    <th style={{ padding: '12px 16px' }}>To Be Invoiced</th>
+                    <th style={{ padding: '12px 16px' }}>Pipeline</th>
+                    <th style={{ padding: '12px 16px' }}>Blank / TBC</th>
+                    <th style={{ padding: '12px 16px' }}>Total Projected</th>
+                    <th style={{ padding: '12px 16px' }}>Budget Limit</th>
+                    <th style={{ padding: '12px 16px' }}>Annual Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!collapsedTables.kpi4 && activeDivisionsList.map((div) => {
+                    const row = dynamicAnnual[div] || { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: 0 };
+                    const total = sumAnnualTotal(row);
+                    const variance = total - row.budget;
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
+                        <td 
+                          onClick={() => row.invoiced > 0 && triggerDrilldown('Annual Billed Actual', div, 'annual', 'invoiced')}
+                          style={{ padding: '12px 16px', cursor: row.invoiced > 0 ? 'pointer' : 'default', textDecoration: row.invoiced > 0 ? 'underline' : 'none', color: row.invoiced > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.invoiced)}
+                        </td>
+                        <td 
+                          onClick={() => row.toInvoice > 0 && triggerDrilldown('Annual Awaiting Invoice', div, 'annual', 'toInvoice')}
+                          style={{ padding: '12px 16px', cursor: row.toInvoice > 0 ? 'pointer' : 'default', textDecoration: row.toInvoice > 0 ? 'underline' : 'none', color: row.toInvoice > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.toInvoice)}
+                        </td>
+                        <td 
+                          onClick={() => row.pipeline > 0 && triggerDrilldown('Annual Pipeline Target', div, 'annual', 'pipeline')}
+                          style={{ padding: '12px 16px', cursor: row.pipeline > 0 ? 'pointer' : 'default', textDecoration: row.pipeline > 0 ? 'underline' : 'none', color: row.pipeline > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.pipeline)}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.tbc)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(total)}</td>
+                        <td style={{ padding: '12px 16px' }}>{formatZar(row.budget)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
+                      </tr>
+                    );
+                  })}
+                  {/* TOTAL ROW */}
+                  <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
+                    <td style={{ padding: '12px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}</td>
+                    <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0)) }}>
+                      {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* VIEW 2: BUDGET & TARGET MANAGER (HISTORICAL EDITOR) */}
+      {activeReport === 'budget_manager' && (
+        <div className="card" style={{ padding: '24px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Users style={{ color: '#3b82f6' }} />
+              <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Configure Budgets & Team Divisions</h2>
+              <select 
+                value={mgmtFy} 
+                onChange={(e) => setMgmtFy(e.target.value)} 
+                className="form-control" 
+                style={{ width: '130px', height: '36px', padding: '0 8px', fontSize: '13px', background: 'var(--bg-primary)', color: 'inherit', border: '1px solid var(--border)', borderRadius: '6px' }}
+              >
+                <option value="2024-2025">FY 2024-2025</option>
+                <option value="2025-2026">FY 2025-2026</option>
+                <option value="2026-2027">FY 2026-2027</option>
+                <option value="2027-2028">FY 2027-2028</option>
+                <option value="2028-2029">FY 2028-2029</option>
+              </select>
+            </div>
+            
+            <button 
+              className="btn btn-primary"
+              onClick={() => saveBudgetsConfig(budgetsConfig)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '8px 18px', borderRadius: '6px' }}
+            >
+              <Save size={15} /> Save All Budget Configs
+            </button>
+          </div>
+
+          {/* ADD DIVISION FORM */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <input 
+              type="text" 
+              placeholder="e.g. MODUS SIGNATURE ( Thando )" 
+              value={newDivisionName}
+              onChange={(e) => setNewDivisionName(e.target.value)}
+              className="form-control"
+              style={{ flex: 1, height: '38px', padding: '0 12px', fontSize: '13px', background: 'var(--bg-card)', color: 'inherit', border: '1px solid var(--border)', borderRadius: '6px' }}
+            />
+            <button 
+              className="btn btn-secondary"
+              onClick={addTeamDivision}
+              style={{ height: '38px', fontSize: '13px', padding: '0 16px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Plus size={16} /> Add Team / Division
+            </button>
+          </div>
+
+          {/* EDITABLE VALUES TABLE */}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ paddingBottom: '8px' }}>Stock Classification</th>
-                  <th style={{ paddingBottom: '8px' }}>Current</th>
-                  <th style={{ paddingBottom: '8px' }}>Target</th>
-                  <th style={{ paddingBottom: '8px' }}>Variance</th>
+                <tr style={{ background: 'var(--bg-primary)', borderBottom: '2px solid var(--border)', textAlign: 'left' }}>
+                  <th style={{ padding: '12px' }}>Team Division Name</th>
+                  <th style={{ padding: '12px' }}>KPI 1: Monthly Budget (ZAR)</th>
+                  <th style={{ padding: '12px' }}>KPI 2: Awaiting Stock Target</th>
+                  <th style={{ padding: '12px' }}>KPI 3: Pipeline Target</th>
+                  <th style={{ padding: '12px' }}>KPI 4: Annual Limit Budget</th>
+                  <th style={{ padding: '12px', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {!collapsedTables.stock && stockValues.map((stock) => {
-                  const variance = stock.current - stock.target;
-                  const isNormal = stock.label.includes('Normal');
-                  const varianceColor = getVarianceColor(variance, !isNormal);
-                  return (
-                    <tr key={stock.label} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 0', fontWeight: 600 }}>{stock.label}</td>
-                      <td>{formatZar(stock.current)}</td>
-                      <td>{formatZar(stock.target)}</td>
-                      <td style={{ fontWeight: 600, color: varianceColor }}>{formatZar(variance)}</td>
-                    </tr>
-                  );
-                })}
+                {mgmtFyConfig.divisions.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No divisions defined for this Financial Year yet. Add one above!
+                    </td>
+                  </tr>
+                ) : (
+                  mgmtFyConfig.divisions.map(div => {
+                    const kpi1 = (mgmtFyConfig.budgetsKPI1 && mgmtFyConfig.budgetsKPI1[div]) || { monthly: 0, ytd: 0 };
+                    const kpi2 = (mgmtFyConfig.targetsKPI2 && mgmtFyConfig.targetsKPI2[div]) || 0;
+                    const kpi3 = (mgmtFyConfig.targetsKPI3 && mgmtFyConfig.targetsKPI3[div]) || 0;
+                    const kpi4 = (mgmtFyConfig.budgetsKPI4 && mgmtFyConfig.budgetsKPI4[div]) || 0;
+
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px', fontWeight: 600 }}>{div}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <input 
+                            type="number" 
+                            value={kpi1.monthly}
+                            onChange={(e) => handleBudgetValueChange(div, 'budgetsKPI1', 'monthly', e.target.value)}
+                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <input 
+                            type="number" 
+                            value={kpi2}
+                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI2', null, e.target.value)}
+                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <input 
+                            type="number" 
+                            value={kpi3}
+                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI3', null, e.target.value)}
+                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <input 
+                            type="number" 
+                            value={kpi4}
+                            onChange={(e) => handleBudgetValueChange(div, 'budgetsKPI4', null, e.target.value)}
+                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          <button 
+                            onClick={() => deleteTeamDivision(div)}
+                            style={{ background: 'transparent', border: 'none', color: '#f43f5e', cursor: 'pointer', padding: '4px' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
+      )}
 
-        {/* OPERATIONS, FAULTS & TICKET HEALTH */}
-        <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-          <div style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Operational KPIs (Faults & Enquiries)</div>
-          </div>
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* FAULTS KPI */}
-            <div style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '8px', color: 'var(--text-secondary)' }}>KPI 4: Client Fault Tickets Status ({selectedMonthName})</div>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#f43f5e' }}>{newFaultsCount || 4}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>New / Open Faults</div>
+      {/* VIEW 3: OPERATIONAL KPIS */}
+      {activeReport === 'operational_kpis' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          {/* FAULTS CARD */}
+          <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '20px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle style={{ color: '#f43f5e' }} /> KPI 4: Client Fault Tickets Status
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+              <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#f43f5e' }}>{newFaultsCount || 4}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Active Open Faults</div>
                 </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#eab308' }}>23</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Total Logged (YTD)</div>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#eab308' }}>23</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Logged YTD</div>
                 </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#10b981' }}>{closedFaultsCount || 5}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Closed (YTD)</div>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981' }}>{closedFaultsCount || 5}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Resolved Faults</div>
                 </div>
               </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                All fault tickets are synced with the support module. Ensuring resolved times stay under 7 business days preserves our customer satisfaction index.
+              </p>
             </div>
+          </div>
 
-            {/* ENQUIRIES KPI */}
-            <div style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '8px', color: 'var(--text-secondary)' }}>KPI 3: Enquiries & Site Audit Metrics</div>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700 }}>1.87</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Avg Enquiries (Target 1.0)</div>
+          {/* AUDITS CARD */}
+          <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '20px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle style={{ color: '#10b981' }} /> KPI 3: Site Visits & Audit Metrics
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+              <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800 }}>1.87</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Avg Enquiries (Target: 1.0)</div>
                 </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#f43f5e' }}>7.27</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Avg Faults (Target 5.0)</div>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#f43f5e' }}>7.27</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Avg Faults (Target: 5.0)</div>
                 </div>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ fontSize: '18px', fontWeight: 700 }}>1.33</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Site Visits (Target 2.0)</div>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: 800 }}>1.33</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Site Visits (Target: 2.0)</div>
                 </div>
               </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                Tracking actual site visits ensures that project managers align with onsite schedules and clear up snags before logistics handovers.
+              </p>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* VIEW 4: STOCK VALUATION */}
+      {activeReport === 'stock_valuation' && (
+        <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '24px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Package style={{ color: '#eab308' }} /> Warehouse Stock Valuation Matrix
+          </h2>
+          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-primary)', borderBottom: '2px solid var(--border)', textAlign: 'left' }}>
+                <th style={{ padding: '12px' }}>Stock Classification Group</th>
+                <th style={{ padding: '12px' }}>Current Asset Value</th>
+                <th style={{ padding: '12px' }}>Limit/Target Baseline</th>
+                <th style={{ padding: '12px' }}>Variance</th>
+                <th style={{ padding: '12px' }}>Risk Assessment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockValues.map(stock => {
+                const variance = stock.current - stock.target;
+                const isNormal = stock.label.includes('Normal');
+                const varianceColor = getVarianceColor(variance, !isNormal);
+                const hasRisk = !isNormal && variance > 0;
+                return (
+                  <tr key={stock.label} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '14px 12px', fontWeight: 600 }}>{stock.label}</td>
+                    <td>{formatZar(stock.current)}</td>
+                    <td>{formatZar(stock.target)}</td>
+                    <td style={{ fontWeight: 700, color: varianceColor }}>{formatZar(variance)}</td>
+                    <td>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
+                        background: hasRisk ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                        color: hasRisk ? '#ef4444' : '#10b981'
+                      }}>
+                        {hasRisk ? 'OVER LIMIT' : 'HEALTHY'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* DRILLDOWN POPUP MODAL (CENTERED VIEWPORT FIXED BACKDROP WITH SOLID CONTRAST BACKGROUND) */}
       {drilldownModal.isOpen && (
