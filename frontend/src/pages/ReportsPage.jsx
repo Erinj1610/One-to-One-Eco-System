@@ -156,7 +156,7 @@ export default function ReportsPage() {
   const activeFyConfig = budgetsConfig && budgetsConfig[currentFinancialYear] 
     ? budgetsConfig[currentFinancialYear] 
     : (DEFAULT_BUDGETS_CONFIG[currentFinancialYear] || {
-        divisions: DIVISIONS,
+        divisions: DEFAULT_BUDGETS_CONFIG["2026-2027"].divisions,
         budgetsKPI1: {},
         targetsKPI2: {},
         targetsKPI3: {},
