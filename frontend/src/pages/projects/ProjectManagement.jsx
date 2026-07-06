@@ -86,6 +86,7 @@ export default function ProjectManagement() {
 
   const { widths: ordersWidths, onResizeStart: onOrdersResizeStart } = useResizableTable('pm_orders_pipeline', {
     ref: 120,
+    name: 180,
     supplier: 180,
     items: 100,
     value: 150,
@@ -93,7 +94,7 @@ export default function ProjectManagement() {
     outstanding: 150,
     eta: 100,
     status: 90
-  }, ['ref', 'supplier', 'items', 'value', 'paid', 'outstanding', 'eta', 'status']);
+  }, ['ref', 'name', 'supplier', 'items', 'value', 'paid', 'outstanding', 'eta', 'status']);
 
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -1727,6 +1728,10 @@ export default function ProjectManagement() {
                                  Quote/Order Ref
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('ref', e)} />
                                </th>
+                               <th style={{ width: ordersWidths.name, position: 'relative' }}>
+                                 Order Name
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('name', e)} />
+                               </th>
                                <th style={{ width: ordersWidths.supplier, position: 'relative' }}>
                                  Hardware Supplier
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('supplier', e)} />
@@ -1798,6 +1803,7 @@ export default function ProjectManagement() {
                                        </button>
                                      )}
                                    </td>
+                                   <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
                                    <td>{o.supplier}</td>
                                    <td style={{ textAlign: 'center' }}>{o.items} items</td>
                                    <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
@@ -1861,6 +1867,7 @@ export default function ProjectManagement() {
                           <tr style={{ textAlign: 'left' }}>
                             <th style={{ padding: '8px' }}>Date</th>
                             <th style={{ padding: '8px' }}>Order/Quote Ref</th>
+                            <th style={{ padding: '8px' }}>Order Name</th>
                             <th style={{ padding: '8px' }}>Reference / Notes</th>
                             <th style={{ padding: '8px', textAlign: 'right' }}>Amount</th>
                           </tr>
@@ -1873,6 +1880,7 @@ export default function ProjectManagement() {
                                 o.payments.forEach(p => {
                                   allPayments.push({
                                     orderId: o.id,
+                                    quoteName: o.quoteName,
                                     date: p.date,
                                     reference: p.reference,
                                     amount: p.amount
@@ -1884,7 +1892,7 @@ export default function ProjectManagement() {
                             if (allPayments.length === 0) {
                               return (
                                 <tr>
-                                  <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                  <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
                                     No payments have been logged yet for any order in this project.
                                   </td>
                                 </tr>
@@ -1906,6 +1914,7 @@ export default function ProjectManagement() {
                                     {p.orderId}
                                   </button>
                                 </td>
+                                <td style={{ padding: '8px', fontWeight: 500 }}>{p.quoteName || 'General Spec'}</td>
                                 <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
                                 <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-success)' }}>
                                   R {Number(p.amount || 0).toLocaleString()}
@@ -2029,6 +2038,7 @@ export default function ProjectManagement() {
                         <thead>
                           <tr>
                             <th>Order ID</th>
+                            <th>Order Name</th>
                             <th>Supplier</th>
                             <th>Order Value</th>
                             <th>Status</th>
@@ -2038,6 +2048,7 @@ export default function ProjectManagement() {
                           {orders.map(o => (
                             <tr key={o.id}>
                               <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
+                              <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
                               <td style={{ fontWeight: 500 }}>{o.supplier}</td>
                               <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
                               <td>

@@ -592,7 +592,13 @@ export default function LogisticsPage() {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                      <span>Order: {doc.orderId}</span>
+                      <span>
+                        Order: {doc.orderId} {(() => {
+                          const p = projects[doc.projectKey];
+                          const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
+                          return o?.quoteName ? `(${o.quoteName})` : '';
+                        })()}
+                      </span>
                       <span>Items: {totalQty}</span>
                     </div>
 

@@ -618,6 +618,15 @@ export default function InvoicesPage() {
                         <td>
                           <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{inv.project}</div>
                           <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{inv.client}</div>
+                          {inv.orderId && (
+                            <div style={{ fontSize: '10px', color: 'var(--text-info)', fontFamily: 'monospace', marginTop: '2px' }}>
+                              Order: {inv.orderId} {(() => {
+                                const p = projects[inv.projectKey];
+                                const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
+                                return o?.quoteName ? `(${o.quoteName})` : '';
+                              })()}
+                            </div>
+                          )}
                         </td>
                         <td style={{ fontWeight: 600 }}>{inv.amount}</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>

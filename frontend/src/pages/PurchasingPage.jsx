@@ -727,7 +727,13 @@ export default function PurchasingPage() {
                         </td>
                         <td>
                           <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{doc.projectName}</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>Client: {doc.projectClient} | Order: {doc.orderId}</div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                            Client: {doc.projectClient} | Order: {doc.orderId} {(() => {
+                              const p = projects[doc.projectKey];
+                              const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
+                              return o?.quoteName ? `(${o.quoteName})` : '';
+                            })()}
+                          </div>
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>{doc.supplier || '—'}</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{doc.date}</td>

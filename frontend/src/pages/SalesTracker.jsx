@@ -581,6 +581,7 @@ export default function SalesTracker() {
 
   const [orderDiscount, setOrderDiscount] = useState(0);
   const [orderSupplier, setSupplier] = useState('');
+  const [quoteName, setQuoteName] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
   const [orderEta, setOrderEta] = useState('');
   const orderPaidAmount = useMemo(() => {
@@ -863,6 +864,7 @@ export default function SalesTracker() {
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
     setSupplier(order.supplier);
+    setQuoteName(order.quoteName || 'General Spec');
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
     setWorkspaceSubTab('boq');
@@ -1810,7 +1812,7 @@ export default function SalesTracker() {
                   </span>
                 </div>
                 <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {orderSupplier} Sales Specification — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
+                  {quoteName} — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
                 </h2>
               </div>
               
