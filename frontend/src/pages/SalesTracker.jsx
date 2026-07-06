@@ -175,18 +175,10 @@ const getItemDefaults = (item) => {
     // Aggregate waybill references
     resolved.deliveryNotes = Array.from(new Set(history.map(h => h.ref).filter(Boolean))).join('; ');
   } else {
-    if (resolved.deliveryQty === undefined) {
-      resolved.deliveryQty = 0;
-    }
-    if (resolved.deliveryDate === undefined) {
-      resolved.deliveryDate = '';
-    }
-    if (resolved.deliveryStatus === undefined) {
-      resolved.deliveryStatus = 'Pending';
-    }
-    if (resolved.deliveryNotes === undefined) {
-      resolved.deliveryNotes = '';
-    }
+    resolved.deliveryQty = 0;
+    resolved.deliveryDate = '';
+    resolved.deliveryStatus = 'Pending';
+    resolved.deliveryNotes = '';
   }
   
   if (resolved.deliveryComments === undefined) {
@@ -292,7 +284,7 @@ export default function SalesTracker() {
           invoiceValues: 0,
           deliveryDates: new Set(),
           deliveryStatuses: new Set(),
-          deliveryNotesList: [],
+          deliveryNotesRefs: new Set(),
           areasSet: new Set(),
           stockStatuses: new Set(),
           deliveryCommentsList: [],
@@ -337,17 +329,37 @@ export default function SalesTracker() {
       g.deliveryQty += Number(deliveryQtyVal) || 0;
       g.stockOnHand += Number(stockOnHandVal) || 0;
 
-      if (poRefVal) g.poRefs.add(poRefVal);
+      if (poRefVal) {
+        poRefVal.split(/[,;]/).forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) g.poRefs.add(trimmed);
+        });
+      }
       if (poSupplierVal) g.poSuppliers.add(poSupplierVal);
       if (poDateVal) g.poDates.add(poDateVal);
       if (poEtaVal) g.poEtas.add(poEtaVal);
-      if (receivedRefVal) g.receivedRefs.add(receivedRefVal);
+      if (receivedRefVal) {
+        receivedRefVal.split(/[,;]/).forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) g.receivedRefs.add(trimmed);
+        });
+      }
       if (receivedDateVal) g.receivedDates.add(receivedDateVal);
-      if (invoiceRefVal) g.invoiceRefs.add(invoiceRefVal);
+      if (invoiceRefVal) {
+        invoiceRefVal.split(/[,;]/).forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) g.invoiceRefs.add(trimmed);
+        });
+      }
       if (invoiceDateVal) g.invoiceDates.add(invoiceDateVal);
       if (deliveryDateVal) g.deliveryDates.add(deliveryDateVal);
       if (deliveryStatusVal) g.deliveryStatuses.add(deliveryStatusVal);
-      if (deliveryNotesVal) g.deliveryNotesList.push(deliveryNotesVal);
+      if (deliveryNotesVal) {
+        deliveryNotesVal.split(';').forEach(s => {
+          const trimmed = s.trim();
+          if (trimmed) g.deliveryNotesRefs.add(trimmed);
+        });
+      }
       if (item.area) g.areasSet.add(`${item.area} (${item.floor || 'Ground'})`);
       if (stockStatusVal) g.stockStatuses.add(stockStatusVal);
       if (deliveryCommentsVal) g.deliveryCommentsList.push(deliveryCommentsVal);
@@ -383,7 +395,7 @@ export default function SalesTracker() {
         deliveryQty: g.deliveryQty,
         deliveryDate: g.deliveryDates.size > 0 ? Array.from(g.deliveryDates)[0] : '',
         deliveryStatus: g.deliveryStatuses.size > 0 ? Array.from(g.deliveryStatuses)[0] : 'Pending',
-        deliveryNotes: g.deliveryNotesList.length > 0 ? g.deliveryNotesList.filter(Boolean).join('; ') : '',
+        deliveryNotes: g.deliveryNotesRefs.size > 0 ? Array.from(g.deliveryNotesRefs).join('; ') : '',
         deliveryComments: g.deliveryCommentsList.length > 0 ? g.deliveryCommentsList.filter(Boolean).join('; ') : '',
         deliveryHistory: (() => {
           const historyMap = {};
