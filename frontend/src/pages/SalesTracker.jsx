@@ -1731,8 +1731,9 @@ export default function SalesTracker() {
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
-                      <th>Quote Reference</th>
-                      <th>Order Name</th>
+                      <th>Quote ID</th>
+                      <th>Quote Name</th>
+                      <th>Supplier</th>
                       <th>Project Name</th>
                       <th>Client Name</th>
                       <th>Retail Value Ex Vat</th>
@@ -1752,6 +1753,7 @@ export default function SalesTracker() {
                       return (
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
+                          <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
                           <td style={{ fontWeight: 600 }}>{o.supplier}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>

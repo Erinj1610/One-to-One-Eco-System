@@ -366,6 +366,7 @@ export default function OrdersPage() {
   const [projectClass, setProjectClass] = useState('');
   const [quotationSentDate, setQuotationSentDate] = useState('');
   const [division, setDivision] = useState('');
+  const [quoteName, setQuoteName] = useState('');
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
@@ -576,8 +577,8 @@ export default function OrdersPage() {
         PROJECT_NAME: projectFullName || 'Private Client Project',
         CLIENT_NAME: clientContact || 'Client Name',
         DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'PO-2025-XXX',
-        PROPOSAL_NUMBER: selectedOrderId || 'PO-2025-XXX',
+        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
+        PROPOSAL_NUMBER: selectedOrderId || 'Q-2025-XXX',
         ORDER_STATUS: orderStatus || 'Draft',
         
         CLIENT_COMPANY: clientCompany || 'Private Client',
@@ -770,7 +771,7 @@ export default function OrdersPage() {
         PROJECT_NAME: projectFullName || 'Private Client Project',
         CLIENT_NAME: clientContact || 'Client Name',
         DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'PO-2025-XXX',
+        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
         ORDER_STATUS: orderStatus || 'Draft',
         
         CLIENT_COMPANY: clientCompany || 'Private Client',
@@ -861,7 +862,8 @@ export default function OrdersPage() {
     projectKey: 'upper',
     supplier: 'Molecule Dist.',
     status: 'Pending',
-    eta: 'TBD'
+    eta: 'TBD',
+    quoteName: 'General Spec'
   });
 
   // Aggregate all orders/quotations from all projects in the store
@@ -990,6 +992,7 @@ export default function OrdersPage() {
     setProjectClass(order.projectClass || '');
     setQuotationSentDate(order.quotationSentDate || '');
     setDivision(order.division || proj.division || '');
+    setQuoteName(order.quoteName || 'General Spec');
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
@@ -1329,6 +1332,7 @@ export default function OrdersPage() {
           outstanding: Math.round(balanceOutstanding),
           itemsList: activeOrderItems,
           // Save order-specific adjusted metadata fields
+          quoteName,
           clientCompany,
           clientContact,
           clientPhone,
@@ -1388,6 +1392,7 @@ export default function OrdersPage() {
     const newPoId = 'Q-2026-0' + (allOrders.length + 42);
     const newOrder = {
       id: newPoId,
+      quoteName: newPoForm.quoteName || 'General Spec',
       supplier: newPoForm.supplier,
       items: 1,
       value: 1500,
@@ -1710,7 +1715,8 @@ export default function OrdersPage() {
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
-                      <th>Quote Reference</th>
+                      <th>Quote ID</th>
+                      <th>Quote Name</th>
                       <th>Linked Project</th>
                       <th>Client Name</th>
                       <th>Hardware Supplier</th>
@@ -1750,6 +1756,7 @@ export default function OrdersPage() {
                               </button>
                             )}
                           </td>
+                          <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
                           <td>{o.supplier}</td>
@@ -2194,6 +2201,19 @@ export default function OrdersPage() {
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
                                 value={projectSize} 
                                 onChange={e => setProjectSize(e.target.value)} 
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                            <div style={{ gridColumn: 'span 4' }}>
+                              <label style={{ display: 'block', fontSize: '9.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Quote Name</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
+                                value={quoteName} 
+                                onChange={e => setQuoteName(e.target.value)} 
                               />
                             </div>
                           </div>
@@ -4126,6 +4146,18 @@ export default function OrdersPage() {
             
             <form onSubmit={handleCreatePo}>
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Quote / Order Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. General Lighting, Extras 2"
+                    value={newPoForm.quoteName || ''} 
+                    onChange={e => setNewPoForm({...newPoForm, quoteName: e.target.value})}
+                    className="form-control"
+                    required
+                  />
+                </div>
+
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
                   <select 

@@ -447,7 +447,8 @@ const initialStore = {
     ],
     orders: [
       { 
-        id: 'PO-2025-042', 
+        id: 'Q-2025-042', 
+        quoteName: 'General Lighting',
         supplier: 'Molecule Dist.', 
         items: 73, 
         value: 21385, 
@@ -589,7 +590,8 @@ const initialStore = {
     ],
     orders: [
       {
-        id: 'PO-2025-045',
+        id: 'Q-2025-045',
+        quoteName: 'Downlight Spec',
         supplier: 'Modus Lighting',
         items: 18,
         value: 36540,
@@ -714,7 +716,8 @@ const initialStore = {
     ],
     orders: [
       {
-        id: 'PO-2025-043',
+        id: 'Q-2025-043',
+        quoteName: 'Extras package',
         supplier: 'Philips Advance',
         items: 30,
         value: 14200,
@@ -954,7 +957,8 @@ const initialStore = {
     ],
     orders: [
       {
-        id: 'PO-2025-010',
+        id: 'Q-2025-010',
+        quoteName: 'General Lighting',
         supplier: 'Made by 1-to-1',
         items: 120,
         value: 180460,
@@ -1064,7 +1068,8 @@ const initialStore = {
     ],
     orders: [
       {
-        id: 'PO-2025-011',
+        id: 'Q-2025-011',
+        quoteName: 'Extras 2',
         supplier: 'Modus Lighting',
         items: 40,
         value: 113500,
