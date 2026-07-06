@@ -222,7 +222,7 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
 
             # Naming convention
             filename = f"Document_{doc_type.lower()}.pdf"
-            naming_conv = config.config_json.get("naming_convention") if config.config_json else None
+            naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
             if naming_conv:
                 temp_name = naming_conv
                 for k, v in data.items():
@@ -391,7 +391,7 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
 
         # Handle naming convention
         filename = f"Proposal_{doc_type.lower()}.pdf"
-        naming_conv = config.config_json.get("naming_convention")
+        naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
         if naming_conv:
             # Simple replacement for the filename
             temp_name = naming_conv

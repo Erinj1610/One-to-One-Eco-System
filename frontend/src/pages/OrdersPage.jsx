@@ -1497,6 +1497,14 @@ export default function OrdersPage() {
             background: white !important;
             color: #0f172a !important;
           }
+          .no-print {
+            display: none !important;
+          }
+        }
+        @media screen {
+          .print-only-canvas {
+            display: none !important;
+          }
         }
       `}</style>
 
@@ -3136,64 +3144,71 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
                         </div>
                       ) : (
-                        activeDocType === 'quote' || 
-                        activeDocType === 'boq_doc' || 
-                        activeDocType === 'schedule' || 
-                        activeDocType === 'deposit_invoice' || 
-                        activeDocType === 'balance_invoice' || 
-                        activeDocType === 'tax_invoice' || 
-                        activeDocType === 'statement'
-                      ) && livePreviewUrl ? (
-                        <div style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '15px',
-                            background: 'var(--bg-secondary, #1a1e29)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '20px',
-                            padding: '6px 16px',
-                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                          }}>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs"
-                              disabled={previewPage <= 1}
-                              onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
-                              style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
-                            >
-                              ◀
-                            </button>
-                            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px', textAlign: 'center' }}>
-                              Page {previewPage}
-                            </span>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs"
-                              onClick={() => setPreviewPage(p => p + 1)}
-                              style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
-                            >
-                              ▶
-                            </button>
-                          </div>
-                          <iframe
-                            src={`${livePreviewUrl}#page=${previewPage}&toolbar=0&navpanes=0`}
-                            style={{
-                              width: '100%',
-                              height: '1000px',
-                              border: 'none',
-                              borderRadius: '8px',
-                              boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
-                              background: 'white'
-                            }}
-                            title="Live Document Preview"
-                          />
-                        </div>
-                      ) : (
-                        <div 
-                          id="print-document-canvas" 
-                          style={{ 
+                        (() => {
+                          const showIframe = (
+                            activeDocType === 'quote' || 
+                            activeDocType === 'boq_doc' || 
+                            activeDocType === 'schedule' || 
+                            activeDocType === 'deposit_invoice' || 
+                            activeDocType === 'balance_invoice' || 
+                            activeDocType === 'tax_invoice' || 
+                            activeDocType === 'statement'
+                          ) && livePreviewUrl;
+
+                          return (
+                            <>
+                              {showIframe && (
+                                <div className="no-print" style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '15px',
+                                    background: 'var(--bg-secondary, #1a1e29)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '20px',
+                                    padding: '6px 16px',
+                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                  }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-xs"
+                                      disabled={previewPage <= 1}
+                                      onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
+                                      style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                                    >
+                                      ◀
+                                    </button>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px', textAlign: 'center' }}>
+                                      Page {previewPage}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-xs"
+                                      onClick={() => setPreviewPage(p => p + 1)}
+                                      style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                                    >
+                                      ▶
+                                    </button>
+                                  </div>
+                                  <iframe
+                                    src={`${livePreviewUrl}#page=${previewPage}&toolbar=0&navpanes=0`}
+                                    style={{
+                                      width: '100%',
+                                      height: '1000px',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                                      background: 'white'
+                                    }}
+                                    title="Live Document Preview"
+                                  />
+                                </div>
+                              )}
+                              <div 
+                                id="print-document-canvas" 
+                                className={showIframe ? "print-only-canvas" : ""}
+                                style={{ 
                             width: '100%', 
                             maxWidth: '840px', 
                             background: 'white', 
@@ -3713,11 +3728,10 @@ export default function OrdersPage() {
                           {customTerms}
                         </div>
 
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                            </div>
+                          </>
+                        );
+                      })()}
 
               </div>
             )}
