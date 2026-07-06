@@ -355,15 +355,17 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
 
     # Fetch template settings to get the linked Google Doc ID and Credentials
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
-    if not config or "google_doc_id" not in config.config_json:
-        print(f"DEBUG: No template config found for {doc_type}")
-        raise HTTPException(status_code=400, detail=f"No Google Doc template linked for {doc_type}")
+    google_doc_id = None
+    if config and config.config_json and "google_doc_id" in config.config_json:
+        google_doc_id = config.config_json["google_doc_id"]
+    else:
+        print(f"DEBUG: No google_doc_id in template config found for {doc_type}, using default fallback")
+        google_doc_id = "1E6tnSk6jxXUM100lVJDUb_7ezYDQwo8TBpL975tr6Og"
 
-    google_doc_id = config.config_json["google_doc_id"]
     print(f"DEBUG: Using Google Doc ID: {google_doc_id}")
     
     # Extract credentials if provided manually in the Hub
-    custom_creds = config.config_json.get("google_credentials_json")
+    custom_creds = config.config_json.get("google_credentials_json") if (config and config.config_json) else None
     if custom_creds:
         print("DEBUG: Private Service Account JSON detected. Attempting to parse...")
         if isinstance(custom_creds, str):

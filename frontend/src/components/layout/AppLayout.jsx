@@ -55,7 +55,13 @@ export default function AppLayout() {
     return 'Dashboard';
   };
 
-  const currentTitle = getTitle();
+  const { logActivity } = useStore();
+
+  useEffect(() => {
+    if (logActivity) {
+      logActivity('page_view', `Visited ${currentTitle} page`);
+    }
+  }, [location.pathname, currentTitle, logActivity]);
 
   return (
     <div className={`portal ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>

@@ -1533,6 +1533,46 @@ export function StoreProvider({ children }) {
     ]);
   };
 
+  const [activityLogs, setActivityLogs] = useState(() => {
+    const saved = localStorage.getItem('activity_logs');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: 'l1', timestamp: new Date(Date.now() - 5 * 60000).toISOString(), userEmail: 'erin.jones@1-to-1.world', type: 'page_view', details: 'Visited Sales Tracker module' },
+      { id: 'l2', timestamp: new Date(Date.now() - 30 * 60000).toISOString(), userEmail: 'erin.jones@1-to-1.world', type: 'document_generation', details: 'Compiled & generated PDF for client quotation Q-2026-7924' },
+      { id: 'l3', timestamp: new Date(Date.now() - 120 * 60000).toISOString(), userEmail: 'sipho.nene@1-to-1.world', type: 'invoice_issue', details: 'Issued tax invoice INV-2026-089 for order Q-2025-042 (Amount: R 122,439)' },
+      { id: 'l4', timestamp: new Date(Date.now() - 180 * 60000).toISOString(), userEmail: 'sipho.nene@1-to-1.world', type: 'login', details: 'User logged into the portal' },
+      { id: 'l5', timestamp: new Date(Date.now() - 360 * 60000).toISOString(), userEmail: 'merlyn.mittins@1-to-1.world', type: 'waybill_edit', details: 'Deleted waybill DN-2026-002 from Logistics page' },
+      { id: 'l6', timestamp: new Date(Date.now() - 500 * 60000).toISOString(), userEmail: 'merlyn.mittins@1-to-1.world', type: 'login', details: 'User logged into the portal' }
+    ];
+  });
+
+  const logActivity = React.useCallback((type, details, specificEmail = null) => {
+    const activeEmail = specificEmail || (user ? user.email : 'anonymous@1-to-1.world');
+    const newLog = {
+      id: `act_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: new Date().toISOString(),
+      userEmail: activeEmail,
+      type,
+      details
+    };
+    setActivityLogs(prev => {
+      const updated = [newLog, ...prev].slice(0, 1000);
+      localStorage.setItem('activity_logs', JSON.stringify(updated));
+      return updated;
+    });
+  }, [user]);
+
+  const lastUserRef = React.useRef(null);
+  React.useEffect(() => {
+    if (user && lastUserRef.current !== user.email) {
+      logActivity('login', `User logged in`);
+      lastUserRef.current = user.email;
+    } else if (!user && lastUserRef.current) {
+      logActivity('logout', `User logged out`, lastUserRef.current);
+      lastUserRef.current = null;
+    }
+  }, [user, logActivity]);
+
   const moveOrder = (orderId, oldProjectKey, newProjectKey, clientContact, clientCompany, clientPhone, clientEmail) => {
     setProjects(prev => {
       const next = { ...prev };
@@ -1653,7 +1693,9 @@ export function StoreProvider({ children }) {
       setModuleConfig,
       getModuleName,
       projectManagers,
-      setProjectManagers
+      setProjectManagers,
+      activityLogs,
+      logActivity
     }}>
       {children}
     </StoreContext.Provider>

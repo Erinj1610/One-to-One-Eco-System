@@ -19,10 +19,10 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig, projectManagers, setProjectManagers } = useStore();
+  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig, projectManagers, setProjectManagers, activityLogs } = useStore();
 
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? ['General', 'Users', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
@@ -298,6 +298,18 @@ export default function SettingsPage() {
       alert('Network error');
     }
   };
+
+  const [activitySearch, setActivitySearch] = useState('');
+  const [activityFilterType, setActivityFilterType] = useState('All');
+
+  const filteredActivityLogs = (activityLogs || []).filter(log => {
+    const matchesSearch = 
+      log.userEmail.toLowerCase().includes(activitySearch.toLowerCase()) ||
+      log.details.toLowerCase().includes(activitySearch.toLowerCase()) ||
+      log.type.toLowerCase().includes(activitySearch.toLowerCase());
+    const matchesType = activityFilterType === 'All' || log.type === activityFilterType;
+    return matchesSearch && matchesType;
+  });
 
   return (
     <div className="animation-fade-in">
@@ -596,6 +608,117 @@ export default function SettingsPage() {
                 <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>The reset email has been sent. You can also copy and send this direct link manually.</div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'Activity log' && isAdmin && (
+        <div>
+          <div className="section-label">User Activity & Audit Logs</div>
+          <div className="card" style={{ marginBottom: '20px' }}>
+            <div className="card-body">
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Search logs by user, action, details..." 
+                    className="form-control"
+                    value={activitySearch}
+                    onChange={e => setActivitySearch(e.target.value)}
+                    style={{ paddingLeft: '32px' }}
+                  />
+                  <span style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }}>🔍</span>
+                </div>
+                <div>
+                  <select 
+                    className="form-control" 
+                    value={activityFilterType}
+                    onChange={e => setActivityFilterType(e.target.value)}
+                    style={{ width: '180px' }}
+                  >
+                    <option value="All">All Activity Types</option>
+                    <option value="login">Logins</option>
+                    <option value="logout">Logouts</option>
+                    <option value="page_view">Page Views</option>
+                    <option value="document_generation">Document Compiles</option>
+                    <option value="document_export">Document Exports</option>
+                    <option value="invoice_issue">Invoice Issues</option>
+                    <option value="waybill_edit">Logistics Edits</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table className="table" style={{ fontSize: '12px', margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '160px' }}>Timestamp</th>
+                      <th style={{ width: '220px' }}>User Email</th>
+                      <th style={{ width: '150px' }}>Action Type</th>
+                      <th>Activity Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredActivityLogs.map(log => {
+                      const badgeColor = {
+                        login: 'rgba(74, 222, 128, 0.15)',
+                        logout: 'rgba(156, 163, 175, 0.15)',
+                        page_view: 'rgba(96, 165, 250, 0.15)',
+                        document_generation: 'rgba(251, 146, 60, 0.15)',
+                        document_export: 'rgba(139, 92, 246, 0.15)',
+                        invoice_issue: 'rgba(245, 158, 11, 0.15)',
+                        waybill_edit: 'rgba(239, 68, 68, 0.15)'
+                      }[log.type] || 'var(--bg-secondary)';
+
+                      const textColor = {
+                        login: '#4ade80',
+                        logout: '#9ca3af',
+                        page_view: '#60a5fa',
+                        document_generation: '#fb923c',
+                        document_export: '#a78bfa',
+                        invoice_issue: '#f59e0b',
+                        waybill_edit: '#ef4444'
+                      }[log.type] || 'var(--text-secondary)';
+
+                      return (
+                        <tr key={log.id}>
+                          <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                            {new Date(log.timestamp).toLocaleString('en-ZA')}
+                          </td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {log.userEmail}
+                          </td>
+                          <td>
+                            <span style={{ 
+                              padding: '2px 8px', 
+                              borderRadius: '4px', 
+                              fontSize: '10px', 
+                              fontWeight: 700, 
+                              textTransform: 'uppercase',
+                              background: badgeColor,
+                              color: textColor
+                            }}>
+                              {log.type.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td style={{ color: 'var(--text-primary)' }}>
+                            {log.details}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {filteredActivityLogs.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                          No activity logs found matching the filter criteria.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}

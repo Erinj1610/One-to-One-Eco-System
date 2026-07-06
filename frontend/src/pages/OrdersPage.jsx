@@ -281,7 +281,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers } = useStore();
+  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity } = useStore();
   const { isAdmin } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed_orders') === 'true';
@@ -506,6 +506,9 @@ export default function OrdersPage() {
     }
 
     setLoadingLivePreview(true);
+    if (logActivity) {
+      logActivity('document_generation', `Initiated preview compile of ${docType} for order ${selectedOrderId}`);
+    }
     try {
       const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
       const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
@@ -702,6 +705,9 @@ export default function OrdersPage() {
     }
 
     setExportingDocx(true);
+    if (logActivity) {
+      logActivity('document_export', `Exported ${docType} PDF for order ${selectedOrderId}`);
+    }
     try {
       const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
       const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
@@ -3132,6 +3138,7 @@ export default function OrdersPage() {
                       ) : (
                         activeDocType === 'quote' || 
                         activeDocType === 'boq_doc' || 
+                        activeDocType === 'schedule' || 
                         activeDocType === 'deposit_invoice' || 
                         activeDocType === 'balance_invoice' || 
                         activeDocType === 'tax_invoice' || 
