@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { calculateProjectStageAndProgress } from './ProjectList';
 import { useStore } from '../../context/StoreContext';
 import { useAuth } from '../../context/AuthContext';
 import { useResizableTable } from '../../components/common/ResizableTable';
@@ -64,7 +65,7 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers } = useStore();
+  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers, alertSettings } = useStore();
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   
@@ -116,6 +117,10 @@ export default function ProjectManagement() {
   }, [location.state]);
 
   const p = projects[id];
+  const { stage: computedStage, progressPct: computedProgress } = useMemo(() => {
+    if (!p) return { stage: 'Stage 1', progressPct: 0 };
+    return calculateProjectStageAndProgress(p);
+  }, [p]);
 
   const userContact = useMemo(() => {
     if (isAdmin) return null;
@@ -819,11 +824,11 @@ export default function ProjectManagement() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Active Stage</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : p.stage}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : computedStage}</span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
             <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Blended Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || alertSettings?.defaultTargetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
               {p.isDraft || grandContractValue === 0 ? '—' : `${blendedMargin}%`}
             </span>
           </div>
@@ -955,16 +960,14 @@ export default function ProjectManagement() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage:</span>
-                    <select 
-                      className="form-control" 
-                      value={p.stage || 'Pending'} 
-                      onChange={(e) => updateProject(id, 'stage', e.target.value)}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Ongoing">Ongoing</option>
-                      <option value="Complete">Complete</option>
-                    </select>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Current Stage & Progress:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="badge b-info" style={{ fontSize: '11px', fontWeight: 700 }}>{computedStage}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>({computedProgress}%)</span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: '1.4', marginTop: '2px' }}>
+                      ⚙️ Dynamic sync based on design fees and order status
+                    </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Start Date:</span>
@@ -998,7 +1001,7 @@ export default function ProjectManagement() {
                     <input 
                       type="number" 
                       className="form-control" 
-                      value={p.targetMargin || 39} 
+                      value={p.targetMargin || alertSettings?.defaultTargetMargin || 39} 
                       onChange={(e) => updateProject(id, 'targetMargin', Number(e.target.value) || 0)} 
                     />
                   </div>

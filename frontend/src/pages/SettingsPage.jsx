@@ -29,7 +29,29 @@ export default function SettingsPage() {
   const [activeRole, setActiveRole] = useState('Admin');
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
-  const [general, setGeneral] = useState({ companyName: '1-to-1 World', email: 'studio@1-to-1.world', phone: '+27 21 000 0000', address: 'Woodstock, Cape Town', vat: '4880123456', currency: 'ZAR' });
+  const [general, setGeneral] = useState({ 
+    companyName: '1-to-1 World', 
+    email: 'studio@1-to-1.world', 
+    phone: '+27 21 000 0000', 
+    address: 'Woodstock, Cape Town', 
+    vat: '4880123456', 
+    currency: 'ZAR',
+    defaultTargetMargin: 39
+  });
+
+  useEffect(() => {
+    if (alertSettings) {
+      setGeneral({
+        companyName: alertSettings.general?.companyName || '1-to-1 World',
+        email: alertSettings.general?.email || 'studio@1-to-1.world',
+        phone: alertSettings.general?.phone || '+27 21 000 0000',
+        address: alertSettings.general?.address || 'Woodstock, Cape Town',
+        vat: alertSettings.general?.vat || '4880123456',
+        currency: alertSettings.general?.currency || 'ZAR',
+        defaultTargetMargin: alertSettings.defaultTargetMargin || 39
+      });
+    }
+  }, [alertSettings]);
 
   // Dynamic Dropdowns Lookup State
   const [lookups, setLookups] = useState([]);
@@ -333,13 +355,44 @@ export default function SettingsPage() {
                 <div className="form-row"><label className="form-label">VAT number</label><input className="form-control" value={general.vat} onChange={e => setGeneral(g => ({...g, vat: e.target.value}))} /></div>
               </div>
               <div className="form-row"><label className="form-label">Address</label><input className="form-control" value={general.address} onChange={e => setGeneral(g => ({...g, address: e.target.value}))} /></div>
-              <div className="form-row"><label className="form-label">Currency</label>
-                <select className="form-control" value={general.currency} onChange={e => setGeneral(g => ({...g, currency: e.target.value}))}>
-                  <option>ZAR</option><option>USD</option><option>EUR</option><option>GBP</option>
-                </select>
+              <div className="row-2">
+                <div className="form-row">
+                  <label className="form-label">Currency</label>
+                  <select className="form-control" value={general.currency} onChange={e => setGeneral(g => ({...g, currency: e.target.value}))}>
+                    <option>ZAR</option><option>USD</option><option>EUR</option><option>GBP</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label className="form-label">Default Target Margin (%)</label>
+                  <input 
+                    type="number" 
+                    className="form-control" 
+                    value={general.defaultTargetMargin || 39} 
+                    onChange={e => setGeneral(g => ({...g, defaultTargetMargin: parseInt(e.target.value) || 39}))} 
+                  />
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                <button className="btn btn-primary">Save changes</button>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    setAlertSettings(prev => ({
+                      ...prev,
+                      general: {
+                        companyName: general.companyName,
+                        email: general.email,
+                        phone: general.phone,
+                        address: general.address,
+                        vat: general.vat,
+                        currency: general.currency
+                      },
+                      defaultTargetMargin: Number(general.defaultTargetMargin) || 39
+                    }));
+                    alert('General settings & target margins saved successfully!');
+                  }}
+                >
+                  Save changes
+                </button>
               </div>
             </div>
           </div>

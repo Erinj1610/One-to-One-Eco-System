@@ -1140,6 +1140,7 @@ export function StoreProvider({ children }) {
   const [projectManagers, setProjectManagers] = useState([]);
 
   const defaultSettings = {
+    defaultTargetMargin: 39,
     crm: {
       lostClients: true,
       inactiveClients: true,
@@ -1408,6 +1409,8 @@ export function StoreProvider({ children }) {
         orders: project.orders || [],
         stage: project.stage || 'Stage 1',
         status: project.status || 'On track',
+        targetMargin: project.targetMargin || alertSettings.defaultTargetMargin || 39,
+        actualMargin: project.actualMargin || alertSettings.defaultTargetMargin || 39,
         delay: '—',
         start: project.start || new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
         deadline: project.deadline || 'TBD',

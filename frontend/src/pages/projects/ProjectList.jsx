@@ -10,6 +10,90 @@ import {
 import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSidebar';
 
 
+export function calculateProjectStageAndProgress(p) {
+  const designFees = p.designFees || [];
+  const orders = p.orders || [];
+  
+  if (designFees.length === 0 && orders.length === 0) {
+    const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
+    const manualStage = p.stage || 'Stage 1';
+    const manualIdx = stagesList.indexOf(manualStage);
+    const manualProgress = manualIdx === -1 ? 0 : Math.round(((manualIdx + 1) / stagesList.length) * 100);
+    return { stage: manualStage, progressPct: manualProgress };
+  }
+
+  let totalWeight = 0;
+  let earnedProgress = 0;
+
+  const hasDesign = designFees.length > 0;
+  const hasOrders = orders.length > 0;
+  
+  const designWeight = (hasDesign && hasOrders) ? 0.4 : 1.0;
+  const orderWeight = (hasDesign && hasOrders) ? 0.6 : 1.0;
+
+  if (hasDesign) {
+    let feeSum = 0;
+    designFees.forEach(df => {
+      if (df.status === 'Paid' || df.feeStatus === 'Final Phase') {
+        feeSum += 100;
+      } else if (df.feeStatus === 'Detailed Design') {
+        feeSum += 80;
+      } else if (df.feeStatus === 'Schematic Phase') {
+        feeSum += 50;
+      } else if (df.feeStatus === 'Concept Phase') {
+        feeSum += 25;
+      } else {
+        feeSum += 10;
+      }
+    });
+    const avgFeeProgress = feeSum / designFees.length;
+    earnedProgress += avgFeeProgress * designWeight;
+    totalWeight += designWeight;
+  }
+
+  if (hasOrders) {
+    let orderSum = 0;
+    orders.forEach(o => {
+      const status = (o.status || 'Pending').toLowerCase();
+      if (status === 'delivered') {
+        orderSum += 100;
+      } else if (status === 'in transit') {
+        orderSum += 80;
+      } else if (status === 'processing') {
+        orderSum += 50;
+      } else if (status === 'pending' || status === 'draft') {
+        orderSum += 25;
+      } else {
+        orderSum += 10;
+      }
+    });
+    const avgOrderProgress = orderSum / orders.length;
+    earnedProgress += avgOrderProgress * orderWeight;
+    totalWeight += orderWeight;
+  }
+
+  const progressPct = Math.round(earnedProgress / totalWeight);
+  
+  let stage = 'Stage 1';
+  if (progressPct >= 100) {
+    stage = 'Complete';
+  } else if (progressPct >= 85) {
+    stage = 'Snags';
+  } else if (progressPct >= 70) {
+    stage = 'Stage 5';
+  } else if (progressPct >= 50) {
+    stage = 'Stage 4';
+  } else if (progressPct >= 30) {
+    stage = 'Stage 3';
+  } else if (progressPct >= 15) {
+    stage = 'Stage 2';
+  } else {
+    stage = 'Stage 1';
+  }
+
+  return { stage, progressPct };
+}
+
 export default function ProjectList() {
   const { projects, addProject, contacts, getModuleName } = useStore();
   const { user, isAdmin } = useAuth();
@@ -199,8 +283,8 @@ export default function ProjectList() {
         case 'orders':
           return p.orders?.length || 0;
         case 'stage': {
-          const idx = stagesList.indexOf(p.stage);
-          return idx === -1 ? 0 : idx;
+          const { progressPct } = calculateProjectStageAndProgress(p);
+          return progressPct;
         }
         case 'margin': {
           let totalValue = p.feeValue || 0;
@@ -565,10 +649,7 @@ export default function ProjectList() {
             </thead>
             <tbody>
               {sortedProjects.map(p => {
-                // Calculate percentage of progress based on stage
-                const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
-                const currentStageIdx = stagesList.indexOf(p.stage);
-                const progressPct = currentStageIdx === -1 ? 0 : Math.round(((currentStageIdx + 1) / stagesList.length) * 100);
+                const { stage, progressPct } = calculateProjectStageAndProgress(p);
                 
                 // Upgraded calculation blocks
                 let totalValue = p.feeValue || 0;
@@ -628,7 +709,7 @@ export default function ProjectList() {
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 500 }}>
-                          <span>{p.stage}</span>
+                          <span>{stage}</span>
                           <span style={{ color: 'var(--text-tertiary)' }}>{progressPct}%</span>
                         </div>
                         <div style={{ width: '100%', height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
