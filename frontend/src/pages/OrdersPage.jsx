@@ -490,6 +490,8 @@ export default function OrdersPage() {
       docType = 'QUOTATION';
     } else if (targetTab === 'boq_doc') {
       docType = 'BOQ';
+    } else if (targetTab === 'schedule') {
+      docType = 'SCHEDULE';
     } else if (targetTab === 'deposit_invoice') {
       docType = 'DEPOSIT_INVOICE';
     } else if (targetTab === 'balance_invoice') {
@@ -684,6 +686,8 @@ export default function OrdersPage() {
       docType = 'QUOTATION';
     } else if (activeDocType === 'boq_doc') {
       docType = 'BOQ';
+    } else if (activeDocType === 'schedule') {
+      docType = 'SCHEDULE';
     } else if (activeDocType === 'deposit_invoice') {
       docType = 'DEPOSIT_INVOICE';
     } else if (activeDocType === 'balance_invoice') {
@@ -3030,7 +3034,7 @@ export default function OrdersPage() {
                     {[
                       { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
                       { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
-                      { id: 'schedule', name: 'Fitting Schedule', icon: <ClipboardList size={14} /> },
+                      { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
                       { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
                       { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
                       { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
@@ -3223,7 +3227,7 @@ export default function OrdersPage() {
                               {activeDocType === 'balance_invoice' && 'Balance Invoice'}
                               {activeDocType === 'tax_invoice' && 'Tax Invoice (Full)'}
                               {activeDocType === 'invoice' && 'Tax Invoice'}
-                              {activeDocType === 'schedule' && 'Fitting Installation Schedule'}
+                              {activeDocType === 'schedule' && 'Lighting Schedule'}
                               {activeDocType === 'delivery' && 'Warehouse Delivery Note'}
                               {activeDocType === 'statement' && 'Quotation Progress Statement'}
                             </span>
@@ -3577,11 +3581,11 @@ export default function OrdersPage() {
                           </div>
                         )}
 
-                        {/* 3. TECHNICAL FITTING SCHEDULE OUTFLOW (PRICES COMPLETELY HIDDEN) */}
+                        {/* 3. TECHNICAL LIGHTING SCHEDULE OUTFLOW (PRICES COMPLETELY HIDDEN) */}
                         {activeDocType === 'schedule' && (
                           <div>
                             <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '12px', marginBottom: '18px', fontSize: '11px', color: '#475569' }}>
-                              <strong>TECHNICAL INSTALLATION DIRECTIVE:</strong> This fitting schedule contains exclusively installation and product specification details for site execution. **All pricing structures are hidden** to maintain clean logistics focus on site.
+                              <strong>TECHNICAL INSTALLATION DIRECTIVE:</strong> This lighting schedule contains exclusively installation and product specification details for site execution. **All pricing structures are hidden** to maintain clean logistics focus on site.
                             </div>
 
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>

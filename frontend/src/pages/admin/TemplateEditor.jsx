@@ -77,6 +77,12 @@ const DOCUMENT_TYPES = {
     name: '🚚 Delivery Note',
     description: 'Word (.docx) or Visual HTML template issued upon client receipt of physical fixture boxes.',
     tokens: SHARED_ORDER_TOKENS
+  },
+  SCHEDULE: {
+    id: 'SCHEDULE',
+    name: '📋 Lighting Schedule',
+    description: 'Word (.docx) or Visual HTML template containing product specifications and technical execution details.',
+    tokens: SHARED_ORDER_TOKENS
   }
 };
 
