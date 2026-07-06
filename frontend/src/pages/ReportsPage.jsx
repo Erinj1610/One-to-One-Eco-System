@@ -103,6 +103,18 @@ export default function ReportsPage() {
       });
   }, []);
 
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (drilldownModal.isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [drilldownModal.isOpen]);
+
   const saveBudgetsConfig = (newConfig) => {
     setBudgetsConfig(newConfig);
     fetch(`${API_BASE}/api/settings/budgetsConfig`, {
