@@ -55,6 +55,7 @@ export default function AppLayout() {
     return 'Dashboard';
   };
 
+  const currentTitle = getTitle();
   const { logActivity } = useStore();
 
   useEffect(() => {
