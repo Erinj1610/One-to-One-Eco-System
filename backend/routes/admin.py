@@ -265,13 +265,22 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
         custom_creds = None
         if config:
             custom_creds = config.config_json.get("google_credentials_json")
-            if custom_creds and isinstance(custom_creds, str):
-                import json
-                try:
-                    custom_creds = json.loads(custom_creds)
-                except Exception as j_err:
-                    print(f"DEBUG: JSON credentials load error: {j_err}")
-                    custom_creds = None
+            
+        if not custom_creds:
+            all_configs = db.query(TemplateConfig).all()
+            for ac in all_configs:
+                if ac.config_json and ac.config_json.get("google_credentials_json"):
+                    custom_creds = ac.config_json.get("google_credentials_json")
+                    print(f"DEBUG: Falling back to credentials from config '{ac.template_key}' for docx merge")
+                    break
+
+        if custom_creds and isinstance(custom_creds, str):
+            import json
+            try:
+                custom_creds = json.loads(custom_creds)
+            except Exception as j_err:
+                print(f"DEBUG: JSON credentials load error: {j_err}")
+                custom_creds = None
                     
         doc_id_to_use = config.config_json.get("google_doc_id") if config else None
         if not doc_id_to_use:
@@ -366,6 +375,14 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
     
     # Extract credentials if provided manually in the Hub
     custom_creds = config.config_json.get("google_credentials_json") if (config and config.config_json) else None
+    if not custom_creds:
+        all_configs = db.query(TemplateConfig).all()
+        for ac in all_configs:
+            if ac.config_json and ac.config_json.get("google_credentials_json"):
+                custom_creds = ac.config_json.get("google_credentials_json")
+                print(f"DEBUG: Falling back to credentials from config '{ac.template_key}' for Google Doc merge")
+                break
+
     if custom_creds:
         print("DEBUG: Private Service Account JSON detected. Attempting to parse...")
         if isinstance(custom_creds, str):
