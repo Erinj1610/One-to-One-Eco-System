@@ -69,6 +69,21 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             logger.warn(f"Failed to fetch parents for template {template_id}: {pe}")
             parents = []
 
+        # If no parent folders, look for any folder shared with the Service Account to inherit quota
+        if not parents:
+            try:
+                folder_results = drive_service.files().list(
+                    q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+                    fields="files(id, name)",
+                    pageSize=5
+                ).execute()
+                files_list = folder_results.get('files', [])
+                if files_list:
+                    parents = [files_list[0]['id']]
+                    logger.info(f"Quota Fallback: Using discovered parent folder '{files_list[0]['name']}' ({parents[0]})")
+            except Exception as fe:
+                logger.warn(f"Failed to query shared folders fallback: {fe}")
+
         # 1. Clone the template
         logger.info(f"Cloning template {template_id}...")
         copy_metadata = {

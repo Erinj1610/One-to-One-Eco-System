@@ -485,6 +485,21 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
         except Exception as pe:
             logger.warn(f"Could not retrieve parents for template {target_doc_id}: {pe}")
             
+        # If no parent folders, look for any folder shared with the Service Account to inherit quota
+        if not parent_folders:
+            try:
+                folder_results = drive_service.files().list(
+                    q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+                    fields="files(id, name)",
+                    pageSize=5
+                ).execute()
+                files_list = folder_results.get('files', [])
+                if files_list:
+                    parent_folders = [files_list[0]['id']]
+                    logger.info(f"Quota Fallback: Using discovered parent folder '{files_list[0]['name']}' ({parent_folders[0]})")
+            except Exception as fe:
+                logger.warn(f"Failed to query shared folders fallback: {fe}")
+
         file_metadata = {
             'name': f"TEMP_GEN_{output_pdf_name.replace('.pdf', '')}",
             'mimeType': 'application/vnd.google-apps.document' # Injects conversion to Google Docs format
