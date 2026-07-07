@@ -8,6 +8,28 @@ from googleapiclient.http import MediaFileUpload
 
 logger = logging.getLogger(__name__)
 
+def inject_cell_shading(row_xml, fill_color):
+    """
+    Shades all cells (<w:tc>) inside a table row (<w:tr>) XML by either appending 
+    shading properties to existing cell properties (<w:tcPr>) or creating new ones.
+    This ensures we generate valid XML and avoid duplicate properties tags.
+    """
+    tc_pattern = re.compile(r'(<w:tc\b[^>]*>.*?</w:tc>)', re.DOTALL)
+    
+    def shade_cell(tc_match):
+        tc_xml = tc_match.group(1)
+        if '<w:tcPr>' in tc_xml:
+            if '<w:shd ' in tc_xml:
+                tc_xml = re.sub(r'<w:shd[^>]*>', f'<w:shd w:fill="{fill_color}"/>', tc_xml)
+            else:
+                tc_xml = tc_xml.replace('<w:tcPr>', f'<w:tcPr><w:shd w:fill="{fill_color}"/>')
+        else:
+            # Match opening tag and append tcPr
+            tc_xml = re.sub(r'(<w:tc\b[^>]*>)', r'\1<w:tcPr><w:shd w:fill="' + fill_color + '"/></w:tcPr>', tc_xml, count=1)
+        return tc_xml
+        
+    return tc_pattern.sub(shade_cell, row_xml)
+
 _word_app = None
 
 def get_word_app():
@@ -192,6 +214,27 @@ def fix_template_loop_positions(xml_content):
             xml_content = xml_content[:end_pos] + xml_content[m_floor_end.end():]
             xml_content = xml_content[:tbl_end_pos] + "{{/floor}}" + xml_content[tbl_end_pos:]
 
+    # 5. Shift {{#items}} to be before its containing <w:tr>
+    m_items = re.search(r'{{\s*#items\s*}}', xml_content, re.IGNORECASE)
+    if m_items:
+        start_pos = m_items.start()
+        tr_match = list(re.finditer(r'<w:tr\b', xml_content[:start_pos]))
+        if tr_match:
+            tr_pos = tr_match[-1].start()
+            xml_content = xml_content[:start_pos] + xml_content[m_items.end():]
+            xml_content = xml_content[:tr_pos] + "{{#items}}" + xml_content[tr_pos:]
+
+    # 6. Shift {{/items}} to be after its containing </w:tr>
+    m_items_end = re.search(r'{{\s*/items\s*}}', xml_content, re.IGNORECASE)
+    if m_items_end:
+        end_pos = m_items_end.start()
+        tr_end_match = list(re.finditer(r'</w:tr>', xml_content[end_pos:]))
+        if tr_end_match:
+            tr_end_pos = end_pos + tr_end_match[0].end()
+            xml_content = xml_content[:end_pos] + xml_content[m_items_end.end():]
+            tr_end_pos_offset = tr_end_pos - (m_items_end.end() - end_pos)
+            xml_content = xml_content[:tr_end_pos_offset] + "{{/items}}" + xml_content[tr_end_pos_offset:]
+
     return xml_content
 
 
@@ -230,7 +273,51 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
     items_list = tokens.get("items", [])
     if not isinstance(items_list, list):
         items_list = []
+
+    # Enrich items with product details from the database (e.g. cutout, color, wattage, light source etc.)
+    enriched_items = []
+    try:
+        from database.cloud_sql import SessionLocal
+        from models.orm_models import Product
+        db = SessionLocal()
+        try:
+            skus = [item.get('code') for item in items_list if item.get('code')]
+            products = db.query(Product).filter(Product.sku.in_(skus)).all()
+            prod_map = {p.sku: p for p in products if p.sku}
+            
+            for item in items_list:
+                item_copy = dict(item)
+                code = item_copy.get('code')
+                prod = prod_map.get(code)
+                if prod:
+                    item_copy['material/colour'] = prod.color or ''
+                    item_copy['Cut Out Size'] = prod.cutout or ''
+                    # Use dimming from order item if present, otherwise product default
+                    item_copy['Dimming Type'] = item_copy.get('dimming') or prod.dimming_protocol or 'Non-dim'
+                    item_copy['Light Sorce'] = prod.light_source_type or ''
+                    item_copy['Wattage'] = f"{prod.system_power}W" if prod.system_power else ""
+                    item_copy['wireinformation'] = prod.driver_spec or ''
+                else:
+                    item_copy['material/colour'] = ''
+                    item_copy['Cut Out Size'] = ''
+                    item_copy['Dimming Type'] = item_copy.get('dimming') or 'Non-dim'
+                    item_copy['Light Sorce'] = ''
+                    item_copy['Wattage'] = ''
+                    item_copy['wireinformation'] = ''
+                
+                # Image placeholders
+                item_copy['Image'] = ''
+                item_copy['Technical Image'] = ''
+                
+                enriched_items.append(item_copy)
+        finally:
+            db.close()
+    except Exception as enrich_err:
+        logger.warning(f"Failed to enrich items with product specs: {enrich_err}")
+        enriched_items = items_list
         
+    items_list = enriched_items
+    
     with zipfile.ZipFile(template_path, 'r') as zin:
         with zipfile.ZipFile(temp_docx_path, 'w', zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -246,6 +333,60 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                     # Syntax: {{#floor}} ... {{/floor}} and inside: {{#area}} ... {{/area}}
                     if item.filename == 'word/document.xml':
                         xml_content = fix_template_loop_positions(xml_content)
+                        
+                        # Custom 3-row block repeater for flat SCHEDULE layout
+                        schedule_block_pattern = re.compile(
+                            r'(<w:tr\b[^>]*>.*?item\.description.*?</w:tr>.*?'
+                            r'<w:tr\b[^>]*>.*?Dimming Type.*?</w:tr>.*?'
+                            r'<w:tr\b[^>]*>.*?wireinformation.*?</w:tr>)',
+                            re.DOTALL | re.IGNORECASE
+                        )
+                        if schedule_block_pattern.search(xml_content):
+                            logger.info("Detected multi-row SCHEDULE template layout. Repeating 3-row product blocks...")
+                            def replace_schedule_block(match):
+                                block_xml = match.group(1)
+                                repeated_blocks = []
+                                for idx, list_item in enumerate(items_list):
+                                    block_copy = block_xml
+                                    block_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), block_copy, flags=re.IGNORECASE)
+                                    for item_key, item_val in list_item.items():
+                                        # e.g. {{item.description}}
+                                        pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
+                                        block_copy = re.sub(pattern, lambda m, val=item_val: str(val), block_copy, flags=re.IGNORECASE)
+                                        
+                                        # Also substitute non-prefixed fields (e.g. {{Dimming Type}}, {{Cut Out Size}})
+                                        non_pref_pattern = r'{{\s*' + re.escape(item_key) + r'\s*}}'
+                                        block_copy = re.sub(non_pref_pattern, lambda m, val=item_val: str(val), block_copy, flags=re.IGNORECASE)
+                                    repeated_blocks.append(block_copy)
+                                return "".join(repeated_blocks)
+                            
+                            xml_content = schedule_block_pattern.sub(replace_schedule_block, xml_content)
+                            
+                        # 0. Parse Items Block loops (generic multi-row looping wrapper)
+                        # Syntax: {{#items}} ... {{/items}} wrapping table rows
+                        items_block_pattern = re.compile(r'({{\s*#items\s*}}.*?{{\s*/items\s*}})', re.DOTALL | re.IGNORECASE)
+                        
+                        def replace_items_block(items_match):
+                            block_template = items_match.group(1)
+                            clean_template = re.sub(r'{{\s*#items\s*}}', '', block_template, flags=re.IGNORECASE)
+                            clean_template = re.sub(r'{{\s*/items\s*}}', '', clean_template, flags=re.IGNORECASE)
+                            
+                            expanded_items = []
+                            for idx, list_item in enumerate(items_list):
+                                item_xml = clean_template
+                                item_xml = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), item_xml, flags=re.IGNORECASE)
+                                for item_key, item_val in list_item.items():
+                                    pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
+                                    item_xml = re.sub(pattern, lambda m, val=item_val: str(val), item_xml, flags=re.IGNORECASE)
+                                    
+                                    # Also substitute non-prefixed fields (e.g. {{Dimming Type}}, {{Cut Out Size}})
+                                    non_pref_pattern = r'{{\s*' + re.escape(item_key) + r'\s*}}'
+                                    item_xml = re.sub(non_pref_pattern, lambda m, val=item_val: str(val), item_xml, flags=re.IGNORECASE)
+                                expanded_items.append(item_xml)
+                            return "".join(expanded_items)
+                            
+                        xml_content = items_block_pattern.sub(replace_items_block, xml_content)
+                            
                         floors_data = tokens.get("floors", [])
                         
                         # 1. First Parse Floor Block loops
@@ -335,7 +476,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                         floor_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>"
                                         floor_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=floor_desc_val: val, floor_row, flags=re.IGNORECASE)
                                         floor_row = re.sub(r'{{\s*item\.index\s*}}', '', floor_row, flags=re.IGNORECASE)
-                                        floor_row = floor_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F1F5F9\"/></w:tcPr>')
+                                        floor_row = inject_cell_shading(floor_row, "F1F5F9")
                                         repeated_rows.append(floor_row)
                                         
                                     if current_area and current_area != last_area:
@@ -346,7 +487,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                                         area_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>"
                                         area_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=area_desc_val: val, area_row, flags=re.IGNORECASE)
                                         area_row = re.sub(r'{{\s*item\.index\s*}}', '', area_row, flags=re.IGNORECASE)
-                                        area_row = area_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F8FAFC\"/></w:tcPr>')
+                                        area_row = inject_cell_shading(area_row, "F8FAFC")
                                         repeated_rows.append(area_row)
                                         
                                     row_copy = row_xml
@@ -370,66 +511,7 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                             
                         xml_content = tr_pattern.sub(replace_row if 'replace_row' in locals() else replace_flat_row, xml_content)
                         
-                        # 2. Fallback / Flat Table Repeater (if flat template remains or flat payment list is used)
-                        tr_pattern = re.compile(r'(<w:tr\b[^>]*>.*?</w:tr>)', re.DOTALL)
-                        payments_list = tokens.get("payments", [])
-                        if not isinstance(payments_list, list):
-                            payments_list = []
-                            
-                        def replace_flat_row(match):
-                            row_xml = match.group(1)
-                            # Fallback item parser for non-nested flat list templates
-                            if 'item.' in row_xml and items_list and '#floor' not in xml_content:
-                                repeated_rows = []
-                                last_floor = None
-                                last_area = None
-                                for idx, list_item in enumerate(items_list):
-                                    current_floor = list_item.get('floor', '').strip()
-                                    current_area = list_item.get('area', '').strip()
-                                    
-                                    if current_floor and current_floor != last_floor:
-                                        last_floor = current_floor
-                                        last_area = None
-                                        floor_row = row_xml
-                                        for key in list_item.keys():
-                                            floor_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', floor_row, flags=re.IGNORECASE)
-                                        floor_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"24\"/><w:color w:val=\"000000\"/></w:rPr><w:t>{current_floor.upper()} FLOOR</w:t></w:r>"
-                                        floor_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=floor_desc_val: val, floor_row, flags=re.IGNORECASE)
-                                        floor_row = re.sub(r'{{\s*item\.index\s*}}', '', floor_row, flags=re.IGNORECASE)
-                                        floor_row = floor_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F1F5F9\"/></w:tcPr>')
-                                        repeated_rows.append(floor_row)
-                                        
-                                    if current_area and current_area != last_area:
-                                        last_area = current_area
-                                        area_row = row_xml
-                                        for key in list_item.keys():
-                                            area_row = re.sub(r'{{\s*item\.' + re.escape(key) + r'\s*}}', '', area_row, flags=re.IGNORECASE)
-                                        area_desc_val = f"<w:r><w:rPr><w:b/><w:sz w:val=\"20\"/><w:color w:val=\"475569\"/></w:rPr><w:t>  ↳ Area: {current_area}</w:t></w:r>"
-                                        area_row = re.sub(r'{{\s*item\.description\s*}}', lambda m, val=area_desc_val: val, area_row, flags=re.IGNORECASE)
-                                        area_row = re.sub(r'{{\s*item\.index\s*}}', '', area_row, flags=re.IGNORECASE)
-                                        area_row = area_row.replace('<w:tc>', '<w:tc><w:tcPr><w:shd w:fill=\"F8FAFC\"/></w:tcPr>')
-                                        repeated_rows.append(area_row)
-                                        
-                                    row_copy = row_xml
-                                    row_copy = re.sub(r'{{\s*item\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
-                                    for item_key, item_val in list_item.items():
-                                        pattern = r'{{\s*item\.' + re.escape(item_key) + r'\s*}}'
-                                        row_copy = re.sub(pattern, lambda m, val=item_val: str(val), row_copy, flags=re.IGNORECASE)
-                                    repeated_rows.append(row_copy)
-                                return "".join(repeated_rows)
-                            elif 'payment.' in row_xml and payments_list:
-                                repeated_rows = []
-                                for idx, list_payment in enumerate(payments_list):
-                                    row_copy = row_xml
-                                    row_copy = re.sub(r'{{\s*payment\.index\s*}}', str(idx + 1), row_copy, flags=re.IGNORECASE)
-                                    for pay_key, pay_val in list_payment.items():
-                                        pattern = r'{{\s*payment\.' + re.escape(pay_key) + r'\s*}}'
-                                        row_copy = re.sub(pattern, lambda m, val=pay_val: str(val), row_copy, flags=re.IGNORECASE)
-                                    repeated_rows.append(row_copy)
-                                return "".join(repeated_rows)
-                            return row_xml
-                            
-                        xml_content = tr_pattern.sub(replace_row if 'replace_row' in locals() else replace_flat_row, xml_content)
+
                         
                     # Global token replacement with optional whitespace support
                     for key, val in tokens.items():

@@ -543,7 +543,7 @@ export default function OrdersPage() {
           stockStatus: item.stockStatus || 'In Stock',
           eta: item.eta || '4 weeks'
         }));
-      } else if (docType === 'BOQ') {
+      } else if (docType === 'BOQ' || docType === 'SCHEDULE') {
         const sortedItems = [...activeOrderItems].sort((a, b) => {
           const floorA = (a.floor || '').toLowerCase();
           const floorB = (b.floor || '').toLowerCase();
@@ -681,6 +681,7 @@ export default function OrdersPage() {
     if (workspaceSubTab === 'doc_gen' && (
       selectedDocType === 'quote' || 
       selectedDocType === 'boq_doc' || 
+      selectedDocType === 'schedule' || 
       selectedDocType === 'deposit_invoice' || 
       selectedDocType === 'balance_invoice' || 
       selectedDocType === 'tax_invoice' || 
@@ -742,7 +743,7 @@ export default function OrdersPage() {
           stockStatus: item.stockStatus || 'In Stock',
           eta: item.eta || '4 weeks'
         }));
-      } else if (docType === 'BOQ') {
+      } else if (docType === 'BOQ' || docType === 'SCHEDULE') {
         const sortedItems = [...activeOrderItems].sort((a, b) => {
           const floorA = (a.floor || '').toLowerCase();
           const floorB = (b.floor || '').toLowerCase();
