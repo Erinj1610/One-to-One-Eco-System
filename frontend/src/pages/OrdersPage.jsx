@@ -461,6 +461,15 @@ export default function OrdersPage() {
   const [livePreviewUrl, setLivePreviewUrl] = useState(null);
   const [loadingLivePreview, setLoadingLivePreview] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
+  const showIframe = (
+    activeDocType === 'quote' || 
+    activeDocType === 'boq_doc' || 
+    activeDocType === 'schedule' || 
+    activeDocType === 'deposit_invoice' || 
+    activeDocType === 'balance_invoice' || 
+    activeDocType === 'tax_invoice' || 
+    activeDocType === 'statement'
+  ) && !!livePreviewUrl;
 
   // Helper to roll up items for the summarized Quotation
   const groupItemsForQuotation = (items) => {
@@ -3144,19 +3153,7 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
                         </div>
                       ) : (
-                        (() => {
-                          const showIframe = (
-                            activeDocType === 'quote' || 
-                            activeDocType === 'boq_doc' || 
-                            activeDocType === 'schedule' || 
-                            activeDocType === 'deposit_invoice' || 
-                            activeDocType === 'balance_invoice' || 
-                            activeDocType === 'tax_invoice' || 
-                            activeDocType === 'statement'
-                          ) && livePreviewUrl;
-
-                          return (
-                            <>
+                        <>
                               {showIframe && (
                                 <div className="no-print" style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
                                   <div style={{
@@ -3730,11 +3727,13 @@ export default function OrdersPage() {
 
                             </div>
                           </>
-                        );
-                      })()}
-
+                        )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
+
 
             {workspaceSubTab === 'payments' && (
               /* SUB-TAB 3: DEDICATED PAYMENTS LOG WORKSPACE */
