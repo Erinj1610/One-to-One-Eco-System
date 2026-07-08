@@ -230,10 +230,9 @@ def sync_projects(projects_dict, db: Session):
             # Delete order items first
             db.execute(text("DELETE FROM order_items WHERE order_id IN :pos"), {"pos": tuple(po_numbers)})
             db.execute(text("DELETE FROM orders WHERE po_number IN :pos"), {"pos": tuple(po_numbers)})
-        db.execute(text("DELETE FROM projects WHERE project_key = :p_key"), {"p_key": p_key})
     db.commit()
 
-    # 2. Insert fresh relational records
+    # 2. Insert or Update fresh relational records
     for p_key, p in projects_dict.items():
         client_name = p.get("client")
         client_id = None
@@ -249,41 +248,87 @@ def sync_projects(projects_dict, db: Session):
             if pm_res:
                 pm_id = pm_res[0]
 
-        # Insert project
-        db.execute(text("""
-            INSERT INTO projects (
-                name, project_key, client_id, client_name, pm_id, pm_name, 
-                offering, sqm, status, deadline, complete_status,
-                target_margin, actual_margin, s1, s2, s3, s4, s5
-            ) VALUES (
-                :name, :project_key, :client_id, :client_name, :pm_id, :pm_name,
-                :offering, :sqm, :status, :deadline, :complete_status,
-                :target_margin, :actual_margin, :s1, :s2, :s3, :s4, :s5
-            )
-        """), {
-            "name": p.get("name", p_key),
-            "project_key": p_key,
-            "client_id": client_id,
-            "client_name": client_name,
-            "pm_id": pm_id,
-            "pm_name": pm_name,
-            "offering": p.get("offering"),
-            "sqm": str(p.get("sqm", "0")),
-            "status": p.get("status", "On track"),
-            "deadline": p.get("deadline", "TBD"),
-            "complete_status": p.get("complete", "Ongoing"),
-            "target_margin": float(p.get("targetMargin", 0)),
-            "actual_margin": float(p.get("actualMargin", 0)),
-            "s1": p.get("s1", ""),
-            "s2": p.get("s2", ""),
-            "s3": p.get("s3", ""),
-            "s4": p.get("s4", ""),
-            "s5": p.get("s5", "")
-        })
+        # Check if project already exists to decide between UPDATE or INSERT
+        existing_proj = db.execute(text("SELECT id FROM projects WHERE project_key = :p_key"), {"p_key": p_key}).first()
         
-        # Get the inserted project ID
-        p_res = db.execute(text("SELECT id FROM projects WHERE project_key = :p_key"), {"p_key": p_key}).first()
-        proj_id = p_res[0] if p_res else None
+        if existing_proj:
+            # Update project columns
+            db.execute(text("""
+                UPDATE projects SET
+                    name = :name,
+                    client_id = :client_id,
+                    client_name = :client_name,
+                    pm_id = :pm_id,
+                    pm_name = :pm_name,
+                    offering = :offering,
+                    sqm = :sqm,
+                    status = :status,
+                    deadline = :deadline,
+                    complete_status = :complete_status,
+                    target_margin = :target_margin,
+                    actual_margin = :actual_margin,
+                    s1 = :s1,
+                    s2 = :s2,
+                    s3 = :s3,
+                    s4 = :s4,
+                    s5 = :s5
+                WHERE project_key = :project_key
+            """), {
+                "name": p.get("name", p_key),
+                "project_key": p_key,
+                "client_id": client_id,
+                "client_name": client_name,
+                "pm_id": pm_id,
+                "pm_name": pm_name,
+                "offering": p.get("offering"),
+                "sqm": str(p.get("sqm", "0")),
+                "status": p.get("status", "On track"),
+                "deadline": p.get("deadline", "TBD"),
+                "complete_status": p.get("complete", "Ongoing"),
+                "target_margin": float(p.get("targetMargin", 0)),
+                "actual_margin": float(p.get("actualMargin", 0)),
+                "s1": p.get("s1", ""),
+                "s2": p.get("s2", ""),
+                "s3": p.get("s3", ""),
+                "s4": p.get("s4", ""),
+                "s5": p.get("s5", "")
+            })
+            proj_id = existing_proj[0]
+        else:
+            # Insert project
+            db.execute(text("""
+                INSERT INTO projects (
+                    name, project_key, client_id, client_name, pm_id, pm_name, 
+                    offering, sqm, status, deadline, complete_status,
+                    target_margin, actual_margin, s1, s2, s3, s4, s5
+                ) VALUES (
+                    :name, :project_key, :client_id, :client_name, :pm_id, :pm_name,
+                    :offering, :sqm, :status, :deadline, :complete_status,
+                    :target_margin, :actual_margin, :s1, :s2, :s3, :s4, :s5
+                )
+            """), {
+                "name": p.get("name", p_key),
+                "project_key": p_key,
+                "client_id": client_id,
+                "client_name": client_name,
+                "pm_id": pm_id,
+                "pm_name": pm_name,
+                "offering": p.get("offering"),
+                "sqm": str(p.get("sqm", "0")),
+                "status": p.get("status", "On track"),
+                "deadline": p.get("deadline", "TBD"),
+                "complete_status": p.get("complete", "Ongoing"),
+                "target_margin": float(p.get("targetMargin", 0)),
+                "actual_margin": float(p.get("actualMargin", 0)),
+                "s1": p.get("s1", ""),
+                "s2": p.get("s2", ""),
+                "s3": p.get("s3", ""),
+                "s4": p.get("s4", ""),
+                "s5": p.get("s5", "")
+            })
+            
+            p_res = db.execute(text("SELECT id FROM projects WHERE project_key = :p_key"), {"p_key": p_key}).first()
+            proj_id = p_res[0] if p_res else None
 
         # Insert nested orders and items
         orders_list = p.get("orders", [])
