@@ -1873,7 +1873,7 @@ export default function OrdersPage() {
                   </span>
                 </div>
                 <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {orderSupplier} Quotation Specification — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
+                  {quoteName} — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
                 </h2>
               </div>
               
