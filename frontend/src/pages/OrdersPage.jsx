@@ -885,6 +885,8 @@ export default function OrdersPage() {
     eta: 'TBD',
     quoteName: 'General Spec'
   });
+  const [poProjectSearch, setPoProjectSearch] = useState("");
+  const [linkProjectSearch, setLinkProjectSearch] = useState("");
 
   // Aggregate all orders/quotations from all projects in the store
   const allOrders = Object.values(projects).flatMap(p => 
@@ -4188,14 +4190,31 @@ export default function OrdersPage() {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
+                  <input
+                    type="text"
+                    placeholder="🔍 Filter project name..."
+                    className="form-control"
+                    style={{ marginBottom: '6px', fontSize: '12px', padding: '6px 10px', height: '30px' }}
+                    value={poProjectSearch}
+                    onChange={e => {
+                      const search = e.target.value;
+                      setPoProjectSearch(search);
+                      const filtered = Object.values(projects).filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+                      if (filtered.length > 0) {
+                        setNewPoForm(prev => ({ ...prev, projectKey: filtered[0].key }));
+                      }
+                    }}
+                  />
                   <select 
                     className="form-control" 
                     value={newPoForm.projectKey} 
                     onChange={e => setNewPoForm({...newPoForm, projectKey: e.target.value})}
                   >
-                    {Object.values(projects).map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
-                    ))}
+                    {Object.values(projects)
+                      .filter(p => p.name.toLowerCase().includes(poProjectSearch.toLowerCase()))
+                      .map(p => (
+                        <option key={p.key} value={p.key}>{p.name}</option>
+                      ))}
                   </select>
                 </div>
 
@@ -4269,6 +4288,25 @@ export default function OrdersPage() {
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Linked Project</label>
+                <input
+                  type="text"
+                  placeholder="🔍 Filter project name..."
+                  className="form-control"
+                  style={{ marginBottom: '6px', fontSize: '12px', padding: '6px 10px', height: '30px' }}
+                  value={linkProjectSearch}
+                  onChange={e => {
+                    const search = e.target.value;
+                    setLinkProjectSearch(search);
+                    const filtered = Object.values(projects).filter(p => p.projectType !== 'Client-Direct' && p.name.toLowerCase().includes(search.toLowerCase()));
+                    if (filtered.length > 0) {
+                      const nextKey = filtered[0].key;
+                      setLinkProjectKey(nextKey);
+                      if (filtered[0].client) {
+                        setLinkClient(filtered[0].client);
+                      }
+                    }
+                  }}
+                />
                 <select 
                   className="form-control" 
                   value={linkProjectKey} 
@@ -4284,9 +4322,11 @@ export default function OrdersPage() {
                   }}
                 >
                   <option value="">-- Client Direct / No Project --</option>
-                  {Object.values(projects).filter(p => p.projectType !== 'Client-Direct').map(p => (
-                    <option key={p.key} value={p.key}>{p.name}</option>
-                  ))}
+                  {Object.values(projects)
+                    .filter(p => p.projectType !== 'Client-Direct' && p.name.toLowerCase().includes(linkProjectSearch.toLowerCase()))
+                    .map(p => (
+                      <option key={p.key} value={p.key}>{p.name}</option>
+                    ))}
                 </select>
               </div>
 
