@@ -915,10 +915,13 @@ export default function OrdersPage() {
 
   // Filtered orders/quotations list for the ledger overview
   const filteredOrders = allOrders.filter(o => {
+    const query = searchQuery.toLowerCase();
     const matchesSearch = 
-      o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+      (o.id || '').toLowerCase().includes(query) ||
+      (o.projectName || '').toLowerCase().includes(query) ||
+      (o.projectFullName || '').toLowerCase().includes(query) ||
+      (o.supplier || '').toLowerCase().includes(query) ||
+      (o.quoteName || '').toLowerCase().includes(query);
       
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
     const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;

@@ -207,6 +207,25 @@ def sync_project_managers(pm_list, db: Session):
             """), {"name": name})
     db.commit()
 
+def bulk_insert_rows(table_name, rows, db):
+    if not rows:
+        return
+    columns = list(rows[0].keys())
+    col_str = ", ".join(columns)
+    
+    val_clauses = []
+    params = {}
+    for idx, row in enumerate(rows):
+        row_clauses = []
+        for col in columns:
+            param_key = f"{col}_{idx}"
+            row_clauses.append(f":{param_key}")
+            params[param_key] = row[col]
+        val_clauses.append(f"({', '.join(row_clauses)})")
+        
+    query_str = f"INSERT INTO {table_name} ({col_str}) VALUES {', '.join(val_clauses)}"
+    db.execute(text(query_str), params)
+
 def sync_projects(projects_dict, db: Session):
     """
     Sync JSON projects dictionary to projects, orders, and order_items tables.
@@ -383,40 +402,16 @@ def sync_projects(projects_dict, db: Session):
                     "stock_on_hand": int(item.get("stockOnHand", 0))
                 })
 
-    # Bulk insert orders
+    # Bulk insert orders using optimized multi-row insert helper
     if orders_to_insert:
-        db.execute(text("""
-            INSERT INTO orders (
-                project_id, project_key, po_number, supplier_name, 
-                items_count, value, paid, outstanding, status, eta
-            ) VALUES (
-                :project_id, :project_key, :po_number, :supplier_name,
-                :items_count, :value, :paid, :outstanding, :status, :eta
-            )
-        """), orders_to_insert)
+        bulk_insert_rows("orders", orders_to_insert, db)
 
-    # Bulk insert order items in chunks of 500 to avoid Cloud SQL connection timeout
+    # Bulk insert order items using optimized multi-row insert helper in chunks of 500
     if order_items_to_insert:
         CHUNK_SIZE = 500
         for i in range(0, len(order_items_to_insert), CHUNK_SIZE):
             chunk = order_items_to_insert[i:i + CHUNK_SIZE]
-            db.execute(text("""
-                INSERT INTO order_items (
-                    id, order_id, qty, type, one_one_code, code, description,
-                    floor, area, dimming, brand, supplier, unit_cost, unit_trade,
-                    unit_retail, selection, stock_status, eta, po_ref, po_qty_ordered,
-                    po_eta, invoice_qty, po_supplier, po_date, received_qty, received_date,
-                    invoice_ref, invoice_date, invoice_value, delivery_qty, delivery_date,
-                    delivery_status, delivery_history, stock_on_hand
-                ) VALUES (
-                    :id, :order_id, :qty, :type, :one_one_code, :code, :description,
-                    :floor, :area, :dimming, :brand, :supplier, :unit_cost, :unit_trade,
-                    :unit_retail, :selection, :stock_status, :eta, :po_ref, :po_qty_ordered,
-                    :po_eta, :invoice_qty, :po_supplier, :po_date, :received_qty, :received_date,
-                    :invoice_ref, :invoice_date, :invoice_value, :delivery_qty, :delivery_date,
-                    :delivery_status, :delivery_history, :stock_on_hand
-                )
-            """), chunk)
+            bulk_insert_rows("order_items", chunk, db)
             db.commit()
 
     db.commit()
