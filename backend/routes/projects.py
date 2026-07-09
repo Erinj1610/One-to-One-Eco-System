@@ -230,8 +230,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
         # Build projects dictionary
         projects_dict = {}
+        import re
         for p in projects:
-            p_key = p.project_key or f"p-{p.id}"
+            p_key = p.project_key
+            if not p_key:
+                p_key = re.sub(r'[^a-z0-9\-]', '-', (p.name or '').lower())
+                p_key = re.sub(r'-+', '-', p_key).strip('-')
+                if not p_key:
+                    p_key = f"p-{p.id}"
             projects_dict[p_key] = {
                 "key": p_key,
                 "name": p.name,
