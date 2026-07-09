@@ -452,8 +452,9 @@ def sync_invoices(invoices_list, db: Session):
 
         db.execute(text("""
             INSERT INTO invoices (id, project_id, invoice_type, status, amount)
-            VALUES (NULL, :project_id, 'Product Supply', :status, :amount)
+            VALUES (:id, :project_id, 'Product Supply', :status, :amount)
         """), {
+            "id": inv.get("id"),
             "project_id": proj_id,
             "status": inv.get("status", "Draft"),
             "amount": amount_val
