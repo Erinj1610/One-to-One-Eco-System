@@ -1443,6 +1443,24 @@ export function StoreProvider({ children }) {
       const newOrders = value || [];
       const oldOrders = currentProj.orders || [];
 
+      // Check for renamed orders first
+      if (oldOrders.length === newOrders.length) {
+        for (let i = 0; i < oldOrders.length; i++) {
+          const oldOrder = oldOrders[i];
+          const newOrder = newOrders[i];
+          if (oldOrder.id && newOrder.id && oldOrder.id !== newOrder.id) {
+            try {
+              await fetch(`${API_BASE}/api/orders/${oldOrder.id}/rename?new_po_number=${newOrder.id}`, {
+                method: 'PUT'
+              });
+              oldOrder.id = newOrder.id; // update in memory for the mapping steps below
+            } catch (err) {
+              console.error(`Error renaming order ${oldOrder.id} to ${newOrder.id}:`, err);
+            }
+          }
+        }
+      }
+
       // Find deleted orders
       const newOrderIds = new Set(newOrders.map(o => o.id));
       for (const oldOrder of oldOrders) {
@@ -1846,21 +1864,48 @@ export function StoreProvider({ children }) {
     }
   }, [user, logActivity]);
 
-  const moveOrder = (orderId, oldProjectKey, newProjectKey, clientContact, clientCompany, clientPhone, clientEmail) => {
+  const saveProjectToDb = async (key, projectObj) => {
+    try {
+      await fetch(`${API_BASE}/api/projects/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectObj.name,
+          project_key: key,
+          client_name: projectObj.client,
+          pm_name: projectObj.pm,
+          offering: projectObj.offering,
+          sqm: projectObj.sqm,
+          status: projectObj.status,
+          deadline: projectObj.deadline,
+          complete_status: projectObj.complete,
+          target_margin: projectObj.targetMargin,
+          actual_margin: projectObj.actualMargin,
+          s1: projectObj.s1 || "",
+          s2: projectObj.s2 || "",
+          s3: projectObj.s3 || "",
+          s4: projectObj.s4 || "",
+          s5: projectObj.s5 || ""
+        })
+      });
+    } catch (err) {
+      console.error(`Error saving project ${key} to DB:`, err);
+    }
+  };
+
+  const moveOrder = async (orderId, oldProjectKey, newProjectKey, clientContact, clientCompany, clientPhone, clientEmail) => {
+    // 1. Update React state
     setProjects(prev => {
       const next = { ...prev };
       
-      // Get the order from the old project
       const oldProj = next[oldProjectKey];
       if (!oldProj) return prev;
       
       const order = (oldProj.orders || []).find(o => o.id === orderId);
       if (!order) return prev;
       
-      // Remove from old project
       oldProj.orders = (oldProj.orders || []).filter(o => o.id !== orderId);
       
-      // Prepare order with updated client details
       const updatedOrder = {
         ...order,
         clientContact: clientContact || order.clientContact,
@@ -1870,7 +1915,6 @@ export function StoreProvider({ children }) {
         projectKey: newProjectKey
       };
       
-      // Ensure the new project exists (it could be a virtual client-only project)
       if (!next[newProjectKey]) {
         next[newProjectKey] = {
           key: newProjectKey,
@@ -1886,28 +1930,71 @@ export function StoreProvider({ children }) {
         };
       }
       
-      // Add to new project
       next[newProjectKey].orders = [...(next[newProjectKey].orders || []), updatedOrder];
       
       return next;
     });
+
+    // 2. Update backend database
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${orderId}`);
+      if (res.ok) {
+        const orderData = await res.json();
+        
+        // Construct the update payload matching OrderSchema fields
+        const payload = {
+          ...orderData,
+          project_key: newProjectKey,
+          po_number: orderId,
+          supplier_name: orderData.supplier,
+          items_count: orderData.items,
+          value: orderData.value,
+          paid: orderData.paid,
+          outstanding: orderData.outstanding,
+          status: orderData.status,
+          eta: orderData.eta,
+          clientContact: clientContact || orderData.clientContact,
+          clientCompany: clientCompany || orderData.clientCompany,
+          clientPhone: clientPhone !== undefined ? clientPhone : orderData.clientPhone,
+          clientEmail: clientEmail !== undefined ? clientEmail : orderData.clientEmail
+        };
+
+        await fetch(`${API_BASE}/api/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (err) {
+      console.error("Error moving order in database:", err);
+    }
   };
 
-  const moveDesignFee = (feeId, oldProjectKey, newProjectKey, clientContact, clientCompany) => {
+  const moveDesignFee = async (feeId, oldProjectKey, newProjectKey, clientContact, clientCompany) => {
+    let updatedOldProj = null;
+    let updatedNewProj = null;
+
+    // 1. Update React state
     setProjects(prev => {
       const next = { ...prev };
       
-      // Get the design fee from the old project
       const oldProj = next[oldProjectKey];
       if (!oldProj) return prev;
       
       const fee = (oldProj.designFees || []).find(f => f.id === feeId);
       if (!fee) return prev;
       
-      // Remove from old project
       oldProj.designFees = (oldProj.designFees || []).filter(f => f.id !== feeId);
       
-      // Prepare fee with updated client/project details
+      // Serialize designFees back to s1..s5 for the old project
+      const oldFees = oldProj.designFees || [];
+      oldProj.s1 = oldFees[0] ? JSON.stringify(oldFees[0]) : "";
+      oldProj.s2 = oldFees[1] ? JSON.stringify(oldFees[1]) : "";
+      oldProj.s3 = oldFees[2] ? JSON.stringify(oldFees[2]) : "";
+      oldProj.s4 = oldFees[3] ? JSON.stringify(oldFees[3]) : "";
+      oldProj.s5 = oldFees[4] ? JSON.stringify(oldFees[4]) : "";
+      updatedOldProj = oldProj;
+      
       const updatedFee = {
         ...fee,
         projectClient: clientContact || fee.projectClient,
@@ -1916,7 +2003,6 @@ export function StoreProvider({ children }) {
         projectKey: newProjectKey
       };
       
-      // Ensure the new project exists (virtual client-only project)
       if (!next[newProjectKey]) {
         next[newProjectKey] = {
           key: newProjectKey,
@@ -1932,11 +2018,24 @@ export function StoreProvider({ children }) {
         };
       }
       
-      // Add to new project
-      next[newProjectKey].designFees = [...(next[newProjectKey].designFees || []), updatedFee];
+      const newProj = next[newProjectKey];
+      newProj.designFees = [...(newProj.designFees || []), updatedFee];
+      
+      // Serialize designFees back to s1..s5 for the new project
+      const newFees = newProj.designFees || [];
+      newProj.s1 = newFees[0] ? JSON.stringify(newFees[0]) : "";
+      newProj.s2 = newFees[1] ? JSON.stringify(newFees[1]) : "";
+      newProj.s3 = newFees[2] ? JSON.stringify(newFees[2]) : "";
+      newProj.s4 = newFees[3] ? JSON.stringify(newFees[3]) : "";
+      newProj.s5 = newFees[4] ? JSON.stringify(newFees[4]) : "";
+      updatedNewProj = newProj;
       
       return next;
     });
+
+    // 2. Save both projects to relational database
+    if (updatedOldProj) await saveProjectToDb(oldProjectKey, updatedOldProj);
+    if (updatedNewProj) await saveProjectToDb(newProjectKey, updatedNewProj);
   };
 
   return (

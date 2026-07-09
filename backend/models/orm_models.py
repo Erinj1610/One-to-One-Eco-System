@@ -208,7 +208,7 @@ class Order(Base):
     outstanding = Column(Float, default=0.0)
     eta = Column(String, nullable=True)
     project_key = Column(String, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    order_metadata = Column(JSON, nullable=True)
 
 
 class OrderItem(Base):

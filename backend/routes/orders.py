@@ -98,7 +98,7 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
         outstanding=float(order_data.get("outstanding", 0.0)),
         status=order_data.get("status", "Pending"),
         eta=order_data.get("eta", "—"),
-        metadata=metadata_dict
+        order_metadata=metadata_dict
     )
     db.add(new_order)
     db.commit()
@@ -115,6 +115,12 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     standard_keys = {"project_key", "po_number", "supplier_name", "items_count", "value", "paid", "outstanding", "status", "eta"}
     metadata_dict = {k: v for k, v in order_data.items() if k not in standard_keys}
 
+    project_key = order_data.get("project_key")
+    if project_key:
+        order.project_key = project_key
+        project = db.query(Project).filter(Project.project_key == project_key).first()
+        order.project_id = project.id if project else None
+
     order.supplier_name = order_data.get("supplier_name")
     order.items_count = int(order_data.get("items_count", 0))
     order.value = float(order_data.get("value", 0.0))
@@ -122,7 +128,7 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     order.outstanding = float(order_data.get("outstanding", 0.0))
     order.status = order_data.get("status", "Pending")
     order.eta = order_data.get("eta", "—")
-    order.metadata = metadata_dict
+    order.order_metadata = metadata_dict
     
     db.commit()
     db.refresh(order)
@@ -259,3 +265,23 @@ def delete_order_item(item_id: str, db: Session = Depends(get_db)):
     db.delete(item)
     db.commit()
     return {"message": "Item deleted successfully"}
+
+@router.put("/{po_number}/rename")
+def rename_order(po_number: str, new_po_number: str, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.po_number == po_number).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    # Check if duplicate new_po_number
+    existing = db.query(Order).filter(Order.po_number == new_po_number).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Order with this new PO number already exists")
+        
+    order.po_number = new_po_number
+    
+    # Update order_id for all linked items in the database
+    db.query(OrderItem).filter(OrderItem.order_id == po_number).update({"order_id": new_po_number}, synchronize_session=False)
+    
+    db.commit()
+    db.refresh(order)
+    return order
