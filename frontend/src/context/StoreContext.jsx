@@ -1478,6 +1478,7 @@ export function StoreProvider({ children }) {
       for (const newOrder of newOrders) {
         const oldOrder = oldOrdersMap.get(newOrder.id);
         const orderData = {
+          ...newOrder,
           project_key: key,
           po_number: newOrder.id,
           supplier_name: newOrder.supplier,
@@ -1515,15 +1516,10 @@ export function StoreProvider({ children }) {
             }
           }
         } else {
-          // Update existing order row if order properties changed
-          if (
-            oldOrder.supplier !== newOrder.supplier ||
-            oldOrder.status !== newOrder.status ||
-            oldOrder.value !== newOrder.value ||
-            oldOrder.paid !== newOrder.paid ||
-            oldOrder.outstanding !== newOrder.outstanding ||
-            oldOrder.eta !== newOrder.eta
-          ) {
+          // Update existing order row if any properties changed (excluding itemsList)
+          const cleanOld = { ...oldOrder, itemsList: undefined };
+          const cleanNew = { ...newOrder, itemsList: undefined };
+          if (JSON.stringify(cleanOld) !== JSON.stringify(cleanNew)) {
             try {
               await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
                 method: 'PUT',
