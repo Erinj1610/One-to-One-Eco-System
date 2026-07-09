@@ -67,6 +67,18 @@ def init_db():
                 conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
                 
+                # Migrate orders table to ensure metadata exists
+                try:
+                    db_type = engine.name
+                    if db_type == 'sqlite':
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN metadata TEXT;"))
+                    else:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS metadata JSONB;"))
+                    conn.commit()
+                    print("Database migration: ensured 'metadata' column exists on 'orders' table.")
+                except Exception as alter_err:
+                    print(f"Database migration orders metadata (non-critical info): {alter_err}")
+                
                 # Migrate template_configs table to ensure docx_binary exists
                 try:
                     db_type = engine.name

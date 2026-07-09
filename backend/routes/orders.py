@@ -67,27 +67,38 @@ def get_order(po_number: str, db: Session = Depends(get_db)):
     return order
 
 @router.post("/")
-def create_order(order_data: OrderSchema, db: Session = Depends(get_db)):
+def create_order(order_data: dict, db: Session = Depends(get_db)):
+    project_key = order_data.get("project_key")
+    po_number = order_data.get("po_number")
+    
+    if not project_key or not po_number:
+        raise HTTPException(status_code=400, detail="project_key and po_number are required")
+
     # Verify project exists
-    project = db.query(Project).filter(Project.project_key == order_data.project_key).first()
+    project = db.query(Project).filter(Project.project_key == project_key).first()
     project_id = project.id if project else None
 
     # Check if duplicate po_number
-    existing = db.query(Order).filter(Order.po_number == order_data.po_number).first()
+    existing = db.query(Order).filter(Order.po_number == po_number).first()
     if existing:
         raise HTTPException(status_code=400, detail="Order with this PO number already exists")
 
+    # Extract standard fields and serialize all other fields as metadata
+    standard_keys = {"project_key", "po_number", "supplier_name", "items_count", "value", "paid", "outstanding", "status", "eta"}
+    metadata_dict = {k: v for k, v in order_data.items() if k not in standard_keys}
+
     new_order = Order(
         project_id=project_id,
-        project_key=order_data.project_key,
-        po_number=order_data.po_number,
-        supplier_name=order_data.supplier_name,
-        items_count=order_data.items_count,
-        value=order_data.value,
-        paid=order_data.paid,
-        outstanding=order_data.outstanding,
-        status=order_data.status,
-        eta=order_data.eta
+        project_key=project_key,
+        po_number=po_number,
+        supplier_name=order_data.get("supplier_name"),
+        items_count=int(order_data.get("items_count", 0)),
+        value=float(order_data.get("value", 0.0)),
+        paid=float(order_data.get("paid", 0.0)),
+        outstanding=float(order_data.get("outstanding", 0.0)),
+        status=order_data.get("status", "Pending"),
+        eta=order_data.get("eta", "—"),
+        metadata=metadata_dict
     )
     db.add(new_order)
     db.commit()
@@ -95,18 +106,23 @@ def create_order(order_data: OrderSchema, db: Session = Depends(get_db)):
     return new_order
 
 @router.put("/{po_number}")
-def update_order(po_number: str, order_data: OrderSchema, db: Session = Depends(get_db)):
+def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.po_number == po_number).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    order.supplier_name = order_data.supplier_name
-    order.items_count = order_data.items_count
-    order.value = order_data.value
-    order.paid = order_data.paid
-    order.outstanding = order_data.outstanding
-    order.status = order_data.status
-    order.eta = order_data.eta
+    # Extract standard fields and serialize all other fields as metadata
+    standard_keys = {"project_key", "po_number", "supplier_name", "items_count", "value", "paid", "outstanding", "status", "eta"}
+    metadata_dict = {k: v for k, v in order_data.items() if k not in standard_keys}
+
+    order.supplier_name = order_data.get("supplier_name")
+    order.items_count = int(order_data.get("items_count", 0))
+    order.value = float(order_data.get("value", 0.0))
+    order.paid = float(order_data.get("paid", 0.0))
+    order.outstanding = float(order_data.get("outstanding", 0.0))
+    order.status = order_data.get("status", "Pending")
+    order.eta = order_data.get("eta", "—")
+    order.metadata = metadata_dict
     
     db.commit()
     db.refresh(order)

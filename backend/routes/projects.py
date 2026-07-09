@@ -216,7 +216,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if order.project_key not in orders_by_project:
                 orders_by_project[order.project_key] = []
             
-            orders_by_project[order.project_key].append({
+            order_dict = {
                 "id": order.po_number,
                 "supplier": order.supplier_name,
                 "items": order.items_count,
@@ -226,7 +226,13 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "status": order.status,
                 "eta": order.eta,
                 "itemsList": items_by_order.get(order.po_number, [])
-            })
+            }
+            if order.metadata and isinstance(order.metadata, dict):
+                # Ensure the standard keys aren't overwritten by stale metadata values
+                for k, v in order.metadata.items():
+                    if k not in {"id", "supplier", "items", "value", "paid", "outstanding", "status", "eta", "itemsList"}:
+                        order_dict[k] = v
+            orders_by_project[order.project_key].append(order_dict)
 
         # Build projects dictionary
         projects_dict = {}
