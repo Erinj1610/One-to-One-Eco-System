@@ -295,10 +295,7 @@ class ProjectsSave(BaseModel):
 
 @router.post("/save")
 def save_all_projects_relational(data: ProjectsSave, db: Session = Depends(get_db)):
-    try:
-        from services.db_sync_service import sync_projects
-        sync_projects(data.value, db)
-        return {"status": "ok", "message": "Projects saved and synchronized directly to relational SQL tables."}
-    except Exception as sync_err:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to sync projects: {sync_err}")
+    raise HTTPException(
+        status_code=403, 
+        detail="Bulk synchronized saving via this endpoint is deprecated to protect portal edits. Please edit projects, orders, or items directly in the portal."
+    )
