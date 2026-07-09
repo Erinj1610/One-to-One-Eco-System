@@ -1132,7 +1132,7 @@ const defaultInvoices = [
 ];
 
 export function StoreProvider({ children }) {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const [projects, setProjects] = useState({});
   const [contacts, setContacts] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -1237,17 +1237,19 @@ export function StoreProvider({ children }) {
 
   // Load all states when user logs in
   React.useEffect(() => {
-    if (!user) {
-      // If user logs out, reset loaded states
-      isLoaded.current = {
-        projects: false,
-        contacts: false,
-        leads: false,
-        invoices: false,
-        alertSettings: false,
-        moduleConfig: false,
-        projectManagers: false
-      };
+    if (!user || authLoading) {
+      if (!user) {
+        // If user logs out, reset loaded states
+        isLoaded.current = {
+          projects: false,
+          contacts: false,
+          leads: false,
+          invoices: false,
+          alertSettings: false,
+          moduleConfig: false,
+          projectManagers: false
+        };
+      }
       return;
     }
 
@@ -1297,7 +1299,7 @@ export function StoreProvider({ children }) {
     loadState('alertSettings', setAlertSettings);
     loadState('moduleConfig', setModuleConfig);
     loadState('projectManagers', setProjectManagers);
-  }, [user]);
+  }, [user, authLoading]);
 
   // Save states on changes (excluding initial load)
   const saveState = (key, value) => {
