@@ -1252,15 +1252,19 @@ export function StoreProvider({ children }) {
     }
 
     const loadState = (key, setter) => {
-      fetch(`${API_BASE}/api/settings/${key}`)
+      const url = key === 'projects'
+        ? `${API_BASE}/api/projects/all`
+        : `${API_BASE}/api/settings/${key}`;
+      fetch(url)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           return res.json();
         })
         .then(data => {
-          if (data && data.value !== null && data.value !== undefined) {
+          const val = key === 'projects' ? data : (data && data.value);
+          if (val !== null && val !== undefined) {
             if (key === 'moduleConfig') {
-              const loadedVal = data.value;
+              const loadedVal = val;
               const loadedModules = loadedVal.modules || [];
               const mergedModules = [...loadedModules];
               defaultModules.forEach(defM => {
@@ -1270,7 +1274,7 @@ export function StoreProvider({ children }) {
               });
               setter({ ...loadedVal, modules: mergedModules });
             } else {
-              setter(data.value);
+              setter(val);
             }
           } else if (key === 'projectManagers') {
             setter(defaultPMs);
@@ -1298,14 +1302,14 @@ export function StoreProvider({ children }) {
   // Save states on changes (excluding initial load)
   const saveState = (key, value) => {
     if (!user || !isLoaded.current[key]) return;
-    fetch(`${API_BASE}/api/settings/${key}`, {
+    const url = `${API_BASE}/api/settings/${key}`;
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value })
     }).catch(err => console.error(`Error saving ${key}:`, err));
   };
 
-  React.useEffect(() => { saveState('projects', projects); }, [projects]);
   React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
   React.useEffect(() => { saveState('leads', leads); }, [leads]);
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
@@ -1376,7 +1380,46 @@ export function StoreProvider({ children }) {
     setInvoices(prev => [invoice, ...prev]);
   };
 
-  const updateProject = (key, field, value) => {
+  const mapItemToSchema = (item) => {
+    return {
+      id: item.id,
+      qty: Number(item.qty) || 0,
+      type: item.type || null,
+      one_one_code: item.oneOneCode || item.one_one_code || null,
+      code: item.code || null,
+      description: item.description || null,
+      floor: item.floor || null,
+      area: item.area || null,
+      dimming: item.dimming || null,
+      brand: item.brand || null,
+      supplier: item.supplier || null,
+      unit_cost: Number(item.unitCost || item.unit_cost) || 0.0,
+      unit_trade: Number(item.unitTrade || item.unit_trade) || 0.0,
+      unit_retail: Number(item.unitRetail || item.unit_retail) || 0.0,
+      selection: item.selection || null,
+      stock_status: item.stockStatus || item.stock_status || null,
+      eta: item.eta || null,
+      po_ref: item.poRef || item.po_ref || null,
+      po_qty_ordered: Number(item.poQtyOrdered || item.po_qty_ordered) || 0,
+      po_eta: item.poEta || item.po_eta || null,
+      invoice_qty: Number(item.invoiceQty || item.invoice_qty) || 0,
+      po_supplier: item.poSupplier || item.po_supplier || null,
+      po_date: item.poDate || item.po_date || null,
+      received_qty: Number(item.receivedQty || item.received_qty) || 0,
+      received_date: item.receivedDate || item.received_date || null,
+      invoice_ref: item.invoiceRef || item.invoice_ref || null,
+      invoice_date: item.invoiceDate || item.invoice_date || null,
+      invoice_value: Number(item.invoiceValue || item.invoice_value) || 0.0,
+      delivery_qty: Number(item.deliveryQty || item.delivery_qty) || 0,
+      delivery_date: item.deliveryDate || item.delivery_date || null,
+      delivery_status: item.deliveryStatus || item.delivery_status || null,
+      delivery_history: item.deliveryHistory || item.delivery_history || [],
+      stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0
+    };
+  };
+
+  const updateProject = async (key, field, value) => {
+    // 1. Update local React state instantly
     setProjects(prev => {
       if (typeof field === 'object' && field !== null) {
         return {
@@ -1389,9 +1432,172 @@ export function StoreProvider({ children }) {
         [key]: { ...prev[key], [field]: value }
       };
     });
+
+    // 2. Perform granular database write under the hood
+    const currentProj = projects[key];
+    if (!currentProj) return;
+
+    if (field === 'orders') {
+      const newOrders = value || [];
+      const oldOrders = currentProj.orders || [];
+
+      // Find deleted orders
+      const newOrderIds = new Set(newOrders.map(o => o.id));
+      for (const oldOrder of oldOrders) {
+        if (!newOrderIds.has(oldOrder.id)) {
+          try {
+            await fetch(`${API_BASE}/api/orders/${oldOrder.id}`, { method: 'DELETE' });
+          } catch (err) {
+            console.error(`Error deleting order ${oldOrder.id}:`, err);
+          }
+        }
+      }
+
+      // Find added or updated orders
+      const oldOrdersMap = new Map(oldOrders.map(o => [o.id, o]));
+      for (const newOrder of newOrders) {
+        const oldOrder = oldOrdersMap.get(newOrder.id);
+        const orderData = {
+          project_key: key,
+          po_number: newOrder.id,
+          supplier_name: newOrder.supplier,
+          items_count: Number(newOrder.items) || 0,
+          value: Number(newOrder.value) || 0.0,
+          paid: Number(newOrder.paid) || 0.0,
+          outstanding: Number(newOrder.outstanding) || 0.0,
+          status: newOrder.status || "Pending",
+          eta: newOrder.eta || "—"
+        };
+
+        if (!oldOrder) {
+          // Create new order row
+          try {
+            await fetch(`${API_BASE}/api/orders/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(orderData)
+            });
+          } catch (err) {
+            console.error(`Error creating order ${newOrder.id}:`, err);
+          }
+
+          // Create order item rows
+          const items = newOrder.itemsList || [];
+          for (const item of items) {
+            try {
+              await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mapItemToSchema(item))
+              });
+            } catch (err) {
+              console.error(`Error creating item ${item.id}:`, err);
+            }
+          }
+        } else {
+          // Update existing order row if order properties changed
+          if (
+            oldOrder.supplier !== newOrder.supplier ||
+            oldOrder.status !== newOrder.status ||
+            oldOrder.value !== newOrder.value ||
+            oldOrder.paid !== newOrder.paid ||
+            oldOrder.outstanding !== newOrder.outstanding ||
+            oldOrder.eta !== newOrder.eta
+          ) {
+            try {
+              await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+              });
+            } catch (err) {
+              console.error(`Error updating order ${newOrder.id}:`, err);
+            }
+          }
+
+          // Sync order items
+          const newItems = newOrder.itemsList || [];
+          const oldItems = oldOrder.itemsList || [];
+          
+          // Find deleted items
+          const newItemIds = new Set(newItems.map(i => i.id));
+          for (const oldItem of oldItems) {
+            if (!newItemIds.has(oldItem.id)) {
+              try {
+                await fetch(`${API_BASE}/api/orders/items/${oldItem.id}`, { method: 'DELETE' });
+              } catch (err) {
+                console.error(`Error deleting item ${oldItem.id}:`, err);
+              }
+            }
+          }
+
+          // Find added or updated items
+          const oldItemsMap = new Map(oldItems.map(i => [i.id, i]));
+          for (const newItem of newItems) {
+            const oldItem = oldItemsMap.get(newItem.id);
+            if (!oldItem) {
+              try {
+                await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(mapItemToSchema(newItem))
+                });
+              } catch (err) {
+                console.error(`Error creating item ${newItem.id}:`, err);
+              }
+            } else {
+              // Update if changed
+              if (JSON.stringify(newItem) !== JSON.stringify(oldItem)) {
+                try {
+                  await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(mapItemToSchema(newItem))
+                  });
+                } catch (err) {
+                  console.error(`Error updating item ${newItem.id}:`, err);
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // Update project row properties
+      const updatedProj = {
+        ...currentProj,
+        ...(typeof field === 'object' ? field : { [field]: value })
+      };
+      try {
+        await fetch(`${API_BASE}/api/projects/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updatedProj.name,
+            project_key: key,
+            client_name: updatedProj.client,
+            pm_name: updatedProj.pm,
+            offering: updatedProj.offering,
+            sqm: updatedProj.sqm,
+            status: updatedProj.status,
+            deadline: updatedProj.deadline,
+            complete_status: updatedProj.complete,
+            target_margin: updatedProj.targetMargin,
+            actual_margin: updatedProj.actualMargin,
+            s1: updatedProj.s1,
+            s2: updatedProj.s2,
+            s3: updatedProj.s3,
+            s4: updatedProj.s4,
+            s5: updatedProj.s5
+          })
+        });
+      } catch (err) {
+        console.error("Error updating project:", err);
+      }
+    }
   };
 
-  const addProject = (project) => {
+  const addProject = async (project) => {
     const baseKey = (project.name || 'new-project').toLowerCase().trim().replace(/\s+/g, '-');
     let key = baseKey || 'new-project';
     let counter = 1;
@@ -1399,32 +1605,63 @@ export function StoreProvider({ children }) {
       key = `${baseKey}-${counter}`;
       counter++;
     }
+    const newProj = { 
+      ...project,
+      key,
+      projectType: project.projectType || 'Design & Orders',
+      designFees: project.designFees || [],
+      orders: project.orders || [],
+      stage: project.stage || 'Stage 1',
+      status: project.status || 'On track',
+      targetMargin: project.targetMargin || alertSettings.defaultTargetMargin || 39,
+      actualMargin: project.actualMargin || alertSettings.defaultTargetMargin || 39,
+      delay: '—',
+      start: project.start || new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+      deadline: project.deadline || 'TBD',
+      daysLeft: '—',
+      complete: 'Ongoing',
+      s1:'',s2:'',s3:'',s4:'',s5:''
+    };
+
     setProjects(prev => ({
       ...prev,
-      [key]: { 
-        ...project,
-        key,
-        projectType: project.projectType || 'Design & Orders',
-        designFees: project.designFees || [],
-        orders: project.orders || [],
-        stage: project.stage || 'Stage 1',
-        status: project.status || 'On track',
-        targetMargin: project.targetMargin || alertSettings.defaultTargetMargin || 39,
-        actualMargin: project.actualMargin || alertSettings.defaultTargetMargin || 39,
-        delay: '—',
-        start: project.start || new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
-        deadline: project.deadline || 'TBD',
-        daysLeft: '—',
-        complete: 'Ongoing',
-        s1:'',s2:'',s3:'',s4:'',s5:''
-      }
+      [key]: newProj
     }));
+
+    try {
+      await fetch(`${API_BASE}/api/projects/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProj.name,
+          project_key: key,
+          client_name: newProj.client,
+          pm_name: newProj.pm,
+          offering: newProj.offering,
+          sqm: newProj.sqm,
+          status: newProj.status,
+          deadline: newProj.deadline,
+          complete_status: newProj.complete,
+          target_margin: newProj.targetMargin,
+          actual_margin: newProj.actualMargin,
+          s1: newProj.s1,
+          s2: newProj.s2,
+          s3: newProj.s3,
+          s4: newProj.s4,
+          s5: newProj.s5
+        })
+      });
+    } catch (err) {
+      console.error("Error creating project:", err);
+    }
     return key;
   };
 
-  const saveDraftProject = (oldKey, projectData) => {
+  const saveDraftProject = async (oldKey, projectData) => {
     const baseKey = (projectData.name || 'unnamed-project').toLowerCase().trim().replace(/\s+/g, '-');
     let finalKey = baseKey || 'unnamed-project';
+    
+    // Optimistically update React state
     setProjects(prev => {
       const next = { ...prev };
       const existingDraft = prev[oldKey] || {};
@@ -1446,15 +1683,46 @@ export function StoreProvider({ children }) {
       };
       return next;
     });
+
+    // Delete old draft from database and save final project
+    try {
+      await fetch(`${API_BASE}/api/projects/${oldKey}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/api/projects/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectData.name,
+          project_key: finalKey,
+          client_name: projectData.client,
+          pm_name: projectData.pm,
+          offering: projectData.offering,
+          sqm: projectData.sqm,
+          status: projectData.status || 'On track',
+          deadline: projectData.deadline || 'TBD',
+          complete_status: 'Ongoing'
+        })
+      });
+    } catch (err) {
+      console.error("Error saving draft project:", err);
+    }
+
     return finalKey;
   };
 
-  const deleteProject = (key) => {
+  const deleteProject = async (key) => {
     setProjects(prev => {
       const next = { ...prev };
       delete next[key];
       return next;
     });
+
+    try {
+      await fetch(`${API_BASE}/api/projects/${key}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error("Error deleting project:", err);
+    }
   };
 
   const moveLead = (leadId, fromStage, toStage) => {

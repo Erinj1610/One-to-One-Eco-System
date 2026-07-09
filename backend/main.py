@@ -17,6 +17,7 @@ from routes.settings import router as settings_router
 from routes.users import router as users_router
 from routes.products import router as products_router, public_router as products_public_router
 from routes.lookups import router as lookups_router
+from routes.orders import router as orders_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -36,6 +37,7 @@ def health_check():
 from services.firebase_auth import verify_firebase_token
 
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(orders_router, prefix="/api/orders", tags=["orders"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(admin_router, prefix="/admin", tags=["admin"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(documents_router, prefix="/api/documents", tags=["documents"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(hr_router, prefix="/api/hr", tags=["hr"], dependencies=[Depends(verify_firebase_token)])
@@ -151,9 +153,12 @@ def init_db():
                     db.add(new_p)
                     db.commit()
             
+            from sqlalchemy import func
+            folder_counts = {row[0]: row[1] for row in db.query(ProjectFolder.project_id, func.count(ProjectFolder.id)).group_by(ProjectFolder.project_id).all()}
+            
             projects = db.query(Project).all()
             for project in projects:
-                folder_count = db.query(ProjectFolder).filter(ProjectFolder.project_id == project.id).count()
+                folder_count = folder_counts.get(project.id, 0)
                 if folder_count == 0:
                     fld_design = ProjectFolder(
                         project_id=project.id,

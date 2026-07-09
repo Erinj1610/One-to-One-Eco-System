@@ -221,167 +221,137 @@ def sync_projects(projects_dict, db: Session):
     if not project_keys:
         return
 
-    # Delete existing order items and orders for these project keys
-    for p_key in project_keys:
-        # Get order IDs
-        orders = db.execute(text("SELECT po_number FROM orders WHERE project_key = :p_key"), {"p_key": p_key}).fetchall()
-        po_numbers = [o[0] for o in orders if o[0]]
-        if po_numbers:
-            # Delete order items first
-            db.execute(text("DELETE FROM order_items WHERE order_id IN :pos"), {"pos": tuple(po_numbers)})
-            db.execute(text("DELETE FROM orders WHERE po_number IN :pos"), {"pos": tuple(po_numbers)})
+    # Delete existing order items and orders for these project keys in bulk
+    orders = db.execute(text("SELECT po_number FROM orders WHERE project_key IN :keys"), {"keys": tuple(project_keys)}).fetchall()
+    po_numbers = [o[0] for o in orders if o[0]]
+    if po_numbers:
+        # Delete order items first
+        db.execute(text("DELETE FROM order_items WHERE order_id IN :pos"), {"pos": tuple(po_numbers)})
+        db.execute(text("DELETE FROM orders WHERE po_number IN :pos"), {"pos": tuple(po_numbers)})
     db.commit()
 
-    # 2. Insert or Update fresh relational records
+    # Pre-fetch clients and employees to prevent N+1 queries
+    clients = db.execute(text("SELECT id, name FROM clients")).fetchall()
+    client_map = {row[1]: row[0] for row in clients if row[1]}
+
+    employees = db.execute(text("SELECT id, name FROM employees")).fetchall()
+    employee_map = {row[1]: row[0] for row in employees if row[1]}
+
+    # Check which projects exist already
+    existing_p_keys = {row[0] for row in db.execute(text("SELECT project_key FROM projects WHERE project_key IN :keys"), {"keys": tuple(project_keys)}).fetchall()}
+
+    projects_to_insert = []
+    projects_to_update = []
+
+    # 2. Prepare bulk insert/update of projects
     for p_key, p in projects_dict.items():
         client_name = p.get("client")
-        client_id = None
-        if client_name:
-            c_res = db.execute(text("SELECT id FROM clients WHERE name = :name"), {"name": client_name}).first()
-            if c_res:
-                client_id = c_res[0]
+        client_id = client_map.get(client_name) if client_name else None
 
         pm_name = p.get("pm")
-        pm_id = None
-        if pm_name:
-            pm_res = db.execute(text("SELECT id FROM employees WHERE name = :name"), {"name": pm_name}).first()
-            if pm_res:
-                pm_id = pm_res[0]
+        pm_id = employee_map.get(pm_name) if pm_name else None
 
-        # Check if project already exists to decide between UPDATE or INSERT
-        existing_proj = db.execute(text("SELECT id FROM projects WHERE project_key = :p_key"), {"p_key": p_key}).first()
-        
-        if existing_proj:
-            # Update project columns
-            db.execute(text("""
-                UPDATE projects SET
-                    name = :name,
-                    client_id = :client_id,
-                    client_name = :client_name,
-                    pm_id = :pm_id,
-                    pm_name = :pm_name,
-                    offering = :offering,
-                    sqm = :sqm,
-                    status = :status,
-                    deadline = :deadline,
-                    complete_status = :complete_status,
-                    target_margin = :target_margin,
-                    actual_margin = :actual_margin,
-                    s1 = :s1,
-                    s2 = :s2,
-                    s3 = :s3,
-                    s4 = :s4,
-                    s5 = :s5
-                WHERE project_key = :project_key
-            """), {
-                "name": p.get("name", p_key),
-                "project_key": p_key,
-                "client_id": client_id,
-                "client_name": client_name,
-                "pm_id": pm_id,
-                "pm_name": pm_name,
-                "offering": p.get("offering"),
-                "sqm": str(p.get("sqm", "0")),
-                "status": p.get("status", "On track"),
-                "deadline": p.get("deadline", "TBD"),
-                "complete_status": p.get("complete", "Ongoing"),
-                "target_margin": float(p.get("targetMargin", 0)),
-                "actual_margin": float(p.get("actualMargin", 0)),
-                "s1": p.get("s1", ""),
-                "s2": p.get("s2", ""),
-                "s3": p.get("s3", ""),
-                "s4": p.get("s4", ""),
-                "s5": p.get("s5", "")
-            })
-            proj_id = existing_proj[0]
+        proj_params = {
+            "name": p.get("name", p_key),
+            "project_key": p_key,
+            "client_id": client_id,
+            "client_name": client_name,
+            "pm_id": pm_id,
+            "pm_name": pm_name,
+            "offering": p.get("offering"),
+            "sqm": str(p.get("sqm", "0")),
+            "status": p.get("status", "On track"),
+            "deadline": p.get("deadline", "TBD"),
+            "complete_status": p.get("complete", "Ongoing"),
+            "target_margin": float(p.get("targetMargin", 0) or 0),
+            "actual_margin": float(p.get("actualMargin", 0) or 0),
+            "s1": p.get("s1", ""),
+            "s2": p.get("s2", ""),
+            "s3": p.get("s3", ""),
+            "s4": p.get("s4", ""),
+            "s5": p.get("s5", "")
+        }
+
+        if p_key in existing_p_keys:
+            projects_to_update.append(proj_params)
         else:
-            # Insert project
-            db.execute(text("""
-                INSERT INTO projects (
-                    name, project_key, client_id, client_name, pm_id, pm_name, 
-                    offering, sqm, status, deadline, complete_status,
-                    target_margin, actual_margin, s1, s2, s3, s4, s5
-                ) VALUES (
-                    :name, :project_key, :client_id, :client_name, :pm_id, :pm_name,
-                    :offering, :sqm, :status, :deadline, :complete_status,
-                    :target_margin, :actual_margin, :s1, :s2, :s3, :s4, :s5
-                )
-            """), {
-                "name": p.get("name", p_key),
-                "project_key": p_key,
-                "client_id": client_id,
-                "client_name": client_name,
-                "pm_id": pm_id,
-                "pm_name": pm_name,
-                "offering": p.get("offering"),
-                "sqm": str(p.get("sqm", "0")),
-                "status": p.get("status", "On track"),
-                "deadline": p.get("deadline", "TBD"),
-                "complete_status": p.get("complete", "Ongoing"),
-                "target_margin": float(p.get("targetMargin", 0)),
-                "actual_margin": float(p.get("actualMargin", 0)),
-                "s1": p.get("s1", ""),
-                "s2": p.get("s2", ""),
-                "s3": p.get("s3", ""),
-                "s4": p.get("s4", ""),
-                "s5": p.get("s5", "")
-            })
-            
-            p_res = db.execute(text("SELECT id FROM projects WHERE project_key = :p_key"), {"p_key": p_key}).first()
-            proj_id = p_res[0] if p_res else None
+            projects_to_insert.append(proj_params)
 
-        # Insert nested orders and items
+    # Perform projects insertion/updates
+    if projects_to_insert:
+        db.execute(text("""
+            INSERT INTO projects (
+                name, project_key, client_id, client_name, pm_id, pm_name, 
+                offering, sqm, status, deadline, complete_status,
+                target_margin, actual_margin, s1, s2, s3, s4, s5
+            ) VALUES (
+                :name, :project_key, :client_id, :client_name, :pm_id, :pm_name,
+                :offering, :sqm, :status, :deadline, :complete_status,
+                :target_margin, :actual_margin, :s1, :s2, :s3, :s4, :s5
+            )
+        """), projects_to_insert)
+
+    if projects_to_update:
+        db.execute(text("""
+            UPDATE projects SET
+                name = :name,
+                client_id = :client_id,
+                client_name = :client_name,
+                pm_id = :pm_id,
+                pm_name = :pm_name,
+                offering = :offering,
+                sqm = :sqm,
+                status = :status,
+                deadline = :deadline,
+                complete_status = :complete_status,
+                target_margin = :target_margin,
+                actual_margin = :actual_margin,
+                s1 = :s1,
+                s2 = :s2,
+                s3 = :s3,
+                s4 = :s4,
+                s5 = :s5
+            WHERE project_key = :project_key
+        """), projects_to_update)
+
+    db.commit()
+
+    # Re-query projects map to get IDs for nested orders
+    proj_db_map = {row[1]: row[0] for row in db.execute(text("SELECT id, project_key FROM projects WHERE project_key IN :keys"), {"keys": tuple(project_keys)}).fetchall()}
+
+    orders_to_insert = []
+    order_items_to_insert = []
+
+    # 3. Build orders and items lists
+    for p_key, p in projects_dict.items():
+        proj_id = proj_db_map.get(p_key)
         orders_list = p.get("orders", [])
+        
         for order in orders_list:
             po_number = order.get("id")
             if not po_number:
                 continue
 
-            db.execute(text("""
-                INSERT INTO orders (
-                    project_id, project_key, po_number, supplier_name, 
-                    items_count, value, paid, outstanding, status, eta
-                ) VALUES (
-                    :project_id, :project_key, :po_number, :supplier_name,
-                    :items_count, :value, :paid, :outstanding, :status, :eta
-                )
-            """), {
+            orders_to_insert.append({
                 "project_id": proj_id,
                 "project_key": p_key,
                 "po_number": po_number,
                 "supplier_name": order.get("supplier"),
                 "items_count": int(order.get("items", 0)),
-                "value": float(order.get("value", 0)),
-                "paid": float(order.get("paid", 0)),
-                "outstanding": float(order.get("outstanding", 0)),
+                "value": float(order.get("value", 0) or 0),
+                "paid": float(order.get("paid", 0) or 0),
+                "outstanding": float(order.get("outstanding", 0) or 0),
                 "status": order.get("status", "Pending"),
                 "eta": order.get("eta", "—")
             })
 
-            # Insert itemsList
             items = order.get("itemsList", [])
             for item in items:
                 item_id = item.get("id")
                 if not item_id:
                     continue
 
-                db.execute(text("""
-                    INSERT INTO order_items (
-                        id, order_id, qty, type, one_one_code, code, description,
-                        floor, area, dimming, brand, supplier, unit_cost, unit_trade,
-                        unit_retail, selection, stock_status, eta, po_ref, po_qty_ordered,
-                        po_eta, invoice_qty, po_supplier, po_date, received_qty, received_date,
-                        invoice_ref, invoice_date, invoice_value, delivery_qty, delivery_date,
-                        delivery_status, delivery_history, stock_on_hand
-                    ) VALUES (
-                        :id, :order_id, :qty, :type, :one_one_code, :code, :description,
-                        :floor, :area, :dimming, :brand, :supplier, :unit_cost, :unit_trade,
-                        :unit_retail, :selection, :stock_status, :eta, :po_ref, :po_qty_ordered,
-                        :po_eta, :invoice_qty, :po_supplier, :po_date, :received_qty, :received_date,
-                        :invoice_ref, :invoice_date, :invoice_value, :delivery_qty, :delivery_date,
-                        :delivery_status, :delivery_history, :stock_on_hand
-                    )
-                """), {
+                order_items_to_insert.append({
                     "id": item_id,
                     "order_id": po_number,
                     "qty": int(item.get("qty", 0)),
@@ -394,30 +364,68 @@ def sync_projects(projects_dict, db: Session):
                     "dimming": item.get("dimming"),
                     "brand": item.get("brand"),
                     "supplier": item.get("supplier"),
-                    "unit_cost": float(item.get("unitCost", 0)),
-                    "unit_trade": float(item.get("unitTrade", 0)),
-                    "unit_retail": float(item.get("unitRetail", 0)),
+                    "unit_cost": float(item.get("unitCost", 0) or 0),
+                    "unit_trade": float(item.get("unitTrade", 0) or 0),
+                    "unit_retail": float(item.get("unitRetail", 0) or 0),
                     "selection": item.get("selection"),
                     "stock_status": item.get("stockStatus"),
                     "eta": item.get("eta"),
-                    "po_ref": item.get("poRef"),
-                    "po_qty_ordered": int(item.get("poQtyOrdered", 0)),
-                    "po_eta": item.get("poEta"),
-                    "invoice_qty": int(item.get("invoiceQty", 0)),
-                    "po_supplier": item.get("poSupplier"),
-                    "po_date": item.get("poDate"),
-                    "received_qty": int(item.get("receivedQty", 0)),
-                    "received_date": item.get("receivedDate"),
-                    "invoice_ref": item.get("invoiceRef"),
-                    "invoice_date": item.get("invoiceDate"),
-                    "invoice_value": float(item.get("invoiceValue", 0)),
+                    "po_ref": item.get("po_ref") or item.get("poRef"), # support both naming styles
+                    "po_qty_ordered": int(item.get("po_qty_ordered") or item.get("poQtyOrdered") or 0),
+                    "po_eta": item.get("po_eta") or item.get("poEta"),
+                    "invoice_qty": int(item.get("invoice_qty") or item.get("invoiceQty") or 0),
+                    "po_supplier": item.get("po_supplier") or item.get("poSupplier"),
+                    "po_date": item.get("po_date") or item.get("poDate"),
+                    "received_qty": int(item.get("received_qty") or item.get("receivedQty") or 0),
+                    "received_date": item.get("received_date") or item.get("receivedDate"),
+                    "invoice_ref": item.get("invoice_ref") or item.get("invoiceRef"),
+                    "invoice_date": item.get("invoice_date") or item.get("invoiceDate"),
+                    "invoice_value": float(item.get("invoice_value") or item.get("invoiceValue") or 0),
                     "delivery_qty": int(item.get("deliveryQty", 0)),
                     "delivery_date": item.get("deliveryDate"),
                     "delivery_status": item.get("deliveryStatus"),
                     "delivery_history": json.dumps(item.get("deliveryHistory", [])),
                     "stock_on_hand": int(item.get("stockOnHand", 0))
                 })
+
+    # Bulk insert orders
+    if orders_to_insert:
+        db.execute(text("""
+            INSERT INTO orders (
+                project_id, project_key, po_number, supplier_name, 
+                items_count, value, paid, outstanding, status, eta
+            ) VALUES (
+                :project_id, :project_key, :po_number, :supplier_name,
+                :items_count, :value, :paid, :outstanding, :status, :eta
+            )
+        """), orders_to_insert)
+
+    # Bulk insert order items in chunks of 500 to avoid Cloud SQL connection timeout
+    if order_items_to_insert:
+        CHUNK_SIZE = 500
+        for i in range(0, len(order_items_to_insert), CHUNK_SIZE):
+            chunk = order_items_to_insert[i:i + CHUNK_SIZE]
+            db.execute(text("""
+                INSERT INTO order_items (
+                    id, order_id, qty, type, one_one_code, code, description,
+                    floor, area, dimming, brand, supplier, unit_cost, unit_trade,
+                    unit_retail, selection, stock_status, eta, po_ref, po_qty_ordered,
+                    po_eta, invoice_qty, po_supplier, po_date, received_qty, received_date,
+                    invoice_ref, invoice_date, invoice_value, delivery_qty, delivery_date,
+                    delivery_status, delivery_history, stock_on_hand
+                ) VALUES (
+                    :id, :order_id, :qty, :type, :one_one_code, :code, :description,
+                    :floor, :area, :dimming, :brand, :supplier, :unit_cost, :unit_trade,
+                    :unit_retail, :selection, :stock_status, :eta, :po_ref, :po_qty_ordered,
+                    :po_eta, :invoice_qty, :po_supplier, :po_date, :received_qty, :received_date,
+                    :invoice_ref, :invoice_date, :invoice_value, :delivery_qty, :delivery_date,
+                    :delivery_status, :delivery_history, :stock_on_hand
+                )
+            """), chunk)
+            db.commit()
+
     db.commit()
+
 
 def sync_invoices(invoices_list, db: Session):
     """
