@@ -96,17 +96,39 @@ def delete_project_relational(project_key: str, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Cascade delete orders and items linked to this project key
-    from models.orm_models import Order, OrderItem
-    orders = db.query(Order).filter(Order.project_key == project_key).all()
-    po_numbers = [o.po_number for o in orders if o.po_number]
-    if po_numbers:
-        db.query(OrderItem).filter(OrderItem.order_id.in_(po_numbers)).delete(synchronize_session=False)
-        db.query(Order).filter(Order.po_number.in_(po_numbers)).delete(synchronize_session=False)
+    try:
+        from models.orm_models import (
+            Order, OrderItem, ProjectFieldValue, ProjectPhase, 
+            Proposal, BOQ, Invoice, Document, Quote, ProjectFolder
+        )
+        
+        # 1. Cascade delete orders and items linked to this project key
+        orders = db.query(Order).filter(Order.project_key == project_key).all()
+        po_numbers = [o.po_number for o in orders if o.po_number]
+        if po_numbers:
+            db.query(OrderItem).filter(OrderItem.order_id.in_(po_numbers)).delete(synchronize_session=False)
+            db.query(Order).filter(Order.po_number.in_(po_numbers)).delete(synchronize_session=False)
+            
+        # 2. Deletes by project.id
+        db.query(ProjectFieldValue).filter(ProjectFieldValue.project_id == project.id).delete(synchronize_session=False)
+        db.query(ProjectPhase).filter(ProjectPhase.project_id == project.id).delete(synchronize_session=False)
+        db.query(Proposal).filter(Proposal.project_id == project.id).delete(synchronize_session=False)
+        db.query(BOQ).filter(BOQ.project_id == project.id).delete(synchronize_session=False)
+        db.query(Document).filter(Document.project_id == project.id).delete(synchronize_session=False)
+        db.query(Quote).filter(Quote.project_id == project.id).delete(synchronize_session=False)
+        db.query(ProjectFolder).filter(ProjectFolder.project_id == project.id).delete(synchronize_session=False)
+        
+        # Nullify project references on invoices
+        db.query(Invoice).filter(Invoice.project_id == project.id).update({"project_id": None}, synchronize_session=False)
 
-    db.delete(project)
-    db.commit()
-    return {"message": "Project and its orders/items deleted successfully"}
+        # 3. Delete project row itself
+        db.delete(project)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database constraint violation: {str(e)}")
+
+    return {"message": "Project and its dependent records deleted successfully"}
 
 @router.get("/")
 def list_projects(db: Session = Depends(get_db)):

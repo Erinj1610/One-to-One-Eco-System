@@ -1726,18 +1726,23 @@ export function StoreProvider({ children }) {
   };
 
   const deleteProject = async (key) => {
-    setProjects(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-
     try {
-      await fetch(`${API_BASE}/api/projects/${key}`, {
+      const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
         method: 'DELETE'
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errData.detail || "Server error");
+      }
+      
+      setProjects(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
       });
     } catch (err) {
       console.error("Error deleting project:", err);
+      alert(`Deletion Failed: ${err.message}`);
     }
   };
 
