@@ -35,13 +35,8 @@ def run_migrations(db: Session):
 
     # 2. Recreate order_items table with expanded columns matching spreadsheet items list
     try:
-        # Drop order_items and order_items_extended if they exist to refresh types and FKs
-        db.execute(text("DROP TABLE IF EXISTS order_items CASCADE;"))
-        db.execute(text("DROP TABLE IF EXISTS order_items_extended CASCADE;"))
-        db.commit()
-
         db.execute(text("""
-            CREATE TABLE order_items (
+            CREATE TABLE IF NOT EXISTS order_items (
                 id VARCHAR PRIMARY KEY,
                 order_id VARCHAR,
                 qty INTEGER,
