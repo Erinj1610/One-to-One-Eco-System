@@ -1817,6 +1817,14 @@ export default function OrdersPage() {
                       Cancel
                     </button>
                     
+                    <button 
+                      className="btn btn-sm btn-secondary" 
+                      onClick={handleBulkRenameOrders}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Rename Quote Name
+                    </button>
+                    
                     <select 
                       className="form-control" 
                       style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}

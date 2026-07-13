@@ -51,19 +51,16 @@ def bulk_relink_orders(payload: BulkRelinkOrdersSchema, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Project not found")
         
     try:
-        orders = db.query(Order).filter(Order.po_number.in_(pos)).all()
-        for order in orders:
-            order.project_key = project.project_key
-            order.project_id = project.id
-            meta = dict(order.order_metadata or {})
-            meta["quote_name"] = project.name
-            order.order_metadata = meta
+        db.query(Order).filter(Order.po_number.in_(pos)).update(
+            {"project_key": project.project_key, "project_id": project.id},
+            synchronize_session=False
+        )
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
         
-    return {"message": f"Successfully linked and renamed {len(pos)} orders to project '{project.name}'"}
+    return {"message": f"Successfully linked {len(pos)} orders to project '{project.name}'"}
 
 @router.post("/bulk-rename")
 def bulk_rename_orders(payload: BulkRenameOrdersSchema, db: Session = Depends(get_db)):
