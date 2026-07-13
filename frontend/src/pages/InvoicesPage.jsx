@@ -623,7 +623,7 @@ export default function InvoicesPage() {
                               Order: {inv.orderId} {(() => {
                                 const p = projects[inv.projectKey];
                                 const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
-                                return o?.quoteName ? `(${o.quoteName})` : '';
+                                return o?.quote_name ? `(${o.quote_name})` : '';
                               })()}
                             </div>
                           )}

@@ -838,7 +838,7 @@ export default function SalesTracker() {
         (o.projectName || '').toLowerCase().includes(query) ||
         (o.projectFullName || '').toLowerCase().includes(query) ||
         (o.supplier || '').toLowerCase().includes(query) ||
-        (o.quoteName || '').toLowerCase().includes(query);
+        (o.quote_name || '').toLowerCase().includes(query);
         
       const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
       const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
@@ -879,7 +879,7 @@ export default function SalesTracker() {
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
     setSupplier(order.supplier);
-    setQuoteName(order.quoteName || 'General Spec');
+    setQuoteName(order.quote_name || 'General Spec');
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
     setWorkspaceSubTab('boq');
@@ -1727,7 +1727,7 @@ export default function SalesTracker() {
                       return (
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
-                          <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
+                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600 }}>{o.supplier}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>

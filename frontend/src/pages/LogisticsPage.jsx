@@ -594,9 +594,9 @@ export default function LogisticsPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px' }}>
                       <span>
                         Order: {doc.orderId} {(() => {
-                          const p = projects[doc.projectKey];
-                          const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
-                          return o?.quoteName ? `(${o.quoteName})` : '';
+                           const p = projects[doc.projectKey];
+                           const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
+                           return o?.quote_name ? `(${o.quote_name})` : '';
                         })()}
                       </span>
                       <span>Items: {totalQty}</span>

@@ -320,13 +320,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "outstanding": order.outstanding,
                 "status": order.status,
                 "eta": order.eta,
+                "quote_name": order.quote_name or "General Spec",
                 "itemsList": items_by_order.get(order.po_number, [])
             }
-            if order.order_metadata and isinstance(order.order_metadata, dict):
-                # Ensure the standard keys aren't overwritten by stale metadata values
-                for k, v in order.order_metadata.items():
-                    if k not in {"id", "supplier", "items", "value", "paid", "outstanding", "status", "eta", "itemsList"}:
-                        order_dict[k] = v
             orders_by_project[order.project_key].append(order_dict)
 
         # Build projects dictionary

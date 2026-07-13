@@ -302,12 +302,12 @@ export default function ReportsPage() {
               if (orderFy === currentFinancialYear) {
                 const orderSeqVal = getFyMonthSequenceVal(orderMonthIdx);
                 if (orderSeqVal <= selectedSeqIndex) {
-                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
                 }
               }
             } else {
               if (orderMonth === selectedMonthName && orderYear === selectedYear) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -319,12 +319,12 @@ export default function ReportsPage() {
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
               }
             } else {
               const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
               if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -336,12 +336,12 @@ export default function ReportsPage() {
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
               }
             } else {
               const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
               if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -351,11 +351,11 @@ export default function ReportsPage() {
         if (type === 'annual') {
           if (orderFy === currentFinancialYear) {
             if (extraFilter === 'invoiced' && (order.status === 'Delivered' || order.status === 'Processing')) {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
             } else if (extraFilter === 'toInvoice' && order.status === 'Pending') {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
             } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status)) {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quoteName: order.quoteName || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
             }
           }
         }
@@ -1170,7 +1170,7 @@ export default function ReportsPage() {
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
                         <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
                         <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>{item.orderId}</td>
-                        <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{item.quoteName || 'General Spec'}</td>
+                        <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{item.quote_name || 'General Spec'}</td>
                         <td style={{ padding: '12px', color: '#475569', fontWeight: 500 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Calendar size={12} style={{ color: '#64748b' }} /> {item.date}

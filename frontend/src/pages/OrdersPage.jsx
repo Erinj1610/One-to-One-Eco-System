@@ -942,7 +942,7 @@ export default function OrdersPage() {
     supplier: 'Molecule Dist.',
     status: 'Pending',
     eta: 'TBD',
-    quoteName: 'General Spec'
+    quote_name: 'General Spec'
   });
   const [poProjectSearch, setPoProjectSearch] = useState("");
   const [linkProjectSearch, setLinkProjectSearch] = useState("");
@@ -982,7 +982,7 @@ export default function OrdersPage() {
       (o.projectName || '').toLowerCase().includes(query) ||
       (o.projectFullName || '').toLowerCase().includes(query) ||
       (o.supplier || '').toLowerCase().includes(query) ||
-      (o.quoteName || '').toLowerCase().includes(query);
+      (o.quote_name || '').toLowerCase().includes(query);
       
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
     const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
@@ -1076,7 +1076,7 @@ export default function OrdersPage() {
     setProjectClass(order.projectClass || '');
     setQuotationSentDate(order.quotationSentDate || '');
     setDivision(order.division || proj.division || '');
-    setQuoteName(order.quoteName || 'General Spec');
+    setQuoteName(order.quote_name || 'General Spec');
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
@@ -1416,7 +1416,7 @@ export default function OrdersPage() {
           outstanding: Math.round(balanceOutstanding),
           itemsList: activeOrderItems,
           // Save order-specific adjusted metadata fields
-          quoteName,
+          quote_name: quoteName,
           clientCompany,
           clientContact,
           clientPhone,
@@ -1476,7 +1476,7 @@ export default function OrdersPage() {
     const newPoId = 'Q-2026-0' + (allOrders.length + 42);
     const newOrder = {
       id: newPoId,
-      quoteName: newPoForm.quoteName || 'General Spec',
+      quote_name: newPoForm.quote_name || 'General Spec',
       supplier: newPoForm.supplier,
       items: 1,
       value: 1500,
@@ -1915,7 +1915,7 @@ export default function OrdersPage() {
                               </button>
                             )}
                           </td>
-                          <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
+                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
                           <td>{o.supplier}</td>
@@ -4307,8 +4307,8 @@ export default function OrdersPage() {
                   <input 
                     type="text" 
                     placeholder="e.g. General Lighting, Extras 2"
-                    value={newPoForm.quoteName || ''} 
-                    onChange={e => setNewPoForm({...newPoForm, quoteName: e.target.value})}
+                    value={newPoForm.quote_name || ''} 
+                    onChange={e => setNewPoForm({...newPoForm, quote_name: e.target.value})}
                     className="form-control"
                     required
                   />

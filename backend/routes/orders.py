@@ -69,11 +69,10 @@ def bulk_rename_orders(payload: BulkRenameOrdersSchema, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="No PO numbers provided")
         
     try:
-        orders = db.query(Order).filter(Order.po_number.in_(pos)).all()
-        for order in orders:
-            meta = dict(order.order_metadata or {})
-            meta["quote_name"] = payload.new_quote_name
-            order.order_metadata = meta
+        db.query(Order).filter(Order.po_number.in_(pos)).update(
+            {"quote_name": payload.new_quote_name},
+            synchronize_session=False
+        )
         db.commit()
     except Exception as e:
         db.rollback()
@@ -156,10 +155,7 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Order with this PO number already exists")
 
-    # Extract standard fields and serialize all other fields as metadata
-    standard_keys = {"project_key", "po_number", "supplier_name", "items_count", "value", "paid", "outstanding", "status", "eta"}
-    metadata_dict = {k: v for k, v in order_data.items() if k not in standard_keys}
-
+    # Extract standard fields
     new_order = Order(
         project_id=project_id,
         project_key=project_key,
@@ -171,7 +167,7 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
         outstanding=float(order_data.get("outstanding", 0.0)),
         status=order_data.get("status", "Pending"),
         eta=order_data.get("eta", "—"),
-        order_metadata=metadata_dict
+        quote_name=order_data.get("quote_name", "General Spec")
     )
     db.add(new_order)
     db.commit()
@@ -184,10 +180,6 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
-    # Extract standard fields and serialize all other fields as metadata
-    standard_keys = {"project_key", "po_number", "supplier_name", "items_count", "value", "paid", "outstanding", "status", "eta"}
-    metadata_dict = {k: v for k, v in order_data.items() if k not in standard_keys}
-
     project_key = order_data.get("project_key")
     if project_key:
         order.project_key = project_key
@@ -201,7 +193,8 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     order.outstanding = float(order_data.get("outstanding", 0.0))
     order.status = order_data.get("status", "Pending")
     order.eta = order_data.get("eta", "—")
-    order.order_metadata = metadata_dict
+    if "quote_name" in order_data:
+        order.quote_name = order_data.get("quote_name")
     
     db.commit()
     db.refresh(order)

@@ -1806,7 +1806,7 @@ export default function ProjectManagement() {
                                        </button>
                                      )}
                                    </td>
-                                   <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
+                                   <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                                    <td>{o.supplier}</td>
                                    <td style={{ textAlign: 'center' }}>{o.items} items</td>
                                    <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
@@ -1883,7 +1883,7 @@ export default function ProjectManagement() {
                                 o.payments.forEach(p => {
                                   allPayments.push({
                                     orderId: o.id,
-                                    quoteName: o.quoteName,
+                                    quote_name: o.quote_name,
                                     date: p.date,
                                     reference: p.reference,
                                     amount: p.amount
@@ -1917,7 +1917,7 @@ export default function ProjectManagement() {
                                     {p.orderId}
                                   </button>
                                 </td>
-                                <td style={{ padding: '8px', fontWeight: 500 }}>{p.quoteName || 'General Spec'}</td>
+                                <td style={{ padding: '8px', fontWeight: 500 }}>{p.quote_name || 'General Spec'}</td>
                                 <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
                                 <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-success)' }}>
                                   R {Number(p.amount || 0).toLocaleString()}
@@ -2051,7 +2051,7 @@ export default function ProjectManagement() {
                           {orders.map(o => (
                             <tr key={o.id}>
                               <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
-                              <td style={{ fontWeight: 600 }}>{o.quoteName || 'General Spec'}</td>
+                              <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                               <td style={{ fontWeight: 500 }}>{o.supplier}</td>
                               <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
                               <td>

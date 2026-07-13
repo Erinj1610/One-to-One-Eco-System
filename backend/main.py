@@ -70,19 +70,47 @@ def init_db():
                     conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
                 
-                # Migrate orders table to ensure order_metadata exists
+                # Migrate orders table to ensure quote_name exists, migrate metadata, then drop order_metadata
                 try:
                     order_cols = [c['name'] for c in inspector.get_columns('orders')]
-                    if 'order_metadata' not in order_cols:
-                        db_type = engine.name
-                        if db_type == 'sqlite':
-                            conn.execute(text("ALTER TABLE orders ADD COLUMN order_metadata TEXT;"))
-                        else:
-                            conn.execute(text("ALTER TABLE orders ADD COLUMN order_metadata JSONB;"))
+                    if 'quote_name' not in order_cols:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN quote_name VARCHAR DEFAULT 'General Spec';"))
                         conn.commit()
-                    print("Database migration: ensured 'order_metadata' column exists on 'orders' table.")
+                        
+                        # Migrate values from order_metadata JSON column if it exists in the table
+                        if 'order_metadata' in order_cols:
+                            db_type = engine.name
+                            if db_type == 'sqlite':
+                                conn.execute(text("""
+                                    UPDATE orders 
+                                    SET quote_name = COALESCE(
+                                        json_extract(order_metadata, '$.quoteName'),
+                                        json_extract(order_metadata, '$.quote_name'),
+                                        'General Spec'
+                                    );
+                                """))
+                            else:
+                                conn.execute(text("""
+                                    UPDATE orders 
+                                    SET quote_name = COALESCE(
+                                        order_metadata->>'quoteName',
+                                        order_metadata->>'quote_name',
+                                        'General Spec'
+                                    );
+                                """))
+                            conn.commit()
+                        print("Database migration: created 'quote_name' column and migrated metadata.")
+                    
+                    # Drop order_metadata column if it exists
+                    order_cols_refresh = [c['name'] for c in inspector.get_columns('orders')]
+                    if 'order_metadata' in order_cols_refresh:
+                        db_type = engine.name
+                        if db_type != 'sqlite':
+                            conn.execute(text("ALTER TABLE orders DROP COLUMN order_metadata;"))
+                            conn.commit()
+                            print("Database migration: dropped redundant 'order_metadata' column.")
                 except Exception as alter_err:
-                    print(f"Database migration orders order_metadata (non-critical info): {alter_err}")
+                    print(f"Database migration quote_name (info/critical): {alter_err}")
                 
                 # Migrate template_configs table to ensure docx_binary exists
                 try:

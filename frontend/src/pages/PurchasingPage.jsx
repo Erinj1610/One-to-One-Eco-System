@@ -731,7 +731,7 @@ export default function PurchasingPage() {
                             Client: {doc.projectClient} | Order: {doc.orderId} {(() => {
                               const p = projects[doc.projectKey];
                               const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
-                              return o?.quoteName ? `(${o.quoteName})` : '';
+                              return o?.quote_name ? `(${o.quote_name})` : '';
                             })()}
                           </div>
                         </td>
