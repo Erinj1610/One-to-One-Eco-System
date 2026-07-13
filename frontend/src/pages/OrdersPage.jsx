@@ -6,6 +6,9 @@ import { useResizableTable } from '../components/common/ResizableTable';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import { API_BASE } from '../api_config';
 import { 
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Save, 
   TrendingUp, 
   AlertCircle, 
@@ -431,6 +434,10 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
+
+  // Sorting States
+  const [sortField, setSortField] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
 
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
@@ -1000,6 +1007,70 @@ export default function OrdersPage() {
     
     return matchesSearch && matchesStatus && matchesProject && matchesDate;
   });
+
+  // Sort Logic for All Columns in Orders Module
+  const sortedOrders = useMemo(() => {
+    if (!sortField) return filteredOrders;
+
+    const getVal = (o, field) => {
+      const cost = o.costValue || 0;
+      const retail = o.value || 0;
+      const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+      const outstandingVal = o.outstanding || 0;
+
+      switch (field) {
+        case 'id':
+          return (o.id || '').toLowerCase();
+        case 'quote_name':
+          return (o.quote_name || '').toLowerCase();
+        case 'project':
+          return (o.projectName || '').toLowerCase();
+        case 'client':
+          return (o.projectClient || '').toLowerCase();
+        case 'supplier':
+          return (o.supplier || '').toLowerCase();
+        case 'items':
+          return o.items || 0;
+        case 'value':
+          return retail;
+        case 'paid':
+          return o.paid || 0;
+        case 'outstanding':
+          return outstandingVal;
+        case 'margin':
+          return margin;
+        case 'status':
+          return (o.status || '').toLowerCase();
+        default:
+          return '';
+      }
+    };
+
+    return [...filteredOrders].sort((a, b) => {
+      const valA = getVal(a, sortField);
+      const valB = getVal(b, sortField);
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredOrders, sortField, sortDirection]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.5 }} />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
+  };
 
   // Dynamic statistics
   const totalCostCompany = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
@@ -1861,27 +1932,49 @@ export default function OrdersPage() {
                       <th style={{ width: '30px', textAlign: 'center' }}>
                         <input 
                           type="checkbox" 
-                          checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedPoNumbers.has(o.id))}
-                          onChange={() => toggleSelectAllPos(filteredOrders)}
+                          checked={sortedOrders.length > 0 && sortedOrders.every(o => selectedPoNumbers.has(o.id))}
+                          onChange={() => toggleSelectAllPos(sortedOrders)}
                           style={{ cursor: 'pointer' }}
                         />
                       </th>
-                      <th>Quote ID</th>
-                      <th>Quote Name</th>
-                      <th>Linked Project</th>
-                      <th>Client Name</th>
-                      <th>Hardware Supplier</th>
-                      <th>BOQ Items</th>
-                      <th>Retail Value (EX VAT)</th>
-                      <th>Amount Paid</th>
-                      <th>Balance Outstanding</th>
-                      <th>Blended Margin</th>
-                      <th>Order Status</th>
+                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote ID {renderSortIcon('id')}</div>
+                      </th>
+                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote Name {renderSortIcon('quote_name')}</div>
+                      </th>
+                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
+                      </th>
+                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client Name {renderSortIcon('client')}</div>
+                      </th>
+                      <th onClick={() => handleSort('supplier')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Hardware Supplier {renderSortIcon('supplier')}</div>
+                      </th>
+                      <th onClick={() => handleSort('items')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>BOQ Items {renderSortIcon('items')}</div>
+                      </th>
+                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Retail Value (EX VAT) {renderSortIcon('value')}</div>
+                      </th>
+                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                      </th>
+                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
+                      </th>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Blended Margin {renderSortIcon('margin')}</div>
+                      </th>
+                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                      </th>
                       <th style={{ textAlign: 'center' }}>Workspace Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.map(o => {
+                    {sortedOrders.map(o => {
                       const cost = o.costValue || 0;
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;

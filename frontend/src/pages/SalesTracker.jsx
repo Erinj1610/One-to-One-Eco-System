@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Save, 
   TrendingUp, 
   AlertCircle, 
@@ -695,6 +698,10 @@ export default function SalesTracker() {
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
 
+  // Sorting States
+  const [sortField, setSortField] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
+
   // Date Filter States
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
@@ -858,6 +865,68 @@ export default function SalesTracker() {
       return matchesSearch && matchesStatus && matchesProject && matchesKpi;
     });
   }, [dateFilteredOrders, searchQuery, filterStatus, projectFilterKey, activeKpiFilter]);
+
+  // Sort Logic for All Columns in Sales Tracker Module
+  const sortedOrders = useMemo(() => {
+    if (!sortField) return filteredOrders;
+
+    const getVal = (o, field) => {
+      const cost = o.costValue || 0;
+      const retail = o.value || 0;
+      const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+      const outstandingVal = o.outstanding || 0;
+
+      switch (field) {
+        case 'id':
+          return (o.id || '').toLowerCase();
+        case 'quote_name':
+          return (o.quote_name || '').toLowerCase();
+        case 'project':
+          return (o.projectFullName || o.projectName || '').toLowerCase();
+        case 'client':
+          return ((o.clientCompany || o.projectClient) || '').toLowerCase();
+        case 'supplier':
+          return (o.supplier || '').toLowerCase();
+        case 'value':
+          return retail;
+        case 'paid':
+          return o.paid || 0;
+        case 'outstanding':
+          return outstandingVal;
+        case 'margin':
+          return margin;
+        case 'status':
+          return (o.status || '').toLowerCase();
+        default:
+          return '';
+      }
+    };
+
+    return [...filteredOrders].sort((a, b) => {
+      const valA = getVal(a, sortField);
+      const valB = getVal(b, sortField);
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredOrders, sortField, sortDirection]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.5 }} />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
+  };
 
   // Dynamic statistics
   const totalCostCompany = allOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
@@ -1705,20 +1774,40 @@ export default function SalesTracker() {
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
-                      <th>Quote ID</th>
-                      <th>Quote Name</th>
-                      <th>Supplier</th>
-                      <th>Project Name</th>
-                      <th>Client Name</th>
-                      <th>Retail Value Ex Vat</th>
-                      <th>Amount Paid</th>
-                      <th>Amount Outstanding</th>
-                      <th>Margin</th>
-                      <th>Order Status</th>
+                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote ID {renderSortIcon('id')}</div>
+                      </th>
+                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote Name {renderSortIcon('quote_name')}</div>
+                      </th>
+                      <th onClick={() => handleSort('supplier')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Supplier {renderSortIcon('supplier')}</div>
+                      </th>
+                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Name {renderSortIcon('project')}</div>
+                      </th>
+                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client Name {renderSortIcon('client')}</div>
+                      </th>
+                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Retail Value Ex Vat {renderSortIcon('value')}</div>
+                      </th>
+                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                      </th>
+                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Outstanding {renderSortIcon('outstanding')}</div>
+                      </th>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
+                      </th>
+                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.map(o => {
+                    {sortedOrders.map(o => {
                       const cost = o.costValue || 0;
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
