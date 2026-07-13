@@ -8,6 +8,82 @@ import json
 
 router = APIRouter()
 
+class BulkDeleteOrdersSchema(BaseModel):
+    po_numbers: List[str]
+
+class BulkRelinkOrdersSchema(BaseModel):
+    po_numbers: List[str]
+    project_key: str
+
+class BulkRenameOrdersSchema(BaseModel):
+    po_numbers: List[str]
+    new_quote_name: str
+
+@router.post("/bulk-delete")
+def bulk_delete_orders(payload: BulkDeleteOrdersSchema, db: Session = Depends(get_db)):
+    pos = payload.po_numbers
+    if not pos:
+        raise HTTPException(status_code=400, detail="No PO numbers provided")
+    
+    orders = db.query(Order).filter(Order.po_number.in_(pos)).all()
+    if not orders:
+        return {"message": "No matching orders found to delete"}
+        
+    try:
+        db.query(OrderItem).filter(OrderItem.order_id.in_(pos)).delete(synchronize_session=False)
+        for order in orders:
+            db.delete(order)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database constraint violation: {str(e)}")
+        
+    return {"message": f"Successfully deleted {len(orders)} orders and their items"}
+
+@router.post("/bulk-relink")
+def bulk_relink_orders(payload: BulkRelinkOrdersSchema, db: Session = Depends(get_db)):
+    pos = payload.po_numbers
+    if not pos:
+        raise HTTPException(status_code=400, detail="No PO numbers provided")
+        
+    project = db.query(Project).filter(Project.project_key == payload.project_key).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    try:
+        orders = db.query(Order).filter(Order.po_number.in_(pos)).all()
+        for order in orders:
+            order.project_key = project.project_key
+            order.project_id = project.id
+            meta = dict(order.order_metadata or {})
+            meta["quote_name"] = project.name
+            order.order_metadata = meta
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
+        
+    return {"message": f"Successfully linked and renamed {len(pos)} orders to project '{project.name}'"}
+
+@router.post("/bulk-rename")
+def bulk_rename_orders(payload: BulkRenameOrdersSchema, db: Session = Depends(get_db)):
+    pos = payload.po_numbers
+    if not pos:
+        raise HTTPException(status_code=400, detail="No PO numbers provided")
+        
+    try:
+        orders = db.query(Order).filter(Order.po_number.in_(pos)).all()
+        for order in orders:
+            meta = dict(order.order_metadata or {})
+            meta["quote_name"] = payload.new_quote_name
+            order.order_metadata = meta
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
+        
+    return {"message": f"Successfully renamed {len(pos)} orders"}
+
 class OrderItemSchema(BaseModel):
     id: str
     qty: int

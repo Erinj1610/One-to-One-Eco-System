@@ -95,9 +95,46 @@ export function calculateProjectStageAndProgress(p) {
 }
 
 export default function ProjectList() {
-  const { projects, addProject, contacts, getModuleName } = useStore();
+  const { projects, addProject, contacts, getModuleName, bulkDeleteProjects } = useStore();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // Bulk Selection States
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+
+  const toggleSelectKey = (key, e) => {
+    e.stopPropagation();
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (filteredProjects) => {
+    setSelectedKeys(prev => {
+      const allSelected = filteredProjects.every(p => prev.has(p.key));
+      const next = new Set(prev);
+      if (allSelected) {
+        filteredProjects.forEach(p => next.delete(p.key));
+      } else {
+        filteredProjects.forEach(p => next.add(p.key));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedKeys.size === 0) return;
+    if (window.confirm(`Are you sure you want to delete the ${selectedKeys.size} selected projects and all their associated orders, items, and files? This cannot be undone.`)) {
+      await bulkDeleteProjects(Array.from(selectedKeys));
+      setSelectedKeys(new Set());
+    }
+  };
 
   // Search & Filter States
   const [search, setSearch] = useState('');
@@ -602,13 +639,40 @@ export default function ProjectList() {
           </div>
         </div>
 
+        {/* BULK ACTIONS TOOLBAR */}
+        {selectedKeys.size > 0 && (
+          <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderLeft: '4px solid var(--text-danger)', animation: 'fadeIn 0.2s ease' }}>
+            <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+              {selectedKeys.size} projects selected
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                className="btn btn-sm btn-ghost" 
+                onClick={() => setSelectedKeys(new Set())}
+                style={{ fontSize: '12px' }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-sm btn-danger" 
+                onClick={handleBulkDelete}
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <AlertTriangle size={12} />
+                Delete Selected ({selectedKeys.size})
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* PRIMARY PROJECTS LEDGER TABLE */}
         <div className="card" style={{ overflow: 'hidden' }}>
           <table className="table" style={{ margin: 0 }}>
             <colgroup>
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '15%' }} />
-              <col style={{ width: '12%' }} />
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '11%' }} />
               <col style={{ width: '8%' }} />
               <col style={{ width: '8%' }} />
               <col style={{ width: '14%' }} />
@@ -618,6 +682,14 @@ export default function ProjectList() {
             </colgroup>
             <thead>
               <tr>
+                <th style={{ width: '4%', textAlign: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={sortedProjects.length > 0 && sortedProjects.every(p => selectedKeys.has(p.key))}
+                    onChange={() => toggleSelectAll(sortedProjects)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </th>
                 <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project {renderSortIcon('name')}</div>
                 </th>
@@ -688,6 +760,14 @@ export default function ProjectList() {
                     onClick={() => navigate(`/projects/${p.key}`)}
                     style={{ borderBottom: '1px solid var(--border)' }}
                   >
+                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedKeys.has(p.key)}
+                        onChange={(e) => toggleSelectKey(p.key, e)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
                     </td>

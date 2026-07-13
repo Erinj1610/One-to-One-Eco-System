@@ -63,18 +63,23 @@ def init_db():
         from sqlalchemy import text, inspect
         try:
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled BOOLEAN DEFAULT FALSE;"))
-                conn.commit()
+                inspector = inspect(engine)
+                user_cols = [c['name'] for c in inspector.get_columns('users')]
+                if 'disabled' not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE;"))
+                    conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
                 
                 # Migrate orders table to ensure order_metadata exists
                 try:
-                    db_type = engine.name
-                    if db_type == 'sqlite':
-                        conn.execute(text("ALTER TABLE orders ADD COLUMN order_metadata TEXT;"))
-                    else:
-                        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_metadata JSONB;"))
-                    conn.commit()
+                    order_cols = [c['name'] for c in inspector.get_columns('orders')]
+                    if 'order_metadata' not in order_cols:
+                        db_type = engine.name
+                        if db_type == 'sqlite':
+                            conn.execute(text("ALTER TABLE orders ADD COLUMN order_metadata TEXT;"))
+                        else:
+                            conn.execute(text("ALTER TABLE orders ADD COLUMN order_metadata JSONB;"))
+                        conn.commit()
                     print("Database migration: ensured 'order_metadata' column exists on 'orders' table.")
                 except Exception as alter_err:
                     print(f"Database migration orders order_metadata (non-critical info): {alter_err}")

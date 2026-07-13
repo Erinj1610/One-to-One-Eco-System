@@ -281,8 +281,67 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 }
 
 export default function OrdersPage() {
-  const { projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity } = useStore();
+  const { 
+    projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
+    bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
+  } = useStore();
   const { isAdmin } = useAuth();
+
+  // Bulk Selection States
+  const [selectedPoNumbers, setSelectedPoNumbers] = useState(new Set());
+
+  const toggleSelectPo = (po, e) => {
+    e.stopPropagation();
+    setSelectedPoNumbers(prev => {
+      const next = new Set(prev);
+      if (next.has(po)) {
+        next.delete(po);
+      } else {
+        next.add(po);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllPos = (ordersList) => {
+    setSelectedPoNumbers(prev => {
+      const allSelected = ordersList.length > 0 && ordersList.every(o => prev.has(o.id));
+      const next = new Set(prev);
+      if (allSelected) {
+        ordersList.forEach(o => next.delete(o.id));
+      } else {
+        ordersList.forEach(o => next.add(o.id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    if (selectedPoNumbers.size === 0) return;
+    if (window.confirm(`Are you sure you want to delete the ${selectedPoNumbers.size} selected orders and all their items? This cannot be undone.`)) {
+      await bulkDeleteOrders(Array.from(selectedPoNumbers));
+      setSelectedPoNumbers(new Set());
+    }
+  };
+
+  const handleBulkRelinkOrders = async (targetProjectKey) => {
+    if (selectedPoNumbers.size === 0 || !targetProjectKey) return;
+    const targetProject = Object.values(projects).find(p => p.key === targetProjectKey);
+    if (!targetProject) return;
+    if (window.confirm(`Are you sure you want to shift/re-link the ${selectedPoNumbers.size} selected orders to project '${targetProject.name}'?`)) {
+      await bulkRelinkOrders(Array.from(selectedPoNumbers), targetProjectKey);
+      setSelectedPoNumbers(new Set());
+    }
+  };
+
+  const handleBulkRenameOrders = async () => {
+    if (selectedPoNumbers.size === 0) return;
+    const newName = window.prompt("Enter a new Quote Name for all selected orders:");
+    if (newName && newName.trim()) {
+      await bulkRenameOrders(Array.from(selectedPoNumbers), newName.trim());
+      setSelectedPoNumbers(new Set());
+    }
+  };
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed_orders') === 'true';
   });
@@ -1743,11 +1802,62 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              {/* ORDERS BULK ACTIONS TOOLBAR */}
+              {selectedPoNumbers.size > 0 && (
+                <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderLeft: '4px solid var(--text-info)', flexWrap: 'wrap', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
+                  <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                    {selectedPoNumbers.size} orders selected
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      className="btn btn-sm btn-ghost" 
+                      onClick={() => setSelectedPoNumbers(new Set())}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Cancel
+                    </button>
+                    
+                    <select 
+                      className="form-control" 
+                      style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                      onChange={e => {
+                        if (e.target.value) {
+                          handleBulkRelinkOrders(e.target.value);
+                          e.target.value = ''; // Reset
+                        }
+                      }}
+                    >
+                      <option value="">Shift to Project...</option>
+                      {Object.values(projects).map(p => (
+                        <option key={p.key} value={p.key}>{p.name}</option>
+                      ))}
+                    </select>
+
+                    <button 
+                      className="btn btn-sm btn-danger" 
+                      onClick={handleBulkDeleteOrders}
+                      style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Trash2 size={12} />
+                      Delete Selected ({selectedPoNumbers.size})
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* ORDERS LEDGER LIST */}
               <div style={{ overflowX: 'auto' }}>
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
+                      <th style={{ width: '30px', textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={filteredOrders.length > 0 && filteredOrders.every(o => selectedPoNumbers.has(o.id))}
+                          onChange={() => toggleSelectAllPos(filteredOrders)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
                       <th>Quote ID</th>
                       <th>Quote Name</th>
                       <th>Linked Project</th>
@@ -1771,6 +1881,14 @@ export default function OrdersPage() {
 
                       return (
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
+                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedPoNumbers.has(o.id)}
+                              onChange={(e) => toggleSelectPo(o.id, e)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
                             <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
                             {isAdmin && (

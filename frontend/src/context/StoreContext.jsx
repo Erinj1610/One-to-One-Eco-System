@@ -2039,6 +2039,90 @@ export function StoreProvider({ children }) {
     if (updatedNewProj) await saveProjectToDb(newProjectKey, updatedNewProj);
   };
 
+  const refreshProjects = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/all`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data);
+      }
+    } catch (err) {
+      console.error("Error refreshing projects:", err);
+    }
+  };
+
+  const bulkDeleteProjects = async (keys) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_keys: keys })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errData.detail || "Server error");
+      }
+      await refreshProjects();
+    } catch (err) {
+      console.error("Error bulk deleting projects:", err);
+      alert(`Bulk Deletion Failed: ${err.message}`);
+    }
+  };
+
+  const bulkDeleteOrders = async (poNumbers) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ po_numbers: poNumbers })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errData.detail || "Server error");
+      }
+      await refreshProjects();
+    } catch (err) {
+      console.error("Error bulk deleting orders:", err);
+      alert(`Bulk Deletion Failed: ${err.message}`);
+    }
+  };
+
+  const bulkRelinkOrders = async (poNumbers, projectKey) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/bulk-relink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ po_numbers: poNumbers, project_key: projectKey })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errData.detail || "Server error");
+      }
+      await refreshProjects();
+    } catch (err) {
+      console.error("Error bulk relinking orders:", err);
+      alert(`Bulk Relink Failed: ${err.message}`);
+    }
+  };
+
+  const bulkRenameOrders = async (poNumbers, newQuoteName) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/bulk-rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ po_numbers: poNumbers, new_quote_name: newQuoteName })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(errData.detail || "Server error");
+      }
+      await refreshProjects();
+    } catch (err) {
+      console.error("Error bulk renaming orders:", err);
+      alert(`Bulk Rename Failed: ${err.message}`);
+    }
+  };
+
   return (
     <StoreContext.Provider value={{ 
       projects, 
@@ -2046,6 +2130,11 @@ export function StoreProvider({ children }) {
       addProject, 
       saveDraftProject, 
       deleteProject, 
+      refreshProjects,
+      bulkDeleteProjects,
+      bulkDeleteOrders,
+      bulkRelinkOrders,
+      bulkRenameOrders,
       contacts, 
       setContacts, 
       leads, 

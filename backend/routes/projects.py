@@ -30,6 +30,68 @@ class ProjectSchema(BaseModel):
     s4: Optional[str] = ""
     s5: Optional[str] = ""
 
+class BulkDeleteProjectsSchema(BaseModel):
+    project_keys: list[str]
+
+@router.post("/bulk-delete")
+def bulk_delete_projects(payload: BulkDeleteProjectsSchema, db: Session = Depends(get_db)):
+    keys = payload.project_keys
+    if not keys:
+        raise HTTPException(status_code=400, detail="No project keys provided")
+        
+    projects = db.query(Project).filter(Project.project_key.in_(keys)).all()
+    if not projects:
+        return {"message": "No matching projects found to delete"}
+        
+    from models.orm_models import Order
+    for project in projects:
+        has_orders = db.query(Order).filter(Order.project_key == project.project_key).first() is not None
+        has_design_fee = (project.design_fee and project.design_fee > 0) or any(getattr(project, s) for s in ["s1", "s2", "s3", "s4", "s5"])
+        if has_orders or has_design_fee:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Deletion blocked: Project '{project.name}' has active design fees or orders"
+            )
+        
+    try:
+        from models.orm_models import (
+            OrderItem, ProjectFieldValue, ProjectPhase, 
+            Proposal, BOQ, Invoice, Document, Quote, ProjectFolder
+        )
+        
+        found_keys = [p.project_key for p in projects]
+        found_ids = [p.id for p in projects]
+        
+        # 1. Cascade delete orders and items linked to these project keys (should be 0 since we blocked above, but keep for safety/completeness)
+        db.query(OrderItem).filter(OrderItem.order_id.in_(
+            db.query(Order.po_number).filter(Order.project_key.in_(found_keys))
+        )).delete(synchronize_session=False)
+        db.query(Order).filter(Order.project_key.in_(found_keys)).delete(synchronize_session=False)
+            
+        # 2. Deletes by project.id
+        db.query(ProjectFieldValue).filter(ProjectFieldValue.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(ProjectPhase).filter(ProjectPhase.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(Proposal).filter(Proposal.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(BOQ).filter(BOQ.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(Document).filter(Document.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(Quote).filter(Quote.project_id.in_(found_ids)).delete(synchronize_session=False)
+        db.query(ProjectFolder).filter(ProjectFolder.project_id.in_(found_ids)).delete(synchronize_session=False)
+        
+        # Nullify project references on invoices
+        db.query(Invoice).filter(Invoice.project_id.in_(found_ids)).update({"project_id": None}, synchronize_session=False)
+
+        # 3. Delete project rows
+        for project in projects:
+            db.delete(project)
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database constraint violation: {str(e)}")
+        
+    return {"message": f"Successfully deleted {len(projects)} projects and their dependencies"}
+
 @router.post("/")
 def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
     # Generate project key if not provided
@@ -97,18 +159,26 @@ def delete_project_relational(project_key: str, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    from models.orm_models import Order
+    has_orders = db.query(Order).filter(Order.project_key == project.project_key).first() is not None
+    has_design_fee = (project.design_fee and project.design_fee > 0) or any(getattr(project, s) for s in ["s1", "s2", "s3", "s4", "s5"])
+    if has_orders or has_design_fee:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Deletion blocked: Project '{project.name}' has active design fees or orders"
+        )
+
     try:
         from models.orm_models import (
-            Order, OrderItem, ProjectFieldValue, ProjectPhase, 
+            OrderItem, ProjectFieldValue, ProjectPhase, 
             Proposal, BOQ, Invoice, Document, Quote, ProjectFolder
         )
         
-        # 1. Cascade delete orders and items linked to this project key
-        orders = db.query(Order).filter(Order.project_key == project_key).all()
-        po_numbers = [o.po_number for o in orders if o.po_number]
-        if po_numbers:
-            db.query(OrderItem).filter(OrderItem.order_id.in_(po_numbers)).delete(synchronize_session=False)
-            db.query(Order).filter(Order.po_number.in_(po_numbers)).delete(synchronize_session=False)
+        # 1. Cascade delete orders (safety fallback)
+        db.query(OrderItem).filter(OrderItem.order_id.in_(
+            db.query(Order.po_number).filter(Order.project_key == project_key)
+        )).delete(synchronize_session=False)
+        db.query(Order).filter(Order.project_key == project_key).delete(synchronize_session=False)
             
         # 2. Deletes by project.id
         db.query(ProjectFieldValue).filter(ProjectFieldValue.project_id == project.id).delete(synchronize_session=False)
@@ -125,6 +195,8 @@ def delete_project_relational(project_key: str, db: Session = Depends(get_db)):
         # 3. Delete project row itself
         db.delete(project)
         db.commit()
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Database constraint violation: {str(e)}")
