@@ -115,6 +115,7 @@ class OrderItemSchema(BaseModel):
     delivery_history: Optional[List[Any]] = []
     stock_on_hand: int = 0
     is_credit: Optional[bool] = False
+    item_type: Optional[str] = "Hardware"
 
 class OrderSchema(BaseModel):
     project_key: str
@@ -274,7 +275,8 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         delivery_status=item_data.delivery_status,
         delivery_history=json.dumps(item_data.delivery_history),
         stock_on_hand=item_data.stock_on_hand,
-        is_credit=item_data.is_credit
+        is_credit=item_data.is_credit,
+        item_type=item_data.item_type
     )
     db.add(new_item)
     db.commit()
@@ -320,7 +322,8 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
     item.delivery_history = json.dumps(item_data.delivery_history)
     item.stock_on_hand = item_data.stock_on_hand
     item.is_credit = item_data.is_credit
-
+    item.item_type = item_data.item_type
+    
     db.commit()
     db.refresh(item)
     return item

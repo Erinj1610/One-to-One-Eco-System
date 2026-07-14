@@ -87,9 +87,13 @@ def run_migrations(db: Session):
             db.execute(text("ALTER TABLE order_items ADD COLUMN is_credit BOOLEAN DEFAULT FALSE;"))
             db.commit()
             print("Successfully migrated: ensured is_credit column exists on order_items table.")
+        if 'item_type' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN item_type VARCHAR DEFAULT 'Hardware';"))
+            db.commit()
+            print("Successfully migrated: ensured item_type column exists on order_items table.")
     except Exception as e:
         db.rollback()
-        print(f"Migration warning (order_items.is_credit alter): {e}")
+        print(f"Migration warning (order_items columns alter): {e}")
 
     # 3. Alter orders table to support po_number, etc.
     order_columns = [

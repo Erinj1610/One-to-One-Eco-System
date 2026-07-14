@@ -167,7 +167,7 @@ export default function LogisticsPage() {
 
     const packedMap = getOrderPackedQtys(order);
     const initialInputs = {};
-    (order.itemsList || []).forEach(item => {
+    (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').forEach(item => {
       const ordered = Number(item.qty) || 0;
       const packed = packedMap[item.id] || 0;
       const outstanding = Math.max(0, ordered - packed);
@@ -196,7 +196,7 @@ export default function LogisticsPage() {
     const plItems = [];
     let hasItems = false;
 
-    (order.itemsList || []).forEach(item => {
+    (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').forEach(item => {
       const ordered = Number(item.qty) || 0;
       const packed = packedMap[item.id] || 0;
       const outstanding = Math.max(0, ordered - packed);
@@ -1001,7 +1001,7 @@ export default function LogisticsPage() {
 
                         const packedMap = getOrderPackedQtys(order);
 
-                        return (order.itemsList || []).map(item => {
+                        return (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').map(item => {
                           const ordered = Number(item.qty) || 0;
                           const packed = packedMap[item.id] || 0;
                           const outstanding = Math.max(0, ordered - packed);

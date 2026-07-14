@@ -1475,7 +1475,8 @@ export function StoreProvider({ children }) {
       delivery_status: item.deliveryStatus || item.delivery_status || null,
       delivery_history: item.deliveryHistory || item.delivery_history || [],
       stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0,
-      is_credit: !!(item.isCredit || item.is_credit)
+      is_credit: !!(item.isCredit || item.is_credit),
+      item_type: item.itemType || item.item_type || "Hardware"
     };
   };
 

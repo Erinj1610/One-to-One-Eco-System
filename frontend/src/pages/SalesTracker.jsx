@@ -664,11 +664,22 @@ export default function SalesTracker() {
 
     activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
       const q = Number(item.qty) || 0;
-      totalQty += q;
+      const isService = (item.itemType || item.item_type) === 'Service';
       
       const defaults = getItemDefaults(item);
-      const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
       const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
+
+      if (isService) {
+        // Service items are always 100% procured and delivered — track invoice only
+        totalQty += q;
+        totalProcQty += q;
+        totalInvQty += Number(invoiced) || 0;
+        totalDelQty += q;
+        return;
+      }
+
+      totalQty += q;
+      const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
       const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
       const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
 
@@ -2290,7 +2301,7 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#4ade80', fontWeight: 600 }}>Proc:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.is_credit ? '—' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`)}
+                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`))}
                                           </span>
                                         </div>
                                         {/* Invoiced Badge */}
@@ -2304,7 +2315,7 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(96, 165, 250, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#60a5fa', fontWeight: 600 }}>Del:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.is_credit ? '—' : `${Math.round(((item.deliveryQty || 0) / (item.qty || 1)) * 100)}%`}
+                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : `${Math.round(((item.deliveryQty || 0) / (item.qty || 1)) * 100)}%`)}
                                           </span>
                                         </div>
                                       </div>
@@ -2684,9 +2695,17 @@ export default function SalesTracker() {
 
                           activeOrderItems.forEach(item => {
                             const defaults = getItemDefaults(item);
-                            const receivedQty = Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0;
                             const qty = Number(item.qty) || 0;
                             const retail = Number(item.unitRetail) || 0;
+                            const isService = (item.itemType || item.item_type) === 'Service';
+
+                            // Service items are always fully received
+                            if (isService) {
+                              valueReceived += qty * retail;
+                              return;
+                            }
+
+                            const receivedQty = Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0;
                             const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
 
                             if (stockStatus !== 'All Stock on Hand' && receivedQty < qty) {
@@ -3099,11 +3118,13 @@ export default function SalesTracker() {
                                         const defaults = getItemDefaults(item);
                                         const qty = Number(item.qty) || 0;
                                         const retail = Number(item.unitRetail) || 0;
+                                        const isService = (item.itemType || item.item_type) === 'Service';
                                         const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
                                         
-                                        const recQty = stockStatus === 'All Stock on Hand' ? qty : (Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0);
+                                        // Service items count as fully received
+                                        const recQty = isService ? qty : (stockStatus === 'All Stock on Hand' ? qty : (Number(item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty) || 0));
                                         const recVal = recQty * retail;
-                                        const outRecVal = (stockStatus === 'All Stock on Hand' ? 0 : Math.max(0, qty - recQty)) * retail;
+                                        const outRecVal = isService ? 0 : (stockStatus === 'All Stock on Hand' ? 0 : Math.max(0, qty - recQty)) * retail;
                                         
                                         const rDate = parseDate(item.receivedDate || defaults.receivedDate) || new Date();
                                         const etaDate = parseDate(item.poEta || defaults.poEta) || new Date();

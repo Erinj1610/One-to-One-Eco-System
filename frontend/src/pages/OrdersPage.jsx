@@ -356,10 +356,11 @@ export default function OrdersPage() {
   const [lossReason, setLossReason] = useState('Price');
   const [lossNotes, setLossNotes] = useState('');
 
-  const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet', {
+  const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet_v2', {
     qty: 60,
     oneOneCode: 100,
     type: 80,
+    itemType: 90,
     code: 165,
     description: 250,
     floor: 90,
@@ -373,7 +374,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'type', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -2893,6 +2894,10 @@ export default function OrdersPage() {
                                   Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                 </th>
+                                <th style={{ width: widths.itemType, position: 'relative' }}>
+                                  Item Type
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
+                                </th>
                                 <th style={{ width: widths.code, position: 'relative' }}>
                                   Item Code
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
@@ -3007,6 +3012,39 @@ export default function OrdersPage() {
                                         data-col={2}
                                         data-field="type"
                                       />
+                                    </td>
+
+                                    {/* ITEM TYPE - Styled badge toggle */}
+                                    <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSpreadsheetCell(item.id, 'itemType', (item.itemType || item.item_type || 'Hardware') === 'Hardware' ? 'Service' : 'Hardware')}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '2px 8px',
+                                          borderRadius: '12px',
+                                          fontSize: '10px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          border: 'none',
+                                          letterSpacing: '0.3px',
+                                          transition: 'all 0.15s',
+                                          ...(((item.itemType || item.item_type) === 'Service') ? {
+                                            background: 'rgba(245, 158, 11, 0.15)',
+                                            color: '#d97706',
+                                            outline: '1px solid rgba(245, 158, 11, 0.4)'
+                                          } : {
+                                            background: 'rgba(59, 130, 246, 0.12)',
+                                            color: '#3b82f6',
+                                            outline: '1px solid rgba(59, 130, 246, 0.3)'
+                                          })
+                                        }}
+                                        title="Click to toggle Hardware / Service"
+                                      >
+                                        {((item.itemType || item.item_type) === 'Service') ? '⚙ Service' : '🔩 Hardware'}
+                                      </button>
                                     </td>
 
                                     {/* ITEM CODE SELECTOR / CUSTOM ENTRY */}
@@ -3225,6 +3263,10 @@ export default function OrdersPage() {
                                       Type
                                       <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                     </th>
+                                    <th style={{ width: widths.itemType, position: 'relative' }}>
+                                      Item Type
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
+                                    </th>
                                     <th style={{ width: widths.code, position: 'relative' }}>
                                       Item Code
                                       <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
@@ -3324,6 +3366,33 @@ export default function OrdersPage() {
                                             readOnly
                                             disabled
                                           />
+                                        </td>
+
+                                        {/* ITEM TYPE - Styled badge (read-only) */}
+                                        <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                          <span
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                              padding: '2px 8px',
+                                              borderRadius: '12px',
+                                              fontSize: '10px',
+                                              fontWeight: 700,
+                                              letterSpacing: '0.3px',
+                                              ...(((item.itemType || item.item_type) === 'Service') ? {
+                                                background: 'rgba(245, 158, 11, 0.15)',
+                                                color: '#d97706',
+                                                outline: '1px solid rgba(245, 158, 11, 0.4)'
+                                              } : {
+                                                background: 'rgba(59, 130, 246, 0.12)',
+                                                color: '#3b82f6',
+                                                outline: '1px solid rgba(59, 130, 246, 0.3)'
+                                              })
+                                            }}
+                                          >
+                                            {((item.itemType || item.item_type) === 'Service') ? '⚙ Service' : '🔩 Hardware'}
+                                          </span>
                                         </td>
 
                                         {/* ITEM CODE */}
@@ -4332,7 +4401,10 @@ export default function OrdersPage() {
                             <h5 style={{ margin: '0 0 8px 0', fontSize: '11.5px', color: '#0f172a' }}>Site Area Delivery Summaries</h5>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {Object.entries(groupedItems).map(([areaName, items]) => {
-                                const inStockCount = items.filter(item => item.stockStatus === 'In Stock').length;
+                                const inStockCount = items.filter(item => 
+                                  item.stockStatus === 'In Stock' || 
+                                  (item.itemType || item.item_type) === 'Service'
+                                ).length;
                                 const percentDelivered = items.length > 0 ? Math.round((inStockCount / items.length) * 100) : 0;
                                 
                                 return (
@@ -4901,6 +4973,10 @@ export default function OrdersPage() {
                             Type
                             <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                           </th>
+                          <th style={{ width: widths.itemType, position: 'relative' }}>
+                            Item Type
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
+                          </th>
                           <th style={{ width: widths.code, position: 'relative' }}>
                             Item Code
                             <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
@@ -5004,6 +5080,39 @@ export default function OrdersPage() {
                                     value={item.type || ''}
                                     onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
                                   />
+                                </td>
+
+                                {/* ITEM TYPE - Styled badge toggle */}
+                                <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSpreadsheetCell(item.id, 'itemType', (item.itemType || item.item_type || 'Hardware') === 'Hardware' ? 'Service' : 'Hardware')}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '2px 8px',
+                                      borderRadius: '12px',
+                                      fontSize: '10px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      border: 'none',
+                                      letterSpacing: '0.3px',
+                                      transition: 'all 0.15s',
+                                      ...(((item.itemType || item.item_type) === 'Service') ? {
+                                        background: 'rgba(245, 158, 11, 0.15)',
+                                        color: '#d97706',
+                                        outline: '1px solid rgba(245, 158, 11, 0.4)'
+                                      } : {
+                                        background: 'rgba(59, 130, 246, 0.12)',
+                                        color: '#3b82f6',
+                                        outline: '1px solid rgba(59, 130, 246, 0.3)'
+                                      })
+                                    }}
+                                    title="Click to toggle Hardware / Service"
+                                  >
+                                    {((item.itemType || item.item_type) === 'Service') ? '⚙ Service' : '🔩 Hardware'}
+                                  </button>
                                 </td>
 
                                 {/* ITEM CODE */}

@@ -87,9 +87,13 @@ export default function InvoicesPage() {
     const grouped = {};
     (order.itemsList || []).forEach(item => {
       const code = item.code || 'NO-CODE';
+      const isService = (item.itemType || item.item_type) === 'Service';
       // Calculate readyQty for individual item
       let readyQty = 0;
-      if (item.stockStatus === 'All Stock on Hand') {
+      if (isService) {
+        // Services are always ready to invoice - no procurement needed
+        readyQty = item.qty || 0;
+      } else if (item.stockStatus === 'All Stock on Hand') {
         readyQty = item.qty || 0;
       } else if (item.stockStatus === 'Partial Stock on Hand') {
         const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));

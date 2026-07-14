@@ -189,7 +189,10 @@ export default function PurchasingPage() {
   const getUniqueSuppliersForOrder = (order) => {
     if (!order) return [];
     const suppliers = (order.itemsList || [])
-      .filter(item => item.stockStatus !== 'All Stock on Hand')
+      .filter(item => 
+        item.stockStatus !== 'All Stock on Hand' &&
+        (item.itemType || item.item_type) !== 'Service'
+      )
       .map(item => (item.supplier || 'Warehouse Inventory').trim());
     return Array.from(new Set(suppliers));
   };
@@ -199,7 +202,10 @@ export default function PurchasingPage() {
     const orderedQtys = getOrderOrderedQtys(order);
     const grouped = {};
     (order.itemsList || [])
-      .filter(item => item.stockStatus !== 'All Stock on Hand')
+      .filter(item => 
+        item.stockStatus !== 'All Stock on Hand' &&
+        (item.itemType || item.item_type) !== 'Service'
+      )
       .forEach(item => {
         const itemSupplier = (item.supplier || 'Warehouse Inventory').trim();
         if (filterSupplier && itemSupplier !== filterSupplier.trim()) return;

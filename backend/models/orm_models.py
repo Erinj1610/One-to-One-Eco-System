@@ -249,6 +249,7 @@ class OrderItem(Base):
     delivery_history = Column(JSON, nullable=True)
     stock_on_hand = Column(Integer, default=0)
     is_credit = Column(Boolean, default=False, nullable=True)
+    item_type = Column(String, default="Hardware", nullable=True)
 
 
 class OrderDocument(Base):
