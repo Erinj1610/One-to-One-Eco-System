@@ -3195,7 +3195,9 @@ export default function OrdersPage() {
                           {activeOrderItems.some(item => item.is_credit) && (
                             <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
                               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', marginBottom: '10px', marginLeft: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                🔴 Credited Ite                              <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
+                                🔴 Credited Items & Returns (Managed in Credits tab)
+                              </h4>
+                              <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                                 <thead>
                                   <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
                                     <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
