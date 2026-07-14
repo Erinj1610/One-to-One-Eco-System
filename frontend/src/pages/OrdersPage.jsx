@@ -1584,7 +1584,7 @@ export default function OrdersPage() {
     const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
     const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
-    const itemsCount = activeOrderItems.filter(item => !item.is_credit).reduce((s, item) => s + (Number(item.qty) || 0), 0);
+    const itemsCount = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((s, item) => s + (Number(item.qty) || 0), 0);
     const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
 
@@ -2795,7 +2795,7 @@ export default function OrdersPage() {
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
                   const balanceOutstanding = Math.max(0, (discountedRetail * 1.15) - Number(orderPaidAmount));
 
-                  const hasLowMargins = activeOrderItems.filter(item => !item.is_credit).some(item => {
+                  const hasLowMargins = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).some(item => {
                     const cost = Number(item.unitCost || item.unit_cost) || 0;
                     const retail = Number(item.unitRetail || item.unit_retail) || 0;
                     if (retail === 0) return false;
@@ -2951,7 +2951,7 @@ export default function OrdersPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeOrderItems.filter(item => !item.is_credit).map((item, index) => {
+                              {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map((item, index) => {
                                 const cost = Number(item.unitCost) || 0;
                                 const retail = Number(item.unitRetail) || 0;
                                 const qty = Number(item.qty) || 0;
@@ -3283,7 +3283,7 @@ export default function OrdersPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {activeOrderItems.filter(item => item.is_credit).map(item => {
+                                  {activeOrderItems.filter(item => item.is_credit || item.isCredit).map(item => {
                                     const qty = item.qty || 0;
                                     const retail = Number(item.unitRetail || item.unit_retail || 0);
                                     const cost = Number(item.unitCost || item.unit_cost || 0);
@@ -4800,7 +4800,7 @@ export default function OrdersPage() {
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Credited</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0), 0) * -1).toLocaleString()}
+                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0), 0) * -1).toLocaleString()}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Supplier cost deduction</span>
                   </div>
@@ -4808,7 +4808,7 @@ export default function OrdersPage() {
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Retail Credited</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1).toLocaleString()}
+                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1).toLocaleString()}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit EX VAT</span>
                   </div>
@@ -4854,7 +4854,7 @@ export default function OrdersPage() {
                         }}
                       >
                         <option value="">-- Return Item from BOQ --</option>
-                        {activeOrderItems.filter(item => !item.is_credit).map(item => (
+                        {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map(item => (
                           <option key={item.id} value={item.id}>
                             {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
                           </option>
@@ -4959,14 +4959,14 @@ export default function OrdersPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {activeOrderItems.filter(item => item.is_credit).length === 0 ? (
+                        {activeOrderItems.filter(item => item.is_credit || item.isCredit).length === 0 ? (
                           <tr>
                             <td colSpan={17} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                               No credit note items have been added to this order. Select an item from the BOQ above or add a blank credit row to start.
                             </td>
                           </tr>
                         ) : (
-                          activeOrderItems.filter(item => item.is_credit).map((item, index) => {
+                          activeOrderItems.filter(item => item.is_credit || item.isCredit).map((item, index) => {
                             const cost = Number(item.unitCost) || 0;
                             const retail = Number(item.unitRetail) || 0;
                             const qty = Number(item.qty) || 0;
@@ -5318,7 +5318,7 @@ export default function OrdersPage() {
                       }}
                     >
                       <option value="">-- Choose an item --</option>
-                      {activeOrderItems.filter(item => !item.is_credit).map(item => (
+                      {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map(item => (
                         <option key={item.id} value={item.id}>
                           {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
                         </option>

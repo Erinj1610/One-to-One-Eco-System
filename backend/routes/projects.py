@@ -283,6 +283,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "unitTrade": item.unit_trade,
                 "unitRetail": item.unit_retail,
                 "selection": item.selection,
+                "is_credit": bool(item.is_credit),
                 "stockStatus": item.stock_status,
                 "eta": item.eta,
                 "poRef": item.po_ref,

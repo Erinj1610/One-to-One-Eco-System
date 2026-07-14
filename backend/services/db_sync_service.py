@@ -412,7 +412,8 @@ def sync_projects(projects_dict, db: Session):
                     "delivery_date": item.get("deliveryDate"),
                     "delivery_status": item.get("deliveryStatus"),
                     "delivery_history": json.dumps(item.get("deliveryHistory", [])),
-                    "stock_on_hand": int(item.get("stockOnHand", 0))
+                    "stock_on_hand": int(item.get("stockOnHand", 0)),
+                    "is_credit": bool(item.get("is_credit") or item.get("isCredit") or False)
                 })
 
     # Bulk insert orders using optimized multi-row insert helper

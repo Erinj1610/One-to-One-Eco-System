@@ -2245,7 +2245,7 @@ export default function SalesTracker() {
                               </tr>
                             </thead>
                             <tbody onKeyDown={handleSpreadsheetKeyDown} onPaste={handleSpreadsheetPaste}>
-                              {groupedItems.filter(item => !item.is_credit).map((item, rowIndex) => {
+                              {groupedItems.filter(item => !(item.is_credit || item.isCredit)).map((item, rowIndex) => {
                                 const lineMargin = item.unitRetail > 0 ? ((item.unitRetail - item.unitCost) / item.unitRetail) * 100 : 0;
                                 const isLowMargin = lineMargin < 39;
 
@@ -2493,7 +2493,7 @@ export default function SalesTracker() {
                         </div>
 
                         {/* COLLAPSIBLE CREDITS SECTION AT THE BOTTOM OF THE LEDGER */}
-                        {groupedItems.some(item => item.is_credit) && (
+                        {groupedItems.some(item => item.is_credit || item.isCredit) && (
                           <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
@@ -2586,7 +2586,7 @@ export default function SalesTracker() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {groupedItems.filter(item => item.is_credit).map((item, index) => {
+                                    {groupedItems.filter(item => item.is_credit || item.isCredit).map((item, index) => {
                                       const lineMargin = item.unitRetail > 0 ? ((item.unitRetail - item.unitCost) / item.unitRetail) * 100 : 0;
 
                                       return (
