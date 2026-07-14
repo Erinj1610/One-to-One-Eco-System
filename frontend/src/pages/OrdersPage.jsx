@@ -476,6 +476,19 @@ export default function OrdersPage() {
   const [showAddCreditModal, setShowAddCreditModal] = useState(false);
   const [selectedItemToCredit, setSelectedItemToCredit] = useState('');
   const [qtyToCredit, setQtyToCredit] = useState(1);
+  const [creditSourceType, setCreditSourceType] = useState('existing'); // 'existing' | 'custom'
+  const [customCreditForm, setCustomCreditForm] = useState({
+    code: '',
+    description: '',
+    brand: '',
+    supplier: '',
+    floor: '',
+    area: '',
+    dimming: 'Non-dim',
+    unitCost: 0,
+    unitRetail: 0,
+    qty: 1
+  });
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [showRegForm, setShowRegForm] = useState(true);
   
@@ -1464,22 +1477,62 @@ export default function OrdersPage() {
 
   // Issue a credit item
   const handleIssueCreditItem = () => {
-    const originalItem = activeOrderItems.find(item => item.id === selectedItemToCredit);
-    if (!originalItem) return;
+    if (creditSourceType === 'existing') {
+      const originalItem = activeOrderItems.find(item => item.id === selectedItemToCredit);
+      if (!originalItem) return;
 
-    // Constrain the return qty
-    const creditQtyVal = Math.max(1, Math.min(originalItem.qty, Number(qtyToCredit) || 1));
+      // Constrain the return qty
+      const creditQtyVal = Math.max(1, Math.min(originalItem.qty, Number(qtyToCredit) || 1));
 
-    const creditId = 'C-' + Date.now();
-    const creditItem = {
-      ...originalItem,
-      id: creditId,
-      qty: -creditQtyVal, // Negative quantity
-      is_credit: true,   // Flagged as credit
-      isCredit: true
-    };
+      const creditId = 'C-' + Date.now();
+      const creditItem = {
+        ...originalItem,
+        id: creditId,
+        qty: -creditQtyVal, // Negative quantity
+        is_credit: true,   // Flagged as credit
+        isCredit: true
+      };
 
-    setActiveOrderItems(prev => [...prev, creditItem]);
+      setActiveOrderItems(prev => [...prev, creditItem]);
+    } else {
+      // Custom Credit Note Item
+      if (!customCreditForm.description) return;
+
+      const creditId = 'C-CUSTOM-' + Date.now();
+      const creditItem = {
+        id: creditId,
+        oneOneCode: customCreditForm.oneOneCode || '',
+        type: 'Custom Credit',
+        code: customCreditForm.code || 'Custom',
+        description: customCreditForm.description,
+        brand: customCreditForm.brand || '—',
+        supplier: customCreditForm.supplier || '—',
+        floor: customCreditForm.floor || '—',
+        area: customCreditForm.area || '—',
+        dimming: customCreditForm.dimming || 'Non-dim',
+        unitCost: Number(customCreditForm.unitCost) || 0,
+        unitRetail: Number(customCreditForm.unitRetail) || 0,
+        qty: -Math.abs(Number(customCreditForm.qty) || 1), // Force negative quantity
+        is_credit: true,
+        isCredit: true
+      };
+
+      setActiveOrderItems(prev => [...prev, creditItem]);
+      // Reset form
+      setCustomCreditForm({
+        code: '',
+        description: '',
+        brand: '',
+        supplier: '',
+        floor: '',
+        area: '',
+        dimming: 'Non-dim',
+        unitCost: 0,
+        unitRetail: 0,
+        qty: 1
+      });
+    }
+
     setShowAddCreditModal(false);
     setSelectedItemToCredit('');
     setQtyToCredit(1);
@@ -4708,43 +4761,184 @@ export default function OrdersPage() {
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowAddCreditModal(false)}>✕</button>
             </div>
             
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Item to Return</label>
-                <select 
-                  className="form-control"
-                  style={{ width: '100%', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                  value={selectedItemToCredit}
-                  onChange={e => {
-                    setSelectedItemToCredit(e.target.value);
-                    const item = activeOrderItems.find(i => i.id === e.target.value);
-                    if (item) setQtyToCredit(item.qty);
-                  }}
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px', maxHeight: '75vh', overflowY: 'auto' }}>
+              {/* SEGMENTED CONTROL */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <button 
+                  type="button"
+                  className={`btn btn-sm ${creditSourceType === 'existing' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1, borderRadius: '4px', fontSize: '11px', padding: '6px 12px' }}
+                  onClick={() => setCreditSourceType('existing')}
                 >
-                  <option value="">-- Choose an item --</option>
-                  {activeOrderItems.filter(item => !item.is_credit).map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
-                    </option>
-                  ))}
-                </select>
+                  Return BOQ Item
+                </button>
+                <button 
+                  type="button"
+                  className={`btn btn-sm ${creditSourceType === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ flex: 1, borderRadius: '4px', fontSize: '11px', padding: '6px 12px' }}
+                  onClick={() => setCreditSourceType('custom')}
+                >
+                  Custom Credit Note
+                </button>
               </div>
 
-              {selectedItemToCredit && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Quantity to Return</label>
-                  <input 
-                    type="number"
-                    min="1"
-                    max={activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1}
-                    className="form-control"
-                    value={qtyToCredit}
-                    onChange={e => setQtyToCredit(Math.max(1, Math.min(activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1, Number(e.target.value) || 1)))}
-                    required
-                  />
-                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
-                    Max returnable: {activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 0} units.
-                  </span>
+              {creditSourceType === 'existing' ? (
+                <>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Item to Return</label>
+                    <select 
+                      className="form-control"
+                      style={{ width: '100%', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                      value={selectedItemToCredit}
+                      onChange={e => {
+                        setSelectedItemToCredit(e.target.value);
+                        const item = activeOrderItems.find(i => i.id === e.target.value);
+                        if (item) setQtyToCredit(item.qty);
+                      }}
+                    >
+                      <option value="">-- Choose an item --</option>
+                      {activeOrderItems.filter(item => !item.is_credit).map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedItemToCredit && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Quantity to Return</label>
+                      <input 
+                        type="number"
+                        min="1"
+                        max={activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1}
+                        className="form-control"
+                        value={qtyToCredit}
+                        onChange={e => setQtyToCredit(Math.max(1, Math.min(activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1, Number(e.target.value) || 1)))}
+                        required
+                      />
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                        Max returnable: {activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 0} units.
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* CUSTOM ITEM FORM FIELDS */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Item Code</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.code} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, code: e.target.value })}
+                        placeholder="e.g. Handling"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>1:1 Code (Optional)</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.oneOneCode || ''} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, oneOneCode: e.target.value })}
+                        placeholder="e.g. TR-2844"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Description *</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={customCreditForm.description} 
+                      onChange={e => setCustomCreditForm({ ...customCreditForm, description: e.target.value })}
+                      placeholder="e.g. Handling Fee Credit Note"
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Brand</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.brand} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, brand: e.target.value })}
+                        placeholder="e.g. 1TO1"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Supplier</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.supplier} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, supplier: e.target.value })}
+                        placeholder="e.g. Molecule"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Floor</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.floor} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, floor: e.target.value })}
+                        placeholder="e.g. Ground"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Area Space</label>
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={customCreditForm.area} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, area: e.target.value })}
+                        placeholder="e.g. TBD Area"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Cost Ex VAT (Positive)</label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        value={customCreditForm.unitCost} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, unitCost: Number(e.target.value) || 0 })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Retail Ex VAT (Positive)</label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        value={customCreditForm.unitRetail} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, unitRetail: Number(e.target.value) || 0 })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Qty (Positive)</label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        value={customCreditForm.qty} 
+                        onChange={e => setCustomCreditForm({ ...customCreditForm, qty: Math.max(1, Number(e.target.value) || 1) })}
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -4753,7 +4947,7 @@ export default function OrdersPage() {
                 <button 
                   type="button"
                   className="btn btn-danger" 
-                  disabled={!selectedItemToCredit}
+                  disabled={creditSourceType === 'existing' ? !selectedItemToCredit : !customCreditForm.description}
                   onClick={handleIssueCreditItem}
                 >
                   Confirm Credit Note
