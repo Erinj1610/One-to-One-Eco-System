@@ -3195,53 +3195,259 @@ export default function OrdersPage() {
                           {activeOrderItems.some(item => item.is_credit) && (
                             <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
                               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', marginBottom: '10px', marginLeft: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                🔴 Credited Items & Returns (Managed in Credits tab)
-                              </h4>
-                              <table className="table" style={{ margin: 0, fontSize: '12px', background: 'rgba(239, 68, 68, 0.01)', width: '100%', minWidth: '1300px' }}>
+                                🔴 Credited Ite                              <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                                 <thead>
                                   <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ width: widths.qty, padding: '8px 12px', textAlign: 'center' }}>Qty</th>
-                                    <th style={{ width: widths.oneOneCode, padding: '8px 12px' }}>1:1 Code</th>
-                                    <th style={{ width: widths.type, padding: '8px 12px' }}>Type</th>
-                                    <th style={{ width: widths.code, padding: '8px 12px' }}>Item Code</th>
-                                    <th style={{ width: widths.description, padding: '8px 12px' }}>Description</th>
-                                    <th style={{ width: widths.floor, padding: '8px 12px' }}>Floor</th>
-                                    <th style={{ width: widths.area, padding: '8px 12px' }}>Area Space</th>
-                                    <th style={{ width: widths.dimming, padding: '8px 12px' }}>Dimming</th>
-                                    <th style={{ width: widths.brand, padding: '8px 12px' }}>Brand</th>
-                                    <th style={{ width: widths.supplier, padding: '8px 12px' }}>Supplier</th>
-                                    <th style={{ width: widths.cost, padding: '8px 12px', textAlign: 'right' }}>Cost Ex VAT</th>
-                                    <th style={{ width: widths.retail, padding: '8px 12px', textAlign: 'right' }}>Retail Price</th>
-                                    <th style={{ width: widths.totalRetail, padding: '8px 12px', textAlign: 'right' }}>Total Credit</th>
-                                    <th style={{ width: widths.stock, padding: '8px 12px' }}>Stock</th>
-                                    <th style={{ width: widths.eta, padding: '8px 12px' }}>ETA</th>
-                                    <th style={{ width: widths.actions, padding: '8px 12px', textAlign: 'center' }}>—</th>
+                                    <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
+                                      Qty
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
+                                    </th>
+                                    <th style={{ width: widths.oneOneCode, position: 'relative' }}>
+                                      1:1 Code
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                                    </th>
+                                    <th style={{ width: widths.type, position: 'relative' }}>
+                                      Type
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
+                                    </th>
+                                    <th style={{ width: widths.code, position: 'relative' }}>
+                                      Item Code
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
+                                    </th>
+                                    <th style={{ width: widths.description, position: 'relative' }}>
+                                      Description
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('description', e)} />
+                                    </th>
+                                    <th style={{ width: widths.floor, position: 'relative' }}>
+                                      Floor
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('floor', e)} />
+                                    </th>
+                                    <th style={{ width: widths.area, position: 'relative' }}>
+                                      Area Space
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('area', e)} />
+                                    </th>
+                                    <th style={{ width: widths.dimming, position: 'relative' }}>
+                                      Dimming
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('dimming', e)} />
+                                    </th>
+                                    <th style={{ width: widths.brand, position: 'relative' }}>
+                                      Brand
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
+                                    </th>
+                                    <th style={{ width: widths.supplier, position: 'relative' }}>
+                                      Supplier
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('supplier', e)} />
+                                    </th>
+                                    <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
+                                      Cost Ex VAT
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
+                                    </th>
+                                    <th style={{ width: widths.retail, position: 'relative', textAlign: 'right' }}>
+                                      Retail Price
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('retail', e)} />
+                                    </th>
+                                    <th style={{ width: widths.totalRetail, position: 'relative', textAlign: 'right' }}>
+                                      Total Credit
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('totalRetail', e)} />
+                                    </th>
+                                    <th style={{ width: widths.margin, position: 'relative', textAlign: 'center' }}>
+                                      Margin
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
+                                    </th>
+                                    <th style={{ width: widths.stock, position: 'relative' }}>
+                                      Stock
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
+                                    </th>
+                                    <th style={{ width: widths.eta, position: 'relative' }}>
+                                      ETA
+                                      <div className="resize-handle" onMouseDown={e => onResizeStart('eta', e)} />
+                                    </th>
+                                    <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
+                                      Status
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {activeOrderItems.filter(item => item.is_credit).map(item => {
                                     const qty = item.qty || 0;
-                                    const retail = item.unitRetail || item.unit_retail || 0;
-                                    const cost = item.unitCost || item.unit_cost || 0;
+                                    const retail = Number(item.unitRetail || item.unit_retail || 0);
+                                    const cost = Number(item.unitCost || item.unit_cost || 0);
                                     const totalCredit = qty * retail;
+                                    const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
+
                                     return (
                                       <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.04)', borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ fontWeight: 700, color: 'var(--text-danger)', textAlign: 'center', padding: '8px 12px' }}>{qty}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.oneOneCode || item.one_one_code || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.type || '—'}</td>
-                                        <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{item.code || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.description}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.floor || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.area || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.dimming || 'Non-dim'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.brand || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.supplier || '—'}</td>
-                                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>R {cost.toLocaleString()}</td>
-                                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>R {retail.toLocaleString()}</td>
-                                        <td style={{ fontWeight: 700, color: 'var(--text-danger)', padding: '8px 12px', textAlign: 'right' }}>R {totalCredit.toLocaleString()}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.stockStatus || '—'}</td>
-                                        <td style={{ padding: '8px 12px' }}>{item.eta || '—'}</td>
-                                        <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-danger)' }}>Credited</td>
+                                        {/* QUANTITY */}
+                                        <td>
+                                          <input 
+                                            type="number"
+                                            className="boq-cell-input"
+                                            style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}
+                                            value={qty}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+                                        
+                                        {/* 1:1 CODE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.oneOneCode || item.one_one_code || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* TYPE CODE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.type || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* ITEM CODE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.code || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* DESCRIPTION */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.description || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* FLOOR */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.floor || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* AREA SPACE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.area || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* DIMMING */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.dimming || 'Non-dim'}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* BRAND */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.brand || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* SUPPLIER */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.supplier || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* COST PRICE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            style={{ textAlign: 'right' }}
+                                            value={`R ${cost.toLocaleString()}`}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* RETAIL PRICE */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            style={{ textAlign: 'right' }}
+                                            value={`R ${retail.toLocaleString()}`}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* TOTAL CREDIT */}
+                                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-danger)', padding: '6px 8px', verticalAlign: 'middle' }}>
+                                          R {totalCredit.toLocaleString()}
+                                        </td>
+
+                                        {/* MARGIN */}
+                                        <td style={{ textAlign: 'center', fontWeight: 700, color: lineMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', padding: '6px 8px', verticalAlign: 'middle' }}>
+                                          {Math.round(lineMargin)}%
+                                        </td>
+
+                                        {/* STOCK STATUS */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.stockStatus || 'Order'}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* ETA */}
+                                        <td>
+                                          <input 
+                                            type="text"
+                                            className="boq-cell-input"
+                                            value={item.eta || ''}
+                                            readOnly
+                                            disabled
+                                          />
+                                        </td>
+
+                                        {/* ACTIONS / STATUS */}
+                                        <td style={{ textAlign: 'center', color: 'var(--text-danger)', fontWeight: 600, padding: '6px 8px', verticalAlign: 'middle' }}>
+                                          Credited
+                                        </td>
                                       </tr>
                                     );
                                   })}
@@ -4651,34 +4857,86 @@ export default function OrdersPage() {
                   </div>
 
                   {/* HIGH-DENSITY CREDIT SPREADSHEET */}
+                  {/* HIGH-DENSITY CREDIT SPREADSHEET */}
                   <div 
                     style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
                   >
                     <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                          <th style={{ width: widths.qty, textAlign: 'center' }}>Qty</th>
-                          <th style={{ width: widths.oneOneCode }}>1:1 Code</th>
-                          <th style={{ width: widths.type }}>Type</th>
-                          <th style={{ width: widths.code }}>Item Code</th>
-                          <th style={{ width: widths.description }}>Description</th>
-                          <th style={{ width: widths.floor }}>Floor</th>
-                          <th style={{ width: widths.area }}>Area Space</th>
-                          <th style={{ width: widths.dimming }}>Dimming</th>
-                          <th style={{ width: widths.brand }}>Brand</th>
-                          <th style={{ width: widths.supplier }}>Supplier</th>
-                          <th style={{ width: widths.cost, textAlign: 'right' }}>Cost Ex VAT</th>
-                          <th style={{ width: widths.retail, textAlign: 'right' }}>Retail Price</th>
-                          <th style={{ width: widths.totalRetail, textAlign: 'right' }}>Total Credit</th>
-                          <th style={{ width: widths.stock }}>Stock</th>
-                          <th style={{ width: widths.eta }}>ETA</th>
-                          <th style={{ width: widths.actions, textAlign: 'center' }}>Actions</th>
+                          <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
+                            Qty
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
+                          </th>
+                          <th style={{ width: widths.oneOneCode, position: 'relative' }}>
+                            1:1 Code
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                          </th>
+                          <th style={{ width: widths.type, position: 'relative' }}>
+                            Type
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
+                          </th>
+                          <th style={{ width: widths.code, position: 'relative' }}>
+                            Item Code
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
+                          </th>
+                          <th style={{ width: widths.description, position: 'relative' }}>
+                            Description
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('description', e)} />
+                          </th>
+                          <th style={{ width: widths.floor, position: 'relative' }}>
+                            Floor
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('floor', e)} />
+                          </th>
+                          <th style={{ width: widths.area, position: 'relative' }}>
+                            Area Space
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('area', e)} />
+                          </th>
+                          <th style={{ width: widths.dimming, position: 'relative' }}>
+                            Dimming
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('dimming', e)} />
+                          </th>
+                          <th style={{ width: widths.brand, position: 'relative' }}>
+                            Brand
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
+                          </th>
+                          <th style={{ width: widths.supplier, position: 'relative' }}>
+                            Supplier
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('supplier', e)} />
+                          </th>
+                          <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
+                            Cost Ex VAT
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
+                          </th>
+                          <th style={{ width: widths.retail, position: 'relative', textAlign: 'right' }}>
+                            Retail Price
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('retail', e)} />
+                          </th>
+                          <th style={{ width: widths.totalRetail, position: 'relative', textAlign: 'right' }}>
+                            Total Credit
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('totalRetail', e)} />
+                          </th>
+                          <th style={{ width: widths.margin, position: 'relative', textAlign: 'center' }}>
+                            Margin
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
+                          </th>
+                          <th style={{ width: widths.stock, position: 'relative' }}>
+                            Stock
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
+                          </th>
+                          <th style={{ width: widths.eta, position: 'relative' }}>
+                            ETA
+                            <div className="resize-handle" onMouseDown={e => onResizeStart('eta', e)} />
+                          </th>
+                          <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
+                            Actions
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeOrderItems.filter(item => item.is_credit).length === 0 ? (
                           <tr>
-                            <td colSpan={16} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={17} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                               No credit note items have been added to this order. Select an item from the BOQ above or add a blank credit row to start.
                             </td>
                           </tr>
@@ -4688,6 +4946,7 @@ export default function OrdersPage() {
                             const retail = Number(item.unitRetail) || 0;
                             const qty = Number(item.qty) || 0;
                             const totalCreditLine = qty * retail;
+                            const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
 
                             return (
                               <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.03)' }}>
@@ -4825,6 +5084,11 @@ export default function OrdersPage() {
                                 {/* TOTAL CREDIT */}
                                 <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-danger)' }}>
                                   R {totalCreditLine.toLocaleString()}
+                                </td>
+
+                                {/* MARGIN */}
+                                <td style={{ textAlign: 'center', fontWeight: 700, color: lineMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                  {Math.round(lineMargin)}%
                                 </td>
 
                                 {/* STOCK STATUS */}

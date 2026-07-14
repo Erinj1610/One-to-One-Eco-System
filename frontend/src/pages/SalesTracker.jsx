@@ -291,7 +291,8 @@ export default function SalesTracker() {
           areasSet: new Set(),
           stockStatuses: new Set(),
           deliveryCommentsList: [],
-          deliveryHistories: []
+          deliveryHistories: [],
+          is_credit: item.is_credit || item.isCredit || false
         };
       }
       
@@ -412,8 +413,13 @@ export default function SalesTracker() {
           });
           return Object.values(historyMap);
         })(),
-        area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—'
+        area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—',
+        is_credit: g.is_credit
       };
+    }).sort((a, b) => {
+      if (a.is_credit && !b.is_credit) return 1;
+      if (!a.is_credit && b.is_credit) return -1;
+      return 0;
     });
   }, [activeOrderItems]);
 
@@ -655,7 +661,7 @@ export default function SalesTracker() {
     let totalInvQty = 0;
     let totalDelQty = 0;
 
-    activeOrderItems.forEach(item => {
+    activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
       const q = Number(item.qty) || 0;
       totalQty += q;
       
@@ -2030,13 +2036,14 @@ export default function SalesTracker() {
                 
                 {/* TOP SUMMARY STRIP */}
                 {(() => {
-                  const totalMasterQty = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+                  const nonCreditItems = activeOrderItems.filter(item => !item.is_credit && !item.isCredit);
+                  const totalMasterQty = nonCreditItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
                   const totalMasterCost = activeOrderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
                   const totalMasterRetail = activeOrderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
                   const masterDiscounted = Math.max(0, totalMasterRetail * (1 - (Number(orderDiscount) || 0) / 100));
 
                   // Delivery metrics calculated from items directly
-                  const totalDeliveredQty = activeOrderItems.reduce((sum, item) => {
+                  const totalDeliveredQty = nonCreditItems.reduce((sum, item) => {
                     const defaults = getItemDefaults(item);
                     const val = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty;
                     return sum + (Number(val) || 0);
@@ -2052,7 +2059,7 @@ export default function SalesTracker() {
                   
                   const remainingToInvoice = Math.max(0, masterDiscounted - invoicedDiscounted);
                   const backOrderQty = Math.max(0, totalMasterQty - totalDeliveredQty);
-                  const totalStockOnHand = activeOrderItems.reduce((sum, item) => {
+                  const totalStockOnHand = nonCreditItems.reduce((sum, item) => {
                     const defaults = getItemDefaults(item);
                     const val = item.stockStatus === 'All Stock on Hand' ? item.qty : (item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0);
                     return sum + (Number(val) || 0);
@@ -2282,21 +2289,21 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#4ade80', fontWeight: 600 }}>Proc:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`}
+                                            {item.is_credit ? '—' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`)}
                                           </span>
                                         </div>
                                         {/* Invoiced Badge */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(245, 158, 11, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#f59e0b', fontWeight: 600 }}>Inv:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {`${Math.round(((item.invoiceQty || 0) / (item.qty || 1)) * 100)}%`}
+                                            {item.is_credit ? '—' : `${Math.round(((item.invoiceQty || 0) / (item.qty || 1)) * 100)}%`}
                                           </span>
                                         </div>
                                         {/* Delivered Badge */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(96, 165, 250, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#60a5fa', fontWeight: 600 }}>Del:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {`${Math.round(((item.deliveryQty || 0) / (item.qty || 1)) * 100)}%`}
+                                            {item.is_credit ? '—' : `${Math.round(((item.deliveryQty || 0) / (item.qty || 1)) * 100)}%`}
                                           </span>
                                         </div>
                                       </div>
