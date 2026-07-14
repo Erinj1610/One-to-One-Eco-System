@@ -1548,7 +1548,7 @@ export default function OrdersPage() {
     const newOrder = {
       id: newPoId,
       quote_name: newPoForm.quote_name || 'General Spec',
-      supplier: newPoForm.supplier,
+      supplier: 'Made by 1-to-1',
       items: 1,
       value: 1500,
       paid: 0,
@@ -1568,7 +1568,7 @@ export default function OrdersPage() {
           area: 'Lobby',
           dimming: 'Non-dim',
           brand: 'Delta Light',
-          supplier: newPoForm.supplier,
+          supplier: 'Made by 1-to-1',
           unitCost: 900,
           unitTrade: 1200,
           unitRetail: 1500,
@@ -1949,9 +1949,6 @@ export default function OrdersPage() {
                       <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client Name {renderSortIcon('client')}</div>
                       </th>
-                      <th onClick={() => handleSort('supplier')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Hardware Supplier {renderSortIcon('supplier')}</div>
-                      </th>
                       <th onClick={() => handleSort('items')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>BOQ Items {renderSortIcon('items')}</div>
                       </th>
@@ -2011,7 +2008,6 @@ export default function OrdersPage() {
                           <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                          <td>{o.supplier}</td>
                           <td>{o.items} fixtures</td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
@@ -4437,19 +4433,7 @@ export default function OrdersPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Hardware Supplier</label>
-                  <select 
-                    className="form-control" 
-                    value={newPoForm.supplier} 
-                    onChange={e => setNewPoForm({...newPoForm, supplier: e.target.value})}
-                  >
-                    <option>Molecule Dist.</option>
-                    <option>Modus Lighting</option>
-                    <option>Philips Advance</option>
-                    <option>Made by 1-to-1</option>
-                  </select>
-                </div>
+
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
