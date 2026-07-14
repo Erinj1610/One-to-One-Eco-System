@@ -1138,6 +1138,7 @@ export function StoreProvider({ children }) {
   const [leads, setLeads] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [projectManagers, setProjectManagers] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
 
   const defaultSettings = {
     defaultTargetMargin: 39,
@@ -1829,7 +1830,7 @@ export function StoreProvider({ children }) {
     ]);
   };
 
-  const [activityLogs, setActivityLogs] = useState([]);
+
 
   const logActivity = React.useCallback((type, details, specificEmail = null) => {
     const activeEmail = specificEmail || (user ? user.email : 'anonymous@1-to-1.world');
