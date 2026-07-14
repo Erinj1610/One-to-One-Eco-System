@@ -312,7 +312,20 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 orders_by_project[order.project_key] = []
             
             order_items_list = items_by_order.get(order.po_number, [])
-            total_cost_value = sum((int(item.get("qty") or 0) * float(item.get("unitCost") or 0.0)) for item in order_items_list)
+            
+            def safe_num(v, default=0.0):
+                try:
+                    if v is None:
+                        return default
+                    if isinstance(v, str):
+                        v = v.replace("R", "").replace(",", "").strip()
+                        if not v or v == "—":
+                            return default
+                    return float(v)
+                except (ValueError, TypeError):
+                    return default
+
+            total_cost_value = sum((int(safe_num(item.get("qty"), 0)) * safe_num(item.get("unitCost"), 0.0)) for item in order_items_list)
 
             order_dict = {
                 "id": order.po_number,
