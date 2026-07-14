@@ -311,17 +311,21 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if order.project_key not in orders_by_project:
                 orders_by_project[order.project_key] = []
             
+            order_items_list = items_by_order.get(order.po_number, [])
+            total_cost_value = sum((int(item.get("qty") or 0) * float(item.get("unitCost") or 0.0)) for item in order_items_list)
+
             order_dict = {
                 "id": order.po_number,
                 "supplier": order.supplier_name,
                 "items": order.items_count,
                 "value": order.value,
+                "costValue": total_cost_value,
                 "paid": order.paid,
                 "outstanding": order.outstanding,
                 "status": order.status,
                 "eta": order.eta,
                 "quote_name": order.quote_name or "General Spec",
-                "itemsList": items_by_order.get(order.po_number, [])
+                "itemsList": order_items_list
             }
             orders_by_project[order.project_key].append(order_dict)
 

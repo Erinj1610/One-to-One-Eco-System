@@ -1926,7 +1926,7 @@ export default function OrdersPage() {
               )}
 
               {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
@@ -1963,7 +1963,7 @@ export default function OrdersPage() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
                       </th>
                       <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Blended Margin {renderSortIcon('margin')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
                       </th>
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>

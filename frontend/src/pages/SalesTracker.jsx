@@ -1770,7 +1770,7 @@ export default function SalesTracker() {
               </div>
 
               {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>

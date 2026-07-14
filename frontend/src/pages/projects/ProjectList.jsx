@@ -331,7 +331,7 @@ export default function ProjectList() {
             const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
             totalValue = dfVal + poVal;
             const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                              p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+                              p.orders.reduce((sum, o) => sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8)), 0);
             actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
           }
           return actualMargin;
@@ -665,9 +665,9 @@ export default function ProjectList() {
           </div>
         )}
 
-        {/* PRIMARY PROJECTS LEDGER TABLE */}
-        <div className="card" style={{ overflow: 'visible' }}>
-          <table className="table" style={{ margin: 0 }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
+            <table className="table" style={{ margin: 0 }}>
             <colgroup>
               <col style={{ width: '4%' }} />
               <col style={{ width: '13%' }} />
@@ -709,7 +709,7 @@ export default function ProjectList() {
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderSortIcon('stage')}</div>
                 </th>
                 <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Blended Margin {renderSortIcon('margin')}</div>
                 </th>
                 <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
@@ -739,7 +739,7 @@ export default function ProjectList() {
                   totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
 
                   const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                                    p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+                                    p.orders.reduce((sum, o) => sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8)), 0);
                   actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
                 }
 
@@ -833,6 +833,7 @@ export default function ProjectList() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
