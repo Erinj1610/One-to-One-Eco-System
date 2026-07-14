@@ -70,13 +70,21 @@ def run_migrations(db: Session):
                 delivery_date VARCHAR,
                 delivery_status VARCHAR,
                 delivery_history JSON,
-                stock_on_hand INTEGER
+                stock_on_hand INTEGER,
+                is_credit BOOLEAN DEFAULT 0
             );
         """))
         db.commit()
     except Exception as e:
         db.rollback()
         print(f"Migration warning (order_items recreation): {e}")
+
+    try:
+        db.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS is_credit BOOLEAN DEFAULT 0;"))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (order_items.is_credit alter): {e}")
 
     # 3. Alter orders table to support po_number, etc.
     order_columns = [

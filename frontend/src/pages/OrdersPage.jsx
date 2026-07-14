@@ -473,6 +473,9 @@ export default function OrdersPage() {
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [showAddCreditModal, setShowAddCreditModal] = useState(false);
+  const [selectedItemToCredit, setSelectedItemToCredit] = useState('');
+  const [qtyToCredit, setQtyToCredit] = useState(1);
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [showRegForm, setShowRegForm] = useState(true);
   
@@ -1459,16 +1462,44 @@ export default function OrdersPage() {
     setActiveOrderItems(prev => prev.filter(item => item.id !== itemId));
   };
 
+  // Issue a credit item
+  const handleIssueCreditItem = () => {
+    const originalItem = activeOrderItems.find(item => item.id === selectedItemToCredit);
+    if (!originalItem) return;
+
+    // Constrain the return qty
+    const creditQtyVal = Math.max(1, Math.min(originalItem.qty, Number(qtyToCredit) || 1));
+
+    const creditId = 'C-' + Date.now();
+    const creditItem = {
+      ...originalItem,
+      id: creditId,
+      qty: -creditQtyVal, // Negative quantity
+      is_credit: true,   // Flagged as credit
+      isCredit: true
+    };
+
+    setActiveOrderItems(prev => [...prev, creditItem]);
+    setShowAddCreditModal(false);
+    setSelectedItemToCredit('');
+    setQtyToCredit(1);
+  };
+
+  // Remove a credit item
+  const handleRemoveCreditItem = (itemId) => {
+    setActiveOrderItems(prev => prev.filter(item => item.id !== itemId));
+  };
+
   // Save the spreadsheet and update the global store context
   const handleSaveOrderSpreadsheet = () => {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
     // Calculate aggregated order totals from items list
-    const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-    const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+    const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+    const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
-    const itemsCount = activeOrderItems.reduce((s, item) => s + (Number(item.qty) || 0), 0);
+    const itemsCount = activeOrderItems.filter(item => !item.is_credit).reduce((s, item) => s + (Number(item.qty) || 0), 0);
     const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
 
@@ -2188,6 +2219,13 @@ export default function OrdersPage() {
               >
                 <Truck size={14} /> 📦 Delivery Logistics
               </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'credits' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('credits')}
+              >
+                <DollarSign size={14} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
+              </button>
             </div>
 
             {workspaceSubTab === 'boq' && (
@@ -2620,16 +2658,16 @@ export default function OrdersPage() {
                 </div>
 
                 {(() => {
-                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-                  const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade) || 0)), 0);
+                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade || item.unit_trade) || 0)), 0);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                  const balanceOutstanding = Math.max(0, discountedRetail - Number(orderPaidAmount));
+                  const balanceOutstanding = Math.max(0, (discountedRetail * 1.15) - Number(orderPaidAmount));
 
-                  const hasLowMargins = activeOrderItems.some(item => {
-                    const cost = Number(item.unitCost) || 0;
-                    const retail = Number(item.unitRetail) || 0;
+                  const hasLowMargins = activeOrderItems.filter(item => !item.is_credit).some(item => {
+                    const cost = Number(item.unitCost || item.unit_cost) || 0;
+                    const retail = Number(item.unitRetail || item.unit_retail) || 0;
                     if (retail === 0) return false;
                     return (((retail - cost) / retail) * 100) < 39;
                   });
@@ -2638,8 +2676,8 @@ export default function OrdersPage() {
                   const areaTotals = {};
                   activeOrderItems.forEach(item => {
                     const areaName = item.area || 'General';
-                    const lineCost = (Number(item.qty) || 0) * (Number(item.unitCost) || 0);
-                    const lineRetail = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+                    const lineCost = (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0);
+                    const lineRetail = (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0);
                     
                     if (!areaTotals[areaName]) {
                       areaTotals[areaName] = { cost: 0, retail: 0 };
@@ -2828,7 +2866,7 @@ export default function OrdersPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeOrderItems.map((item, index) => {
+                              {activeOrderItems.filter(item => !item.is_credit).map((item, index) => {
                                 const cost = Number(item.unitCost) || 0;
                                 const retail = Number(item.unitRetail) || 0;
                                 const qty = Number(item.qty) || 0;
@@ -3070,6 +3108,64 @@ export default function OrdersPage() {
                               })}
                             </tbody>
                           </table>
+
+                          {activeOrderItems.some(item => item.is_credit) && (
+                            <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
+                              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', marginBottom: '10px', marginLeft: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                🔴 Credited Items & Returns (Managed in Credits tab)
+                              </h4>
+                              <table className="table" style={{ margin: 0, fontSize: '12px', background: 'rgba(239, 68, 68, 0.01)', width: '100%', minWidth: '1300px' }}>
+                                <thead>
+                                  <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                                    <th style={{ width: widths.qty, padding: '8px 12px', textAlign: 'center' }}>Qty</th>
+                                    <th style={{ width: widths.oneOneCode, padding: '8px 12px' }}>1:1 Code</th>
+                                    <th style={{ width: widths.type, padding: '8px 12px' }}>Type</th>
+                                    <th style={{ width: widths.code, padding: '8px 12px' }}>Item Code</th>
+                                    <th style={{ width: widths.description, padding: '8px 12px' }}>Description</th>
+                                    <th style={{ width: widths.floor, padding: '8px 12px' }}>Floor</th>
+                                    <th style={{ width: widths.area, padding: '8px 12px' }}>Area Space</th>
+                                    <th style={{ width: widths.dimming, padding: '8px 12px' }}>Dimming</th>
+                                    <th style={{ width: widths.brand, padding: '8px 12px' }}>Brand</th>
+                                    <th style={{ width: widths.supplier, padding: '8px 12px' }}>Supplier</th>
+                                    <th style={{ width: widths.cost, padding: '8px 12px', textAlign: 'right' }}>Cost Ex VAT</th>
+                                    <th style={{ width: widths.retail, padding: '8px 12px', textAlign: 'right' }}>Retail Price</th>
+                                    <th style={{ width: widths.totalRetail, padding: '8px 12px', textAlign: 'right' }}>Total Credit</th>
+                                    <th style={{ width: widths.stock, padding: '8px 12px' }}>Stock</th>
+                                    <th style={{ width: widths.eta, padding: '8px 12px' }}>ETA</th>
+                                    <th style={{ width: widths.actions, padding: '8px 12px', textAlign: 'center' }}>—</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {activeOrderItems.filter(item => item.is_credit).map(item => {
+                                    const qty = item.qty || 0;
+                                    const retail = item.unitRetail || item.unit_retail || 0;
+                                    const cost = item.unitCost || item.unit_cost || 0;
+                                    const totalCredit = qty * retail;
+                                    return (
+                                      <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.04)', borderBottom: '1px solid var(--border)' }}>
+                                        <td style={{ fontWeight: 700, color: 'var(--text-danger)', textAlign: 'center', padding: '8px 12px' }}>{qty}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.oneOneCode || item.one_one_code || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.type || '—'}</td>
+                                        <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{item.code || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.description}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.floor || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.area || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.dimming || 'Non-dim'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.brand || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.supplier || '—'}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>R {cost.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>R {retail.toLocaleString()}</td>
+                                        <td style={{ fontWeight: 700, color: 'var(--text-danger)', padding: '8px 12px', textAlign: 'right' }}>R {totalCredit.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.stockStatus || '—'}</td>
+                                        <td style={{ padding: '8px 12px' }}>{item.eta || '—'}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-danger)' }}>Credited</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
 
                         {/* RIGHT COLUMN: BOQ AREA FINANCIAL SUMMARY / PRODUCT CATALOGUE */}
@@ -4391,6 +4487,110 @@ export default function OrdersPage() {
               </div>
             )}
 
+            {workspaceSubTab === 'credits' && (
+              /* SUB-TAB: CREDITS & RETURNS */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* VITAL METRICS CARD GRID FOR CREDITS */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+                  <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Credited</span>
+                    <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
+                      R {Math.round(activeOrderItems.filter(item => item.is_credit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0), 0) * -1).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Supplier cost deduction</span>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Retail Credited</span>
+                    <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
+                      R {Math.round(activeOrderItems.filter(item => item.is_credit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit EX VAT</span>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Order Value</span>
+                    <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>
+                      R {Math.round(activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100)).toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Main order minus credits</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
+                        🔴 Credit Note Line Items
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Credit notes issued for fixture returns or billing adjustments.</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-danger" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => setShowAddCreditModal(true)}
+                    >
+                      <Plus size={14} /> Issue Credit Note Item
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Code</th>
+                          <th style={{ padding: '10px 12px' }}>Description</th>
+                          <th style={{ padding: '10px 12px' }}>Original Qty</th>
+                          <th style={{ padding: '10px 12px' }}>Qty Credited</th>
+                          <th style={{ padding: '10px 12px' }}>Unit Retail</th>
+                          <th style={{ padding: '10px 12px' }}>Credit Value</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeOrderItems.filter(item => item.is_credit).length === 0 ? (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No credit note items have been issued for this order yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          activeOrderItems.filter(item => item.is_credit).map((item, idx) => {
+                            // Find matching original item to display original qty
+                            const originalItem = activeOrderItems.find(orig => orig.code === item.code && !orig.is_credit);
+                            const origQty = originalItem ? originalItem.qty : '—';
+                            const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0);
+
+                            return (
+                              <tr key={`credit-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.05)' }}>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 600 }}>{item.code}</td>
+                                <td style={{ padding: '10px 12px' }}>{item.description}</td>
+                                <td style={{ padding: '10px 12px' }}>{origQty}</td>
+                                <td style={{ padding: '10px 12px', color: 'var(--text-danger)', fontWeight: 600 }}>{Math.abs(item.qty)}</td>
+                                <td style={{ padding: '10px 12px' }}>R {(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString()}</td>
+                                <td style={{ padding: '10px 12px', color: 'var(--text-danger)', fontWeight: 600 }}>R {retailVal.toLocaleString()}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  <button 
+                                    type="button"
+                                    className="btn btn-sm btn-ghost btn-danger" 
+                                    style={{ padding: '2px 6px' }}
+                                    onClick={() => handleRemoveCreditItem(item.id)}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
 
 
           </div>
@@ -4490,6 +4690,76 @@ export default function OrdersPage() {
                 <button type="submit" className="btn btn-primary">Initialize BOQ & Open Spec 🧠</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CREDIT NOTE ITEM MODAL */}
+      {showAddCreditModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title">Issue Credit Note / Return Item</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowAddCreditModal(false)}>✕</button>
+            </div>
+            
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Item to Return</label>
+                <select 
+                  className="form-control"
+                  style={{ width: '100%', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                  value={selectedItemToCredit}
+                  onChange={e => {
+                    setSelectedItemToCredit(e.target.value);
+                    const item = activeOrderItems.find(i => i.id === e.target.value);
+                    if (item) setQtyToCredit(item.qty);
+                  }}
+                >
+                  <option value="">-- Choose an item --</option>
+                  {activeOrderItems.filter(item => !item.is_credit).map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedItemToCredit && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Quantity to Return</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max={activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1}
+                    className="form-control"
+                    value={qtyToCredit}
+                    onChange={e => setQtyToCredit(Math.max(1, Math.min(activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1, Number(e.target.value) || 1)))}
+                    required
+                  />
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                    Max returnable: {activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 0} units.
+                  </span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowAddCreditModal(false)}>Cancel</button>
+                <button 
+                  type="button"
+                  className="btn btn-danger" 
+                  disabled={!selectedItemToCredit}
+                  onClick={handleIssueCreditItem}
+                >
+                  Confirm Credit Note
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

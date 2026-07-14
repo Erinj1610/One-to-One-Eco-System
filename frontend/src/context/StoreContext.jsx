@@ -1463,7 +1463,8 @@ export function StoreProvider({ children }) {
       delivery_date: item.deliveryDate || item.delivery_date || null,
       delivery_status: item.deliveryStatus || item.delivery_status || null,
       delivery_history: item.deliveryHistory || item.delivery_history || [],
-      stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0
+      stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0,
+      is_credit: !!(item.isCredit || item.is_credit)
     };
   };
 

@@ -248,6 +248,7 @@ class OrderItem(Base):
     delivery_status = Column(String, default="Pending")
     delivery_history = Column(JSON, nullable=True)
     stock_on_hand = Column(Integer, default=0)
+    is_credit = Column(Boolean, default=False, nullable=True)
 
 
 class OrderDocument(Base):
