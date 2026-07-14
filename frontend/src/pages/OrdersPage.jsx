@@ -473,6 +473,8 @@ export default function OrdersPage() {
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [creditsSectionOpen, setCreditsSectionOpen] = useState(true);
+  const [interactiveCreditsOpen, setInteractiveCreditsOpen] = useState(true);
   const [showAddCreditModal, setShowAddCreditModal] = useState(false);
   const [selectedItemToCredit, setSelectedItemToCredit] = useState('');
   const [qtyToCredit, setQtyToCredit] = useState(1);
@@ -2258,6 +2260,51 @@ export default function OrdersPage() {
               </div>
             </div>
 
+            {/* CSS STYLE INJECTIONS FOR ENHANCED LEGIBILITY & SPACING */}
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+              .boq-cell-input {
+                padding: 6px 10px !important;
+                font-size: 13.5px !important;
+                height: 36px !important;
+                background: transparent !important;
+                border: 1px solid transparent !important;
+                color: var(--text-primary) !important;
+                border-radius: 0px !important;
+                width: 100% !important;
+                outline: none !important;
+              }
+              .boq-cell-input:hover {
+                border: 1px solid var(--border) !important;
+              }
+              .boq-cell-input:focus {
+                border: 2px solid #185fa5 !important;
+                background: rgba(24, 95, 165, 0.05) !important;
+                border-radius: 2px !important;
+              }
+              .boq-table th {
+                padding: 12px 14px !important;
+                font-size: 13px !important;
+                font-weight: 600 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                background: var(--bg-secondary) !important;
+                color: var(--text-secondary) !important;
+                border-bottom: 2px solid var(--border-strong) !important;
+                position: sticky !important;
+                top: 0 !important;
+                z-index: 10 !important;
+              }
+              .boq-table td {
+                padding: 6px 8px !important;
+                vertical-align: middle !important;
+                border-bottom: 1px solid var(--border) !important;
+              }
+            `}</style>
+
             {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '20px', gap: '4px', overflowX: 'auto' }}>
               <button 
@@ -2822,51 +2869,6 @@ export default function OrdersPage() {
                         </div>
                       )}
 
-                      {/* CSS STYLE INJECTIONS FOR ENHANCED LEGIBILITY & SPACING */}
-                      <style>{`
-                        @keyframes spin {
-                          0% { transform: rotate(0deg); }
-                          100% { transform: rotate(360deg); }
-                        }
-                        .boq-cell-input {
-                          padding: 6px 10px !important;
-                          font-size: 13.5px !important;
-                          height: 36px !important;
-                          background: transparent !important;
-                          border: 1px solid transparent !important;
-                          color: var(--text-primary) !important;
-                          border-radius: 0px !important;
-                          width: 100% !important;
-                          outline: none !important;
-                        }
-                        .boq-cell-input:hover {
-                          border: 1px solid var(--border) !important;
-                        }
-                        .boq-cell-input:focus {
-                          border: 2px solid #185fa5 !important;
-                          background: rgba(24, 95, 165, 0.05) !important;
-                          border-radius: 2px !important;
-                        }
-                        .boq-table th {
-                          padding: 12px 14px !important;
-                          font-size: 13px !important;
-                          font-weight: 600 !important;
-                          text-transform: uppercase !important;
-                          letter-spacing: 0.5px !important;
-                          background: var(--bg-secondary) !important;
-                          color: var(--text-secondary) !important;
-                          border-bottom: 2px solid var(--border-strong) !important;
-                          position: sticky !important;
-                          top: 0 !important;
-                          z-index: 10 !important;
-                        }
-                        .boq-table td {
-                          padding: 6px 8px !important;
-                          vertical-align: middle !important;
-                          border-bottom: 1px solid var(--border) !important;
-                        }
-                      `}</style>
-
                       {/* TWO-COLUMN SPREADSHEET + AREA BREAKDOWN LAYOUT */}
                       <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 340px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
@@ -3194,10 +3196,21 @@ export default function OrdersPage() {
 
                           {activeOrderItems.some(item => item.is_credit) && (
                             <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
-                              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', marginBottom: '10px', marginLeft: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                🔴 Credited Items & Returns (Managed in Credits tab)
-                              </h4>
-                              <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', marginLeft: '12px', marginRight: '12px' }}>
+                                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                                  🔴 Credited Items & Returns (Managed in Credits tab)
+                                </h4>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-sm btn-ghost" 
+                                  style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-danger)', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                                  onClick={() => setCreditsSectionOpen(!creditsSectionOpen)}
+                                >
+                                  {creditsSectionOpen ? 'Collapse ˄' : 'Expand ˅'}
+                                </button>
+                              </div>
+                              {creditsSectionOpen && (
+                                <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                                 <thead>
                                   <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
                                     <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
@@ -3455,6 +3468,7 @@ export default function OrdersPage() {
                                   })}
                                 </tbody>
                               </table>
+                            )}
                             </div>
                           )}
                         </div>
@@ -4855,14 +4869,23 @@ export default function OrdersPage() {
                       >
                         <Plus size={14} /> Add Blank Credit Row
                       </button>
+
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-ghost" 
+                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-danger)', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                        onClick={() => setInteractiveCreditsOpen(!interactiveCreditsOpen)}
+                      >
+                        {interactiveCreditsOpen ? 'Collapse ˄' : 'Expand ˅'}
+                      </button>
                     </div>
                   </div>
 
                   {/* HIGH-DENSITY CREDIT SPREADSHEET */}
-                  {/* HIGH-DENSITY CREDIT SPREADSHEET */}
-                  <div 
-                    style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
-                  >
+                  {interactiveCreditsOpen && (
+                    <div 
+                      style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+                    >
                     <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
@@ -5137,6 +5160,7 @@ export default function OrdersPage() {
                       </tbody>
                     </table>
                   </div>
+                  )}
                 </div>
               </div>
             )}
