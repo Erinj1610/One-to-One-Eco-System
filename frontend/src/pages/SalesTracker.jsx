@@ -1780,9 +1780,6 @@ export default function SalesTracker() {
                       <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote Name {renderSortIcon('quote_name')}</div>
                       </th>
-                      <th onClick={() => handleSort('supplier')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Supplier {renderSortIcon('supplier')}</div>
-                      </th>
                       <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Name {renderSortIcon('project')}</div>
                       </th>
@@ -1817,7 +1814,6 @@ export default function SalesTracker() {
                         <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
                           <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                          <td style={{ fontWeight: 600 }}>{o.supplier}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>

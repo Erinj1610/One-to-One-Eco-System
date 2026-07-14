@@ -1278,9 +1278,31 @@ export function StoreProvider({ children }) {
                 }
               });
               setter({ ...loadedVal, modules: mergedModules });
+            } else if (key === 'activity_logs') {
+              const localSaved = localStorage.getItem('activity_logs');
+              let localLogs = [];
+              try {
+                if (localSaved) localLogs = JSON.parse(localSaved);
+              } catch(e){}
+              const dbLogs = Array.isArray(val) ? val : [];
+              const merged = [...dbLogs];
+              localLogs.forEach(loc => {
+                if (loc && loc.id && !merged.some(m => m.id === loc.id)) {
+                  merged.push(loc);
+                }
+              });
+              merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+              setter(merged);
             } else {
               setter(val);
             }
+          } else if (key === 'activity_logs') {
+            const localSaved = localStorage.getItem('activity_logs');
+            let localLogs = [];
+            try {
+              if (localSaved) localLogs = JSON.parse(localSaved);
+            } catch(e){}
+            setter(localLogs);
           } else if (key === 'projectManagers') {
             setter(defaultPMs);
           }

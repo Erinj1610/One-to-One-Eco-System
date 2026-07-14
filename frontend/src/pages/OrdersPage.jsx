@@ -3540,6 +3540,7 @@ export default function OrdersPage() {
                                         <th style={{ padding: '6px', width: '80px' }}>Type</th>
                                         <th style={{ padding: '6px' }}>Description</th>
                                         <th style={{ padding: '6px', width: '90px' }}>Brand</th>
+                                        <th style={{ padding: '6px', width: '100px' }}>Supplier</th>
                                         <th style={{ padding: '6px', width: '100px', textAlign: 'right' }}>Unit Retail</th>
                                         <th style={{ padding: '6px', width: '100px', textAlign: 'right' }}>Total Retail</th>
                                       </tr>
@@ -3551,6 +3552,7 @@ export default function OrdersPage() {
                                           <td style={{ padding: '6px', fontFamily: 'monospace' }}>{item.type}</td>
                                           <td style={{ padding: '6px' }}>{item.description}</td>
                                           <td style={{ padding: '6px' }}>{item.brand}</td>
+                                          <td style={{ padding: '6px' }}>{item.supplier || '—'}</td>
                                           <td style={{ padding: '6px', textAlign: 'right' }}>R {Math.round(Number(item.unitRetail) || 0).toLocaleString()}</td>
                                           <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>
                                             R {Math.round((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString()}
@@ -3840,6 +3842,7 @@ export default function OrdersPage() {
                                   <th style={{ padding: '8px', width: '100px' }}>Area Space</th>
                                   <th style={{ padding: '8px', width: '80px' }}>Dimming</th>
                                   <th style={{ padding: '8px', width: '90px' }}>Brand</th>
+                                  <th style={{ padding: '8px', width: '100px' }}>Supplier</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -3858,6 +3861,7 @@ export default function OrdersPage() {
                                       </span>
                                     </td>
                                     <td style={{ padding: '8px' }}>{item.brand}</td>
+                                    <td style={{ padding: '8px' }}>{item.supplier || '—'}</td>
                                   </tr>
                                 ))}
                               </tbody>
