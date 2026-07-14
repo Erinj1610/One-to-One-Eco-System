@@ -1193,7 +1193,7 @@ export default function OrdersPage() {
 
         // Parse numbers safely for real-time recalculations
         if (field === 'qty') {
-          if (item.is_credit) {
+          if (item.is_credit || item.isCredit) {
             const numVal = parseInt(val) || 0;
             updated.qty = numVal > 0 ? -numVal : numVal;
           } else {
@@ -3194,7 +3194,7 @@ export default function OrdersPage() {
                             </tbody>
                           </table>
 
-                          {activeOrderItems.some(item => item.is_credit) && (
+                          {activeOrderItems.some(item => item.is_credit || item.isCredit) && (
                             <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', marginLeft: '12px', marginRight: '12px' }}>
                                 <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>

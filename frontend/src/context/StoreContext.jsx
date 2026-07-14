@@ -1622,7 +1622,7 @@ export function StoreProvider({ children }) {
               }
             } else {
               // Update if changed
-              if (JSON.stringify(newItem) !== JSON.stringify(oldItem)) {
+              if (JSON.stringify(mapItemToSchema(newItem)) !== JSON.stringify(mapItemToSchema(oldItem))) {
                 try {
                   await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
                     method: 'PUT',
