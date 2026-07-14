@@ -1293,6 +1293,26 @@ export function StoreProvider({ children }) {
               });
               merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
               setter(merged);
+            } else if (key === 'projects') {
+              const parsedProjects = {};
+              Object.entries(val).forEach(([pKey, p]) => {
+                const fees = [];
+                ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
+                  if (p[col] && p[col].trim()) {
+                    try {
+                      fees.push(JSON.parse(p[col]));
+                    } catch(e) {
+                      console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
+                    }
+                  }
+                });
+                parsedProjects[pKey] = {
+                  ...p,
+                  designFees: fees,
+                  orders: p.orders || []
+                };
+              });
+              setter(parsedProjects);
             } else {
               setter(val);
             }
