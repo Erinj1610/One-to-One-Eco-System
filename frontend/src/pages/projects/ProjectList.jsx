@@ -666,7 +666,7 @@ export default function ProjectList() {
         )}
 
         {/* PRIMARY PROJECTS LEDGER TABLE */}
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card" style={{ overflow: 'visible' }}>
           <table className="table" style={{ margin: 0 }}>
             <colgroup>
               <col style={{ width: '4%' }} />
