@@ -66,15 +66,47 @@ export default function CrmPage() {
   // Page States
   const [selectedClient, setSelectedClient] = useState(null);
 
+  // Union of hardcoded contacts and unique client names from database projects
+  const combinedContacts = useMemo(() => {
+    const projectClients = new Set();
+    Object.values(projects || {}).forEach(p => {
+      if (p.client && p.client.trim()) {
+        projectClients.add(p.client.trim());
+      }
+    });
+
+    const list = [...(contacts || [])];
+
+    projectClients.forEach(clientName => {
+      const exists = list.some(c => (c.name || '').toLowerCase() === clientName.toLowerCase());
+      if (!exists) {
+        list.push({
+          id: `dyn-${clientName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
+          name: clientName,
+          company: clientName,
+          type: 'Private',
+          email: '',
+          phone: '',
+          status: 'Active',
+          lastContactDate: '2026-05-19',
+          lastContactSummary: 'Imported from active project',
+          activities: []
+        });
+      }
+    });
+
+    return list;
+  }, [contacts, projects]);
+
   useEffect(() => {
     if (location.state?.selectedClientId) {
-      const target = contacts.find(c => c.id === location.state.selectedClientId);
+      const target = combinedContacts.find(c => c.id === location.state.selectedClientId || String(c.id) === String(location.state.selectedClientId));
       if (target) setSelectedClient(target);
     } else if (location.state?.selectedClientName) {
-      const target = contacts.find(c => c.name === location.state.selectedClientName);
+      const target = combinedContacts.find(c => (c.name || '').toLowerCase() === (location.state.selectedClientName || '').toLowerCase());
       if (target) setSelectedClient(target);
     }
-  }, [location.state, contacts]);
+  }, [location.state, combinedContacts]);
 
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
@@ -144,25 +176,44 @@ export default function CrmPage() {
       showToast("Client name is required!");
       return;
     }
-    setContacts(prev => prev.map(c => {
-      if (c.id === selectedClient.id) {
-        const updated = {
-          ...c,
+    setContacts(prev => {
+      const exists = prev.some(c => c.id === selectedClient.id);
+      let updatedList = [...prev];
+      if (!exists) {
+        const newC = {
+          id: selectedClient.id,
           name: editClientData.name,
-          company: editClientData.company,
-          type: editClientData.type,
-          email: editClientData.email,
-          phone: editClientData.phone,
-          statedGoal: editClientData.statedGoal,
-          nps: editClientData.nps !== '' && editClientData.nps !== null ? Number(editClientData.nps) : null,
-          totalValue: Number(editClientData.totalValue),
-          annualRevenue: Number(editClientData.annualRevenue)
+          company: editClientData.company || editClientData.name,
+          type: editClientData.type || 'Private',
+          email: editClientData.email || '',
+          phone: editClientData.phone || '',
+          status: 'Active',
+          lastContactDate: '2026-05-19',
+          lastContactSummary: 'Added profile to CRM',
+          activities: []
         };
-        setSelectedClient(updated);
-        return updated;
+        updatedList.push(newC);
       }
-      return c;
-    }));
+      return updatedList.map(c => {
+        if (c.id === selectedClient.id) {
+          const updated = {
+            ...c,
+            name: editClientData.name,
+            company: editClientData.company,
+            type: editClientData.type,
+            email: editClientData.email,
+            phone: editClientData.phone,
+            statedGoal: editClientData.statedGoal,
+            nps: editClientData.nps !== '' && editClientData.nps !== null ? Number(editClientData.nps) : null,
+            totalValue: Number(editClientData.totalValue),
+            annualRevenue: Number(editClientData.annualRevenue)
+          };
+          setSelectedClient(updated);
+          return updated;
+        }
+        return c;
+      });
+    });
     setIsEditingClient(false);
     showToast("Client profile updated successfully!");
   };
@@ -225,7 +276,7 @@ export default function CrmPage() {
 
   // Dynamic Contact Enrichment & YoY Spend calculations
   const clientData = useMemo(() => {
-    return contacts.map(c => {
+    return combinedContacts.map(c => {
       // Find all projects from the store
       const clientProjectsList = Object.values(projects).filter(p => p.client === c.name);
       
@@ -287,7 +338,7 @@ export default function CrmPage() {
         projectsList: clientProjectsList
       };
     }).sort((a, b) => b.totalValue - a.totalValue);
-  }, [contacts, projects, dateFilterRange]);
+  }, [combinedContacts, projects, dateFilterRange]);
 
   // Apply filters for Search, Category, and Dates
   const filteredClients = useMemo(() => {
@@ -1825,9 +1876,21 @@ export default function CrmPage() {
                       setClientActivities(updated);
                       setNewActivityText('');
                       // Persist to contacts store
-                      setContacts(prev => prev.map(c =>
-                        c.id === selectedClient.id ? { ...c, activities: updated } : c
-                      ));
+                      setContacts(prev => {
+                        const exists = prev.some(c => c.id === selectedClient.id);
+                        let list = [...prev];
+                        if (!exists) {
+                          const newC = {
+                            ...selectedClient,
+                            activities: updated
+                          };
+                          list.push(newC);
+                          return list;
+                        }
+                        return list.map(c =>
+                          c.id === selectedClient.id ? { ...c, activities: updated } : c
+                        );
+                      });
                     }}
                   >
                     <Send size={14} /> Log Activity

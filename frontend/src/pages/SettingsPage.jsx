@@ -323,14 +323,24 @@ export default function SettingsPage() {
 
   const [activitySearch, setActivitySearch] = useState('');
   const [activityFilterType, setActivityFilterType] = useState('All');
+  const [selectedUserFilter, setSelectedUserFilter] = useState('All');
+
+  const uniqueUsers = useMemo(() => {
+    const users = new Set();
+    (activityLogs || []).forEach(log => {
+      if (log.userEmail) users.add(log.userEmail);
+    });
+    return Array.from(users);
+  }, [activityLogs]);
 
   const filteredActivityLogs = (activityLogs || []).filter(log => {
     const matchesSearch = 
-      log.userEmail.toLowerCase().includes(activitySearch.toLowerCase()) ||
-      log.details.toLowerCase().includes(activitySearch.toLowerCase()) ||
-      log.type.toLowerCase().includes(activitySearch.toLowerCase());
+      (log.userEmail || '').toLowerCase().includes(activitySearch.toLowerCase()) ||
+      (log.details || '').toLowerCase().includes(activitySearch.toLowerCase()) ||
+      (log.type || '').toLowerCase().includes(activitySearch.toLowerCase());
     const matchesType = activityFilterType === 'All' || log.type === activityFilterType;
-    return matchesSearch && matchesType;
+    const matchesUser = selectedUserFilter === 'All' || log.userEmail === selectedUserFilter;
+    return matchesSearch && matchesType && matchesUser;
   });
 
   return (
@@ -697,6 +707,19 @@ export default function SettingsPage() {
                     <option value="document_export">Document Exports</option>
                     <option value="invoice_issue">Invoice Issues</option>
                     <option value="waybill_edit">Logistics Edits</option>
+                  </select>
+                </div>
+                <div>
+                  <select 
+                    className="form-control" 
+                    value={selectedUserFilter}
+                    onChange={e => setSelectedUserFilter(e.target.value)}
+                    style={{ width: '220px' }}
+                  >
+                    <option value="All">All Users</option>
+                    {uniqueUsers.map(email => (
+                      <option key={email} value={email}>{email}</option>
+                    ))}
                   </select>
                 </div>
               </div>

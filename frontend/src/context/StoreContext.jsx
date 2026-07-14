@@ -1227,7 +1227,8 @@ export function StoreProvider({ children }) {
     invoices: false,
     alertSettings: false,
     moduleConfig: false,
-    projectManagers: false
+    projectManagers: false,
+    activity_logs: false
   });
 
   const getModuleName = (moduleId, fallback) => {
@@ -1247,7 +1248,8 @@ export function StoreProvider({ children }) {
           invoices: false,
           alertSettings: false,
           moduleConfig: false,
-          projectManagers: false
+          projectManagers: false,
+          activity_logs: false
         };
       }
       return;
@@ -1299,6 +1301,7 @@ export function StoreProvider({ children }) {
     loadState('alertSettings', setAlertSettings);
     loadState('moduleConfig', setModuleConfig);
     loadState('projectManagers', setProjectManagers);
+    loadState('activity_logs', setActivityLogs);
   }, [user, authLoading]);
 
   // Save states on changes (excluding initial load)
@@ -1318,6 +1321,7 @@ export function StoreProvider({ children }) {
   React.useEffect(() => { saveState('alertSettings', alertSettings); }, [alertSettings]);
   React.useEffect(() => { saveState('moduleConfig', moduleConfig); }, [moduleConfig]);
   React.useEffect(() => { saveState('projectManagers', projectManagers); }, [projectManagers]);
+  React.useEffect(() => { saveState('activity_logs', activityLogs); }, [activityLogs]);
 
   // Global self-healing: clean up orphaned purchaseHistory, receivingHistory, and invoiceHistory records
   React.useEffect(() => {
@@ -1825,18 +1829,7 @@ export function StoreProvider({ children }) {
     ]);
   };
 
-  const [activityLogs, setActivityLogs] = useState(() => {
-    const saved = localStorage.getItem('activity_logs');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: 'l1', timestamp: new Date(Date.now() - 5 * 60000).toISOString(), userEmail: 'erin.jones@1-to-1.world', type: 'page_view', details: 'Visited Sales Tracker module' },
-      { id: 'l2', timestamp: new Date(Date.now() - 30 * 60000).toISOString(), userEmail: 'erin.jones@1-to-1.world', type: 'document_generation', details: 'Compiled & generated PDF for client quotation Q-2026-7924' },
-      { id: 'l3', timestamp: new Date(Date.now() - 120 * 60000).toISOString(), userEmail: 'sipho.nene@1-to-1.world', type: 'invoice_issue', details: 'Issued tax invoice INV-2026-089 for order Q-2025-042 (Amount: R 122,439)' },
-      { id: 'l4', timestamp: new Date(Date.now() - 180 * 60000).toISOString(), userEmail: 'sipho.nene@1-to-1.world', type: 'login', details: 'User logged into the portal' },
-      { id: 'l5', timestamp: new Date(Date.now() - 360 * 60000).toISOString(), userEmail: 'merlyn.mittins@1-to-1.world', type: 'waybill_edit', details: 'Deleted waybill DN-2026-002 from Logistics page' },
-      { id: 'l6', timestamp: new Date(Date.now() - 500 * 60000).toISOString(), userEmail: 'merlyn.mittins@1-to-1.world', type: 'login', details: 'User logged into the portal' }
-    ];
-  });
+  const [activityLogs, setActivityLogs] = useState([]);
 
   const logActivity = React.useCallback((type, details, specificEmail = null) => {
     const activeEmail = specificEmail || (user ? user.email : 'anonymous@1-to-1.world');
@@ -1848,9 +1841,8 @@ export function StoreProvider({ children }) {
       details
     };
     setActivityLogs(prev => {
-      const updated = [newLog, ...prev].slice(0, 1000);
-      localStorage.setItem('activity_logs', JSON.stringify(updated));
-      return updated;
+      const currentList = Array.isArray(prev) ? prev : [];
+      return [newLog, ...currentList].slice(0, 1000);
     });
   }, [user]);
 
