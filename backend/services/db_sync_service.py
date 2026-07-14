@@ -80,8 +80,13 @@ def run_migrations(db: Session):
         print(f"Migration warning (order_items recreation): {e}")
 
     try:
-        db.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS is_credit BOOLEAN DEFAULT 0;"))
-        db.commit()
+        from sqlalchemy import inspect
+        inspector = inspect(db.bind)
+        cols = [c['name'] for c in inspector.get_columns('order_items')]
+        if 'is_credit' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN is_credit BOOLEAN DEFAULT FALSE;"))
+            db.commit()
+            print("Successfully migrated: ensured is_credit column exists on order_items table.")
     except Exception as e:
         db.rollback()
         print(f"Migration warning (order_items.is_credit alter): {e}")
