@@ -1190,7 +1190,14 @@ export default function OrdersPage() {
         }
 
         // Parse numbers safely for real-time recalculations
-        if (field === 'qty') updated.qty = Math.max(0, parseInt(val) || 0);
+        if (field === 'qty') {
+          if (item.is_credit) {
+            const numVal = parseInt(val) || 0;
+            updated.qty = numVal > 0 ? -numVal : numVal;
+          } else {
+            updated.qty = Math.max(0, parseInt(val) || 0);
+          }
+        }
         if (field === 'unitCost') updated.unitCost = Math.max(0, parseFloat(val) || 0);
         if (field === 'unitTrade') updated.unitTrade = Math.max(0, parseFloat(val) || 0);
         if (field === 'unitRetail') updated.unitRetail = Math.max(0, parseFloat(val) || 0);
@@ -1541,6 +1548,29 @@ export default function OrdersPage() {
   // Remove a credit item
   const handleRemoveCreditItem = (itemId) => {
     setActiveOrderItems(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  // Add a blank credit row
+  const handleAddCreditRow = () => {
+    const newId = 'C-' + Date.now();
+    const newCreditItem = {
+      id: newId,
+      qty: -1, // Negative quantity
+      oneOneCode: '',
+      type: 'Credit Note',
+      code: '',
+      description: '',
+      floor: '',
+      area: '',
+      dimming: 'Non-dim',
+      brand: '',
+      supplier: '',
+      unitCost: 0,
+      unitRetail: 0,
+      is_credit: true,
+      isCredit: true
+    };
+    setActiveOrderItems(prev => [...prev, newCreditItem]);
   };
 
   // Save the spreadsheet and update the global store context
@@ -4574,64 +4604,265 @@ export default function OrdersPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
-                        🔴 Credit Note Line Items
+                        🔴 Credit Note & Return Items (Interactive Spreadsheet)
                       </h4>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Credit notes issued for fixture returns or billing adjustments.</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Edit fields directly in the cells. Quantities entered will automatically negate to represent credits.</span>
                     </div>
-                    <button 
-                      type="button" 
-                      className="btn btn-sm btn-danger" 
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => setShowAddCreditModal(true)}
-                    >
-                      <Plus size={14} /> Issue Credit Note Item
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      {/* QUICK RETURN BOQ DROPDOWN */}
+                      <select 
+                        className="form-control"
+                        style={{ padding: '4px 8px', fontSize: '12px', width: '220px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                        value=""
+                        onChange={e => {
+                          if (!e.target.value) return;
+                          const originalItem = activeOrderItems.find(item => item.id === e.target.value);
+                          if (originalItem) {
+                            const newId = 'C-' + Date.now();
+                            const returnItem = {
+                              ...originalItem,
+                              id: newId,
+                              qty: -originalItem.qty,
+                              is_credit: true,
+                              isCredit: true
+                            };
+                            setActiveOrderItems(prev => [...prev, returnItem]);
+                          }
+                          e.target.value = '';
+                        }}
+                      >
+                        <option value="">-- Return Item from BOQ --</option>
+                        {activeOrderItems.filter(item => !item.is_credit).map(item => (
+                          <option key={item.id} value={item.id}>
+                            {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
+                          </option>
+                        ))}
+                      </select>
+
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-danger" 
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={handleAddCreditRow}
+                      >
+                        <Plus size={14} /> Add Blank Credit Row
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                  {/* HIGH-DENSITY CREDIT SPREADSHEET */}
+                  <div 
+                    style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+                  >
+                    <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                       <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          <th style={{ padding: '10px 12px' }}>Code</th>
-                          <th style={{ padding: '10px 12px' }}>Description</th>
-                          <th style={{ padding: '10px 12px' }}>Original Qty</th>
-                          <th style={{ padding: '10px 12px' }}>Qty Credited</th>
-                          <th style={{ padding: '10px 12px' }}>Unit Retail</th>
-                          <th style={{ padding: '10px 12px' }}>Credit Value</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
+                        <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                          <th style={{ width: widths.qty, textAlign: 'center' }}>Qty</th>
+                          <th style={{ width: widths.oneOneCode }}>1:1 Code</th>
+                          <th style={{ width: widths.type }}>Type</th>
+                          <th style={{ width: widths.code }}>Item Code</th>
+                          <th style={{ width: widths.description }}>Description</th>
+                          <th style={{ width: widths.floor }}>Floor</th>
+                          <th style={{ width: widths.area }}>Area Space</th>
+                          <th style={{ width: widths.dimming }}>Dimming</th>
+                          <th style={{ width: widths.brand }}>Brand</th>
+                          <th style={{ width: widths.supplier }}>Supplier</th>
+                          <th style={{ width: widths.cost, textAlign: 'right' }}>Cost Ex VAT</th>
+                          <th style={{ width: widths.retail, textAlign: 'right' }}>Retail Price</th>
+                          <th style={{ width: widths.totalRetail, textAlign: 'right' }}>Total Credit</th>
+                          <th style={{ width: widths.stock }}>Stock</th>
+                          <th style={{ width: widths.eta }}>ETA</th>
+                          <th style={{ width: widths.actions, textAlign: 'center' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeOrderItems.filter(item => item.is_credit).length === 0 ? (
                           <tr>
-                            <td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              No credit note items have been issued for this order yet.
+                            <td colSpan={16} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No credit note items have been added to this order. Select an item from the BOQ above or add a blank credit row to start.
                             </td>
                           </tr>
                         ) : (
-                          activeOrderItems.filter(item => item.is_credit).map((item, idx) => {
-                            // Find matching original item to display original qty
-                            const originalItem = activeOrderItems.find(orig => orig.code === item.code && !orig.is_credit);
-                            const origQty = originalItem ? originalItem.qty : '—';
-                            const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0);
+                          activeOrderItems.filter(item => item.is_credit).map((item, index) => {
+                            const cost = Number(item.unitCost) || 0;
+                            const retail = Number(item.unitRetail) || 0;
+                            const qty = Number(item.qty) || 0;
+                            const totalCreditLine = qty * retail;
 
                             return (
-                              <tr key={`credit-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.05)' }}>
-                                <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 600 }}>{item.code}</td>
-                                <td style={{ padding: '10px 12px' }}>{item.description}</td>
-                                <td style={{ padding: '10px 12px' }}>{origQty}</td>
-                                <td style={{ padding: '10px 12px', color: 'var(--text-danger)', fontWeight: 600 }}>{Math.abs(item.qty)}</td>
-                                <td style={{ padding: '10px 12px' }}>R {(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString()}</td>
-                                <td style={{ padding: '10px 12px', color: 'var(--text-danger)', fontWeight: 600 }}>R {retailVal.toLocaleString()}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                  <button 
-                                    type="button"
-                                    className="btn btn-sm btn-ghost btn-danger" 
-                                    style={{ padding: '2px 6px' }}
-                                    onClick={() => handleRemoveCreditItem(item.id)}
+                              <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.03)' }}>
+                                {/* QUANTITY */}
+                                <td>
+                                  <input 
+                                    type="number"
+                                    className="boq-cell-input"
+                                    style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}
+                                    value={item.qty}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'qty', e.target.value)}
+                                  />
+                                </td>
+                                
+                                {/* 1:1 CODE */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.oneOneCode || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* TYPE CODE */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.type || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* ITEM CODE */}
+                                <td>
+                                  <div style={{ position: 'relative' }}>
+                                    <input 
+                                      type="text"
+                                      className="boq-cell-input"
+                                      value={item.code || ''}
+                                      onChange={e => handleUpdateSpreadsheetCell(item.id, 'code', e.target.value)}
+                                      placeholder="Double click to search..."
+                                    />
+                                  </div>
+                                </td>
+
+                                {/* DESCRIPTION */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.description || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* FLOOR */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.floor || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'floor', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* AREA SPACE */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.area || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'area', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* DIMMING */}
+                                <td>
+                                  <select 
+                                    className="boq-cell-input"
+                                    value={item.dimming || 'Non-dim'}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'dimming', e.target.value)}
                                   >
-                                    Remove
-                                  </button>
+                                    <option value="Non-dim">Non-dim</option>
+                                    <option value="Phase-cut">Phase-cut</option>
+                                    <option value="DALI">DALI</option>
+                                    <option value="0-10V">0-10V</option>
+                                    <option value="Bluetooth">Bluetooth</option>
+                                  </select>
+                                </td>
+
+                                {/* BRAND */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.brand || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'brand', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* SUPPLIER */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.supplier || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'supplier', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* COST PRICE */}
+                                <td>
+                                  <input 
+                                    type="number"
+                                    className="boq-cell-input"
+                                    style={{ textAlign: 'right' }}
+                                    value={item.unitCost}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'unitCost', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* RETAIL PRICE */}
+                                <td>
+                                  <input 
+                                    type="number"
+                                    className="boq-cell-input"
+                                    style={{ textAlign: 'right' }}
+                                    value={item.unitRetail}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'unitRetail', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* TOTAL CREDIT */}
+                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-danger)' }}>
+                                  R {totalCreditLine.toLocaleString()}
+                                </td>
+
+                                {/* STOCK STATUS */}
+                                <td>
+                                  <select 
+                                    className="boq-cell-input"
+                                    value={item.stockStatus || 'Order'}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'stockStatus', e.target.value)}
+                                  >
+                                    <option value="Order">Order</option>
+                                    <option value="In Stock">In Stock</option>
+                                    <option value="Reserve">Reserve</option>
+                                  </select>
+                                </td>
+
+                                {/* ETA */}
+                                <td>
+                                  <input 
+                                    type="text"
+                                    className="boq-cell-input"
+                                    value={item.eta || ''}
+                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
+                                  />
+                                </td>
+
+                                {/* ACTIONS */}
+                                <td>
+                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                    <button 
+                                      type="button"
+                                      className="btn btn-ghost"
+                                      style={{ padding: '2px', height: 'auto', color: 'var(--text-danger)' }}
+                                      title="Delete Credit Item"
+                                      onClick={() => handleRemoveCreditItem(item.id)}
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
