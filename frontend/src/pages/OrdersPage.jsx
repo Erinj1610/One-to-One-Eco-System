@@ -366,13 +366,14 @@ export default function OrdersPage() {
     area: 120,
     dimming: 95,
     brand: 90,
+    supplier: 100,
     cost: 95,
     retail: 95,
     totalRetail: 100,
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'type', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -2793,6 +2794,10 @@ export default function OrdersPage() {
                                   Brand
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
                                 </th>
+                                <th style={{ width: widths.supplier, position: 'relative' }}>
+                                  Supplier
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('supplier', e)} />
+                                </th>
                                 <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
                                   Cost Ex VAT
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
@@ -2961,6 +2966,19 @@ export default function OrdersPage() {
                                         data-row={index}
                                         data-col={8}
                                         data-field="brand"
+                                      />
+                                    </td>
+
+                                    {/* SUPPLIER */}
+                                    <td>
+                                      <input 
+                                        type="text"
+                                        className="boq-cell-input"
+                                        value={item.supplier || ''}
+                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'supplier', e.target.value)}
+                                        data-row={index}
+                                        data-col={15}
+                                        data-field="supplier"
                                       />
                                     </td>
 
