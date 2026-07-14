@@ -2044,24 +2044,31 @@ export default function ProjectManagement() {
                             <th>Order Name</th>
                             <th>Supplier</th>
                             <th>Order Value</th>
+                            <th>Margin</th>
                             <th>Status</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {orders.map(o => (
-                            <tr key={o.id}>
-                              <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
-                              <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                              <td style={{ fontWeight: 500 }}>{o.supplier}</td>
-                              <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
-                              <td>
-                                <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : 'b-warning'}`}>{o.status}</span>
-                              </td>
-                            </tr>
-                          ))}
+                          {orders.map(o => {
+                             const cost = o.costValue || 0;
+                             const retail = o.value || 0;
+                             const orderMargin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+                             return (
+                               <tr key={o.id}>
+                                 <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
+                                 <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
+                                 <td style={{ fontWeight: 500 }}>{o.supplier}</td>
+                                 <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
+                                 <td style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{orderMargin}%</td>
+                                 <td>
+                                   <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : 'b-warning'}`}>{o.status}</span>
+                                 </td>
+                               </tr>
+                             );
+                           })}
                           {orders.length === 0 && (
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No product orders pipeline.</td>
+                              <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No product orders pipeline.</td>
                             </tr>
                           )}
                         </tbody>
@@ -2079,23 +2086,25 @@ export default function ProjectManagement() {
                             <th>Sub-fee Proposal</th>
                             <th>Fee Value</th>
                             <th>Paid</th>
+                            <th>Margin</th>
                             <th>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           {designFees.map(df => (
-                            <tr key={df.id}>
-                              <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{df.name}</td>
-                              <td style={{ fontWeight: 600 }}>R {(df.feeValue || 0).toLocaleString()}</td>
-                              <td style={{ color: 'var(--text-success)' }}>R {(df.paid || 0).toLocaleString()}</td>
-                              <td>
-                                <span className={`badge ${df.status === 'Approved' ? 'b-success' : 'b-default'}`}>{df.status}</span>
-                              </td>
-                            </tr>
-                          ))}
+                             <tr key={df.id}>
+                               <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{df.name}</td>
+                               <td style={{ fontWeight: 600 }}>R {(df.feeValue || 0).toLocaleString()}</td>
+                               <td style={{ color: 'var(--text-success)' }}>R {(df.paid || 0).toLocaleString()}</td>
+                               <td style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{df.margin || 18}%</td>
+                               <td>
+                                 <span className={`badge ${df.status === 'Approved' ? 'b-success' : 'b-default'}`}>{df.status}</span>
+                               </td>
+                             </tr>
+                           ))}
                           {designFees.length === 0 && (
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No design sub-contracts.</td>
+                              <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No design sub-contracts.</td>
                             </tr>
                           )}
                         </tbody>
