@@ -1295,23 +1295,34 @@ export function StoreProvider({ children }) {
               setter(merged);
             } else if (key === 'projects') {
               const parsedProjects = {};
-              Object.entries(val).forEach(([pKey, p]) => {
-                const fees = [];
-                ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
-                  if (p[col] && p[col].trim()) {
-                    try {
-                      fees.push(JSON.parse(p[col]));
-                    } catch(e) {
-                      console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
-                    }
+              if (val && typeof val === 'object') {
+                Object.entries(val).forEach(([pKey, p]) => {
+                  const fees = [];
+                  if (p && typeof p === 'object') {
+                    ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
+                      const rawVal = p[col];
+                      if (rawVal) {
+                        if (typeof rawVal === 'string') {
+                          if (rawVal.trim() && rawVal !== 'null') {
+                            try {
+                              fees.push(JSON.parse(rawVal));
+                            } catch(e) {
+                              console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
+                            }
+                          }
+                        } else if (typeof rawVal === 'object') {
+                          fees.push(rawVal);
+                        }
+                      }
+                    });
+                    parsedProjects[pKey] = {
+                      ...p,
+                      designFees: fees,
+                      orders: p.orders || []
+                    };
                   }
                 });
-                parsedProjects[pKey] = {
-                  ...p,
-                  designFees: fees,
-                  orders: p.orders || []
-                };
-              });
+              }
               setter(parsedProjects);
             } else {
               setter(val);
