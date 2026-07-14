@@ -36,6 +36,10 @@ export default function LogisticsPage() {
   // Modal display states
   const [showPlModal, setShowPlModal] = useState(false);
   const [showDnModal, setShowDnModal] = useState(false);
+  const [plOrderSearchQuery, setPlOrderSearchQuery] = useState('');
+  const [plOrderDropdownOpen, setPlOrderDropdownOpen] = useState(false);
+  const [dnOrderSearchQuery, setDnOrderSearchQuery] = useState('');
+  const [dnOrderDropdownOpen, setDnOrderDropdownOpen] = useState(false);
 
   // Form states for creating a Packing List
   const [plOrderKey, setPlOrderKey] = useState(''); // "projectKey_orderId"
@@ -848,20 +852,117 @@ export default function LogisticsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>Select Order Reference</label>
-                  <select 
-                    className="form-control"
-                    required
-                    style={{ height: '32px', fontSize: '12.5px' }}
-                    value={plOrderKey}
-                    onChange={e => handlePlOrderChange(e.target.value)}
-                  >
-                    <option value="">-- Select Order --</option>
-                    {allOrders.map(o => (
-                      <option key={`${o.projectKey}_${o.id}`} value={`${o.projectKey}_${o.id}`}>
-                        {o.id} - {o.projectName} ({o.supplier})
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    {(() => {
+                      const selectedOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === plOrderKey);
+                      return (
+                        <>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            placeholder="🔍 Type to search orders by Project, ID, Supplier..."
+                            value={plOrderDropdownOpen ? plOrderSearchQuery : (selectedOrder ? `${selectedOrder.id} - ${selectedOrder.projectName} (${selectedOrder.supplier || 'No Supplier'})` : '')}
+                            onFocus={() => {
+                              setPlOrderDropdownOpen(true);
+                            }}
+                            onChange={e => {
+                              setPlOrderSearchQuery(e.target.value);
+                            }}
+                            style={{ cursor: 'pointer', height: '32px', fontSize: '12.5px', paddingRight: '30px' }}
+                          />
+                          <div 
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '11px' }}
+                          >
+                            {plOrderDropdownOpen ? '▲' : '▼'}
+                          </div>
+
+                          {plOrderDropdownOpen && (
+                            <>
+                              <div 
+                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                onClick={() => setPlOrderDropdownOpen(false)}
+                              />
+                              <div 
+                                style={{ 
+                                  position: 'absolute', 
+                                  top: '100%', 
+                                  left: 0, 
+                                  right: 0, 
+                                  background: 'var(--bg-secondary)', 
+                                  border: '1px solid var(--border-strong)', 
+                                  borderRadius: '6px', 
+                                  maxHeight: '220px', 
+                                  overflowY: 'auto', 
+                                  zIndex: 1000, 
+                                  boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
+                                  marginTop: '4px'
+                                }}
+                              >
+                                {(() => {
+                                  const searchLower = plOrderSearchQuery.toLowerCase();
+                                  const filtered = allOrders.filter(o => {
+                                    const projectKeyMatch = o.projectKey.toLowerCase().includes(searchLower);
+                                    const idMatch = o.id.toLowerCase().includes(searchLower);
+                                    const supplierMatch = (o.supplier || '').toLowerCase().includes(searchLower);
+                                    const quoteNameMatch = (o.quote_name || '').toLowerCase().includes(searchLower);
+                                    const projectNameMatch = (o.projectName || '').toLowerCase().includes(searchLower);
+                                    return projectKeyMatch || idMatch || supplierMatch || quoteNameMatch || projectNameMatch;
+                                  });
+
+                                  if (filtered.length === 0) {
+                                    return (
+                                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                                        No orders found matching "{plOrderSearchQuery}"
+                                      </div>
+                                    );
+                                  }
+
+                                  return filtered.map(o => {
+                                    const key = `${o.projectKey}_${o.id}`;
+                                    const isSelected = plOrderKey === key;
+                                    return (
+                                      <div 
+                                        key={key}
+                                        onClick={() => {
+                                          handlePlOrderChange(key);
+                                          setPlOrderSearchQuery('');
+                                          setPlOrderDropdownOpen(false);
+                                        }}
+                                        style={{ 
+                                          padding: '10px 14px', 
+                                          cursor: 'pointer', 
+                                          background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                          borderBottom: '1px solid var(--border)',
+                                          fontSize: '12px',
+                                          color: isSelected ? 'var(--text-info)' : 'var(--text-primary)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '2px'
+                                        }}
+                                        className="dropdown-item-hover"
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                                          <span>[{o.projectKey.toUpperCase()}] {o.id}</span>
+                                          {o.quote_name && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '11px' }}>{o.quote_name}</span>}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                                          <span>Supplier: {o.supplier || 'No Supplier'}</span>
+                                          <span>R {Number(o.value || 0).toLocaleString()}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <input type="hidden" name="plOrderKey" value={plOrderKey} required />
+                  </div>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>Shipping Reference / Notes</label>
@@ -1017,20 +1118,117 @@ export default function LogisticsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>Select Order Reference</label>
-                  <select 
-                    className="form-control"
-                    required
-                    style={{ height: '32px', fontSize: '12.5px' }}
-                    value={dnOrderKey}
-                    onChange={e => handleDnOrderChange(e.target.value)}
-                  >
-                    <option value="">-- Select Order --</option>
-                    {allOrders.map(o => (
-                      <option key={`${o.projectKey}_${o.id}`} value={`${o.projectKey}_${o.id}`}>
-                        {o.id} - {o.projectName} ({o.supplier})
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    {(() => {
+                      const selectedOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === dnOrderKey);
+                      return (
+                        <>
+                          <input 
+                            type="text" 
+                            className="form-control" 
+                            placeholder="🔍 Type to search orders by Project, ID, Supplier..."
+                            value={dnOrderDropdownOpen ? dnOrderSearchQuery : (selectedOrder ? `${selectedOrder.id} - ${selectedOrder.projectName} (${selectedOrder.supplier || 'No Supplier'})` : '')}
+                            onFocus={() => {
+                              setDnOrderDropdownOpen(true);
+                            }}
+                            onChange={e => {
+                              setDnOrderSearchQuery(e.target.value);
+                            }}
+                            style={{ cursor: 'pointer', height: '32px', fontSize: '12.5px', paddingRight: '30px' }}
+                          />
+                          <div 
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '11px' }}
+                          >
+                            {dnOrderDropdownOpen ? '▲' : '▼'}
+                          </div>
+
+                          {dnOrderDropdownOpen && (
+                            <>
+                              <div 
+                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                onClick={() => setDnOrderDropdownOpen(false)}
+                              />
+                              <div 
+                                style={{ 
+                                  position: 'absolute', 
+                                  top: '100%', 
+                                  left: 0, 
+                                  right: 0, 
+                                  background: 'var(--bg-secondary)', 
+                                  border: '1px solid var(--border-strong)', 
+                                  borderRadius: '6px', 
+                                  maxHeight: '220px', 
+                                  overflowY: 'auto', 
+                                  zIndex: 1000, 
+                                  boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
+                                  marginTop: '4px'
+                                }}
+                              >
+                                {(() => {
+                                  const searchLower = dnOrderSearchQuery.toLowerCase();
+                                  const filtered = allOrders.filter(o => {
+                                    const projectKeyMatch = o.projectKey.toLowerCase().includes(searchLower);
+                                    const idMatch = o.id.toLowerCase().includes(searchLower);
+                                    const supplierMatch = (o.supplier || '').toLowerCase().includes(searchLower);
+                                    const quoteNameMatch = (o.quote_name || '').toLowerCase().includes(searchLower);
+                                    const projectNameMatch = (o.projectName || '').toLowerCase().includes(searchLower);
+                                    return projectKeyMatch || idMatch || supplierMatch || quoteNameMatch || projectNameMatch;
+                                  });
+
+                                  if (filtered.length === 0) {
+                                    return (
+                                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                                        No orders found matching "{dnOrderSearchQuery}"
+                                      </div>
+                                    );
+                                  }
+
+                                  return filtered.map(o => {
+                                    const key = `${o.projectKey}_${o.id}`;
+                                    const isSelected = dnOrderKey === key;
+                                    return (
+                                      <div 
+                                        key={key}
+                                        onClick={() => {
+                                          handleDnOrderChange(key);
+                                          setDnOrderSearchQuery('');
+                                          setDnOrderDropdownOpen(false);
+                                        }}
+                                        style={{ 
+                                          padding: '10px 14px', 
+                                          cursor: 'pointer', 
+                                          background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                          borderBottom: '1px solid var(--border)',
+                                          fontSize: '12px',
+                                          color: isSelected ? 'var(--text-info)' : 'var(--text-primary)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '2px'
+                                        }}
+                                        className="dropdown-item-hover"
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                                          <span>[{o.projectKey.toUpperCase()}] {o.id}</span>
+                                          {o.quote_name && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '11px' }}>{o.quote_name}</span>}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                                          <span>Supplier: {o.supplier || 'No Supplier'}</span>
+                                          <span>R {Number(o.value || 0).toLocaleString()}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <input type="hidden" name="dnOrderKey" value={dnOrderKey} required />
+                  </div>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>Delivery Reference / ETA Notes</label>

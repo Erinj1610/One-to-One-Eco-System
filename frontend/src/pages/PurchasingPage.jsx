@@ -83,6 +83,8 @@ export default function PurchasingPage() {
   // Modal display states
   const [showPoModal, setShowPoModal] = useState(false);
   const [showGrnModal, setShowGrnModal] = useState(false);
+  const [poOrderSearchQuery, setPoOrderSearchQuery] = useState('');
+  const [poOrderDropdownOpen, setPoOrderDropdownOpen] = useState(false);
 
   // Form states for creating a Purchase Order
   const [poOrderKey, setPoOrderKey] = useState(''); // "projectKey_orderId"
@@ -859,23 +861,119 @@ export default function PurchasingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Select Order Reference</label>
-                    <select 
-                      className="form-control" 
-                      value={poOrderKey} 
-                      onChange={e => {
-                        setPoOrderKey(e.target.value);
-                        setPoSupplier('');
-                        setPoItemInputs({});
-                      }}
-                      required
-                    >
-                      <option value="">— Choose order —</option>
-                      {allOrders.map(o => (
-                        <option key={`${o.projectKey}_${o.id}`} value={`${o.projectKey}_${o.id}`}>
-                          [{o.projectKey.toUpperCase()}] {o.id}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ position: 'relative' }}>
+                      {(() => {
+                        const selectedOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === poOrderKey);
+                        return (
+                          <>
+                            <input 
+                              type="text" 
+                              className="form-control" 
+                              placeholder="🔍 Type to search orders by Project, ID, Supplier..."
+                              value={poOrderDropdownOpen ? poOrderSearchQuery : (selectedOrder ? `[${selectedOrder.projectKey.toUpperCase()}] ${selectedOrder.id} — ${selectedOrder.supplier || 'No Supplier'}` : '')}
+                              onFocus={() => {
+                                setPoOrderDropdownOpen(true);
+                              }}
+                              onChange={e => {
+                                setPoOrderSearchQuery(e.target.value);
+                              }}
+                              style={{ cursor: 'pointer', paddingRight: '30px' }}
+                            />
+                            <div 
+                              style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '11px' }}
+                            >
+                              {poOrderDropdownOpen ? '▲' : '▼'}
+                            </div>
+
+                            {poOrderDropdownOpen && (
+                              <>
+                                <div 
+                                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                  onClick={() => setPoOrderDropdownOpen(false)}
+                                />
+                                <div 
+                                  style={{ 
+                                    position: 'absolute', 
+                                    top: '100%', 
+                                    left: 0, 
+                                    right: 0, 
+                                    background: 'var(--bg-secondary)', 
+                                    border: '1px solid var(--border-strong)', 
+                                    borderRadius: '6px', 
+                                    maxHeight: '220px', 
+                                    overflowY: 'auto', 
+                                    zIndex: 1000, 
+                                    boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
+                                    marginTop: '4px'
+                                  }}
+                                >
+                                  {(() => {
+                                    const searchLower = poOrderSearchQuery.toLowerCase();
+                                    const filtered = allOrders.filter(o => {
+                                      const projectKeyMatch = o.projectKey.toLowerCase().includes(searchLower);
+                                      const idMatch = o.id.toLowerCase().includes(searchLower);
+                                      const supplierMatch = (o.supplier || '').toLowerCase().includes(searchLower);
+                                      const quoteNameMatch = (o.quote_name || '').toLowerCase().includes(searchLower);
+                                      const projectNameMatch = (o.projectName || '').toLowerCase().includes(searchLower);
+                                      return projectKeyMatch || idMatch || supplierMatch || quoteNameMatch || projectNameMatch;
+                                    });
+
+                                    if (filtered.length === 0) {
+                                      return (
+                                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                                          No orders found matching "{poOrderSearchQuery}"
+                                        </div>
+                                      );
+                                    }
+
+                                    return filtered.map(o => {
+                                      const key = `${o.projectKey}_${o.id}`;
+                                      const isSelected = poOrderKey === key;
+                                      return (
+                                        <div 
+                                          key={key}
+                                          onClick={() => {
+                                            setPoOrderKey(key);
+                                            setPoSupplier('');
+                                            setPoItemInputs({});
+                                            setPoOrderSearchQuery('');
+                                            setPoOrderDropdownOpen(false);
+                                          }}
+                                          style={{ 
+                                            padding: '10px 14px', 
+                                            cursor: 'pointer', 
+                                            background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                            borderBottom: '1px solid var(--border)',
+                                            fontSize: '12px',
+                                            color: isSelected ? 'var(--text-info)' : 'var(--text-primary)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '2px'
+                                          }}
+                                          className="dropdown-item-hover"
+                                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                                          onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}
+                                        >
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                                            <span>[{o.projectKey.toUpperCase()}] {o.id}</span>
+                                            {o.quote_name && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '11px' }}>{o.quote_name}</span>}
+                                          </div>
+                                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Supplier: {o.supplier || 'No Supplier'}</span>
+                                            <span>R {Number(o.value || 0).toLocaleString()}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    });
+                                  })()}
+                                </div>
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
+                      <input type="hidden" name="poOrderKey" value={poOrderKey} required />
+                    </div>
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Supplier *</label>
