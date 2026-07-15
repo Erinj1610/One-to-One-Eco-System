@@ -976,8 +976,15 @@ export default function SalesTracker() {
           return margin;
         case 'status':
           return (o.status || '').toLowerCase();
+        case 'procPct':
+          return o.procPct || 0;
+        case 'invPct':
+          return o.invPct || 0;
+        case 'delPct':
+          return o.delPct || 0;
         default:
           return '';
+
       }
     };
 
@@ -2420,6 +2427,15 @@ export default function SalesTracker() {
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
                       </th>
+                      <th onClick={() => handleSort('procPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Procurement % {renderSortIcon('procPct')}</div>
+                      </th>
+                      <th onClick={() => handleSort('invPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Invoiced % {renderSortIcon('invPct')}</div>
+                      </th>
+                      <th onClick={() => handleSort('delPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Delivered % {renderSortIcon('delPct')}</div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2464,17 +2480,21 @@ export default function SalesTracker() {
                             {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                              <span className={`badge ${statusColor[o.status] || 'b-default'}`} style={{ marginRight: '4px' }}>{o.status}</span>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
-                                Proc: {o.procPct || 0}%
-                              </div>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
-                                Inv: {o.invPct || 0}%
-                              </div>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
-                                Del: {o.delPct || 0}%
-                              </div>
+                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                              Proc: {o.procPct || 0}%
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                              Inv: {o.invPct || 0}%
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                              Del: {o.delPct || 0}%
                             </div>
                           </td>
                         </tr>
@@ -2484,7 +2504,7 @@ export default function SalesTracker() {
 
                     {filteredOrders.length === 0 && (
                       <tr>
-                        <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                        <td colSpan={14} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                           No active quotations or Bills of Quantity found.
                         </td>
                       </tr>
