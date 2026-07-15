@@ -255,9 +255,13 @@ class OrderItem(Base):
     delivery_date = Column(String, nullable=True)
     delivery_status = Column(String, default="Pending")
     delivery_history = Column(JSON, nullable=True)
+    purchase_history = Column(JSON, nullable=True)
+    receiving_history = Column(JSON, nullable=True)
+    invoice_history = Column(JSON, nullable=True)
     stock_on_hand = Column(Integer, default=0)
     is_credit = Column(Boolean, default=False, nullable=True)
     item_type = Column(String, default="Hardware", nullable=True)
+
 
 
 class OrderDocument(Base):

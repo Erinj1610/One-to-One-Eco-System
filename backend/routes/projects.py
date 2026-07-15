@@ -267,6 +267,21 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             except Exception:
                 del_hist = []
 
+            try:
+                pur_hist = json.loads(item.purchase_history) if item.purchase_history else []
+            except Exception:
+                pur_hist = []
+
+            try:
+                rec_hist = json.loads(item.receiving_history) if item.receiving_history else []
+            except Exception:
+                rec_hist = []
+
+            try:
+                inv_hist = json.loads(item.invoice_history) if item.invoice_history else []
+            except Exception:
+                inv_hist = []
+
             items_by_order[item.order_id].append({
                 "id": item.id,
                 "qty": item.qty,
@@ -302,8 +317,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "deliveryDate": item.delivery_date,
                 "deliveryStatus": item.delivery_status,
                 "deliveryHistory": del_hist,
+                "purchaseHistory": pur_hist,
+                "receivingHistory": rec_hist,
+                "invoiceHistory": inv_hist,
                 "stockOnHand": item.stock_on_hand
             })
+
 
         # Group orders by project key
         orders_by_project = {}

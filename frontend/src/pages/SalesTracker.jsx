@@ -293,9 +293,11 @@ export default function SalesTracker() {
           stockStatuses: new Set(),
           deliveryCommentsList: [],
           deliveryHistories: [],
-          is_credit: item.is_credit || item.isCredit || false
+          is_credit: item.is_credit || item.isCredit || false,
+          itemType: item.itemType || item.item_type || 'Hardware'
         };
       }
+
       
       const g = groups[codeKey];
       g.qty += item.qty || 0;
@@ -415,7 +417,8 @@ export default function SalesTracker() {
           return Object.values(historyMap);
         })(),
         area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—',
-        is_credit: g.is_credit
+        is_credit: g.is_credit,
+        itemType: g.itemType
       };
     }).sort((a, b) => {
       if (a.is_credit && !b.is_credit) return 1;
@@ -423,6 +426,7 @@ export default function SalesTracker() {
       return 0;
     });
   }, [activeOrderItems]);
+
 
   const getVisibleCols = () => {
     if (activeTab === 'purchasing') {
@@ -657,9 +661,13 @@ export default function SalesTracker() {
   const [paymentResponse, setPaymentResponse] = useState('');
 
   const { procPct, invPct, delPct } = useMemo(() => {
-    let totalQty = 0;
+    let totalQtyForProc = 0;
     let totalProcQty = 0;
+    
+    let totalQtyForInv = 0;
     let totalInvQty = 0;
+    
+    let totalQtyForDel = 0;
     let totalDelQty = 0;
 
     activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
@@ -670,15 +678,17 @@ export default function SalesTracker() {
       const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
 
       if (isService) {
-        // Service items are always 100% procured and delivered — track invoice only
-        totalQty += q;
-        totalProcQty += q;
+        // Services only impact invoicing
+        totalQtyForInv += q;
         totalInvQty += Number(invoiced) || 0;
-        totalDelQty += q;
         return;
       }
 
-      totalQty += q;
+      // Hardware impacts all three
+      totalQtyForProc += q;
+      totalQtyForInv += q;
+      totalQtyForDel += q;
+
       const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
       const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
       const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
@@ -688,12 +698,13 @@ export default function SalesTracker() {
       totalDelQty += Number(delivered) || 0;
     });
 
-    const procPct = totalQty > 0 ? Math.round((totalProcQty / totalQty) * 100) : 0;
-    const invPct = totalQty > 0 ? Math.round((totalInvQty / totalQty) * 100) : 0;
-    const delPct = totalQty > 0 ? Math.round((totalDelQty / totalQty) * 100) : 0;
+    const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+    const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+    const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
 
     return { procPct, invPct, delPct };
   }, [activeOrderItems]);
+
 
   // DOCUMENT SCRATCHPAD & LIVING LEDGER HISTORIC CONTAINER STATE
   const [actionQuantities, setActionQuantities] = useState({}); // { itemId: number }

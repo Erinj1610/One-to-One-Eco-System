@@ -91,6 +91,15 @@ def run_migrations(db: Session):
             db.execute(text("ALTER TABLE order_items ADD COLUMN item_type VARCHAR DEFAULT 'Hardware';"))
             db.commit()
             print("Successfully migrated: ensured item_type column exists on order_items table.")
+        if 'purchase_history' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN purchase_history JSON;"))
+            db.commit()
+        if 'receiving_history' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN receiving_history JSON;"))
+            db.commit()
+        if 'invoice_history' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN invoice_history JSON;"))
+            db.commit()
     except Exception as e:
         db.rollback()
         print(f"Migration warning (order_items columns alter): {e}")

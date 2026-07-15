@@ -113,9 +113,13 @@ class OrderItemSchema(BaseModel):
     delivery_date: Optional[str] = None
     delivery_status: Optional[str] = None
     delivery_history: Optional[List[Any]] = []
+    purchase_history: Optional[List[Any]] = []
+    receiving_history: Optional[List[Any]] = []
+    invoice_history: Optional[List[Any]] = []
     stock_on_hand: int = 0
     is_credit: Optional[bool] = False
     item_type: Optional[str] = "Hardware"
+
 
 class OrderSchema(BaseModel):
     project_key: str
@@ -236,19 +240,34 @@ def delete_order(po_number: str, db: Session = Depends(get_db)):
 @router.get("/{po_number}/items")
 def get_order_items(po_number: str, db: Session = Depends(get_db)):
     items = db.query(OrderItem).filter(OrderItem.order_id == po_number).all()
-    # Parse delivery history
     res = []
     for item in items:
         try:
             del_hist = json.loads(item.delivery_history) if item.delivery_history else []
         except Exception:
             del_hist = []
+        try:
+            pur_hist = json.loads(item.purchase_history) if item.purchase_history else []
+        except Exception:
+            pur_hist = []
+        try:
+            rec_hist = json.loads(item.receiving_history) if item.receiving_history else []
+        except Exception:
+            rec_hist = []
+        try:
+            inv_hist = json.loads(item.invoice_history) if item.invoice_history else []
+        except Exception:
+            inv_hist = []
         item_dict = item.__dict__.copy()
         item_dict['delivery_history'] = del_hist
+        item_dict['purchase_history'] = pur_hist
+        item_dict['receiving_history'] = rec_hist
+        item_dict['invoice_history'] = inv_hist
         if '_sa_instance_state' in item_dict:
             del item_dict['_sa_instance_state']
         res.append(item_dict)
     return res
+
 
 @router.post("/{po_number}/items")
 def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = Depends(get_db)):
@@ -291,6 +310,9 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         delivery_date=item_data.delivery_date,
         delivery_status=item_data.delivery_status,
         delivery_history=json.dumps(item_data.delivery_history),
+        purchase_history=json.dumps(item_data.purchase_history),
+        receiving_history=json.dumps(item_data.receiving_history),
+        invoice_history=json.dumps(item_data.invoice_history),
         stock_on_hand=item_data.stock_on_hand,
         is_credit=item_data.is_credit,
         item_type=item_data.item_type
@@ -337,9 +359,13 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
     item.delivery_date = item_data.delivery_date
     item.delivery_status = item_data.delivery_status
     item.delivery_history = json.dumps(item_data.delivery_history)
+    item.purchase_history = json.dumps(item_data.purchase_history)
+    item.receiving_history = json.dumps(item_data.receiving_history)
+    item.invoice_history = json.dumps(item_data.invoice_history)
     item.stock_on_hand = item_data.stock_on_hand
     item.is_credit = item_data.is_credit
     item.item_type = item_data.item_type
+
     
     db.commit()
     db.refresh(item)

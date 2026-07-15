@@ -1389,6 +1389,7 @@ export function StoreProvider({ children }) {
       const updatedOrders = (project.orders || []).map(o => {
         const validPoIds = new Set((o.purchaseOrders || []).map(po => po.id));
         const validGrnIds = new Set((o.goodsReceivedNotes || []).map(grn => grn.id));
+        const validInvIds = new Set((o.clientInvoices || []).map(inv => inv.id));
 
         let orderUpdated = false;
         const updatedItemsList = (o.itemsList || []).map(item => {
@@ -1398,23 +1399,33 @@ export function StoreProvider({ children }) {
           const rHist = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
           const cleanedRHist = rHist.filter(h => validGrnIds.has(h.ref));
 
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+          const cleanedIHist = iHist.filter(h => validInvIds.has(h.ref));
+
           if (
             cleanedPHist.length !== pHist.length ||
-            cleanedRHist.length !== rHist.length
+            cleanedRHist.length !== rHist.length ||
+            cleanedIHist.length !== iHist.length
           ) {
             orderUpdated = true;
             const newPoQty = cleanedPHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
             const newRecQty = cleanedRHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newInvQty = cleanedIHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
+            const newInvVal = cleanedIHist.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
             return {
               ...item,
               poQtyOrdered: newPoQty,
               receivedQty: newRecQty,
+              invoiceQty: newInvQty,
+              invoiceValue: newInvVal,
               purchaseHistory: cleanedPHist,
-              receivingHistory: cleanedRHist
+              receivingHistory: cleanedRHist,
+              invoiceHistory: cleanedIHist
             };
           }
           return item;
         });
+
 
         if (orderUpdated) {
           projectUpdated = true;
@@ -1474,11 +1485,15 @@ export function StoreProvider({ children }) {
       delivery_date: item.deliveryDate || item.delivery_date || null,
       delivery_status: item.deliveryStatus || item.delivery_status || null,
       delivery_history: item.deliveryHistory || item.delivery_history || [],
+      purchase_history: item.purchaseHistory || item.purchase_history || [],
+      receiving_history: item.receivingHistory || item.receiving_history || [],
+      invoice_history: item.invoiceHistory || item.invoice_history || [],
       stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0,
       is_credit: !!(item.isCredit || item.is_credit),
       item_type: item.itemType || item.item_type || "Hardware"
     };
   };
+
 
   const updateProject = async (key, field, value) => {
     // 1. Update local React state instantly
