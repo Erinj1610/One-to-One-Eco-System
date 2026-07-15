@@ -3550,19 +3550,20 @@ export default function SalesTracker() {
                       <td style={{ padding: '8px', fontWeight: 500 }}><code>{dh.ref}</code></td>
                       <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}>{dh.qty}</td>
                       <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{dh.date}</td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                      <td style={{ padding: '8px', textAlign: 'center', display: 'flex', gap: '4px', justifyContent: 'center' }}>
                         <button 
                           type="button" 
-                          className="btn btn-xs btn-ghost text-info" 
-                          style={{ minHeight: 'unset', height: '24px', padding: '0 6px' }}
-                          onClick={() => alert(`This waybill comes from Logistics Note ${dh.ref}. To delete it, go to the Logistics Module and delete the issued Delivery Note.`)}
-                          title="Manage via Logistics Module"
+                          className="btn btn-xs btn-ghost text-error" 
+                          style={{ minHeight: 'unset', height: '24px', padding: '0 6px', color: 'var(--text-danger)' }}
+                          onClick={() => handleDeleteWaybill(waybillHistoryModalItem, dh.ref, dh.date)}
+                          title="Delete Waybill Log"
                         >
-                          ℹ️
+                          🗑️
                         </button>
                       </td>
                     </tr>
                   ))}
+
                 </tbody>
               </table>
             </div>
