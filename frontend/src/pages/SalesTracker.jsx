@@ -1798,6 +1798,8 @@ export default function SalesTracker() {
 
             const newGlobalInvoices = [];
 
+            const activeProjectObj = projects[pKey] || {};
+
             Object.entries(invGroups).forEach(([key, items]) => {
               const [ref, date] = key.split('_');
               const formattedDateStr = formatDateZa(date);
@@ -1820,8 +1822,8 @@ export default function SalesTracker() {
               // Add to newGlobalInvoices to sync with global Invoices state ledger
               newGlobalInvoices.push({
                 id: ref,
-                project: order.projectName || proj.name,
-                client: order.clientCompany || order.projectClient || proj.client || '—',
+                project: order.projectName || activeProjectObj.name || '—',
+                client: order.clientCompany || order.projectClient || activeProjectObj.client || '—',
                 amount: `R ${Math.round(totalValue).toLocaleString()}`,
                 issued: formattedDateStr,
                 due: dueFormattedStr,
@@ -1834,6 +1836,7 @@ export default function SalesTracker() {
                 notes: 'Bulk Excel Importer Invoice'
               });
             });
+
 
             if (newGlobalInvoices.length > 0) {
               setInvoices(prev => {
