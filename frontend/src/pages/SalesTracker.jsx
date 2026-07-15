@@ -1517,6 +1517,15 @@ export default function SalesTracker() {
 
       // If it's a numeric serial representation
       if (!isNaN(val)) {
+        const valStr = String(val).trim();
+        // Check if user entered raw DDMMYYYY (8 digits, e.g. 15072026)
+        if (valStr.length === 8 && /^\d{8}$/.test(valStr)) {
+          const d = valStr.substring(0, 2);
+          const m = valStr.substring(2, 4);
+          const y = valStr.substring(4, 8);
+          return `${y}-${m}-${d}`;
+        }
+        
         const dateNum = Number(val);
         // Excel base date starts at Dec 30, 1899 due to 1900 leap year bug
         const dateObj = new Date((dateNum - 25569) * 86400 * 1000);
@@ -1528,18 +1537,29 @@ export default function SalesTracker() {
       const str = String(val).trim();
       // Verify YYYY-MM-DD
       if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-      // Convert DD/MM/YYYY to YYYY-MM-DD
-      const parts = str.split('/');
+
+      // Handle DD-MM-YYYY or DD/MM/YYYY
+      const parts = str.split(/[-/]/);
       if (parts.length === 3) {
-        const d = parts[0].padStart(2, '0');
-        const m = parts[1].padStart(2, '0');
-        const y = parts[2];
-        return `${y}-${m}-${d}`;
+        // If first part is 4 digits, assume YYYY-MM-DD
+        if (parts[0].length === 4) {
+          const y = parts[0];
+          const m = parts[1].padStart(2, '0');
+          const d = parts[2].padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        } else {
+          // Assume DD-MM-YYYY
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2];
+          return `${y}-${m}-${d}`;
+        }
       }
       
       const parsed = new Date(str);
       return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : str;
     };
+
 
     const reader = new FileReader();
     reader.onload = (evt) => {
