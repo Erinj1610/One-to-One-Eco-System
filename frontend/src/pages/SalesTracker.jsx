@@ -1506,11 +1506,47 @@ export default function SalesTracker() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Helper to format/parse Excel dates (handles serial numbers like 45897 or date strings/Objects)
+    const parseExcelDate = (val) => {
+      if (!val) return "";
+      
+      // If it is a JS Date object from cellDates: true
+      if (val instanceof Date && !isNaN(val.getTime())) {
+        return val.toISOString().split('T')[0];
+      }
+
+      // If it's a numeric serial representation
+      if (!isNaN(val)) {
+        const dateNum = Number(val);
+        // Excel base date starts at Dec 30, 1899 due to 1900 leap year bug
+        const dateObj = new Date((dateNum - 25569) * 86400 * 1000);
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj.toISOString().split('T')[0];
+        }
+      }
+
+      const str = String(val).trim();
+      // Verify YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      // Convert DD/MM/YYYY to YYYY-MM-DD
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2];
+        return `${y}-${m}-${d}`;
+      }
+      
+      const parsed = new Date(str);
+      return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : str;
+    };
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const data = evt.target.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        // Enable cellDates: true to parse dates directly where possible
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet);
@@ -1519,6 +1555,7 @@ export default function SalesTracker() {
           alert("Imported sheet is empty.");
           return;
         }
+
 
         // Map updates to corresponding projects/orders/items
         const projectUpdatesMap = {}; // { projectKey: { orders: { [orderId]: orderObj } } }
@@ -1573,11 +1610,12 @@ export default function SalesTracker() {
           const isService = (targetItem.itemType || targetItem.item_type) === 'Service';
 
           // PO History
-          const poRef = String(row["PO Reference"] || "").trim();
-          const poDate = String(row["Date Ordered"] || "").trim();
+          const rawPoRef = String(row["PO Reference"] || "").trim();
+          const poRef = rawPoRef || (row["Date Ordered"] && Number(row["Qty Ordered (PO)"]) > 0 ? `PO-${orderId}` : "");
+          const poDate = parseExcelDate(row["Date Ordered"]);
           const poQty = Number(row["Qty Ordered (PO)"]) || 0;
           const poSupplier = String(row["Supplier"] || targetItem.supplier || "Warehouse Inventory").trim();
-          const poEta = String(row["Delivery ETA"] || "TBD").trim();
+          const poEta = parseExcelDate(row["Delivery ETA"]) || "TBD";
 
           if (poRef && poDate && poQty > 0 && !isService) {
             targetItem.poQtyOrdered = poQty;
@@ -1592,8 +1630,9 @@ export default function SalesTracker() {
           }
 
           // GRN History
-          const grnRef = String(row["GRN Reference"] || "").trim();
-          const grnDate = String(row["Date REC"] || "").trim();
+          const rawGrnRef = String(row["GRN Reference"] || "").trim();
+          const grnRef = rawGrnRef || (row["Date REC"] && Number(row["Qty REC"]) > 0 ? `GRN-${orderId}` : "");
+          const grnDate = parseExcelDate(row["Date REC"]);
           const grnQty = Number(row["Qty REC"]) || 0;
 
           if (grnRef && grnDate && grnQty > 0 && !isService) {
@@ -1608,8 +1647,9 @@ export default function SalesTracker() {
           }
 
           // Invoice History
-          const invRef = String(row["Invoice Reference"] || "").trim();
-          const invDate = String(row["Date INV"] || "").trim();
+          const rawInvRef = String(row["Invoice Reference"] || "").trim();
+          const invRef = rawInvRef || (row["Date INV"] && Number(row["Qty INV"]) > 0 ? `INV-${orderId}` : "");
+          const invDate = parseExcelDate(row["Date INV"]);
           const invQty = Number(row["Qty INV"]) || 0;
 
           if (invRef && invDate && invQty > 0) {
@@ -1624,7 +1664,8 @@ export default function SalesTracker() {
           }
 
           // Delivery History
-          const delDate = String(row["Date DEL"] || "").trim();
+          const rawDelRef = `DN-${orderId}`;
+          const delDate = parseExcelDate(row["Date DEL"]);
           const delQty = Number(row["Qty DEL"]) || 0;
           const delComments = String(row["Delivery Comments"] || "").trim();
 
@@ -1635,11 +1676,12 @@ export default function SalesTracker() {
             targetItem.deliveryStatus = delQty >= (Number(targetItem.qty) || 0) ? 'Delivered' : 'Partial';
             targetItem.deliveryHistory = [{
               qty: delQty,
-              ref: `DN-${orderId}`,
+              ref: rawDelRef,
               date: delDate
             }];
           }
         });
+
 
         // 2. Perform Grouping & Create Document Headers
         Object.entries(projectUpdatesMap).forEach(([pKey, dataObj]) => {
