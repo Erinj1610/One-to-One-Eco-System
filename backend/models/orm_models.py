@@ -209,6 +209,14 @@ class Order(Base):
     eta = Column(String, nullable=True)
     project_key = Column(String, nullable=True)
     quote_name = Column(String, default="General Spec", nullable=True)
+    
+    # JSON columns to persist issued documents
+    packing_lists = Column(JSON, nullable=True)
+    delivery_notes = Column(JSON, nullable=True)
+    purchase_orders = Column(JSON, nullable=True)
+    goods_received_notes = Column(JSON, nullable=True)
+    client_invoices = Column(JSON, nullable=True)
+
 
 
 class OrderItem(Base):

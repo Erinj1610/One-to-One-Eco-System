@@ -169,7 +169,12 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
         outstanding=float(order_data.get("outstanding", 0.0)),
         status=order_data.get("status", "Pending"),
         eta=order_data.get("eta", "—"),
-        quote_name=order_data.get("quote_name", "General Spec")
+        quote_name=order_data.get("quote_name", "General Spec"),
+        packing_lists=order_data.get("packingLists"),
+        delivery_notes=order_data.get("deliveryNotes"),
+        purchase_orders=order_data.get("purchaseOrders"),
+        goods_received_notes=order_data.get("goodsReceivedNotes"),
+        client_invoices=order_data.get("clientInvoices")
     )
     db.add(new_order)
     db.commit()
@@ -197,10 +202,22 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     order.eta = order_data.get("eta", "—")
     if "quote_name" in order_data:
         order.quote_name = order_data.get("quote_name")
+        
+    if "packingLists" in order_data:
+        order.packing_lists = order_data.get("packingLists")
+    if "deliveryNotes" in order_data:
+        order.delivery_notes = order_data.get("deliveryNotes")
+    if "purchaseOrders" in order_data:
+        order.purchase_orders = order_data.get("purchaseOrders")
+    if "goodsReceivedNotes" in order_data:
+        order.goods_received_notes = order_data.get("goodsReceivedNotes")
+    if "clientInvoices" in order_data:
+        order.client_invoices = order_data.get("clientInvoices")
     
     db.commit()
     db.refresh(order)
     return order
+
 
 @router.delete("/{po_number}")
 def delete_order(po_number: str, db: Session = Depends(get_db)):

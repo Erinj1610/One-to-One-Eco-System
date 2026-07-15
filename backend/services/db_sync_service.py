@@ -95,7 +95,7 @@ def run_migrations(db: Session):
         db.rollback()
         print(f"Migration warning (order_items columns alter): {e}")
 
-    # 3. Alter orders table to support po_number, etc.
+    # 3. Alter orders table to support po_number, extra documents, etc.
     order_columns = [
         ("po_number", "VARCHAR UNIQUE"),
         ("supplier_name", "VARCHAR"),
@@ -105,7 +105,13 @@ def run_migrations(db: Session):
         ("outstanding", "FLOAT"),
         ("status", "VARCHAR"),
         ("eta", "VARCHAR"),
-        ("project_key", "VARCHAR")
+        ("project_key", "VARCHAR"),
+        ("quote_name", "VARCHAR DEFAULT 'General Spec'"),
+        ("packing_lists", "JSON"),
+        ("delivery_notes", "JSON"),
+        ("purchase_orders", "JSON"),
+        ("goods_received_notes", "JSON"),
+        ("client_invoices", "JSON")
     ]
     for col_name, col_type in order_columns:
         try:
@@ -114,6 +120,7 @@ def run_migrations(db: Session):
         except Exception as e:
             db.rollback()
             print(f"Migration warning (orders.{col_name}): {e}")
+
 
     # 4. Alter clients table to support type, last_project_date, etc.
     client_columns = [

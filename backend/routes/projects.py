@@ -329,6 +329,31 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             total_cost_value = sum((int(safe_num(item.get("qty"), 0)) * safe_num(item.get("unitCost"), 0.0)) for item in order_items_list)
 
+            try:
+                packing_lists_parsed = json.loads(order.packing_lists) if isinstance(order.packing_lists, str) else (order.packing_lists or [])
+            except Exception:
+                packing_lists_parsed = []
+
+            try:
+                delivery_notes_parsed = json.loads(order.delivery_notes) if isinstance(order.delivery_notes, str) else (order.delivery_notes or [])
+            except Exception:
+                delivery_notes_parsed = []
+
+            try:
+                purchase_orders_parsed = json.loads(order.purchase_orders) if isinstance(order.purchase_orders, str) else (order.purchase_orders or [])
+            except Exception:
+                purchase_orders_parsed = []
+
+            try:
+                goods_received_notes_parsed = json.loads(order.goods_received_notes) if isinstance(order.goods_received_notes, str) else (order.goods_received_notes or [])
+            except Exception:
+                goods_received_notes_parsed = []
+
+            try:
+                client_invoices_parsed = json.loads(order.client_invoices) if isinstance(order.client_invoices, str) else (order.client_invoices or [])
+            except Exception:
+                client_invoices_parsed = []
+
             order_dict = {
                 "id": order.po_number,
                 "supplier": order.supplier_name,
@@ -340,9 +365,15 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "status": order.status,
                 "eta": order.eta,
                 "quote_name": order.quote_name or "General Spec",
-                "itemsList": order_items_list
+                "itemsList": order_items_list,
+                "packingLists": packing_lists_parsed,
+                "deliveryNotes": delivery_notes_parsed,
+                "purchaseOrders": purchase_orders_parsed,
+                "goodsReceivedNotes": goods_received_notes_parsed,
+                "clientInvoices": client_invoices_parsed
             }
             orders_by_project[order.project_key].append(order_dict)
+
 
         # Build projects dictionary
         projects_dict = {}
