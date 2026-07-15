@@ -1021,29 +1021,238 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Integrations' && (
-        <div>
-          <div className="section-label">Connected integrations</div>
-          {[
-            { name: 'Xero',    desc: 'Sync invoices and payments to accounting',       status: 'Connected',    color: 'b-success' },
-            { name: 'SAGE',    desc: 'Alternative accounting integration',              status: 'Disconnected', color: 'b-default' },
-            { name: 'Resend',  desc: 'Transactional email delivery',                   status: 'Connected',    color: 'b-success' },
-            { name: 'Firebase',desc: 'Authentication & real-time database',            status: 'Connected',    color: 'b-success' },
-            { name: 'Palladium',desc: 'Read-only Kerridge CS cloud sync (BOQ/quotes)', status: 'Connected',    color: 'b-success' },
-          ].map(int => (
-            <div key={int.name} className="card" style={{ marginBottom: 10 }}>
-              <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 42, height: 42, background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-info)', fontWeight: 600, fontSize: 15 }}>{int.name[0]}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, marginBottom: 2 }}>{int.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{int.desc}</div>
+        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+          <div className="section-label">Connected Integrations & Bulk Launch Tools</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+            Manage active integrations or use the **Bulk Document Auto-Generator** below to rapidly initialize past orders with matching Purchase Orders, GRNs, Invoices, and Delivery Notes to launch the system in bulk.
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', alignItems: 'start', marginBottom: '30px' }}>
+            {/* BULK GENERATOR CARD */}
+            <div className="card">
+              <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div className="card-title" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🚀 Fast-Track Order Auto-Fulfillment (Bulk PO, GRN, Invoices & Delivery Notes)
                 </div>
-                <span className={`badge ${int.color}`}>{int.status}</span>
-                <button className="btn btn-sm">{int.status === 'Connected' ? 'Configure' : 'Connect'}</button>
+              </div>
+              <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* SELECT ORDER */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Select Project Order to Fully Auto-Fill</label>
+                  <select 
+                    className="form-control"
+                    id="bulk-order-select"
+                    style={{ width: '100%', height: '36px', fontSize: '13px' }}
+                  >
+                    <option value="">— Select Order Reference —</option>
+                    {Object.values(projects).flatMap(proj => 
+                      (proj.orders || []).map(o => (
+                        <option key={`${proj.key}_${o.id}`} value={`${proj.key}_${o.id}`}>
+                          {o.id} - {proj.name} ({o.supplier || 'No Supplier'}) [{o.itemsList?.length || 0} items]
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Custom Document ID Reference Prefix</label>
+                    <input 
+                      type="text" 
+                      id="bulk-doc-prefix"
+                      placeholder="e.g. PO01 / INV001" 
+                      className="form-control"
+                      style={{ height: '32px', fontSize: '12.5px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Backdated Fulfillment Date</label>
+                    <input 
+                      type="date" 
+                      id="bulk-doc-date"
+                      className="form-control"
+                      style={{ height: '32px', fontSize: '12.5px', colorScheme: 'dark' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      const selectVal = document.getElementById('bulk-order-select').value;
+                      if (!selectVal) {
+                        alert('Please select an order reference first.');
+                        return;
+                      }
+                      const [pKey, oId] = selectVal.split('_');
+                      const project = projects[pKey];
+                      const order = (project?.orders || []).find(o => o.id === oId);
+                      if (!order) return;
+
+                      const customPrefix = document.getElementById('bulk-doc-prefix').value.trim();
+                      const dateVal = document.getElementById('bulk-doc-date').value;
+                      const finalDateObj = dateVal ? new Date(dateVal) : new Date();
+                      const formattedDate = finalDateObj.toISOString().split('T')[0];
+                      const dateStr = finalDateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                      const prefixPart = customPrefix ? `${customPrefix}-` : '';
+
+                      // Construct IDs
+                      const poId = `${prefixPart}PO-${order.id}`;
+                      const grnId = `${prefixPart}GRN-${order.id}`;
+                      const plId = `${prefixPart}PL-${order.id}`;
+                      const dnId = `${prefixPart}DN-${order.id}`;
+                      const invId = `${prefixPart}INV-${order.id}`;
+
+                      if (!window.confirm(`This tool will automatically create:\n- PO: ${poId}\n- GRN: ${grnId}\n- Packing List: ${plId}\n- Delivery Note: ${dnId}\n- Client Invoice: ${invId}\n\nFor all items in this order, updating all tracking history logs. Proceed?`)) return;
+
+                      // 1. Generate lists of document items
+                      const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
+                      const allItems = order.itemsList || [];
+
+                      const poItems = hardwareItems.map(item => ({
+                        code: item.code || 'NO-CODE',
+                        description: item.description,
+                        qtyAction: Number(item.qty) || 0,
+                        eta: formattedDate
+                      }));
+
+                      const grnItems = hardwareItems.map(item => ({
+                        code: item.code || 'NO-CODE',
+                        description: item.description,
+                        qtyAction: Number(item.qty) || 0
+                      }));
+
+                      const plItems = hardwareItems.map(item => ({
+                        id: item.id,
+                        code: item.code || 'NO-CODE',
+                        type: item.type || 'Fittings',
+                        description: item.description,
+                        qtyDelivered: Number(item.qty) || 0,
+                        boxNumber: 'Box 1',
+                        redList: 'No',
+                        firstFix: 'No'
+                      }));
+
+                      const invItems = allItems.map(item => ({
+                        code: item.code || 'NO-CODE',
+                        description: item.description,
+                        qtyAction: Number(item.qty) || 0,
+                        rate: Number(item.unitRetail || item.unit_retail || 0)
+                      }));
+
+                      // 2. Map and update individual item history states
+                      const updatedItemsList = allItems.map(item => {
+                        const isService = (item.itemType || item.item_type) === 'Service';
+                        const qty = Number(item.qty) || 0;
+
+                        const pHist = isService ? [] : [{
+                          id: poId,
+                          ref: poId,
+                          date: formattedDate,
+                          qty: qty,
+                          eta: formattedDate,
+                          supplier: order.supplier || 'Warehouse Inventory'
+                        }];
+
+                        const rHist = isService ? [] : [{
+                          qty: qty,
+                          ref: grnId,
+                          poId: poId,
+                          date: formattedDate
+                        }];
+
+                        const dHist = isService ? [] : [{
+                          qty: qty,
+                          ref: dnId,
+                          date: formattedDate
+                        }];
+
+                        const iHist = [{
+                          qty: qty,
+                          ref: invId,
+                          date: formattedDate,
+                          rate: Number(item.unitRetail || item.unit_retail || 0)
+                        }];
+
+                        return {
+                          ...item,
+                          poQtyOrdered: isService ? 0 : qty,
+                          receivedQty: isService ? 0 : qty,
+                          receivedDate: isService ? '' : formattedDate,
+                          deliveryQty: isService ? 0 : qty,
+                          deliveryDate: isService ? '' : formattedDate,
+                          deliveryStatus: isService ? 'Pending' : 'Delivered',
+                          purchaseHistory: pHist,
+                          receivingHistory: rHist,
+                          deliveryHistory: dHist,
+                          invoiceHistory: iHist
+                        };
+                      });
+
+                      // 3. Construct Document Headers
+                      const newPo = { id: poId, date: dateStr, supplier: order.supplier || 'Warehouse Inventory', notes: 'Bulk Uploaded PO', items: poItems };
+                      const newGrn = { id: grnId, poId: poId, date: dateStr, notes: 'Bulk Uploaded GRN', items: grnItems };
+                      const newPl = { id: plId, date: dateStr, notes: 'Bulk Uploaded PL', items: plItems, deliveryNoteId: dnId };
+                      const newDn = { id: dnId, date: dateStr, notes: 'Bulk Uploaded DN', items: plItems };
+                      const newInv = { id: invId, date: dateStr, notes: 'Bulk Uploaded Invoice', items: invItems };
+
+                      // 4. Update order list inside project
+                      const updatedOrders = project.orders.map(o => {
+                        if (o.id === oId) {
+                          return {
+                            ...o,
+                            purchaseOrders: [...(o.purchaseOrders || []), newPo],
+                            goodsReceivedNotes: [...(o.goodsReceivedNotes || []), newGrn],
+                            packingLists: [...(o.packingLists || []), newPl],
+                            deliveryNotes: [...(o.deliveryNotes || []), newDn],
+                            clientInvoices: [...(o.clientInvoices || []), newInv],
+                            itemsList: updatedItemsList
+                          };
+                        }
+                        return o;
+                      });
+
+                      // 5. Commit changes to Backend Database
+                      updateProject(pKey, 'orders', updatedOrders);
+                      alert(`Successfully fully auto-filled order ${order.id}! All documents have been issued.`);
+                    }}
+                  >
+                    ⚡ Fully Auto-Fill All Quantities & Issue Documents
+                  </button>
+                </div>
               </div>
             </div>
-          ))}
+
+            {/* INTEGRATIONS DIRECTORY CARD */}
+            <div>
+              {[
+                { name: 'Xero',    desc: 'Sync invoices and payments to accounting',       status: 'Connected',    color: 'b-success' },
+                { name: 'SAGE',    desc: 'Alternative accounting integration',              status: 'Disconnected', color: 'b-default' },
+                { name: 'Resend',  desc: 'Transactional email delivery',                   status: 'Connected',    color: 'b-success' },
+                { name: 'Firebase',desc: 'Authentication & real-time database',            status: 'Connected',    color: 'b-success' },
+                { name: 'Palladium',desc: 'Read-only Kerridge CS cloud sync (BOQ/quotes)', status: 'Connected',    color: 'b-success' },
+              ].map(int => (
+                <div key={int.name} className="card" style={{ marginBottom: 10 }}>
+                  <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px' }}>
+                    <div style={{ width: 34, height: 34, background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-info)', fontWeight: 600, fontSize: 13 }}>{int.name[0]}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: '12.5px', marginBottom: 2 }}>{int.name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{int.desc}</div>
+                    </div>
+                    <span className={`badge ${int.color}`} style={{ fontSize: '9px' }}>{int.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
+
 
       {activeTab === 'Templates' && isAdmin && (
         <div className="animation-fade-in">

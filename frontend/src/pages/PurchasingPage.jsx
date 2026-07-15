@@ -90,12 +90,17 @@ export default function PurchasingPage() {
   const [poOrderKey, setPoOrderKey] = useState(''); // "projectKey_orderId"
   const [poSupplier, setPoSupplier] = useState(''); // Selected supplier from items
   const [poNotes, setPoNotes] = useState('');
+  const [poCustomId, setPoCustomId] = useState('');
+  const [poCustomDate, setPoCustomDate] = useState('');
   const [poItemInputs, setPoItemInputs] = useState({}); // { code: { qty, eta } }
 
   // Form states for creating a GRN
   const [grnPoId, setGrnPoId] = useState(''); // Selected PO ID
   const [grnNotes, setGrnNotes] = useState('');
+  const [grnCustomId, setGrnCustomId] = useState('');
+  const [grnCustomDate, setGrnCustomDate] = useState('');
   const [grnItemInputs, setGrnItemInputs] = useState({}); // { code: { qty } }
+
 
   // Form states for editing a PO
   const [showEditPoModal, setShowEditPoModal] = useState(false);
@@ -253,6 +258,8 @@ export default function PurchasingPage() {
     setPoOrderKey('');
     setPoSupplier('');
     setPoNotes('');
+    setPoCustomId('');
+    setPoCustomDate('');
     setPoItemInputs({});
     setShowPoModal(true);
   };
@@ -261,9 +268,12 @@ export default function PurchasingPage() {
   const handleOpenGrnModal = () => {
     setGrnPoId('');
     setGrnNotes('');
+    setGrnCustomId('');
+    setGrnCustomDate('');
     setGrnItemInputs({});
     setShowGrnModal(true);
   };
+
 
   // Save Purchase Order
   const handleSavePo = (e) => {
@@ -279,10 +289,25 @@ export default function PurchasingPage() {
       return;
     }
 
-    const formattedDate = new Date().toISOString().split('T')[0];
-    const docIndex = getTotalDocCount('purchase_order') + 1;
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const newPoId = `PO-2026-${String(docIndex).padStart(3, '0')}`;
+    // Determine purchase date
+    const finalDateObj = poCustomDate ? new Date(poCustomDate) : new Date();
+    const formattedDate = finalDateObj.toISOString().split('T')[0];
+    const dateStr = finalDateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    // Determine purchase order document ID
+    let newPoId = (poCustomId || '').trim();
+    if (!newPoId) {
+      const docIndex = getTotalDocCount('purchase_order') + 1;
+      newPoId = `PO-2026-${String(docIndex).padStart(3, '0')}`;
+    }
+
+    // Verify if PO ID already exists globally to prevent collisions
+    const poExists = allDocs.some(d => d.type === 'purchase_order' && d.id.toLowerCase() === newPoId.toLowerCase());
+    if (poExists) {
+      alert(`A Purchase Order with ID "${newPoId}" already exists. Please choose a unique ID.`);
+      return;
+    }
+
 
     const poItems = [];
     let hasQuantities = false;
@@ -401,10 +426,25 @@ export default function PurchasingPage() {
     const order = (project?.orders || []).find(o => o.id === oId);
     if (!order) return;
 
-    const formattedDate = new Date().toISOString().split('T')[0];
-    const docIndex = getTotalDocCount('goods_received_note') + 1;
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const newGrnId = `GRN-2026-${String(docIndex).padStart(3, '0')}`;
+    // Determine GRN receiving date
+    const finalDateObj = grnCustomDate ? new Date(grnCustomDate) : new Date();
+    const formattedDate = finalDateObj.toISOString().split('T')[0];
+    const dateStr = finalDateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    // Determine goods received document ID
+    let newGrnId = (grnCustomId || '').trim();
+    if (!newGrnId) {
+      const docIndex = getTotalDocCount('goods_received_note') + 1;
+      newGrnId = `GRN-2026-${String(docIndex).padStart(3, '0')}`;
+    }
+
+    // Verify if GRN ID already exists globally to prevent collisions
+    const grnExists = allDocs.some(d => d.type === 'goods_received_note' && d.id.toLowerCase() === newGrnId.toLowerCase());
+    if (grnExists) {
+      alert(`A Goods Received Note with ID "${newGrnId}" already exists. Please choose a unique ID.`);
+      return;
+    }
+
 
     const grnItems = [];
     let hasQuantities = false;
@@ -1002,15 +1042,28 @@ export default function PurchasingPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Instructions</label>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document ID (Leave blank to auto-generate)</label>
                   <input 
                     type="text" 
-                    placeholder="e.g. Expedited shipping, custom order remarks..." 
+                    placeholder="e.g. PO-2026-008" 
                     className="form-control" 
-                    value={poNotes} 
-                    onChange={e => setPoNotes(e.target.value)} 
+                    style={{ height: '32px', fontSize: '12.5px' }}
+                    value={poCustomId} 
+                    onChange={e => setPoCustomId(e.target.value)} 
                   />
                 </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Date of Purchase</label>
+                  <input 
+                    type="date" 
+                    className="form-control" 
+                    style={{ height: '32px', fontSize: '12.5px', colorScheme: 'dark' }}
+                    value={poCustomDate} 
+                    onChange={e => setPoCustomDate(e.target.value)} 
+                  />
+                </div>
+
 
                 {selectedPoOrder ? (
                   <div>
@@ -1148,15 +1201,28 @@ export default function PurchasingPage() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Remarks</label>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Document ID (Leave blank to auto-generate)</label>
                     <input 
                       type="text" 
-                      placeholder="e.g. Received package in good condition..." 
+                      placeholder="e.g. GRN-2026-008" 
                       className="form-control" 
-                      value={grnNotes} 
-                      onChange={e => setGrnNotes(e.target.value)} 
+                      style={{ height: '32px', fontSize: '12.5px' }}
+                      value={grnCustomId} 
+                      onChange={e => setGrnCustomId(e.target.value)} 
                     />
                   </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Date Received</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      style={{ height: '32px', fontSize: '12.5px', colorScheme: 'dark' }}
+                      value={grnCustomDate} 
+                      onChange={e => setGrnCustomDate(e.target.value)} 
+                    />
+                  </div>
+
 
                   {poDoc ? (
                     <div>
