@@ -1461,8 +1461,10 @@ export default function SalesTracker() {
         rows.push({
           "Order ID": order.id,
           "Quote Name": order.quote_name || "—",
+          "Retail Value Ex VAT": Number(order.value) || 0,
           "Qty (Ordered)": item.qty || 0,
           "Item ID": item.id,
+
           "Item Code": item.code || "—",
           "Description": item.description || "—",
           "Stock Status": item.stockStatus !== undefined ? item.stockStatus : (item.stock_status || "—"),
