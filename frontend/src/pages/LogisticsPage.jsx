@@ -98,11 +98,12 @@ export default function LogisticsPage() {
 
   // Filtered documents for ledger
   const filteredDocs = allDocs.filter(doc => 
-    doc.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.supplier.toLowerCase().includes(searchQuery.toLowerCase())
+    (doc.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (doc.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (doc.orderId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (doc.supplier || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
 
   // Selected document to preview
   const activeDoc = allDocs.find(d => d.id === selectedDocId);
