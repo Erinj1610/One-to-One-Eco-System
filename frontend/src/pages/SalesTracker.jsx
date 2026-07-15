@@ -1742,17 +1742,15 @@ export default function SalesTracker() {
               const [ref, date, supplier] = key.split('_');
               const formattedDateStr = formatDateZa(date);
               
-              // Only insert if it doesn't exist
-              const exists = (order.purchaseOrders || []).some(po => po.id === ref);
-              if (!exists) {
-                order.purchaseOrders.push({
-                  id: ref,
-                  date: formattedDateStr,
-                  supplier,
-                  notes: 'Bulk Excel Importer PO',
-                  items
-                });
-              }
+              // Overwrite if exists, otherwise append
+              order.purchaseOrders = (order.purchaseOrders || []).filter(po => po.id !== ref);
+              order.purchaseOrders.push({
+                id: ref,
+                date: formattedDateStr,
+                supplier,
+                notes: 'Bulk Excel Importer PO',
+                items
+              });
             });
 
             // Group GRNs
@@ -1773,16 +1771,14 @@ export default function SalesTracker() {
               const [ref, date, poId] = key.split('_');
               const formattedDateStr = formatDateZa(date);
               
-              const exists = (order.goodsReceivedNotes || []).some(grn => grn.id === ref);
-              if (!exists) {
-                order.goodsReceivedNotes.push({
-                  id: ref,
-                  poId,
-                  date: formattedDateStr,
-                  notes: 'Bulk Excel Importer GRN',
-                  items
-                });
-              }
+              order.goodsReceivedNotes = (order.goodsReceivedNotes || []).filter(grn => grn.id !== ref);
+              order.goodsReceivedNotes.push({
+                id: ref,
+                poId,
+                date: formattedDateStr,
+                notes: 'Bulk Excel Importer GRN',
+                items
+              });
             });
 
             // Group Invoices
@@ -1806,52 +1802,50 @@ export default function SalesTracker() {
               const [ref, date] = key.split('_');
               const formattedDateStr = formatDateZa(date);
               
-              const exists = (order.clientInvoices || []).some(inv => inv.id === ref);
-              if (!exists) {
-                order.clientInvoices.push({
-                  id: ref,
-                  date: formattedDateStr,
-                  notes: 'Bulk Excel Importer Invoice',
-                  items
-                });
+              order.clientInvoices = (order.clientInvoices || []).filter(inv => inv.id !== ref);
+              order.clientInvoices.push({
+                id: ref,
+                date: formattedDateStr,
+                notes: 'Bulk Excel Importer Invoice',
+                items
+              });
 
-                // Calculate total value of items
-                const totalValue = items.reduce((s, it) => s + ((Number(it.qtyAction) || 0) * (Number(it.rate) || 0)), 0);
-                
-                const parseableDate = new Date(date);
-                const dueTime = isNaN(parseableDate.getTime()) ? Date.now() : parseableDate.getTime();
-                const dueFormattedStr = new Date(dueTime + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              // Calculate total value of items
+              const totalValue = items.reduce((s, it) => s + ((Number(it.qtyAction) || 0) * (Number(it.rate) || 0)), 0);
+              
+              const parseableDate = new Date(parseExcelDate(date));
+              const dueTime = isNaN(parseableDate.getTime()) ? Date.now() : parseableDate.getTime();
+              const dueFormattedStr = new Date(dueTime + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
 
-                // Add to newGlobalInvoices to sync with global Invoices state ledger
-                newGlobalInvoices.push({
-                  id: ref,
-                  project: order.projectName || proj.name,
-                  client: order.clientCompany || order.projectClient || proj.client || '—',
-                  amount: `R ${Math.round(totalValue).toLocaleString()}`,
-                  issued: formattedDateStr,
-                  due: dueFormattedStr,
-                  status: 'Unpaid',
-                  paid: false,
-                  type: 'order_invoice',
-                  projectKey: pKey,
-                  orderId: order.id,
-                  items: items,
-                  notes: 'Bulk Excel Importer Invoice'
-                });
-              }
+              // Add to newGlobalInvoices to sync with global Invoices state ledger
+              newGlobalInvoices.push({
+                id: ref,
+                project: order.projectName || proj.name,
+                client: order.clientCompany || order.projectClient || proj.client || '—',
+                amount: `R ${Math.round(totalValue).toLocaleString()}`,
+                issued: formattedDateStr,
+                due: dueFormattedStr,
+                status: 'Unpaid',
+                paid: false,
+                type: 'order_invoice',
+                projectKey: pKey,
+                orderId: order.id,
+                items: items,
+                notes: 'Bulk Excel Importer Invoice'
+              });
             });
 
             if (newGlobalInvoices.length > 0) {
               setInvoices(prev => {
-                const uniqueInvs = [...prev];
+                // Filter out any older matching global invoices to force overwrite
+                const nextInvs = prev.filter(x => !newGlobalInvoices.some(n => n.id === x.id));
                 newGlobalInvoices.forEach(newInv => {
-                  if (!uniqueInvs.some(x => x.id === newInv.id)) {
-                    uniqueInvs.unshift(newInv);
-                  }
+                  nextInvs.unshift(newInv);
                 });
-                return uniqueInvs;
+                return nextInvs;
               });
             }
+
 
 
             // Group Delivery Notes & PLs
