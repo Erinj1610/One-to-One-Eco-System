@@ -1657,7 +1657,7 @@ export default function SalesTracker() {
             const productType = String(getRowVal('N') || '').trim();
 
             // Transactional columns
-            const poQty = Number(getRowVal('Q')) || 0;
+            const poQty = Number(getRowVal('Q')) || 0; 
             const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
             const dateOrderedRaw = getRowVal('S');
             const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
@@ -1677,11 +1677,13 @@ export default function SalesTracker() {
 
             // Auto-generate PO/GRN references if missing but dates exist
             let poRef = '';
-            if (dateOrdered && poQty > 0) {
+            if (dateOrdered) {
               const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
               const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
               poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
             }
+
+
 
             let grnRef = '';
             if (dateRec && qtyRec > 0) {
