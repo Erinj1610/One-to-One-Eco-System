@@ -1902,12 +1902,13 @@ export default function SalesTracker() {
         alert("Bulk spreadsheet successfully imported! All quantities synchronized and document references generated.");
         setSelectedOrders([]);
       } catch (err) {
-        console.error(evt, err);
-        alert("Failed to parse the Excel file. Please verify it conforms to the exported structure.");
+        console.error("EXCEL PARSING ERROR DETECTED:", err);
+        alert(`Failed to parse the Excel file: ${err.message}. Please verify it conforms to the exported structure.`);
       }
     };
     reader.readAsBinaryString(file);
   };
+
 
 
   // SAVE NEW DOCUMENT RUN TO HISTORY
