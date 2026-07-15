@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
+
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   ArrowUpDown,
@@ -743,6 +745,10 @@ export default function SalesTracker() {
   const [activeDocType, setActiveDocType] = useState('quote'); // 'quote' | 'invoice' | 'schedule' | 'delivery' | 'statement'
   const [customTerms, setCustomTerms] = useState('Payment: 50% deposit to initiate order, 40% on delivery, 10% post-installation sign-off. Validity: 30 days from date of issue.');
 
+  // Checkbox state for Bulk Excel Operations
+  const [selectedOrders, setSelectedOrders] = useState([]); // Array of strings: "projectKey_orderId"
+
+
   // Pricing consistency assistant modal state
   const [pendingPriceEdit, setPendingPriceEdit] = useState(null); // { itemId, field, value, code }
 
@@ -1404,6 +1410,7 @@ export default function SalesTracker() {
       return o;
     });
 
+
     // Save back to dynamic project state
     updateProject(selectedProjectKey, 'orders', updatedOrders);
 
@@ -1422,6 +1429,376 @@ export default function SalesTracker() {
     alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
     setSelectedOrderId(null);
   };
+
+  const handleBulkExcelExport = () => {
+    if (selectedOrders.length === 0) {
+      alert("Please select at least one order to export.");
+      return;
+    }
+
+    const rows = [];
+    selectedOrders.forEach(key => {
+      const [projKey, orderId] = key.split('_');
+      const proj = projects[projKey];
+      if (!proj) return;
+      const order = (proj.orders || []).find(o => o.id === orderId);
+      if (!order) return;
+
+      const items = order.itemsList || [];
+      items.forEach(item => {
+        const defaults = item.purchaseHistory?.length ? {
+          purchaseHistory: item.purchaseHistory,
+          receivingHistory: item.receivingHistory || [],
+          deliveryHistory: item.deliveryHistory || [],
+          invoiceHistory: item.invoiceHistory || []
+        } : {};
+
+        const pHist = item.purchaseHistory || defaults.purchaseHistory || [];
+        const rHist = item.receivingHistory || defaults.receivingHistory || [];
+        const dHist = item.deliveryHistory || defaults.deliveryHistory || [];
+        const iHist = item.invoiceHistory || defaults.invoiceHistory || [];
+
+        rows.push({
+          "Order ID": order.id,
+          "Quote Name": order.quote_name || "—",
+          "Qty (Ordered)": item.qty || 0,
+          "Item ID": item.id,
+          "Item Code": item.code || "—",
+          "Description": item.description || "—",
+          "Stock Status": item.stockStatus !== undefined ? item.stockStatus : (item.stock_status || "—"),
+          "Stock on Hand": item.stockOnHand !== undefined ? item.stockOnHand : (item.stock_on_hand || 0),
+          "PO Reference": pHist.map(h => h.ref).join(', ') || "",
+          "Supplier": pHist.map(h => h.supplier || item.supplier).join(', ') || item.supplier || "",
+          "Date Ordered": pHist.map(h => h.date).join(', ') || "",
+          "Qty Ordered (PO)": pHist.reduce((s, h) => s + (Number(h.qty) || 0), 0) || 0,
+          "Delivery ETA": pHist.map(h => h.eta).join(', ') || "",
+          "Qty REC": rHist.reduce((s, h) => s + (Number(h.qty) || 0), 0) || 0,
+          "GRN Reference": rHist.map(h => h.ref).join(', ') || "",
+          "Date REC": rHist.map(h => h.date).join(', ') || "",
+          "Qty INV": iHist.reduce((s, h) => s + (Number(h.qty) || 0), 0) || 0,
+          "Invoice Reference": iHist.map(h => h.ref).join(', ') || "",
+          "Date INV": iHist.map(h => h.date).join(', ') || "",
+          "Qty DEL": dHist.reduce((s, h) => s + (Number(h.qty) || 0), 0) || 0,
+          "Date DEL": dHist.map(h => h.date).join(', ') || "",
+          "Delivery Comments": item.deliveryComments || ""
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Selected Ledger Items");
+    
+    // Auto-fit column widths
+    const maxCols = rows.length > 0 ? Object.keys(rows[0]).length : 10;
+    const wscols = [];
+    for (let i = 0; i < maxCols; i++) {
+      wscols.push({ wch: 18 });
+    }
+    worksheet['!cols'] = wscols;
+
+    XLSX.writeFile(workbook, `Bulk_Ledger_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleBulkExcelImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        if (rows.length === 0) {
+          alert("Imported sheet is empty.");
+          return;
+        }
+
+        // Map updates to corresponding projects/orders/items
+        const projectUpdatesMap = {}; // { projectKey: { orders: { [orderId]: orderObj } } }
+
+        rows.forEach(row => {
+          const orderId = row["Order ID"];
+          const itemId = row["Item ID"];
+          if (!orderId || !itemId) return;
+
+          // Find which project contains this order
+          let foundProjKey = null;
+          let foundOrder = null;
+
+          Object.entries(projects).forEach(([pKey, proj]) => {
+            const o = (proj.orders || []).find(ord => ord.id === orderId);
+            if (o) {
+              foundProjKey = pKey;
+              foundOrder = o;
+            }
+          });
+
+          if (!foundProjKey || !foundOrder) return;
+
+          if (!projectUpdatesMap[foundProjKey]) {
+            // Clone the existing orders list to avoid side effects
+            const clonedOrders = (projects[foundProjKey].orders || []).map(o => ({
+              ...o,
+              purchaseOrders: [...(o.purchaseOrders || [])],
+              goodsReceivedNotes: [...(o.goodsReceivedNotes || [])],
+              packingLists: [...(o.packingLists || [])],
+              deliveryNotes: [...(o.deliveryNotes || [])],
+              clientInvoices: [...(o.clientInvoices || [])],
+              itemsList: (o.itemsList || []).map(it => ({ ...it }))
+            }));
+            projectUpdatesMap[foundProjKey] = {
+              ordersMap: clonedOrders.reduce((acc, o) => {
+                acc[o.id] = o;
+                return acc;
+              }, {})
+            };
+          }
+
+          const targetOrder = projectUpdatesMap[foundProjKey].ordersMap[orderId];
+          const targetItem = targetOrder.itemsList.find(it => it.id === itemId);
+          if (!targetItem) return;
+
+          // Apply editable overrides (stock status and stock on hand)
+          if (row["Stock Status"] !== undefined) targetItem.stockStatus = String(row["Stock Status"]).trim();
+          if (row["Stock on Hand"] !== undefined) targetItem.stockOnHand = Number(row["Stock on Hand"]) || 0;
+
+          // Build transaction lists based on spreadsheet overrides
+          const isService = (targetItem.itemType || targetItem.item_type) === 'Service';
+
+          // PO History
+          const poRef = String(row["PO Reference"] || "").trim();
+          const poDate = String(row["Date Ordered"] || "").trim();
+          const poQty = Number(row["Qty Ordered (PO)"]) || 0;
+          const poSupplier = String(row["Supplier"] || targetItem.supplier || "Warehouse Inventory").trim();
+          const poEta = String(row["Delivery ETA"] || "TBD").trim();
+
+          if (poRef && poDate && poQty > 0 && !isService) {
+            targetItem.poQtyOrdered = poQty;
+            targetItem.purchaseHistory = [{
+              id: poRef,
+              ref: poRef,
+              date: poDate,
+              qty: poQty,
+              eta: poEta,
+              supplier: poSupplier
+            }];
+          }
+
+          // GRN History
+          const grnRef = String(row["GRN Reference"] || "").trim();
+          const grnDate = String(row["Date REC"] || "").trim();
+          const grnQty = Number(row["Qty REC"]) || 0;
+
+          if (grnRef && grnDate && grnQty > 0 && !isService) {
+            targetItem.receivedQty = grnQty;
+            targetItem.receivedDate = grnDate;
+            targetItem.receivingHistory = [{
+              qty: grnQty,
+              ref: grnRef,
+              poId: poRef || `PO-${orderId}`,
+              date: grnDate
+            }];
+          }
+
+          // Invoice History
+          const invRef = String(row["Invoice Reference"] || "").trim();
+          const invDate = String(row["Date INV"] || "").trim();
+          const invQty = Number(row["Qty INV"]) || 0;
+
+          if (invRef && invDate && invQty > 0) {
+            targetItem.invoiceQty = invQty;
+            targetItem.invoiceDate = invDate;
+            targetItem.invoiceHistory = [{
+              qty: invQty,
+              ref: invRef,
+              date: invDate,
+              rate: Number(targetItem.unitRetail || targetItem.unit_retail || 0)
+            }];
+          }
+
+          // Delivery History
+          const delDate = String(row["Date DEL"] || "").trim();
+          const delQty = Number(row["Qty DEL"]) || 0;
+          const delComments = String(row["Delivery Comments"] || "").trim();
+
+          if (delDate && delQty > 0 && !isService) {
+            targetItem.deliveryQty = delQty;
+            targetItem.deliveryDate = delDate;
+            targetItem.deliveryComments = delComments;
+            targetItem.deliveryStatus = delQty >= (Number(targetItem.qty) || 0) ? 'Delivered' : 'Partial';
+            targetItem.deliveryHistory = [{
+              qty: delQty,
+              ref: `DN-${orderId}`,
+              date: delDate
+            }];
+          }
+        });
+
+        // 2. Perform Grouping & Create Document Headers
+        Object.entries(projectUpdatesMap).forEach(([pKey, dataObj]) => {
+          const orders = Object.values(dataObj.ordersMap);
+
+          orders.forEach(order => {
+            const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
+            const allItems = order.itemsList || [];
+
+            // Group POs
+            const poGroups = {}; // { poRef_date_supplier: [items] }
+            hardwareItems.forEach(item => {
+              const pHist = item.purchaseHistory?.[0];
+              if (!pHist) return;
+              const key = `${pHist.ref}_${pHist.date}_${pHist.supplier}`;
+              if (!poGroups[key]) poGroups[key] = [];
+              poGroups[key].push({
+                code: item.code || 'NO-CODE',
+                description: item.description,
+                qtyAction: pHist.qty,
+                eta: pHist.eta
+              });
+            });
+
+            Object.entries(poGroups).forEach(([key, items]) => {
+              const [ref, date, supplier] = key.split('_');
+              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              
+              // Only insert if it doesn't exist
+              const exists = (order.purchaseOrders || []).some(po => po.id === ref);
+              if (!exists) {
+                order.purchaseOrders.push({
+                  id: ref,
+                  date: formattedDateStr,
+                  supplier,
+                  notes: 'Bulk Excel Importer PO',
+                  items
+                });
+              }
+            });
+
+            // Group GRNs
+            const grnGroups = {}; // { grnRef_date: [items] }
+            hardwareItems.forEach(item => {
+              const rHist = item.receivingHistory?.[0];
+              if (!rHist) return;
+              const key = `${rHist.ref}_${rHist.date}_${rHist.poId}`;
+              if (!grnGroups[key]) grnGroups[key] = [];
+              grnGroups[key].push({
+                code: item.code || 'NO-CODE',
+                description: item.description,
+                qtyAction: rHist.qty
+              });
+            });
+
+            Object.entries(grnGroups).forEach(([key, items]) => {
+              const [ref, date, poId] = key.split('_');
+              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              
+              const exists = (order.goodsReceivedNotes || []).some(grn => grn.id === ref);
+              if (!exists) {
+                order.goodsReceivedNotes.push({
+                  id: ref,
+                  poId,
+                  date: formattedDateStr,
+                  notes: 'Bulk Excel Importer GRN',
+                  items
+                });
+              }
+            });
+
+            // Group Invoices
+            const invGroups = {}; // { invRef_date: [items] }
+            allItems.forEach(item => {
+              const iHist = item.invoiceHistory?.[0];
+              if (!iHist) return;
+              const key = `${iHist.ref}_${iHist.date}`;
+              if (!invGroups[key]) invGroups[key] = [];
+              invGroups[key].push({
+                code: item.code || 'NO-CODE',
+                description: item.description,
+                qtyAction: iHist.qty,
+                rate: iHist.rate
+              });
+            });
+
+            Object.entries(invGroups).forEach(([key, items]) => {
+              const [ref, date] = key.split('_');
+              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              
+              const exists = (order.clientInvoices || []).some(inv => inv.id === ref);
+              if (!exists) {
+                order.clientInvoices.push({
+                  id: ref,
+                  date: formattedDateStr,
+                  notes: 'Bulk Excel Importer Invoice',
+                  items
+                });
+              }
+            });
+
+            // Group Delivery Notes & PLs
+            const dnGroups = {}; // { date: [items] }
+            hardwareItems.forEach(item => {
+              const dHist = item.deliveryHistory?.[0];
+              if (!dHist) return;
+              if (!dnGroups[dHist.date]) dnGroups[dHist.date] = [];
+              dnGroups[dHist.date].push({
+                id: item.id,
+                code: item.code || 'NO-CODE',
+                type: item.type || 'Fittings',
+                description: item.description,
+                qtyDelivered: dHist.qty,
+                boxNumber: 'Box 1',
+                redList: 'No',
+                firstFix: 'No'
+              });
+            });
+
+            Object.entries(dnGroups).forEach(([date, items]) => {
+              const plId = `PL-${order.id}`;
+              const dnId = `DN-${order.id}`;
+              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+              const plExists = (order.packingLists || []).some(pl => pl.id === plId);
+              if (!plExists) {
+                order.packingLists.push({
+                  id: plId,
+                  date: formattedDateStr,
+                  notes: 'Bulk Excel Importer PL',
+                  items,
+                  deliveryNoteId: dnId
+                });
+              }
+
+              const dnExists = (order.deliveryNotes || []).some(dn => dn.id === dnId);
+              if (!dnExists) {
+                order.deliveryNotes.push({
+                  id: dnId,
+                  date: formattedDateStr,
+                  notes: 'Bulk Excel Importer DN',
+                  items
+                });
+              }
+            });
+          });
+
+          // Save updates back to global context
+          updateProject(pKey, 'orders', orders);
+        });
+
+        alert("Bulk spreadsheet successfully imported! All quantities synchronized and document references generated.");
+        setSelectedOrders([]);
+      } catch (err) {
+        console.error(evt, err);
+        alert("Failed to parse the Excel file. Please verify it conforms to the exported structure.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
 
   // SAVE NEW DOCUMENT RUN TO HISTORY
   const handleSaveDocumentToHistory = () => {
@@ -1798,11 +2175,67 @@ export default function SalesTracker() {
                 </div>
               </div>
 
+              {/* BULK OPERATIONS CONTROL BAR */}
+              <div 
+                style={{ 
+                  background: 'var(--bg-secondary)', 
+                  border: '1px solid var(--border-strong)', 
+                  borderRadius: '8px', 
+                  padding: '12px 16px', 
+                  marginBottom: '15px', 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  flexWrap: 'wrap', 
+                  gap: '12px' 
+                }}
+              >
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  ⚙️ Bulk Document Operations ({selectedOrders.length} orders selected)
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline" 
+                    onClick={handleBulkExcelExport}
+                    disabled={selectedOrders.length === 0}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '30px', fontSize: '12px' }}
+                  >
+                    📥 Export Selected to Excel
+                  </button>
+                  <label 
+                    className="btn btn-sm btn-primary" 
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', height: '30px', margin: 0, fontSize: '12px' }}
+                  >
+                    📤 Import Filled Excel Sheet
+                    <input 
+                      type="file" 
+                      accept=".xlsx, .xls" 
+                      onChange={handleBulkExcelImport} 
+                      style={{ display: 'none' }} 
+                    />
+                  </label>
+                </div>
+              </div>
+
               {/* ORDERS LEDGER LIST */}
               <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
                 <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
                   <thead>
                     <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={sortedOrders.length > 0 && selectedOrders.length === sortedOrders.length}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedOrders(sortedOrders.map(o => `${o.projectKey}_${o.id}`));
+                            } else {
+                              setSelectedOrders([]);
+                            }
+                          }}
+                        />
+                      </th>
                       <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote ID {renderSortIcon('id')}</div>
                       </th>
@@ -1838,9 +2271,29 @@ export default function SalesTracker() {
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
+                      const isSelected = selectedOrders.includes(`${o.projectKey}_${o.id}`);
 
                       return (
-                        <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
+                        <tr 
+                          key={o.id} 
+                          className="clickable" 
+                          onClick={() => handleOpenWorkspace(o)}
+                          style={{ background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}
+                        >
+                          <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={e => {
+                                const key = `${o.projectKey}_${o.id}`;
+                                if (e.target.checked) {
+                                  setSelectedOrders(prev => [...prev, key]);
+                                } else {
+                                  setSelectedOrders(prev => prev.filter(k => k !== key));
+                                }
+                              }}
+                            />
+                          </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
                           <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
@@ -1874,6 +2327,7 @@ export default function SalesTracker() {
             </div>
           </div>
         </>
+
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */
