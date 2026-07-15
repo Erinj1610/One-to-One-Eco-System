@@ -1708,6 +1708,9 @@ export default function SalesTracker() {
             // Temporary unique ID
             const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
 
+            const stockStatus = String(getRowVal('N') || '').trim();
+            const stockOnHand = Number(getRowVal('O')) || 0;
+
             flatRows.push({
               "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
               "Project Name": projectF5,
@@ -1726,6 +1729,8 @@ export default function SalesTracker() {
               "Brand": brand,
               "Supplier": supplier,
               "Item Type": productType || "Hardware",
+              "Stock Status": stockStatus,
+              "Stock on Hand": stockOnHand,
               "Qty Ordered (PO)": poQty,
               "PO Supplier": poSupplier,
               "Date Ordered": dateOrdered,
@@ -1742,6 +1747,7 @@ export default function SalesTracker() {
               "Delivery Reference": deliveryRef,
               "Delivery Comments": ""
             });
+
           }
         });
 
@@ -1957,6 +1963,8 @@ export default function SalesTracker() {
             itemType,
             isCredit,
             is_credit: isCredit,
+            stockStatus: String(row["Stock Status"] || "").trim(),
+            stockOnHand: Number(row["Stock on Hand"]) || 0,
             poQtyOrdered: isCredit ? 0 : poQty,
             receivedQty: isCredit ? 0 : qtyRec,
             invoiceQty: qtyInv,
@@ -1972,6 +1980,7 @@ export default function SalesTracker() {
             invoiceHistory,
             deliveryHistory
           };
+
 
           targetOrder.itemsList.push(targetItem);
           if (!isCredit) {
