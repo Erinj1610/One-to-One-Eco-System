@@ -1553,70 +1553,269 @@ export default function SalesTracker() {
     XLSX.writeFile(workbook, `Bulk_Ledger_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleBulkExcelImport = (e) => {
+  const handleGenerateReconciliationTemplate = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Helper to format/parse Excel dates (handles serial numbers like 45897 or date strings/Objects)
     const parseExcelDate = (val) => {
       if (!val) return "";
-      
-      // If it is a JS Date object from cellDates: true
       if (val instanceof Date && !isNaN(val.getTime())) {
         return val.toISOString().split('T')[0];
       }
-
-      // If it's a numeric serial representation
       if (!isNaN(val)) {
         const valStr = String(val).trim();
-        // Check if user entered raw DDMMYYYY (8 digits, e.g. 15072026)
         if (valStr.length === 8 && /^\d{8}$/.test(valStr)) {
           const d = valStr.substring(0, 2);
           const m = valStr.substring(2, 4);
           const y = valStr.substring(4, 8);
           return `${y}-${m}-${d}`;
         }
-        
         const dateNum = Number(val);
-        // Excel base date starts at Dec 30, 1899 due to 1900 leap year bug
         const dateObj = new Date((dateNum - 25569) * 86400 * 1000);
         if (!isNaN(dateObj.getTime())) {
           return dateObj.toISOString().split('T')[0];
         }
       }
-
       const str = String(val).trim();
-      // Verify YYYY-MM-DD
       if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
-      // Handle DD-MM-YYYY or DD/MM/YYYY
       const parts = str.split(/[-/]/);
       if (parts.length === 3) {
-        // If first part is 4 digits, assume YYYY-MM-DD
         if (parts[0].length === 4) {
           const y = parts[0];
           const m = parts[1].padStart(2, '0');
           const d = parts[2].padStart(2, '0');
           return `${y}-${m}-${d}`;
         } else {
-          // Assume DD-MM-YYYY
           const d = parts[0].padStart(2, '0');
           const m = parts[1].padStart(2, '0');
           const y = parts[2];
           return `${y}-${m}-${d}`;
         }
       }
-      
       const parsed = new Date(str);
       return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : str;
     };
-
 
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const data = evt.target.result;
-        // Enable cellDates: true to parse dates directly where possible
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+        
+        let foundTemplate = false;
+        const targetSheets = [];
+        workbook.SheetNames.forEach(name => {
+          if (name.trim().toLowerCase() === 'template') {
+            foundTemplate = true;
+            return;
+          }
+          if (foundTemplate) {
+            targetSheets.push(name);
+          }
+        });
+
+        if (targetSheets.length === 0) {
+          alert("No order/project tabs found after the 'Template' sheet.");
+          return;
+        }
+
+        const flatRows = [];
+
+        targetSheets.forEach(sheetName => {
+          const sheet = workbook.Sheets[sheetName];
+          if (!sheet) return;
+
+          // Extract single header metadata values
+          const getVal = (cellRef) => (sheet[cellRef] ? String(sheet[cellRef].v || '').trim() : '');
+          
+          const clientCompany = getVal('D2');
+          const orderName = getVal('D3') || sheetName;
+          const projectF5 = getVal('F5') || 'General Project';
+          const deliveryAddress = getVal('D6');
+          const salesRep = getVal('F1');
+          
+          // Generate an Order Reference code
+          const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+
+          // We will parse rows 9 to 89
+          for (let r = 9; r <= 89; r++) {
+            const getRowVal = (col) => {
+              const cell = sheet[`${col}${r}`];
+              return cell ? cell.v : undefined;
+            };
+
+            const qty = Number(getRowVal('B'));
+            if (isNaN(qty) || qty === 0) continue; // skip empty rows
+
+            const oneOneCode = String(getRowVal('C') || '').trim();
+            const itemCode = String(getRowVal('D') || '').trim();
+            const description = String(getRowVal('E') || '').trim();
+            const unitRetail = Number(getRowVal('F')) || 0;
+            const unitCost = Number(getRowVal('I')) || 0;
+            const brand = String(getRowVal('L') || '').trim();
+            const supplier = String(getRowVal('M') || '').trim();
+            const productType = String(getRowVal('N') || '').trim();
+
+            // Transactional columns
+            const poQty = Number(getRowVal('Q')) || 0;
+            const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
+            const dateOrderedRaw = getRowVal('S');
+            const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
+            const etaRaw = getRowVal('T');
+            const eta = etaRaw ? parseExcelDate(etaRaw) : '';
+
+            const dateRecRaw = getRowVal('U');
+            const dateRec = dateRecRaw ? parseExcelDate(dateRecRaw) : '';
+            const qtyRec = Number(getRowVal('V')) || 0;
+
+            const qtyInv = Number(getRowVal('Y')) || 0;
+            const invoiceRef = String(getRowVal('Z') || '').trim();
+            const dateInvRaw = getRowVal('AA');
+            const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
+
+            const deliveryRef = String(getRowVal('AC') || '').trim();
+
+            // Auto-generate PO/GRN references if missing but dates exist
+            let poRef = '';
+            if (dateOrdered && poQty > 0) {
+              const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
+              const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
+              poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
+            }
+
+            let grnRef = '';
+            if (dateRec && qtyRec > 0) {
+              const cleanDate = dateRec.replace(/[^0-9]/g, '');
+              grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
+            }
+
+            // Auto-generate delivery references if delivery text/ref exists
+            let dateDel = '';
+            let qtyDel = 0;
+            if (deliveryRef) {
+              // Pre-fill delivery details with received metrics so user has a template base
+              dateDel = dateRec;
+              qtyDel = qtyRec;
+            }
+
+            // Auto-generate dynamic invoice reference if missing but invoice details exist
+            let invRefValue = invoiceRef;
+            if (!invRefValue && dateInv && qtyInv > 0) {
+              const cleanDate = dateInv.replace(/[^0-9]/g, '');
+              invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
+            }
+
+            // Temporary unique ID
+            const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
+
+            flatRows.push({
+              "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+              "Project Name": projectF5,
+              "Client Company": clientCompany,
+              "Order ID": safeOrderRef,
+              "Quote Name": orderName,
+              "Sales Rep": salesRep,
+              "Delivery Address": deliveryAddress,
+              "Item ID": tempItemId,
+              "Qty": qty,
+              "1:1 Code": oneOneCode,
+              "Item Code": itemCode,
+              "Description": description,
+              "Unit Cost Ex VAT": unitCost,
+              "Unit Retail Price Ex VAT": unitRetail,
+              "Brand": brand,
+              "Supplier": supplier,
+              "Item Type": productType || "Hardware",
+              "Qty Ordered (PO)": poQty,
+              "PO Supplier": poSupplier,
+              "Date Ordered": dateOrdered,
+              "PO Reference": poRef,
+              "Delivery ETA": eta,
+              "Qty REC": qtyRec,
+              "Date REC": dateRec,
+              "GRN Reference": grnRef,
+              "Qty INV": qtyInv,
+              "Invoice Reference": invRefValue,
+              "Date INV": dateInv,
+              "Qty DEL": qtyDel,
+              "Date DEL": dateDel,
+              "Delivery Reference": deliveryRef,
+              "Delivery Comments": ""
+            });
+          }
+        });
+
+        // Export the reconciliation flat sheet
+        const worksheet = XLSX.utils.json_to_sheet(flatRows);
+        const workbookOut = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbookOut, worksheet, "Reconciliation_Master");
+        
+        // Auto-fit column widths
+        const wscols = [];
+        if (flatRows.length > 0) {
+          Object.keys(flatRows[0]).forEach(() => {
+            wscols.push({ wch: 22 });
+          });
+          worksheet['!cols'] = wscols;
+        }
+
+        XLSX.writeFile(workbookOut, `Reconciliation_Master_Template_${new Date().toISOString().split('T')[0]}.xlsx`);
+        alert("Reconciliation spreadsheet successfully generated! Please fill in the Delivery quantities, project mappings, and upload back to the portal to overwrite.");
+      } catch (err) {
+        console.error("EXCEL EXTRACTION ERROR DETECTED:", err);
+        alert(`Failed to extract template: ${err.message}. Please verify the Excel tabs match the expected layout.`);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleBulkExcelImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const parseExcelDate = (val) => {
+      if (!val) return "";
+      if (val instanceof Date && !isNaN(val.getTime())) {
+        return val.toISOString().split('T')[0];
+      }
+      if (!isNaN(val)) {
+        const valStr = String(val).trim();
+        if (valStr.length === 8 && /^\d{8}$/.test(valStr)) {
+          const d = valStr.substring(0, 2);
+          const m = valStr.substring(2, 4);
+          const y = valStr.substring(4, 8);
+          return `${y}-${m}-${d}`;
+        }
+        const dateNum = Number(val);
+        const dateObj = new Date((dateNum - 25569) * 86400 * 1000);
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj.toISOString().split('T')[0];
+        }
+      }
+      const str = String(val).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      const parts = str.split(/[-/]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          const y = parts[0];
+          const m = parts[1].padStart(2, '0');
+          const d = parts[2].padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        } else {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2];
+          return `${y}-${m}-${d}`;
+        }
+      }
+      const parsed = new Date(str);
+      return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : str;
+    };
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
         const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
@@ -1627,154 +1826,182 @@ export default function SalesTracker() {
           return;
         }
 
+        // We will perform a complete wipe of the selected orders to start clean
+        const projectUpdatesMap = {};
+        const globalInvoicesList = [];
 
-        // Map updates to corresponding projects/orders/items
-        const projectUpdatesMap = {}; // { projectKey: { orders: { [orderId]: orderObj } } }
-
+        // 1. Group records by unique Order ID
         rows.forEach(row => {
-          const orderId = row["Order ID"];
-          const itemId = row["Item ID"];
-          if (!orderId || !itemId) return;
+          const orderId = String(row["Order ID"] || "").trim();
+          const projKey = String(row["Project Key"] || "general-spec").trim();
+          const projName = String(row["Project Name"] || "General Project").trim();
+          const clientCompany = String(row["Client Company"] || "—").trim();
+          const quoteName = String(row["Quote Name"] || "General Spec").trim();
+          const salesRep = String(row["Sales Rep"] || "—").trim();
+          const deliveryAddress = String(row["Delivery Address"] || "").trim();
+          
+          if (!orderId) return;
 
-          // Find which project contains this order
-          let foundProjKey = null;
-          let foundOrder = null;
-
-          Object.entries(projects).forEach(([pKey, proj]) => {
-            const o = (proj.orders || []).find(ord => ord.id === orderId);
-            if (o) {
-              foundProjKey = pKey;
-              foundOrder = o;
-            }
-          });
-
-          if (!foundProjKey || !foundOrder) return;
-
-          if (!projectUpdatesMap[foundProjKey]) {
-            // Clone the existing orders list to avoid side effects
-            const clonedOrders = (projects[foundProjKey].orders || []).map(o => ({
-              ...o,
-              purchaseOrders: [...(o.purchaseOrders || [])],
-              goodsReceivedNotes: [...(o.goodsReceivedNotes || [])],
-              packingLists: [...(o.packingLists || [])],
-              deliveryNotes: [...(o.deliveryNotes || [])],
-              clientInvoices: [...(o.clientInvoices || [])],
-              itemsList: (o.itemsList || []).map(it => ({ ...it }))
-            }));
-            projectUpdatesMap[foundProjKey] = {
-              ordersMap: clonedOrders.reduce((acc, o) => {
-                acc[o.id] = o;
-                return acc;
-              }, {})
+          if (!projectUpdatesMap[projKey]) {
+            projectUpdatesMap[projKey] = {
+              projName,
+              clientCompany,
+              orders: {}
             };
           }
 
-          const targetOrder = projectUpdatesMap[foundProjKey].ordersMap[orderId];
-          const targetItem = targetOrder.itemsList.find(it => it.id === itemId);
-          if (!targetItem) return;
+          if (!projectUpdatesMap[projKey].orders[orderId]) {
+            projectUpdatesMap[projKey].orders[orderId] = {
+              id: orderId,
+              quote_name: quoteName,
+              supplier: "Multiple Suppliers",
+              pm: salesRep,
+              deliveryAddress,
+              value: 0,
+              paid: 0,
+              outstanding: 0,
+              status: "Processing",
+              itemsList: [],
+              purchaseOrders: [],
+              goodsReceivedNotes: [],
+              clientInvoices: [],
+              packingLists: [],
+              deliveryNotes: []
+            };
+          }
 
-          // Apply editable overrides (stock status and stock on hand)
-          if (row["Stock Status"] !== undefined) targetItem.stockStatus = String(row["Stock Status"]).trim();
-          if (row["Stock on Hand"] !== undefined) targetItem.stockOnHand = Number(row["Stock on Hand"]) || 0;
+          const targetOrder = projectUpdatesMap[projKey].orders[orderId];
 
-          // Build transaction lists based on spreadsheet overrides
-          const isService = (targetItem.itemType || targetItem.item_type) === 'Service';
+          const qty = Number(row["Qty"]) || 0;
+          const unitCost = Number(row["Unit Cost Ex VAT"]) || 0;
+          const unitRetail = Number(row["Unit Retail Price Ex VAT"]) || 0;
+          const itemCode = String(row["Item Code"] || "").trim();
+          const description = String(row["Description"] || "").trim();
+          const oneOneCode = String(row["1:1 Code"] || "").trim();
+          const brand = String(row["Brand"] || "").trim();
+          const supplier = String(row["Supplier"] || "").trim();
+          const itemType = String(row["Item Type"] || "Hardware").trim();
+          const isCredit = qty < 0;
 
-          // PO History
-          const rawPoRef = String(row["PO Reference"] || "").trim();
-          const poRef = rawPoRef || (row["Date Ordered"] && Number(row["Qty Ordered (PO)"]) > 0 ? `PO-${orderId}` : "");
-          const poDate = parseExcelDate(row["Date Ordered"]);
+          // Rebuild histories
+          const poRef = String(row["PO Reference"] || "").trim();
+          const dateOrdered = parseExcelDate(row["Date Ordered"]);
           const poQty = Number(row["Qty Ordered (PO)"]) || 0;
-          const poSupplier = String(row["Supplier"] || targetItem.supplier || "Warehouse Inventory").trim();
+          const poSupplier = String(row["PO Supplier"] || supplier).trim();
           const poEta = parseExcelDate(row["Delivery ETA"]) || "TBD";
 
-          if (poRef && poDate && poQty > 0 && !isService) {
-            targetItem.poQtyOrdered = poQty;
-            targetItem.purchaseHistory = [{
+          const purchaseHistory = [];
+          if (poRef && dateOrdered && poQty !== 0) {
+            purchaseHistory.push({
               id: poRef,
               ref: poRef,
-              date: poDate,
+              date: dateOrdered,
               qty: poQty,
               eta: poEta,
               supplier: poSupplier
-            }];
+            });
           }
 
-          // GRN History
-          const rawGrnRef = String(row["GRN Reference"] || "").trim();
-          const grnRef = rawGrnRef || (row["Date REC"] && Number(row["Qty REC"]) > 0 ? `GRN-${orderId}` : "");
-          const grnDate = parseExcelDate(row["Date REC"]);
-          const grnQty = Number(row["Qty REC"]) || 0;
+          const grnRef = String(row["GRN Reference"] || "").trim();
+          const dateRec = parseExcelDate(row["Date REC"]);
+          const qtyRec = Number(row["Qty REC"]) || 0;
 
-          if (grnRef && grnDate && grnQty > 0 && !isService) {
-            targetItem.receivedQty = grnQty;
-            targetItem.receivedDate = grnDate;
-            targetItem.receivingHistory = [{
-              qty: grnQty,
+          const receivingHistory = [];
+          if (grnRef && dateRec && qtyRec !== 0) {
+            receivingHistory.push({
+              qty: qtyRec,
               ref: grnRef,
               poId: poRef || `PO-${orderId}`,
-              date: grnDate
-            }];
+              date: dateRec
+            });
           }
 
-          // Invoice History
-          const rawInvRef = String(row["Invoice Reference"] || "").trim();
-          const invRef = rawInvRef || (row["Date INV"] && Number(row["Qty INV"]) > 0 ? `INV-${orderId}` : "");
-          const invDate = parseExcelDate(row["Date INV"]);
-          const invQty = Number(row["Qty INV"]) || 0;
+          const invRef = String(row["Invoice Reference"] || "").trim();
+          const dateInv = parseExcelDate(row["Date INV"]);
+          const qtyInv = Number(row["Qty INV"]) || 0;
 
-          if (invRef && invDate && invQty > 0) {
-            targetItem.invoiceQty = invQty;
-            targetItem.invoiceDate = invDate;
-            targetItem.invoiceHistory = [{
-              qty: invQty,
+          const invoiceHistory = [];
+          if (invRef && dateInv && qtyInv !== 0) {
+            invoiceHistory.push({
+              qty: qtyInv,
               ref: invRef,
-              date: invDate,
-              rate: Number(targetItem.unitRetail || targetItem.unit_retail || 0)
-            }];
+              date: dateInv,
+              rate: unitRetail
+            });
           }
 
-          // Delivery History
-          const rawDelRef = `DN-${orderId}`;
-          const delDate = parseExcelDate(row["Date DEL"]);
-          const delQty = Number(row["Qty DEL"]) || 0;
+          const delRef = String(row["Delivery Reference"] || "").trim();
+          const dateDel = parseExcelDate(row["Date DEL"]);
+          const qtyDel = Number(row["Qty DEL"]) || 0;
           const delComments = String(row["Delivery Comments"] || "").trim();
 
-          if (delDate && delQty > 0 && !isService) {
-            targetItem.deliveryQty = delQty;
-            targetItem.deliveryDate = delDate;
-            targetItem.deliveryComments = delComments;
-            targetItem.deliveryStatus = delQty >= (Number(targetItem.qty) || 0) ? 'Delivered' : 'Partial';
-            targetItem.deliveryHistory = [{
-              qty: delQty,
-              ref: rawDelRef,
-              date: delDate
-            }];
+          const deliveryHistory = [];
+          if (delRef && dateDel && qtyDel !== 0) {
+            deliveryHistory.push({
+              qty: qtyDel,
+              ref: delRef,
+              date: dateDel
+            });
+          }
+
+          const targetItem = {
+            id: String(row["Item ID"] || `ITEM-${orderId}-${itemCode}-${Date.now()}`),
+            qty: Math.abs(qty),
+            code: itemCode,
+            oneOneCode: oneOneCode,
+            description,
+            unitCost,
+            unitRetail,
+            brand,
+            supplier,
+            itemType,
+            isCredit,
+            is_credit: isCredit,
+            poQtyOrdered: isCredit ? 0 : poQty,
+            receivedQty: isCredit ? 0 : qtyRec,
+            invoiceQty: qtyInv,
+            deliveryQty: isCredit ? 0 : qtyDel,
+            receivedDate: isCredit ? "" : dateRec,
+            invoiceDate: dateInv,
+            deliveryDate: isCredit ? "" : dateDel,
+            invoiceRef: invRef,
+            deliveryStatus: isCredit ? "Complete" : (qtyDel >= Math.abs(qty) ? "Delivered" : "Pending"),
+            deliveryComments,
+            purchaseHistory,
+            receivingHistory,
+            invoiceHistory,
+            deliveryHistory
+          };
+
+          targetOrder.itemsList.push(targetItem);
+          if (!isCredit) {
+            targetOrder.value += (Math.abs(qty) * unitRetail);
           }
         });
 
-
-        // 2. Perform Grouping & Create Document Headers
-        Object.entries(projectUpdatesMap).forEach(([pKey, dataObj]) => {
-          const orders = Object.values(dataObj.ordersMap);
-
-          orders.forEach(order => {
-            const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
-            const allItems = order.itemsList || [];
-
-            // Date formatter utility helper
-            const formatDateZa = (dStr) => {
-              if (!dStr) return new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-              const dateObj = new Date(dStr);
-              if (isNaN(dateObj.getTime())) {
-                // If it looks like '15 Jul 2026' already, return it
-                return dStr;
-              }
-              return dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+        // 2. Perform Grouping for headers and write back to portal
+        Object.entries(projectUpdatesMap).forEach(([projKey, projObj]) => {
+          let project = projects[projKey];
+          
+          // Auto-create project if missing
+          if (!project) {
+            project = {
+              key: projKey,
+              name: projObj.projName,
+              client: projObj.clientCompany,
+              orders: []
             };
+            projects[projKey] = project;
+          }
 
-            // Group POs
-            const poGroups = {}; // { poRef_date_supplier: [items] }
+          const ordersList = [...(project.orders || [])];
+
+          Object.values(projObj.orders).forEach(newOrder => {
+            const hardwareItems = newOrder.itemsList.filter(item => !item.isCredit && item.itemType !== 'Service');
+            const allItems = newOrder.itemsList;
+
+            // Generate Grouped Document Headers
+            const poGroups = {};
             hardwareItems.forEach(item => {
               const pHist = item.purchaseHistory?.[0];
               if (!pHist) return;
@@ -1784,27 +2011,22 @@ export default function SalesTracker() {
                 code: item.code || 'NO-CODE',
                 description: item.description,
                 qtyAction: pHist.qty,
-                eta: formatDateZa(pHist.eta)
+                eta: pHist.eta
               });
             });
 
             Object.entries(poGroups).forEach(([key, items]) => {
               const [ref, date, supplier] = key.split('_');
-              const formattedDateStr = formatDateZa(date);
-              
-              // Overwrite if exists, otherwise append
-              order.purchaseOrders = (order.purchaseOrders || []).filter(po => po.id !== ref);
-              order.purchaseOrders.push({
+              newOrder.purchaseOrders.push({
                 id: ref,
-                date: formattedDateStr,
+                date: date,
                 supplier,
-                notes: 'Bulk Excel Importer PO',
+                notes: 'Reconciled Bulk PO',
                 items
               });
             });
 
-            // Group GRNs
-            const grnGroups = {}; // { grnRef_date: [items] }
+            const grnGroups = {};
             hardwareItems.forEach(item => {
               const rHist = item.receivingHistory?.[0];
               if (!rHist) return;
@@ -1819,20 +2041,16 @@ export default function SalesTracker() {
 
             Object.entries(grnGroups).forEach(([key, items]) => {
               const [ref, date, poId] = key.split('_');
-              const formattedDateStr = formatDateZa(date);
-              
-              order.goodsReceivedNotes = (order.goodsReceivedNotes || []).filter(grn => grn.id !== ref);
-              order.goodsReceivedNotes.push({
+              newOrder.goodsReceivedNotes.push({
                 id: ref,
                 poId,
-                date: formattedDateStr,
-                notes: 'Bulk Excel Importer GRN',
+                date: date,
+                notes: 'Reconciled Bulk GRN',
                 items
               });
             });
 
-            // Group Invoices
-            const invGroups = {}; // { invRef_date: [items] }
+            const invGroups = {};
             allItems.forEach(item => {
               const iHist = item.invoiceHistory?.[0];
               if (!iHist) return;
@@ -1846,71 +2064,45 @@ export default function SalesTracker() {
               });
             });
 
-            const newGlobalInvoices = [];
-
-            const activeProjectObj = projects[pKey] || {};
-
             Object.entries(invGroups).forEach(([key, items]) => {
               const [ref, date] = key.split('_');
-              const formattedDateStr = formatDateZa(date);
-              
-              order.clientInvoices = (order.clientInvoices || []).filter(inv => inv.id !== ref);
-              order.clientInvoices.push({
+              newOrder.clientInvoices.push({
                 id: ref,
-                date: formattedDateStr,
-                notes: 'Bulk Excel Importer Invoice',
+                date: date,
+                notes: 'Reconciled Bulk Invoice',
                 items
               });
 
-              // Calculate total value of items
               const totalValue = items.reduce((s, it) => s + ((Number(it.qtyAction) || 0) * (Number(it.rate) || 0)), 0);
               
-              const parseableDate = new Date(parseExcelDate(date));
-              const dueTime = isNaN(parseableDate.getTime()) ? Date.now() : parseableDate.getTime();
-              const dueFormattedStr = new Date(dueTime + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-
-              // Add to newGlobalInvoices to sync with global Invoices state ledger
-              newGlobalInvoices.push({
+              globalInvoicesList.push({
                 id: ref,
-                project: order.projectName || activeProjectObj.name || '—',
-                client: order.clientCompany || order.projectClient || activeProjectObj.client || '—',
+                project: newOrder.projectName || projObj.projName,
+                client: newOrder.clientCompany || projObj.clientCompany || '—',
                 amount: `R ${Math.round(totalValue).toLocaleString()}`,
-                issued: formattedDateStr,
-                due: dueFormattedStr,
+                issued: date,
+                due: date,
                 status: 'Unpaid',
                 paid: false,
                 type: 'order_invoice',
-                projectKey: pKey,
-                orderId: order.id,
+                projectKey: projKey,
+                orderId: newOrder.id,
                 items: items,
-                notes: 'Bulk Excel Importer Invoice'
+                notes: 'Reconciled Bulk Invoice'
               });
             });
 
-
-            if (newGlobalInvoices.length > 0) {
-              setInvoices(prev => {
-                // Filter out any older matching global invoices to force overwrite
-                const nextInvs = prev.filter(x => !newGlobalInvoices.some(n => n.id === x.id));
-                newGlobalInvoices.forEach(newInv => {
-                  nextInvs.unshift(newInv);
-                });
-                return nextInvs;
-              });
-            }
-
-
-
-            // Group Delivery Notes & PLs
-            const dnGroups = {}; // { date: [items] }
+            // Rebuild Packing Lists and Delivery Notes
+            const delGroups = {};
             hardwareItems.forEach(item => {
               const dHist = item.deliveryHistory?.[0];
               if (!dHist) return;
-              if (!dnGroups[dHist.date]) dnGroups[dHist.date] = [];
-              dnGroups[dHist.date].push({
+              const key = `${dHist.ref}_${dHist.date}`;
+              if (!delGroups[key]) delGroups[key] = [];
+              delGroups[key].push({
                 id: item.id,
                 code: item.code || 'NO-CODE',
-                type: item.type || 'Fittings',
+                type: item.itemType || 'Fittings',
                 description: item.description,
                 qtyDelivered: dHist.qty,
                 boxNumber: 'Box 1',
@@ -1919,44 +2111,46 @@ export default function SalesTracker() {
               });
             });
 
-            Object.entries(dnGroups).forEach(([date, items]) => {
-              const plId = `PL-${order.id}`;
-              const dnId = `DN-${order.id}`;
-              const formattedDateStr = formatDateZa(date);
+            Object.entries(delGroups).forEach(([key, items]) => {
+              const [ref, date] = key.split('_');
+              newOrder.packingLists.push({
+                id: `PL-${ref}`,
+                date: date,
+                notes: 'Reconciled Bulk PL',
+                items,
+                deliveryNoteId: ref
+              });
 
-              const plExists = (order.packingLists || []).some(pl => pl.id === plId);
-              if (!plExists) {
-                order.packingLists.push({
-                  id: plId,
-                  date: formattedDateStr,
-                  notes: 'Bulk Excel Importer PL',
-                  items,
-                  deliveryNoteId: dnId
-                });
-              }
-
-              const dnExists = (order.deliveryNotes || []).some(dn => dn.id === dnId);
-              if (!dnExists) {
-                order.deliveryNotes.push({
-                  id: dnId,
-                  date: formattedDateStr,
-                  notes: 'Bulk Excel Importer DN',
-                  items
-                });
-              }
+              newOrder.deliveryNotes.push({
+                id: ref,
+                date: date,
+                notes: 'Reconciled Bulk DN',
+                items
+              });
             });
 
+            // Remove existing matched order first to perform a clean overwrite
+            const cleanOrders = ordersList.filter(o => o.id !== newOrder.id);
+            cleanOrders.push(newOrder);
+            updateProject(projKey, 'orders', cleanOrders);
           });
-
-          // Save updates back to global context
-          updateProject(pKey, 'orders', orders);
         });
 
-        alert("Bulk spreadsheet successfully imported! All quantities synchronized and document references generated.");
-        setSelectedOrders([]);
+        // Sync global invoices
+        if (globalInvoicesList.length > 0) {
+          setInvoices(prev => {
+            const nextInvs = prev.filter(x => !globalInvoicesList.some(n => n.id === x.id));
+            globalInvoicesList.forEach(newInv => {
+              nextInvs.unshift(newInv);
+            });
+            return nextInvs;
+          });
+        }
+
+        alert("Bulk spreadsheet successfully reconciled and imported! All matching order structures replaced with clean overwrite data.");
       } catch (err) {
-        console.error("EXCEL PARSING ERROR DETECTED:", err);
-        alert(`Failed to parse the Excel file: ${err.message}. Please verify it conforms to the exported structure.`);
+        console.error("IMPORT ERROR DETECTED:", err);
+        alert(`Failed to reconcile imports: ${err.message}`);
       }
     };
     reader.readAsBinaryString(file);
@@ -2357,7 +2551,7 @@ export default function SalesTracker() {
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                   ⚙️ Bulk Document Operations ({selectedOrders.length} orders selected)
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button 
                     type="button" 
                     className="btn btn-sm btn-outline" 
@@ -2367,11 +2561,27 @@ export default function SalesTracker() {
                   >
                     📥 Export Selected to Excel
                   </button>
+
+                  <span style={{ borderLeft: '1px solid var(--border)', height: '20px', margin: '0 4px' }}></span>
+
+                  <label 
+                    className="btn btn-sm btn-secondary" 
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', height: '30px', margin: 0, fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                  >
+                    🔍 1. Extract Reconciliation Template
+                    <input 
+                      type="file" 
+                      accept=".xlsx, .xls" 
+                      onChange={handleGenerateReconciliationTemplate} 
+                      style={{ display: 'none' }} 
+                    />
+                  </label>
+
                   <label 
                     className="btn btn-sm btn-primary" 
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', height: '30px', margin: 0, fontSize: '12px' }}
                   >
-                    📤 Import Filled Excel Sheet
+                    📤 2. Upload Reconciled Overwrite Sheet
                     <input 
                       type="file" 
                       accept=".xlsx, .xls" 
@@ -2380,6 +2590,7 @@ export default function SalesTracker() {
                     />
                   </label>
                 </div>
+
               </div>
 
               {/* ORDERS LEDGER LIST */}
