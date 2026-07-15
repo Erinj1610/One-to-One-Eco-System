@@ -19,7 +19,18 @@ export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const { alertSettings, setAlertSettings, moduleConfig, setModuleConfig, projectManagers, setProjectManagers, activityLogs } = useStore();
+  const { 
+    projects, 
+    updateProject, 
+    alertSettings, 
+    setAlertSettings, 
+    moduleConfig, 
+    setModuleConfig, 
+    projectManagers, 
+    setProjectManagers, 
+    activityLogs 
+  } = useStore();
+
 
   const availableTabs = isAdmin
     ? ['General', 'Users', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
