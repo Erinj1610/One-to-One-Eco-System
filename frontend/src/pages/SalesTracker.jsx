@@ -203,8 +203,9 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts, getModuleName, projectManagers } = useStore();
+  const { projects, updateProject, contacts, getModuleName, projectManagers, setInvoices } = useStore();
   const location = useLocation();
+
   const navigate = useNavigate();
 
   const handleNavigateToDoc = (page, docId, projectKey) => {
@@ -1711,6 +1712,17 @@ export default function SalesTracker() {
             const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
             const allItems = order.itemsList || [];
 
+            // Date formatter utility helper
+            const formatDateZa = (dStr) => {
+              if (!dStr) return new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              const dateObj = new Date(dStr);
+              if (isNaN(dateObj.getTime())) {
+                // If it looks like '15 Jul 2026' already, return it
+                return dStr;
+              }
+              return dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+            };
+
             // Group POs
             const poGroups = {}; // { poRef_date_supplier: [items] }
             hardwareItems.forEach(item => {
@@ -1722,13 +1734,13 @@ export default function SalesTracker() {
                 code: item.code || 'NO-CODE',
                 description: item.description,
                 qtyAction: pHist.qty,
-                eta: pHist.eta
+                eta: formatDateZa(pHist.eta)
               });
             });
 
             Object.entries(poGroups).forEach(([key, items]) => {
               const [ref, date, supplier] = key.split('_');
-              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              const formattedDateStr = formatDateZa(date);
               
               // Only insert if it doesn't exist
               const exists = (order.purchaseOrders || []).some(po => po.id === ref);
@@ -1759,7 +1771,7 @@ export default function SalesTracker() {
 
             Object.entries(grnGroups).forEach(([key, items]) => {
               const [ref, date, poId] = key.split('_');
-              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              const formattedDateStr = formatDateZa(date);
               
               const exists = (order.goodsReceivedNotes || []).some(grn => grn.id === ref);
               if (!exists) {
@@ -1788,9 +1800,11 @@ export default function SalesTracker() {
               });
             });
 
+            const newGlobalInvoices = [];
+
             Object.entries(invGroups).forEach(([key, items]) => {
               const [ref, date] = key.split('_');
-              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              const formattedDateStr = formatDateZa(date);
               
               const exists = (order.clientInvoices || []).some(inv => inv.id === ref);
               if (!exists) {
@@ -1800,8 +1814,45 @@ export default function SalesTracker() {
                   notes: 'Bulk Excel Importer Invoice',
                   items
                 });
+
+                // Calculate total value of items
+                const totalValue = items.reduce((s, it) => s + ((Number(it.qtyAction) || 0) * (Number(it.rate) || 0)), 0);
+                
+                const parseableDate = new Date(date);
+                const dueTime = isNaN(parseableDate.getTime()) ? Date.now() : parseableDate.getTime();
+                const dueFormattedStr = new Date(dueTime + 15 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                // Add to newGlobalInvoices to sync with global Invoices state ledger
+                newGlobalInvoices.push({
+                  id: ref,
+                  project: order.projectName || proj.name,
+                  client: order.clientCompany || order.projectClient || proj.client || '—',
+                  amount: `R ${Math.round(totalValue).toLocaleString()}`,
+                  issued: formattedDateStr,
+                  due: dueFormattedStr,
+                  status: 'Unpaid',
+                  paid: false,
+                  type: 'order_invoice',
+                  projectKey: pKey,
+                  orderId: order.id,
+                  items: items,
+                  notes: 'Bulk Excel Importer Invoice'
+                });
               }
             });
+
+            if (newGlobalInvoices.length > 0) {
+              setInvoices(prev => {
+                const uniqueInvs = [...prev];
+                newGlobalInvoices.forEach(newInv => {
+                  if (!uniqueInvs.some(x => x.id === newInv.id)) {
+                    uniqueInvs.unshift(newInv);
+                  }
+                });
+                return uniqueInvs;
+              });
+            }
+
 
             // Group Delivery Notes & PLs
             const dnGroups = {}; // { date: [items] }
@@ -1824,7 +1875,7 @@ export default function SalesTracker() {
             Object.entries(dnGroups).forEach(([date, items]) => {
               const plId = `PL-${order.id}`;
               const dnId = `DN-${order.id}`;
-              const formattedDateStr = new Date(date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+              const formattedDateStr = formatDateZa(date);
 
               const plExists = (order.packingLists || []).some(pl => pl.id === plId);
               if (!plExists) {
@@ -1847,6 +1898,7 @@ export default function SalesTracker() {
                 });
               }
             });
+
           });
 
           // Save updates back to global context
