@@ -811,18 +811,61 @@ export default function SalesTracker() {
     Object.values(projects).forEach(p => {
       if (p.orders) {
         p.orders.forEach(o => {
+          // Compute progress percentages dynamically for the main ledger view
+          let totalQtyForProc = 0;
+          let totalProcQty = 0;
+          let totalQtyForInv = 0;
+          let totalInvQty = 0;
+          let totalQtyForDel = 0;
+          let totalDelQty = 0;
+
+          const itemsList = o.itemsList || [];
+          itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+            const q = Number(item.qty) || 0;
+            const isService = (item.itemType || item.item_type) === 'Service';
+            
+            const defaults = getItemDefaults(item);
+            const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
+
+            if (isService) {
+              totalQtyForInv += q;
+              totalInvQty += Number(invoiced) || 0;
+              return;
+            }
+
+            totalQtyForProc += q;
+            totalQtyForInv += q;
+            totalQtyForDel += q;
+
+            const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
+            const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
+            const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+
+            totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+            totalInvQty += Number(invoiced) || 0;
+            totalDelQty += Number(delivered) || 0;
+          });
+
+          const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+          const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+          const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
           list.push({
             ...o,
             projectKey: p.key,
             projectName: p.name,
             projectClient: p.client,
-            projectStart: p.start
+            projectStart: p.start,
+            procPct,
+            invPct,
+            delPct
           });
         });
       }
     });
     return list;
   }, [projects]);
+
 
   // Check router state from location for automatic redirection/filtering
   useEffect(() => {
@@ -2421,9 +2464,21 @@ export default function SalesTracker() {
                             {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                           </td>
                           <td>
-                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              <span className={`badge ${statusColor[o.status] || 'b-default'}`} style={{ marginRight: '4px' }}>{o.status}</span>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                                Proc: {o.procPct || 0}%
+                              </div>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                                Inv: {o.invPct || 0}%
+                              </div>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: 600, padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                                Del: {o.delPct || 0}%
+                              </div>
+                            </div>
                           </td>
                         </tr>
+
                       );
                     })}
 
