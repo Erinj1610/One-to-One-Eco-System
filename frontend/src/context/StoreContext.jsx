@@ -1379,71 +1379,9 @@ export function StoreProvider({ children }) {
 
   // Global self-healing: clean up orphaned purchaseHistory, receivingHistory, and invoiceHistory records
   React.useEffect(() => {
-    if (!isLoaded.current['projects'] || !projects || Object.keys(projects).length === 0) return;
-
-    let anyProjectUpdated = false;
-    const nextProjects = { ...projects };
-
-    Object.entries(nextProjects).forEach(([pKey, project]) => {
-      let projectUpdated = false;
-      const updatedOrders = (project.orders || []).map(o => {
-        const validPoIds = new Set((o.purchaseOrders || []).map(po => po.id));
-        const validGrnIds = new Set((o.goodsReceivedNotes || []).map(grn => grn.id));
-        const validInvIds = new Set((o.clientInvoices || []).map(inv => inv.id));
-
-        let orderUpdated = false;
-        const updatedItemsList = (o.itemsList || []).map(item => {
-          const pHist = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
-          const cleanedPHist = pHist.filter(h => validPoIds.has(h.ref));
-
-          const rHist = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
-          const cleanedRHist = rHist.filter(h => validGrnIds.has(h.ref));
-
-          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-          const cleanedIHist = iHist.filter(h => validInvIds.has(h.ref));
-
-          if (
-            cleanedPHist.length !== pHist.length ||
-            cleanedRHist.length !== rHist.length ||
-            cleanedIHist.length !== iHist.length
-          ) {
-            orderUpdated = true;
-            const newPoQty = cleanedPHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newRecQty = cleanedRHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvQty = cleanedIHist.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvVal = cleanedIHist.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-            return {
-              ...item,
-              poQtyOrdered: newPoQty,
-              receivedQty: newRecQty,
-              invoiceQty: newInvQty,
-              invoiceValue: newInvVal,
-              purchaseHistory: cleanedPHist,
-              receivingHistory: cleanedRHist,
-              invoiceHistory: cleanedIHist
-            };
-          }
-          return item;
-        });
-
-
-        if (orderUpdated) {
-          projectUpdated = true;
-          return { ...o, itemsList: updatedItemsList };
-        }
-        return o;
-      });
-
-      if (projectUpdated) {
-        anyProjectUpdated = true;
-        nextProjects[pKey] = { ...project, orders: updatedOrders };
-      }
-    });
-
-    if (anyProjectUpdated) {
-      setProjects(nextProjects);
-    }
+    // Disabled self-healing filter loop to prevent race conditions during Excel sheet batch imports
   }, [projects, invoices]);
+
 
 
 
@@ -1562,8 +1500,14 @@ export function StoreProvider({ children }) {
           paid: Number(newOrder.paid) || 0.0,
           outstanding: Number(newOrder.outstanding) || 0.0,
           status: newOrder.status || "Pending",
-          eta: newOrder.eta || "—"
+          eta: newOrder.eta || "—",
+          packingLists: newOrder.packingLists || [],
+          deliveryNotes: newOrder.deliveryNotes || [],
+          purchaseOrders: newOrder.purchaseOrders || [],
+          goodsReceivedNotes: newOrder.goodsReceivedNotes || [],
+          clientInvoices: newOrder.clientInvoices || []
         };
+
 
         if (!oldOrder) {
           // Create new order row
