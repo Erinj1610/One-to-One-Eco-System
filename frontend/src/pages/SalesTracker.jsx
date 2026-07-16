@@ -1657,7 +1657,7 @@ export default function SalesTracker() {
             const productType = String(getRowVal('N') || '').trim();
 
             // Transactional columns
-            const poQty = Number(getRowVal('Q')) || 0; 
+            const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
             const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
             const dateOrderedRaw = getRowVal('S');
             const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
@@ -1675,15 +1675,13 @@ export default function SalesTracker() {
 
             const deliveryRef = String(getRowVal('AC') || '').trim();
 
-            // Auto-generate PO/GRN references if missing but dates exist
-            let poRef = '';
-            if (dateOrdered) {
+            // Use the sheet's PO reference from column Q, fallback to auto-generated if missing but ordered date is present
+            let poRef = poRefFromSheet;
+            if (!poRef && dateOrdered) {
               const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
               const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
               poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
             }
-
-
 
             let grnRef = '';
             if (dateRec && qtyRec > 0) {
@@ -1733,11 +1731,12 @@ export default function SalesTracker() {
               "Item Type": productType || "Hardware",
               "Stock Status": stockStatus,
               "Stock on Hand": stockOnHand,
-              "Qty Ordered (PO)": poQty,
+              "Qty Ordered (PO)": 0,
               "PO Supplier": poSupplier,
               "Date Ordered": dateOrdered,
               "PO Reference": poRef,
               "Delivery ETA": eta,
+
               "Qty REC": qtyRec,
               "Date REC": dateRec,
               "GRN Reference": grnRef,
