@@ -1979,8 +1979,9 @@ export default function SalesTracker() {
             deliveryDate: isCredit ? "" : dateDel,
             invoiceRef: invRef,
             deliveryStatus: isCredit ? "Complete" : (qtyDel >= Math.abs(qty) ? "Delivered" : "Pending"),
-            deliveryComments,
+            deliveryComments: delComments,
             purchaseHistory,
+
             receivingHistory,
             invoiceHistory,
             deliveryHistory
