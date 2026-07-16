@@ -1633,6 +1633,7 @@ export default function SalesTracker() {
           const projectF5 = getVal('F5') || 'General Project';
           const deliveryAddress = getVal('D6');
           const salesRep = getVal('F1');
+          const orderStatusG98 = getVal('G98');
           
           // Generate an Order Reference code
           const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
@@ -1649,6 +1650,7 @@ export default function SalesTracker() {
 
             const oneOneCode = String(getRowVal('C') || '').trim();
             const itemCode = String(getRowVal('D') || '').trim();
+
             const description = String(getRowVal('E') || '').trim();
             const unitRetail = Number(getRowVal('F')) || 0;
             const unitCost = Number(getRowVal('I')) || 0;
@@ -1746,8 +1748,10 @@ export default function SalesTracker() {
               "Qty DEL": qtyDel,
               "Date DEL": dateDel,
               "Delivery Reference": deliveryRef,
-              "Delivery Comments": ""
+              "Delivery Comments": "",
+              "Sheet Order Status": orderStatusG98
             });
+
 
           }
         });
