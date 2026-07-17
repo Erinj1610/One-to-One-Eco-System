@@ -1958,10 +1958,19 @@ export default function SalesTracker() {
             });
           }
 
-          const delRef = String(row["Delivery Reference"] || "").trim();
-          const dateDel = parseExcelDate(row["Date DEL"]);
+          let delRef = String(row["Delivery Reference"] || "").trim();
+          let dateDel = parseExcelDate(row["Date DEL"]);
           const qtyDel = Number(row["Qty DEL"]) || 0;
           const delComments = String(row["Delivery Comments"] || "").trim();
+
+          if (qtyDel > 0) {
+            if (!delRef) {
+              delRef = `DN-${orderId}-auto`;
+            }
+            if (!dateDel) {
+              dateDel = dateRec || new Date().toISOString().split('T')[0];
+            }
+          }
 
           const deliveryHistory = [];
           if (delRef && dateDel && qtyDel !== 0) {
