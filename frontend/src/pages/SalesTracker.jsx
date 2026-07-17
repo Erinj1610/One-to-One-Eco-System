@@ -2207,30 +2207,59 @@ export default function SalesTracker() {
     
     setReconcileSummary(null); // Close summary screen
     
+    const entries = Object.entries(projectUpdatesMap);
     setImportProgress({
-      statusText: "Sending data payload to database transaction engine...",
-      percent: 30,
-      total: 100,
-      current: 30
+      statusText: "Initializing batch updates...",
+      percent: 0,
+      total: entries.length,
+      current: 0
     });
 
-    try {
-      const response = await fetch(`${API_BASE}/api/projects/reconcile-bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_updates: projectUpdatesMap })
-      });
+    let isCancelled = false;
+    window.currentImportAbortController = () => {
+      isCancelled = true;
+    };
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || "Server failed to process bulk transaction");
+    try {
+      for (let index = 0; index < entries.length; index++) {
+        if (isCancelled) {
+          alert("Import cancelled by user. Note: Projects synced up to this point have been successfully saved.");
+          setImportProgress(null);
+          window.location.reload();
+          return;
+        }
+
+        const [projKey, projObj] = entries[index];
+        setImportProgress({
+          statusText: `Project: "${projObj.projName}" (Project ${index + 1} of ${entries.length} projects)`,
+          percent: Math.round((index / entries.length) * 100),
+          total: entries.length,
+          current: index
+        });
+
+        // Trigger updates sequentially via fast single project transaction
+        const response = await fetch(`${API_BASE}/api/projects/reconcile-project-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_key: projKey,
+            proj_name: projObj.projName,
+            client_company: projObj.clientCompany || '—',
+            orders: projObj.orders
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || `Server failed to process project "${projObj.projName}"`);
+        }
       }
 
       setImportProgress({
         statusText: "Registering global invoices...",
-        percent: 85,
-        total: 100,
-        current: 85
+        percent: 95,
+        total: entries.length,
+        current: entries.length
       });
 
       // Sync global invoices
@@ -2244,12 +2273,11 @@ export default function SalesTracker() {
         });
       }
 
- 
       setImportProgress({
         statusText: "Completing write operations...",
         percent: 100,
-        total: 100,
-        current: 100
+        total: entries.length,
+        current: entries.length
       });
  
       alert("Success! Reconciled overwrite import completed successfully. Re-loading the workspace...");
