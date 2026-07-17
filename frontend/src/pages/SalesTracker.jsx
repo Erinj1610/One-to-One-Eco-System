@@ -248,8 +248,14 @@ export default function SalesTracker() {
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
   const [orderPayments, setOrderPayments] = useState([]);
   
-  // Temporary state for the active order items in the spreadsheet workspace
+   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
+
+  // Reconciliation Import UI state
+  const [reconcileSummary, setReconcileSummary] = useState(null); // { totalRows, totalOrders, projectsList: [{ key, name, ordersCount }] }
+  const [importProgress, setImportProgress] = useState(null); // { statusText, percent, total, current }
+  const [pendingImportData, setPendingImportData] = useState(null); // stores parsed groupings to run upon confirmation
+
 
   const [activeTab, setActiveTab] = useState('order'); // 'order' | 'purchasing' | 'invoicing' | 'delivery'
   const [salesTrackerCreditsOpen, setSalesTrackerCreditsOpen] = useState(true);
@@ -1828,12 +1834,20 @@ export default function SalesTracker() {
       try {
         const data = evt.target.result;
         const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet);
+        
+        let rows = [];
+        workbook.SheetNames.forEach(sheetName => {
+          // Skip known non-project metadata worksheets if any
+          if (["Template", "Control", "Summary", "Instructions"].includes(sheetName)) return;
+          const sheet = workbook.Sheets[sheetName];
+          const sheetRows = XLSX.utils.sheet_to_json(sheet);
+          if (sheetRows && sheetRows.length > 0) {
+            rows = rows.concat(sheetRows);
+          }
+        });
 
         if (rows.length === 0) {
-          alert("Imported sheet is empty.");
+          alert("Imported sheet contains no data rows.");
           return;
         }
 
@@ -1843,6 +1857,7 @@ export default function SalesTracker() {
 
         // 1. Group records by unique Order ID
         rows.forEach(row => {
+
           const orderId = String(row["Order ID"] || "").trim();
           const projKey = String(row["Project Key"] || "general-spec").trim();
           const projName = String(row["Project Name"] || "General Project").trim();
@@ -2009,12 +2024,12 @@ export default function SalesTracker() {
             projects[projKey] = project;
           }
 
-          const ordersList = [...(project.orders || [])];
-
+          let currentOrdersList = [...(project.orders || [])];
+ 
           Object.values(projObj.orders).forEach(newOrder => {
             const hardwareItems = newOrder.itemsList.filter(item => !item.isCredit && item.itemType !== 'Service');
             const allItems = newOrder.itemsList;
-
+ 
             // Generate Grouped Document Headers
             const poGroups = {};
             hardwareItems.forEach(item => {
@@ -2029,7 +2044,7 @@ export default function SalesTracker() {
                 eta: pHist.eta
               });
             });
-
+ 
             Object.entries(poGroups).forEach(([key, items]) => {
               const [ref, date, supplier] = key.split('_');
               newOrder.purchaseOrders.push({
@@ -2040,7 +2055,7 @@ export default function SalesTracker() {
                 items
               });
             });
-
+ 
             const grnGroups = {};
             hardwareItems.forEach(item => {
               const rHist = item.receivingHistory?.[0];
@@ -2053,7 +2068,7 @@ export default function SalesTracker() {
                 qtyAction: rHist.qty
               });
             });
-
+ 
             Object.entries(grnGroups).forEach(([key, items]) => {
               const [ref, date, poId] = key.split('_');
               newOrder.goodsReceivedNotes.push({
@@ -2064,7 +2079,7 @@ export default function SalesTracker() {
                 items
               });
             });
-
+ 
             const invGroups = {};
             allItems.forEach(item => {
               const iHist = item.invoiceHistory?.[0];
@@ -2078,7 +2093,7 @@ export default function SalesTracker() {
                 rate: iHist.rate
               });
             });
-
+ 
             Object.entries(invGroups).forEach(([key, items]) => {
               const [ref, date] = key.split('_');
               newOrder.clientInvoices.push({
@@ -2087,7 +2102,7 @@ export default function SalesTracker() {
                 notes: 'Reconciled Bulk Invoice',
                 items
               });
-
+ 
               const totalValue = items.reduce((s, it) => s + ((Number(it.qtyAction) || 0) * (Number(it.rate) || 0)), 0);
               
               globalInvoicesList.push({
@@ -2106,7 +2121,7 @@ export default function SalesTracker() {
                 notes: 'Reconciled Bulk Invoice'
               });
             });
-
+ 
             // Rebuild Packing Lists and Delivery Notes
             const delGroups = {};
             hardwareItems.forEach(item => {
@@ -2125,7 +2140,7 @@ export default function SalesTracker() {
                 firstFix: 'No'
               });
             });
-
+ 
             Object.entries(delGroups).forEach(([key, items]) => {
               const [ref, date] = key.split('_');
               newOrder.packingLists.push({
@@ -2135,7 +2150,7 @@ export default function SalesTracker() {
                 items,
                 deliveryNoteId: ref
               });
-
+ 
               newOrder.deliveryNotes.push({
                 id: ref,
                 date: date,
@@ -2143,32 +2158,106 @@ export default function SalesTracker() {
                 items
               });
             });
-
-            // Remove existing matched order first to perform a clean overwrite
-            const cleanOrders = ordersList.filter(o => o.id !== newOrder.id);
-            cleanOrders.push(newOrder);
-            updateProject(projKey, 'orders', cleanOrders);
+ 
+             // Remove existing matched order first to perform a clean overwrite in the database
+            currentOrdersList = currentOrdersList.filter(o => o.id !== newOrder.id);
+            currentOrdersList.push(newOrder);
           });
+          projectUpdatesMap[projKey].finalOrdersList = currentOrdersList;
         });
 
-        // Sync global invoices
-        if (globalInvoicesList.length > 0) {
-          setInvoices(prev => {
-            const nextInvs = prev.filter(x => !globalInvoicesList.some(n => n.id === x.id));
-            globalInvoicesList.forEach(newInv => {
-              nextInvs.unshift(newInv);
-            });
-            return nextInvs;
-          });
-        }
+        // 3. Compute in-memory summary of changes for user review
+        const summaryProjectsList = Object.entries(projectUpdatesMap).map(([projKey, projObj]) => {
+          return {
+            key: projKey,
+            name: projObj.projName,
+            ordersCount: Object.keys(projObj.orders).length
+          };
+        });
 
-        alert("Bulk spreadsheet successfully reconciled and imported! All matching order structures replaced with clean overwrite data.");
+        const totalOrdersCount = Object.values(projectUpdatesMap).reduce((acc, current) => {
+          return acc + Object.keys(current.orders).length;
+        }, 0);
+
+        setPendingImportData({
+          projectUpdatesMap,
+          globalInvoicesList
+        });
+
+        setReconcileSummary({
+          totalRows: rows.length,
+          totalOrders: totalOrdersCount,
+          projectsList: summaryProjectsList
+        });
+
       } catch (err) {
         console.error("IMPORT ERROR DETECTED:", err);
-        alert(`Failed to reconcile imports: ${err.message}`);
+        alert(`Failed to parse reconciliation sheet: ${err.message}`);
       }
     };
     reader.readAsBinaryString(file);
+  };
+
+  // 4. Executed when user clicks "Confirm Import" inside summary modal
+  const executeBulkImportSync = async () => {
+    if (!pendingImportData) return;
+    const { projectUpdatesMap, globalInvoicesList } = pendingImportData;
+    
+    setReconcileSummary(null); // Close summary screen
+    
+    const entries = Object.entries(projectUpdatesMap);
+    setImportProgress({
+      statusText: "Initializing import process...",
+      percent: 0,
+      total: entries.length,
+      current: 0
+    });
+
+    try {
+      for (let index = 0; index < entries.length; index++) {
+        const [projKey, projObj] = entries[index];
+        setImportProgress({
+          statusText: `Syncing project "${projObj.projName}" (${index + 1} of ${entries.length})...`,
+          percent: Math.round((index / entries.length) * 100),
+          total: entries.length,
+          current: index
+        });
+
+        // Trigger updates synchronously and wait for network confirmation
+        await updateProject(projKey, 'orders', projObj.finalOrdersList);
+      }
+
+      // Sync global invoices
+      if (globalInvoicesList.length > 0) {
+        setImportProgress({
+          statusText: "Registering global invoices...",
+          percent: 95,
+          total: entries.length,
+          current: entries.length
+        });
+        setInvoices(prev => {
+          const nextInvs = prev.filter(x => !globalInvoicesList.some(n => n.id === x.id));
+          globalInvoicesList.forEach(newInv => {
+            nextInvs.unshift(newInv);
+          });
+          return nextInvs;
+        });
+      }
+
+      setImportProgress({
+        statusText: "Completing write operations...",
+        percent: 100,
+        total: entries.length,
+        current: entries.length
+      });
+
+      alert("Success! Reconciled overwrite import completed successfully. Re-loading the workspace...");
+      window.location.reload();
+    } catch (error) {
+      console.error("IMPORT UPDATE EXCEPTION:", error);
+      alert(`Import failed: ${error.message}`);
+      setImportProgress(null);
+    }
   };
 
 
@@ -4521,6 +4610,124 @@ export default function SalesTracker() {
                 ➕ Add / Edit Payments
               </button>
               <button type="button" className="btn btn-sm" onClick={() => setShowPaymentViewer(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* RECONCILIATION SUMMARY APPROVAL MODAL */}
+      {reconcileSummary && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1300, animation: 'fadeIn 0.2s ease', padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '650px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '24px' }}>📋</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Reconciliation Import Summary Preview</h3>
+                <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)' }}>Review parsed contents before committing overwrite to the database</p>
+              </div>
+            </div>
+            
+            <div style={{ padding: '24px', maxHeight: '55vh', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ padding: '16px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-info)' }}>{reconcileSummary.totalRows}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' }}>Ledger Rows Parsed</div>
+                </div>
+                <div style={{ padding: '16px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-success)' }}>{reconcileSummary.totalOrders}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px' }}>Total Orders To Overwrite</div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '10px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Target Project Breakdown:
+              </div>
+
+              <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-primary)' }}>
+                      <th style={{ padding: '10px 16px', textAlign: 'left' }}>Project Name</th>
+                      <th style={{ padding: '10px 16px', textAlign: 'right', width: '150px' }}>Orders Overwritten</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reconcileSummary.projectsList.map((p, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 16px', fontWeight: 500 }}>{p.name}</td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{p.ordersCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>⚠️</span>
+                <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-danger)', lineHeight: 1.4 }}>
+                  <strong>Important Note:</strong> This operation will perform a clean, transactional overwrite on all matching Order IDs listed above. This matches your spreadsheet data and cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', background: 'var(--bg-primary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                onClick={() => {
+                  setReconcileSummary(null);
+                  setPendingImportData(null);
+                }}
+              >
+                Cancel Import
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={executeBulkImportSync}
+              >
+                Confirm & Overwrite Database
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SYNCHRONOUS IMPORT PROGRESS TRACKER OVERLAY */}
+      {importProgress && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1400
+        }}>
+          <div style={{ width: '100%', maxWidth: '450px', padding: '30px', textAlign: 'center', color: '#fff' }}>
+            <span style={{ fontSize: '40px', display: 'block', animation: 'spin 4s linear infinite', marginBottom: '20px' }}>⏳</span>
+            <h3 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 10px 0' }}>Syncing Database Records</h3>
+            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: '0 0 20px 0' }}>
+              {importProgress.statusText}
+            </p>
+
+            <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
+              <div 
+                style={{ 
+                  height: '100%', 
+                  width: `${importProgress.percent}%`, 
+                  background: 'var(--primary-color, #3b82f6)', 
+                  transition: 'width 0.3s ease',
+                  boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)'
+                }} 
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+              <span>Please do not close this browser tab</span>
+              <span>{importProgress.percent}% Complete</span>
             </div>
           </div>
         </div>
