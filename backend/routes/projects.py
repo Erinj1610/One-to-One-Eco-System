@@ -140,6 +140,20 @@ def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(
         raise HTTPException(status_code=400, detail="No project updates provided")
         
     try:
+        def safe_int(v):
+            try:
+                if v is None or v == "":
+                    return 0
+                val = int(float(v))
+                # Postgres 32-bit integer limits: -2147483648 to 2147483647
+                if val > 2147483647:
+                    return 2147483647
+                if val < -2147483648:
+                    return -2147483648
+                return val
+            except (ValueError, TypeError):
+                return 0
+
         # Loop through each project key being synchronized
         for proj_key, proj_data in project_updates.items():
             # 1. Resolve or Auto-create Project
@@ -188,7 +202,7 @@ def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(
                     db_item = OrderItem(
                         id=item.get("id"),
                         order_id=order_id,
-                        qty=int(item.get("qty", 0)),
+                        qty=safe_int(item.get("qty", 0)),
                         type=item.get("type"),
                         one_one_code=item.get("oneOneCode"),
                         code=item.get("code"),
@@ -205,24 +219,24 @@ def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(
                         stock_status=item.get("stockStatus"),
                         eta=item.get("eta"),
                         po_ref=item.get("poRef"),
-                        po_qty_ordered=int(item.get("poQtyOrdered", 0)),
+                        po_qty_ordered=safe_int(item.get("poQtyOrdered", 0)),
                         po_eta=item.get("poEta"),
-                        invoice_qty=int(item.get("invoiceQty", 0)),
+                        invoice_qty=safe_int(item.get("invoiceQty", 0)),
                         po_supplier=item.get("poSupplier"),
                         po_date=item.get("poDate"),
-                        received_qty=int(item.get("receivedQty", 0)),
+                        received_qty=safe_int(item.get("receivedQty", 0)),
                         received_date=item.get("receivedDate"),
                         invoice_ref=item.get("invoiceRef"),
                         invoice_date=item.get("invoiceDate"),
                         invoice_value=float(item.get("invoiceValue", 0.0)),
-                        delivery_qty=int(item.get("deliveryQty", 0)),
+                        delivery_qty=safe_int(item.get("deliveryQty", 0)),
                         delivery_date=item.get("deliveryDate"),
                         delivery_status=item.get("deliveryStatus", "Pending"),
                         delivery_history=item.get("deliveryHistory", []),
                         purchase_history=item.get("purchaseHistory", []),
                         receiving_history=item.get("receivingHistory", []),
                         invoice_history=item.get("invoiceHistory", []),
-                        stock_on_hand=int(item.get("stockOnHand", 0)),
+                        stock_on_hand=safe_int(item.get("stockOnHand", 0)),
                         is_credit=bool(item.get("isCredit", False)),
                         item_type=item.get("itemType", "Hardware")
                     )
