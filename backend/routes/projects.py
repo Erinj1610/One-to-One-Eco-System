@@ -537,6 +537,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "sqm": p.sqm,
                 "status": p.status,
                 "deadline": p.deadline,
+                "start": p.start_date,
                 "complete": p.complete_status,
                 "targetMargin": p.target_margin,
                 "actualMargin": p.actual_margin,
