@@ -127,6 +127,113 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
     db.refresh(new_project)
     return new_project
 
+class ReconcileBulkSchema(BaseModel):
+    project_updates: dict
+
+@router.post("/reconcile-bulk")
+def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(get_db)):
+    from models.orm_models import Order, OrderItem, Project
+    import json
+    
+    project_updates = payload.project_updates
+    if not project_updates:
+        raise HTTPException(status_code=400, detail="No project updates provided")
+        
+    try:
+        # Loop through each project key being synchronized
+        for proj_key, proj_data in project_updates.items():
+            # 1. Resolve or Auto-create Project
+            project = db.query(Project).filter(Project.project_key == proj_key).first()
+            if not project:
+                project = Project(
+                    name=proj_data.get("projName", "General Project"),
+                    project_key=proj_key,
+                    client_name=proj_data.get("clientCompany", "—"),
+                    status="On track",
+                    complete_status="Ongoing"
+                )
+                db.add(project)
+                db.flush() # Populate project.id
+                
+            orders_dict = proj_data.get("orders", {})
+            for order_id, order in orders_dict.items():
+                # 2. Reset/Wipe existing Order items and document relationships in PostgreSQL
+                db.query(OrderItem).filter(OrderItem.order_id == order_id).delete(synchronize_session=False)
+                db.query(Order).filter(Order.po_number == order_id).delete(synchronize_session=False)
+                db.flush()
+                
+                # 3. Create clean Order row
+                db_order = Order(
+                    project_id=project.id,
+                    project_key=proj_key,
+                    po_number=order_id,
+                    supplier_name=order.get("supplier", "Multiple Suppliers"),
+                    items_count=len(order.get("itemsList", [])),
+                    value=float(order.get("value", 0.0)),
+                    paid=float(order.get("paid", 0.0)),
+                    outstanding=float(order.get("outstanding", 0.0)),
+                    status=order.get("status", "Processing"),
+                    eta=order.get("eta", "—"),
+                    quote_name=order.get("quote_name", "General Spec"),
+                    packing_lists=json.dumps(order.get("packingLists", [])),
+                    delivery_notes=json.dumps(order.get("deliveryNotes", [])),
+                    purchase_orders=json.dumps(order.get("purchaseOrders", [])),
+                    goods_received_notes=json.dumps(order.get("goodsReceivedNotes", [])),
+                    client_invoices=json.dumps(order.get("clientInvoices", []))
+                )
+                db.add(db_order)
+                
+                # 4. Create clean OrderItem rows in batch
+                for item in order.get("itemsList", []):
+                    db_item = OrderItem(
+                        id=item.get("id"),
+                        order_id=order_id,
+                        qty=int(item.get("qty", 0)),
+                        type=item.get("type"),
+                        one_one_code=item.get("oneOneCode"),
+                        code=item.get("code"),
+                        description=item.get("description"),
+                        floor=item.get("floor"),
+                        area=item.get("area"),
+                        dimming=item.get("dimming"),
+                        brand=item.get("brand"),
+                        supplier=item.get("supplier"),
+                        unit_cost=float(item.get("unitCost", 0.0)),
+                        unit_trade=float(item.get("unitTrade", 0.0)),
+                        unit_retail=float(item.get("unitRetail", 0.0)),
+                        selection=item.get("selection"),
+                        stock_status=item.get("stockStatus"),
+                        eta=item.get("eta"),
+                        po_ref=item.get("poRef"),
+                        po_qty_ordered=int(item.get("poQtyOrdered", 0)),
+                        po_eta=item.get("poEta"),
+                        invoice_qty=int(item.get("invoiceQty", 0)),
+                        po_supplier=item.get("poSupplier"),
+                        po_date=item.get("poDate"),
+                        received_qty=int(item.get("receivedQty", 0)),
+                        received_date=item.get("receivedDate"),
+                        invoice_ref=item.get("invoiceRef"),
+                        invoice_date=item.get("invoiceDate"),
+                        invoice_value=float(item.get("invoiceValue", 0.0)),
+                        delivery_qty=int(item.get("deliveryQty", 0)),
+                        delivery_date=item.get("deliveryDate"),
+                        delivery_status=item.get("deliveryStatus", "Pending"),
+                        delivery_history=json.dumps(item.get("deliveryHistory", [])),
+                        purchase_history=json.dumps(item.get("purchaseHistory", [])),
+                        receiving_history=json.dumps(item.get("receivingHistory", [])),
+                        invoice_history=json.dumps(item.get("invoiceHistory", [])),
+                        stock_on_hand=int(item.get("stockOnHand", 0)),
+                        is_credit=bool(item.get("isCredit", False)),
+                        item_type=item.get("itemType", "Hardware")
+                    )
+                    db.add(db_item)
+                    
+        db.commit()
+        return {"success": True, "message": "Bulk projects and orders successfully synchronized and overwritten in database."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database transaction error: {str(e)}")
+
 @router.put("/{project_key}")
 def update_project_relational(project_key: str, project_data: ProjectSchema, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.project_key == project_key).first()
@@ -428,110 +535,5 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
         print(f"Error dynamically building projects dict: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-class ReconcileBulkSchema(BaseModel):
-    project_updates: dict
 
-@router.post("/reconcile-bulk")
-def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(get_db)):
-    from models.orm_models import Order, OrderItem, Project
-    import json
-    
-    project_updates = payload.project_updates
-    if not project_updates:
-        raise HTTPException(status_code=400, detail="No project updates provided")
-        
-    try:
-        # Loop through each project key being synchronized
-        for proj_key, proj_data in project_updates.items():
-            # 1. Resolve or Auto-create Project
-            project = db.query(Project).filter(Project.project_key == proj_key).first()
-            if not project:
-                project = Project(
-                    name=proj_data.get("projName", "General Project"),
-                    project_key=proj_key,
-                    client_name=proj_data.get("clientCompany", "—"),
-                    status="On track",
-                    complete_status="Ongoing"
-                )
-                db.add(project)
-                db.flush() # Populate project.id
-                
-            orders_dict = proj_data.get("orders", {})
-            for order_id, order in orders_dict.items():
-                # 2. Reset/Wipe existing Order items and document relationships in PostgreSQL
-                db.query(OrderItem).filter(OrderItem.order_id == order_id).delete(synchronize_session=False)
-                db.query(Order).filter(Order.po_number == order_id).delete(synchronize_session=False)
-                db.flush()
-                
-                # 3. Create clean Order row
-                db_order = Order(
-                    project_id=project.id,
-                    project_key=proj_key,
-                    po_number=order_id,
-                    supplier_name=order.get("supplier", "Multiple Suppliers"),
-                    items_count=len(order.get("itemsList", [])),
-                    value=float(order.get("value", 0.0)),
-                    paid=float(order.get("paid", 0.0)),
-                    outstanding=float(order.get("outstanding", 0.0)),
-                    status=order.get("status", "Processing"),
-                    eta=order.get("eta", "—"),
-                    quote_name=order.get("quote_name", "General Spec"),
-                    packing_lists=json.dumps(order.get("packingLists", [])),
-                    delivery_notes=json.dumps(order.get("deliveryNotes", [])),
-                    purchase_orders=json.dumps(order.get("purchaseOrders", [])),
-                    goods_received_notes=json.dumps(order.get("goodsReceivedNotes", [])),
-                    client_invoices=json.dumps(order.get("clientInvoices", []))
-                )
-                db.add(db_order)
-                
-                # 4. Create clean OrderItem rows in batch
-                for item in order.get("itemsList", []):
-                    db_item = OrderItem(
-                        id=item.get("id"),
-                        order_id=order_id,
-                        qty=int(item.get("qty", 0)),
-                        type=item.get("type"),
-                        one_one_code=item.get("oneOneCode"),
-                        code=item.get("code"),
-                        description=item.get("description"),
-                        floor=item.get("floor"),
-                        area=item.get("area"),
-                        dimming=item.get("dimming"),
-                        brand=item.get("brand"),
-                        supplier=item.get("supplier"),
-                        unit_cost=float(item.get("unitCost", 0.0)),
-                        unit_trade=float(item.get("unitTrade", 0.0)),
-                        unit_retail=float(item.get("unitRetail", 0.0)),
-                        selection=item.get("selection"),
-                        stock_status=item.get("stockStatus"),
-                        eta=item.get("eta"),
-                        po_ref=item.get("poRef"),
-                        po_qty_ordered=int(item.get("poQtyOrdered", 0)),
-                        po_eta=item.get("poEta"),
-                        invoice_qty=int(item.get("invoiceQty", 0)),
-                        po_supplier=item.get("poSupplier"),
-                        po_date=item.get("poDate"),
-                        received_qty=int(item.get("receivedQty", 0)),
-                        received_date=item.get("receivedDate"),
-                        invoice_ref=item.get("invoiceRef"),
-                        invoice_date=item.get("invoiceDate"),
-                        invoice_value=float(item.get("invoiceValue", 0.0)),
-                        delivery_qty=int(item.get("deliveryQty", 0)),
-                        delivery_date=item.get("deliveryDate"),
-                        delivery_status=item.get("deliveryStatus", "Pending"),
-                        delivery_history=json.dumps(item.get("deliveryHistory", [])),
-                        purchase_history=json.dumps(item.get("purchaseHistory", [])),
-                        receiving_history=json.dumps(item.get("receivingHistory", [])),
-                        invoice_history=json.dumps(item.get("invoiceHistory", [])),
-                        stock_on_hand=int(item.get("stockOnHand", 0)),
-                        is_credit=bool(item.get("isCredit", False)),
-                        item_type=item.get("itemType", "Hardware")
-                    )
-                    db.add(db_item)
-                    
-        db.commit()
-        return {"success": True, "message": "Bulk projects and orders successfully synchronized and overwritten in database."}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database transaction error: {str(e)}")
 
