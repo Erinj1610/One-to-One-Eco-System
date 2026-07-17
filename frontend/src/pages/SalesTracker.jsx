@@ -2124,6 +2124,7 @@ export default function SalesTracker() {
           let currentOrdersList = [...(project.orders || [])];
  
           Object.values(projObj.orders).forEach(newOrder => {
+            newOrder.outstanding = Math.max(0, newOrder.value - newOrder.paid);
             const hardwareItems = newOrder.itemsList.filter(item => !item.isCredit && item.itemType !== 'Service');
             const allItems = newOrder.itemsList;
  
