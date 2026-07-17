@@ -427,3 +427,88 @@ async def import_csv_file(
             
     db.commit()
     return {"message": "CSV imported successfully", "added": added_count, "updated": updated_count}
+
+class ReconcileProductsSchema(BaseModel):
+    products: List[dict]
+
+@router.post("/reconcile-products-bulk")
+def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depends(get_db)):
+    added_count = 0
+    updated_count = 0
+    
+    for row in payload.products:
+        sku = row.get("sku")
+        if not sku or not row.get("name"):
+            continue
+            
+        try:
+            cost = float(row.get("cost_price", 0) or 0)
+            trade = float(row.get("trade_price", 0) or 0)
+            retail = float(row.get("retail_price", 0) or 0)
+            stock = int(row.get("stock_level", 0) or 0)
+            reorder = int(row.get("reorder_level", 100) or 100)
+            power = float(row.get("system_power", 0) or 0)
+            rrp = float(row.get("recommended_retail_price", 0) or 0)
+        except (ValueError, TypeError):
+            cost = 0.0
+            trade = 0.0
+            retail = 0.0
+            stock = 0
+            reorder = 100
+            power = 0.0
+            rrp = 0.0
+            
+        prod_data = {
+            "name": row.get("name"),
+            "brand": row.get("brand"),
+            "sku": sku,
+            "cost_price": cost,
+            "trade_price": trade,
+            "retail_price": retail,
+            "stock_level": stock,
+            "reorder_level": reorder,
+            "family": row.get("family"),
+            "category": row.get("category"),
+            "lead_time": row.get("lead_time"),
+            "origin": row.get("origin"),
+            "color": row.get("color"),
+            "dimmable": row.get("dimmable"),
+            "dimming_protocol": row.get("dimming_protocol"),
+            "driver_incl": row.get("driver_incl"),
+            "light_source_incl": row.get("light_source_incl"),
+            "light_source_type": row.get("light_source_type"),
+            "kelvin": row.get("kelvin"),
+            "beam_angle": row.get("beam_angle"),
+            "cri": row.get("cri"),
+            "ip_rating": row.get("ip_rating"),
+            "system_power": power,
+            "lighting_type": row.get("lighting_type"),
+            "cutout": row.get("cutout"),
+            "driver_spec": row.get("driver_spec"),
+            "one_to_one_code": row.get("one_to_one_code"),
+            "foh_code_description": row.get("foh_code_description"),
+            "client_description": row.get("client_description"),
+            "fitting_type": row.get("fitting_type"),
+            "consignment": row.get("consignment"),
+            "selection": row.get("selection"),
+            "first_fix": row.get("first_fix"),
+            "red_list": row.get("red_list"),
+            "markup": row.get("markup"),
+            "recommended_retail_price": rrp,
+            "qr": row.get("qr"),
+            "qr_link": row.get("qr_link"),
+            "client_code": row.get("client_code")
+        }
+        
+        existing = db.query(Product).filter(Product.sku == sku).first()
+        if existing:
+            for key, val in prod_data.items():
+                setattr(existing, key, val)
+            updated_count += 1
+        else:
+            new_p = Product(**prod_data)
+            db.add(new_p)
+            added_count += 1
+            
+    db.commit()
+    return {"message": "Reconciliation successful", "added": added_count, "updated": updated_count}

@@ -5,6 +5,7 @@ import {
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // Actual product list parsed from the user's architectural lighting database
 const initialProducts = [
@@ -886,30 +887,152 @@ export default function ProductsPage() {
     }
   };
 
-  const handleBulkImport = async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    
+  const handleExportTemplateExcel = () => {
     try {
-      const res = await fetch(`${API_BASE}/api/products/import/csv`, {
-        method: 'POST',
-        body: formData
-      });
-      if (res.ok) {
-        const data = await res.json();
-        triggerToast(`Import Complete! Added: ${data.added}, Updated: ${data.updated}`);
-        fetchProducts();
-      } else {
-        const errData = await res.json();
-        alert(`Error: ${errData.detail || 'Import failed'}`);
-      }
+      const headers = [
+        "sku", "name", "brand", "cost_price", "trade_price", "retail_price",
+        "stock_level", "family", "category", "reorder_level", "lead_time",
+        "origin", "color", "dimmable", "dimming_protocol", "driver_incl",
+        "light_source_incl", "light_source_type", "kelvin", "beam_angle",
+        "cri", "ip_rating", "system_power", "lighting_type", "cutout", "driver_spec",
+        "one_to_one_code", "foh_code_description", "client_description", "fitting_type",
+        "consignment", "selection", "first_fix", "red_list", "markup",
+        "recommended_retail_price", "qr", "qr_link", "client_code"
+      ];
+      
+      const sampleRow = {
+        "sku": "28402 9240 FW", 
+        "name": "Downlight - Entero RD-S 14W 2700K 30° IP20 White", 
+        "brand": "Delta Light",
+        "cost_price": 2416.37, 
+        "trade_price": 3451.95, 
+        "retail_price": 3835.50,
+        "stock_level": 100, 
+        "family": "Entero RD-S", 
+        "category": "Downlight", 
+        "reorder_level": 100, 
+        "lead_time": "6-8 Weeks",
+        "origin": "Import", 
+        "color": "White", 
+        "dimmable": "Yes", 
+        "dimming_protocol": "Driver Dependent", 
+        "driver_incl": "No", 
+        "light_source_incl": "Yes", 
+        "light_source_type": "LED", 
+        "kelvin": "2700K", 
+        "beam_angle": "30°",
+        "cri": "90", 
+        "ip_rating": "IP20", 
+        "system_power": 14.0, 
+        "lighting_type": "Architectural", 
+        "cutout": "Ø76mm", 
+        "driver_spec": "- External or Remote Driver",
+        "one_to_one_code": "1:1-ENT-RDS", 
+        "foh_code_description": "Front of House Entero S Description", 
+        "client_description": "Entero RD-S Downlight White", 
+        "fitting_type": "Recessed Downlight",
+        "consignment": "No", 
+        "selection": "Primary Selection", 
+        "first_fix": "First Fix", 
+        "red_list": "No", 
+        "markup": "37%",
+        "recommended_retail_price": 3835.50, 
+        "qr": "QR-CODE", 
+        "qr_link": "https://example.com/qr", 
+        "client_code": "CLIENT-1002"
+      };
+
+      const rows = products.length > 0 ? products.map(p => ({
+        "sku": p.sku,
+        "name": p.name,
+        "brand": p.brand,
+        "cost_price": p.unitCost || p.cost_price,
+        "trade_price": p.tradePrice || p.trade_price,
+        "retail_price": p.retailPrice || p.retail_price,
+        "stock_level": p.stock || p.stock_level,
+        "family": p.family,
+        "category": p.category,
+        "reorder_level": p.reorderLevel || p.reorder_level,
+        "lead_time": p.leadTime || p.lead_time,
+        "origin": p.origin,
+        "color": p.color,
+        "dimmable": p.dimmable,
+        "dimming_protocol": p.dimmingProtocol || p.dimming_protocol,
+        "driver_incl": p.driverIncl || p.driver_incl,
+        "light_source_incl": p.lightSourceIncl || p.light_source_incl,
+        "light_source_type": p.lightSourceType || p.light_source_type,
+        "kelvin": p.kelvin,
+        "beam_angle": p.beamAngle || p.beam_angle,
+        "cri": p.cri,
+        "ip_rating": p.ipRating || p.ip_rating,
+        "system_power": p.systemPower || p.system_power,
+        "lighting_type": p.lightingType || p.lighting_type,
+        "cutout": p.cutout,
+        "driver_spec": p.driverSpec || p.driver_spec,
+        "one_to_one_code": p.one_to_one_code,
+        "foh_code_description": p.foh_code_description,
+        "client_description": p.client_description,
+        "fitting_type": p.fitting_type,
+        "consignment": p.consignment,
+        "selection": p.selection,
+        "first_fix": p.first_fix,
+        "red_list": p.red_list,
+        "markup": p.markup,
+        "recommended_retail_price": p.recommended_retail_price,
+        "qr": p.qr,
+        "qr_link": p.qr_link,
+        "client_code": p.client_code
+      })) : [sampleRow];
+
+      const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Product_Database");
+      XLSX.writeFile(workbook, `Product_Database_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+      triggerToast("Product database template successfully exported!");
     } catch (err) {
       console.error(err);
-      alert("Error importing CSV file: " + err.message);
+      alert("Failed to export product template: " + err.message);
     }
-    // Reset file input
+  };
+
+  const handleBulkImportExcel = (e) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet);
+
+        if (rows.length === 0) {
+          alert("Selected Excel sheet contains no data.");
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/api/products/reconcile-products-bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ products: rows })
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          triggerToast(`Excel Import Successful! Added: ${result.added}, Updated: ${result.updated}`);
+          fetchProducts();
+        } else {
+          const errData = await res.json();
+          alert(`Import failed: ${errData.detail || 'Server error'}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Failed to parse Excel file: " + err.message);
+      }
+    };
+    reader.readAsBinaryString(file);
     e.target.value = '';
   };
 
@@ -950,12 +1073,12 @@ export default function ProductsPage() {
                 </h1>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <a href={`${API_BASE}/api/products/template/csv`} download className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <Download size={14} /> Download Template
-                </a>
+                <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
+                  <Download size={14} /> Download Template / Export
+                </button>
                 <label className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <FileText size={14} /> Bulk Import (CSV)
-                  <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleBulkImport} />
+                  <FileText size={14} /> Bulk Import (Excel)
+                  <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleBulkImportExcel} />
                 </label>
                 <button className="btn btn-ghost" onClick={() => triggerToast("Sales order builder initiated in background.")} style={{ border: '1px solid var(--border)' }}>
                   + Create Sales Order
