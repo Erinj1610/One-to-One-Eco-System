@@ -2213,11 +2213,23 @@ export default function SalesTracker() {
       current: 0
     });
 
+    let isCancelled = false;
+    window.currentImportAbortController = () => {
+      isCancelled = true;
+    };
+
     try {
       for (let index = 0; index < entries.length; index++) {
+        if (isCancelled) {
+          alert("Import cancelled by user. Note: Projects processed up to this point have been successfully saved.");
+          setImportProgress(null);
+          window.location.reload();
+          return;
+        }
+
         const [projKey, projObj] = entries[index];
         setImportProgress({
-          statusText: `Syncing project "${projObj.projName}" (${index + 1} of ${entries.length})...`,
+          statusText: `Project: "${projObj.projName}" (Project ${index + 1} of ${entries.length} projects)`,
           percent: Math.round((index / entries.length) * 100),
           total: entries.length,
           current: index
@@ -2226,6 +2238,7 @@ export default function SalesTracker() {
         // Trigger updates synchronously and wait for network confirmation
         await updateProject(projKey, 'orders', projObj.finalOrdersList);
       }
+
 
       // Sync global invoices
       if (globalInvoicesList.length > 0) {
@@ -4725,10 +4738,23 @@ export default function SalesTracker() {
               />
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '20px' }}>
               <span>Please do not close this browser tab</span>
               <span>{importProgress.percent}% Complete</span>
             </div>
+
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', color: 'var(--text-danger)', padding: '6px 16px', fontSize: '12px' }}
+              onClick={() => {
+                if (window.currentImportAbortController) {
+                  window.currentImportAbortController();
+                }
+              }}
+            >
+              🛑 Stop / Cancel Import
+            </button>
           </div>
         </div>
       )}
