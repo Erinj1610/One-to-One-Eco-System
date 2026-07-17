@@ -242,22 +242,21 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
     items = db.query(OrderItem).filter(OrderItem.order_id == po_number).all()
     res = []
     for item in items:
-        try:
-            del_hist = json.loads(item.delivery_history) if item.delivery_history else []
-        except Exception:
-            del_hist = []
-        try:
-            pur_hist = json.loads(item.purchase_history) if item.purchase_history else []
-        except Exception:
-            pur_hist = []
-        try:
-            rec_hist = json.loads(item.receiving_history) if item.receiving_history else []
-        except Exception:
-            rec_hist = []
-        try:
-            inv_hist = json.loads(item.invoice_history) if item.invoice_history else []
-        except Exception:
-            inv_hist = []
+        def parse_history(h_val):
+            if h_val is None:
+                return []
+            if isinstance(h_val, (list, dict)):
+                return h_val
+            try:
+                import json
+                return json.loads(h_val)
+            except Exception:
+                return []
+
+        del_hist = parse_history(item.delivery_history)
+        pur_hist = parse_history(item.purchase_history)
+        rec_hist = parse_history(item.receiving_history)
+        inv_hist = parse_history(item.invoice_history)
         item_dict = item.__dict__.copy()
         item_dict['delivery_history'] = del_hist
         item_dict['purchase_history'] = pur_hist

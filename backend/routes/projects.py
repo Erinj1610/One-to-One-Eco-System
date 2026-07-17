@@ -383,25 +383,22 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if item.order_id not in items_by_order:
                 items_by_order[item.order_id] = []
             
-            try:
-                del_hist = json.loads(item.delivery_history) if item.delivery_history else []
-            except Exception:
-                del_hist = []
+            def parse_history(h_val):
+                if h_val is None:
+                    return []
+                if isinstance(h_val, (list, dict)):
+                    return h_val
+                try:
+                    import json
+                    return json.loads(h_val)
+                except Exception:
+                    return []
 
-            try:
-                pur_hist = json.loads(item.purchase_history) if item.purchase_history else []
-            except Exception:
-                pur_hist = []
+            del_hist = parse_history(item.delivery_history)
+            pur_hist = parse_history(item.purchase_history)
+            rec_hist = parse_history(item.receiving_history)
+            inv_hist = parse_history(item.invoice_history)
 
-            try:
-                rec_hist = json.loads(item.receiving_history) if item.receiving_history else []
-            except Exception:
-                rec_hist = []
-
-            try:
-                inv_hist = json.loads(item.invoice_history) if item.invoice_history else []
-            except Exception:
-                inv_hist = []
 
             items_by_order[item.order_id].append({
                 "id": item.id,
