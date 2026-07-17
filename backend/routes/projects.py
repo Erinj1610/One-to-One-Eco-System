@@ -175,11 +175,11 @@ def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(
                     status=order.get("status", "Processing"),
                     eta=order.get("eta", "—"),
                     quote_name=order.get("quote_name", "General Spec"),
-                    packing_lists=json.dumps(order.get("packingLists", [])),
-                    delivery_notes=json.dumps(order.get("deliveryNotes", [])),
-                    purchase_orders=json.dumps(order.get("purchaseOrders", [])),
-                    goods_received_notes=json.dumps(order.get("goodsReceivedNotes", [])),
-                    client_invoices=json.dumps(order.get("clientInvoices", []))
+                    packing_lists=order.get("packingLists", []),
+                    delivery_notes=order.get("deliveryNotes", []),
+                    purchase_orders=order.get("purchaseOrders", []),
+                    goods_received_notes=order.get("goodsReceivedNotes", []),
+                    client_invoices=order.get("clientInvoices", [])
                 )
                 db.add(db_order)
                 
@@ -218,10 +218,10 @@ def reconcile_bulk_projects(payload: ReconcileBulkSchema, db: Session = Depends(
                         delivery_qty=int(item.get("deliveryQty", 0)),
                         delivery_date=item.get("deliveryDate"),
                         delivery_status=item.get("deliveryStatus", "Pending"),
-                        delivery_history=json.dumps(item.get("deliveryHistory", [])),
-                        purchase_history=json.dumps(item.get("purchaseHistory", [])),
-                        receiving_history=json.dumps(item.get("receivingHistory", [])),
-                        invoice_history=json.dumps(item.get("invoiceHistory", [])),
+                        delivery_history=item.get("deliveryHistory", []),
+                        purchase_history=item.get("purchaseHistory", []),
+                        receiving_history=item.get("receivingHistory", []),
+                        invoice_history=item.get("invoiceHistory", []),
                         stock_on_hand=int(item.get("stockOnHand", 0)),
                         is_credit=bool(item.get("isCredit", False)),
                         item_type=item.get("itemType", "Hardware")
