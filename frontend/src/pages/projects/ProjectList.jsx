@@ -208,7 +208,12 @@ export default function ProjectList() {
 
   // Filter projects by Date Range first
   const dateFilteredProjects = useMemo(() => {
-    let list = Object.values(projects).filter(p => !p.isDraft && isDateInRange(p.start));
+    let list = Object.values(projects).filter(p => {
+      if (p.isDraft) return false;
+      const projectDateMatch = isDateInRange(p.start);
+      const orderDateMatch = (p.orders || []).some(o => isDateInRange(o.orderDate));
+      return projectDateMatch || orderDateMatch;
+    });
     if (!isAdmin) {
       list = list.filter(p => {
         const matchClient = p.client?.toLowerCase() === userContact?.name?.toLowerCase();
