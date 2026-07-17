@@ -1505,7 +1505,13 @@ export function StoreProvider({ children }) {
           deliveryNotes: newOrder.deliveryNotes || [],
           purchaseOrders: newOrder.purchaseOrders || [],
           goodsReceivedNotes: newOrder.goodsReceivedNotes || [],
-          clientInvoices: newOrder.clientInvoices || []
+          clientInvoices: newOrder.clientInvoices || [],
+          payments: newOrder.payments || [],
+          depositValue: newOrder.depositValue,
+          depositInvoiceSent: newOrder.depositInvoiceSent,
+          depositPaymentDate: newOrder.depositPaymentDate,
+          balanceValue: newOrder.balanceValue,
+          balancePaymentDate: newOrder.balancePaymentDate
         };
 
 

@@ -1721,6 +1721,18 @@ export default function SalesTracker() {
             const stockStatus = String(getRowVal('N') || '').trim();
             const stockOnHand = Number(getRowVal('O')) || 0;
 
+            // Extract deposit and payment values from sheet cells
+            const depositInvoiceSent = getVal('D90') || 'No';
+            const depositPaymentDate = getVal('D95') ? parseExcelDate(getVal('D95')) : '';
+            const balancePaymentDate = getVal('D96') ? parseExcelDate(getVal('D96')) : '';
+            const depositValue = Number(getVal('G95')) || 0;
+            const balanceValue = Number(getVal('G96')) || 0;
+            
+            // Calculate a default amount paid
+            let amountPaid = 0;
+            if (depositPaymentDate) amountPaid += depositValue;
+            if (balancePaymentDate) amountPaid += balanceValue;
+
             flatRows.push({
               "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
               "Project Name": projectF5,
@@ -1757,7 +1769,14 @@ export default function SalesTracker() {
               "Date DEL": dateDel,
               "Delivery Reference": deliveryRef,
               "Delivery Comments": "",
-              "Sheet Order Status": orderStatusG98
+              "Sheet Order Status": orderStatusG98,
+              
+              "Deposit Value": depositValue,
+              "Deposit Invoice Sent": depositInvoiceSent,
+              "Deposit Payment Date": depositPaymentDate,
+              "Balance Value": balanceValue,
+              "Balance Payment Date": balancePaymentDate,
+              "Amount Paid": amountPaid
             });
 
 
@@ -1892,6 +1911,14 @@ export default function SalesTracker() {
               orderDate: parseExcelDate(row["Date Ordered"]) || new Date().toISOString().split('T')[0],
               quotationSentDate: parseExcelDate(row["Quotation Sent Date"]) || parseExcelDate(row["Date Ordered"]),
               pfDate: parseExcelDate(row["PF Date"]) || parseExcelDate(row["Date Ordered"]),
+              
+              depositValue: Number(row["Deposit Value"]) || 0,
+              depositInvoiceSent: String(row["Deposit Invoice Sent"] || "No").trim(),
+              depositPaymentDate: parseExcelDate(row["Deposit Payment Date"]) || "",
+              balanceValue: Number(row["Balance Value"]) || 0,
+              balancePaymentDate: parseExcelDate(row["Balance Payment Date"]) || "",
+              payments: [],
+
               itemsList: [],
               purchaseOrders: [],
               goodsReceivedNotes: [],
@@ -1902,6 +1929,48 @@ export default function SalesTracker() {
           }
 
           const targetOrder = projectUpdatesMap[projKey].orders[orderId];
+
+          // Parse and populate dynamic payments list
+          const depVal = Number(row["Deposit Value"]) || 0;
+          const depDate = parseExcelDate(row["Deposit Payment Date"]) || "";
+          const balVal = Number(row["Balance Value"]) || 0;
+          const balDate = parseExcelDate(row["Balance Payment Date"]) || "";
+          const amtPaid = Number(row["Amount Paid"]) || 0;
+
+          targetOrder.depositValue = depVal;
+          targetOrder.depositInvoiceSent = String(row["Deposit Invoice Sent"] || "No").trim();
+          targetOrder.depositPaymentDate = depDate;
+          targetOrder.balanceValue = balVal;
+          targetOrder.balancePaymentDate = balDate;
+          targetOrder.paid = amtPaid;
+
+          const pList = [];
+          if (depDate && depVal > 0) {
+            pList.push({
+              date: depDate,
+              amount: depVal,
+              type: "Deposit Payment",
+              reference: "Imported Deposit"
+            });
+          }
+          if (balDate && balVal > 0) {
+            pList.push({
+              date: balDate,
+              amount: balVal,
+              type: "Balance Payment",
+              reference: "Imported Balance"
+            });
+          }
+          // If amount paid is manually set but doesn't match dates, add fallback payment
+          if (amtPaid > 0 && pList.length === 0) {
+            pList.push({
+              date: targetOrder.orderDate || new Date().toISOString().split('T')[0],
+              amount: amtPaid,
+              type: "Deposit Payment",
+              reference: "Imported Pre-payment"
+            });
+          }
+          targetOrder.payments = pList;
 
           // If a subsequent row has valid dates, make sure we backport them to targetOrder
           const rowDateOrdered = parseExcelDate(row["Date Ordered"]);

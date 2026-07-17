@@ -195,7 +195,13 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 client_invoices=order.get("clientInvoices", []),
                 order_date=order.get("orderDate"),
                 quotation_sent_date=order.get("quotationSentDate"),
-                pf_date=order.get("pfDate")
+                pf_date=order.get("pfDate"),
+                payments=order.get("payments", []),
+                deposit_value=float(order.get("depositValue")) if order.get("depositValue") is not None else None,
+                deposit_invoice_sent=order.get("depositInvoiceSent"),
+                deposit_payment_date=order.get("depositPaymentDate"),
+                balance_value=float(order.get("balanceValue")) if order.get("balanceValue") is not None else None,
+                balance_payment_date=order.get("balancePaymentDate")
             )
             db.add(db_order)
             
@@ -513,7 +519,13 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "clientInvoices": client_invoices_parsed,
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,
-                "pfDate": order.pf_date
+                "pfDate": order.pf_date,
+                "payments": json.loads(order.payments) if isinstance(order.payments, str) else (order.payments or []),
+                "depositValue": order.deposit_value,
+                "depositInvoiceSent": order.deposit_invoice_sent,
+                "depositPaymentDate": order.deposit_payment_date,
+                "balanceValue": order.balance_value,
+                "balancePaymentDate": order.balance_payment_date
             }
             orders_by_project[order.project_key].append(order_dict)
 

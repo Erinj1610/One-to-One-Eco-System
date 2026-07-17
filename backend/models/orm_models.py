@@ -221,6 +221,13 @@ class Order(Base):
     quotation_sent_date = Column(String, nullable=True)
     pf_date = Column(String, nullable=True)
 
+    payments = Column(JSON, nullable=True)
+    deposit_value = Column(Float, nullable=True)
+    deposit_invoice_sent = Column(String, nullable=True)
+    deposit_payment_date = Column(String, nullable=True)
+    balance_value = Column(Float, nullable=True)
+    balance_payment_date = Column(String, nullable=True)
+
 
 
 

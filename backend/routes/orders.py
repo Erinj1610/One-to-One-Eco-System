@@ -181,7 +181,13 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
         client_invoices=order_data.get("clientInvoices"),
         order_date=order_data.get("orderDate"),
         quotation_sent_date=order_data.get("quotationSentDate"),
-        pf_date=order_data.get("pfDate")
+        pf_date=order_data.get("pfDate"),
+        payments=order_data.get("payments"),
+        deposit_value=float(order_data.get("depositValue")) if order_data.get("depositValue") is not None else None,
+        deposit_invoice_sent=order_data.get("depositInvoiceSent"),
+        deposit_payment_date=order_data.get("depositPaymentDate"),
+        balance_value=float(order_data.get("balanceValue")) if order_data.get("balanceValue") is not None else None,
+        balance_payment_date=order_data.get("balancePaymentDate")
     )
     db.add(new_order)
     db.commit()
