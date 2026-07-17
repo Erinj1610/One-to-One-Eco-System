@@ -178,7 +178,10 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
         delivery_notes=order_data.get("deliveryNotes"),
         purchase_orders=order_data.get("purchaseOrders"),
         goods_received_notes=order_data.get("goodsReceivedNotes"),
-        client_invoices=order_data.get("clientInvoices")
+        client_invoices=order_data.get("clientInvoices"),
+        order_date=order_data.get("orderDate"),
+        quotation_sent_date=order_data.get("quotationSentDate"),
+        pf_date=order_data.get("pfDate")
     )
     db.add(new_order)
     db.commit()
@@ -217,6 +220,12 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
         order.goods_received_notes = order_data.get("goodsReceivedNotes")
     if "clientInvoices" in order_data:
         order.client_invoices = order_data.get("clientInvoices")
+    if "orderDate" in order_data:
+        order.order_date = order_data.get("orderDate")
+    if "quotationSentDate" in order_data:
+        order.quotation_sent_date = order_data.get("quotationSentDate")
+    if "pfDate" in order_data:
+        order.pf_date = order_data.get("pfDate")
     
     db.commit()
     db.refresh(order)

@@ -217,6 +217,11 @@ class Order(Base):
     goods_received_notes = Column(JSON, nullable=True)
     client_invoices = Column(JSON, nullable=True)
 
+    order_date = Column(String, nullable=True)
+    quotation_sent_date = Column(String, nullable=True)
+    pf_date = Column(String, nullable=True)
+
+
 
 
 class OrderItem(Base):

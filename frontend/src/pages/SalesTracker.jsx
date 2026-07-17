@@ -1889,6 +1889,9 @@ export default function SalesTracker() {
               paid: 0,
               outstanding: 0,
               status: "Processing",
+              orderDate: parseExcelDate(row["Date Ordered"]) || new Date().toISOString().split('T')[0],
+              quotationSentDate: parseExcelDate(row["Quotation Sent Date"]) || parseExcelDate(row["Date Ordered"]),
+              pfDate: parseExcelDate(row["PF Date"]) || parseExcelDate(row["Date Ordered"]),
               itemsList: [],
               purchaseOrders: [],
               goodsReceivedNotes: [],
@@ -1899,6 +1902,20 @@ export default function SalesTracker() {
           }
 
           const targetOrder = projectUpdatesMap[projKey].orders[orderId];
+
+          // If a subsequent row has valid dates, make sure we backport them to targetOrder
+          const rowDateOrdered = parseExcelDate(row["Date Ordered"]);
+          if (rowDateOrdered) {
+            targetOrder.orderDate = rowDateOrdered;
+          }
+          const rowQuotationSent = parseExcelDate(row["Quotation Sent Date"]);
+          if (rowQuotationSent) {
+            targetOrder.quotationSentDate = rowQuotationSent;
+          }
+          const rowPfDate = parseExcelDate(row["PF Date"]);
+          if (rowPfDate) {
+            targetOrder.pfDate = rowPfDate;
+          }
 
           const qty = Number(row["Qty"]) || 0;
           const unitCost = Number(row["Unit Cost Ex VAT"]) || 0;

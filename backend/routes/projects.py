@@ -192,7 +192,10 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 delivery_notes=order.get("deliveryNotes", []),
                 purchase_orders=order.get("purchaseOrders", []),
                 goods_received_notes=order.get("goodsReceivedNotes", []),
-                client_invoices=order.get("clientInvoices", [])
+                client_invoices=order.get("clientInvoices", []),
+                order_date=order.get("orderDate"),
+                quotation_sent_date=order.get("quotationSentDate"),
+                pf_date=order.get("pfDate")
             )
             db.add(db_order)
             
@@ -507,7 +510,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "deliveryNotes": delivery_notes_parsed,
                 "purchaseOrders": purchase_orders_parsed,
                 "goodsReceivedNotes": goods_received_notes_parsed,
-                "clientInvoices": client_invoices_parsed
+                "clientInvoices": client_invoices_parsed,
+                "orderDate": order.order_date,
+                "quotationSentDate": order.quotation_sent_date,
+                "pfDate": order.pf_date
             }
             orders_by_project[order.project_key].append(order_dict)
 
