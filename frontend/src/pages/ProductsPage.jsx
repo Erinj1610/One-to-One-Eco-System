@@ -1385,7 +1385,6 @@ export default function ProductsPage() {
               {/* ACTIVE TAB CONTENT */}
               <div className="animation-fade-in">
                 
-                {/* 1. SPECIFICATIONS VIEW */}
                 {activeTab === 'specs' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
@@ -1393,41 +1392,337 @@ export default function ProductsPage() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', position: 'relative' }}>
                           <span style={{ position: 'absolute', top: '10px', left: '12px', fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Visual Specification</span>
-                          <ProductImageRenderer type={activeProduct.category.toLowerCase()} height="260" />
-                          <h4 style={{ margin: '12px 0 0 0', fontSize: '14px', fontWeight: 700, letterSpacing: '0.5px' }}>{activeProduct.family}</h4>
+                          <ProductImageRenderer type={formFields.category ? formFields.category.toLowerCase() : 'downlight'} height="260" />
+                          <div className="form-row" style={{ marginTop: '15px', textAlign: 'left' }}>
+                            <label className="form-label">Product Name</label>
+                            <input 
+                              type="text" 
+                              className="form-control" 
+                              value={formFields.name || ''} 
+                              onChange={e => setFormFields({ ...formFields, name: e.target.value })} 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Custom status flags & Selection criteria */}
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Flags & Parameters</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
+                            <div className="form-row">
+                              <label className="form-label">Consignment</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.consignment || ''}
+                                onChange={e => setFormFields({ ...formFields, consignment: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Red List</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.red_list || ''}
+                                onChange={e => setFormFields({ ...formFields, red_list: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">First Fix</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.first_fix || ''}
+                                onChange={e => setFormFields({ ...formFields, first_fix: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Selection</label>
+                              <input 
+                                type="text"
+                                className="form-control"
+                                value={formFields.selection || ''}
+                                onChange={e => setFormFields({ ...formFields, selection: e.target.value })}
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Technical CAD blueprints + Specs detail sheet */}
+                      {/* Technical specifications details form grid */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', gap: '14px', alignItems: 'center' }}>
-                          <div style={{ width: '110px', flexShrink: 0 }}>
-                            <ProductCADRenderer cutout={activeProduct.cutout} />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-info)' }}>📐 Design Spec & Blueprint</h4>
-                            <div style={{ fontSize: '11.5px', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
-                              <p style={{ margin: '0 0 4px 0' }}><strong>Fitting Type:</strong> {activeProduct.category}</p>
-                              <p style={{ margin: '0 0 4px 0' }}><strong>Cut-Out Size:</strong> {activeProduct.cutout}</p>
-                              <p style={{ margin: '0 0 4px 0' }}><strong>Power Consumption:</strong> {activeProduct.systemPower}W</p>
-                              <p style={{ margin: '0 0 4px 0' }}><strong>Color Kelvin:</strong> {activeProduct.kelvin}</p>
-                              <p style={{ margin: '0 0 4px 0' }}><strong>Beam Angle:</strong> {activeProduct.beamAngle}</p>
-                              <p style={{ margin: 0 }}><strong>IP Rating:</strong> {activeProduct.ipRating} (CRI: {activeProduct.cri})</p>
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+                          <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📐 Specifications & Fitting Parameters
+                          </h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
+                            <div className="form-row">
+                              <label className="form-label">SKU / Code</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.sku || ''} 
+                                onChange={e => setFormFields({ ...formFields, sku: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">One to One Code</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.one_to_one_code || ''} 
+                                onChange={e => setFormFields({ ...formFields, one_to_one_code: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Family / Range</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.family || ''} 
+                                onChange={e => setFormFields({ ...formFields, family: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Fitting Type</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.category || ''} 
+                                onChange={e => setFormFields({ ...formFields, category: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Brand</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.brand || ''} 
+                                onChange={e => setFormFields({ ...formFields, brand: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Supplier</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.supplier || ''} 
+                                onChange={e => setFormFields({ ...formFields, supplier: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Lead Time</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.lead_time || ''} 
+                                onChange={e => setFormFields({ ...formFields, lead_time: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Local / Import</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.origin || ''}
+                                onChange={e => setFormFields({ ...formFields, origin: e.target.value })}
+                              >
+                                <option value="">Select Option</option>
+                                <option value="Local">Local</option>
+                                <option value="Import">Import</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Product Colour</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.color || ''} 
+                                onChange={e => setFormFields({ ...formFields, color: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Cut-Out / Mounting</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.cutout || ''} 
+                                onChange={e => setFormFields({ ...formFields, cutout: e.target.value })} 
+                              />
                             </div>
                           </div>
                         </div>
 
-                        {/* Driver Specs Box */}
+                        {/* Light Source parameters */}
                         <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Settings size={13} /> Driver Specification & Connection Info
-                          </h4>
-                          <div style={{ fontSize: '11.5px', lineHeight: '1.6', color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
-                            {activeProduct.driverSpec}
+                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Light Source specs</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', textAlign: 'left' }}>
+                            <div className="form-row">
+                              <label className="form-label">Light Source Incl.</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.light_source_incl || ''}
+                                onChange={e => setFormFields({ ...formFields, light_source_incl: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Light Source Type</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.light_source_type || ''} 
+                                onChange={e => setFormFields({ ...formFields, light_source_type: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Kelvin</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.kelvin || ''} 
+                                onChange={e => setFormFields({ ...formFields, kelvin: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Beam Angle</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.beam_angle || ''} 
+                                onChange={e => setFormFields({ ...formFields, beam_angle: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">CRI</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.cri || ''} 
+                                onChange={e => setFormFields({ ...formFields, cri: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">IP Rating</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.ip_rating || ''} 
+                                onChange={e => setFormFields({ ...formFields, ip_rating: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">System Power (W)</label>
+                              <input 
+                                type="number" 
+                                className="form-control" 
+                                value={formFields.system_power || ''} 
+                                onChange={e => setFormFields({ ...formFields, system_power: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Lighting Type</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.lighting_type || ''} 
+                                onChange={e => setFormFields({ ...formFields, lighting_type: e.target.value })} 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Dimming and Driver details Column */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
+                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Dimming & Drivers</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
+                            <div className="form-row">
+                              <label className="form-label">Dimmable</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.dimmable || ''}
+                                onChange={e => setFormFields({ ...formFields, dimmable: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Dimming Protocol</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.dimming_protocol || ''} 
+                                onChange={e => setFormFields({ ...formFields, dimming_protocol: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Driver Incl.</label>
+                              <select 
+                                className="form-control"
+                                value={formFields.driver_incl || ''}
+                                onChange={e => setFormFields({ ...formFields, driver_incl: e.target.value })}
+                              >
+                                <option value="">No</option>
+                                <option value="Yes">Yes</option>
+                              </select>
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Driver Specification</label>
+                              <textarea 
+                                className="form-control" 
+                                style={{ height: '70px', fontSize: '11.5px', fontFamily: 'monospace' }}
+                                value={formFields.driver_spec || ''} 
+                                onChange={e => setFormFields({ ...formFields, driver_spec: e.target.value })} 
+                              />
+                            </div>
                           </div>
                         </div>
 
-                        {/* Instruction Manual / Technical PDF attachments */}
+                        {/* Codes, description and QR Links */}
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
+                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Custom plan codes & QR</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
+                            <div className="form-row">
+                              <label className="form-label">FOH Code</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.foh_code_description || ''} 
+                                onChange={e => setFormFields({ ...formFields, foh_code_description: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Client Description</label>
+                              <textarea 
+                                className="form-control" 
+                                style={{ height: '50px', fontSize: '11.5px' }}
+                                value={formFields.client_description || ''} 
+                                onChange={e => setFormFields({ ...formFields, client_description: e.target.value })} 
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">QR Link</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.qr_link || ''} 
+                                onChange={e => setFormFields({ ...formFields, qr_link: e.target.value })} 
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Technical Documents Box */}
                         <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
                           <h4 style={{ margin: '0 0 10px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Technical Documents</h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1442,24 +1737,13 @@ export default function ProductsPage() {
                                 </div>
                               ))
                             ) : (
-                              <>
-                                <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <FileText size={16} color="var(--text-info)" />
-                                    <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
-                                  </div>
-                                  <Download size={14} color="var(--text-secondary)" />
+                              <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <FileText size={16} color="var(--text-info)" />
+                                  <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
                                 </div>
-                                {activeProduct.driverSpec && (
-                                  <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Connection Installation Guide PDF...")}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <FileText size={16} color="var(--text-success)" />
-                                      <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Driver_Wiring_Connection_Guide.pdf</span>
-                                    </div>
-                                    <Download size={14} color="var(--text-secondary)" />
-                                  </div>
-                                )}
-                              </>
+                                <Download size={14} color="var(--text-secondary)" />
+                              </div>
                             )}
                             <div style={{ marginTop: '4px' }}>
                               <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
@@ -1510,25 +1794,42 @@ export default function ProductsPage() {
                     {/* Supplier Costing Breakdown */}
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
                       <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Supplier & Costing Breakdown</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg-secondary)' }}>
                             <th>Supplier</th>
                             <th>Brand</th>
-                            <th style={{ textAlign: 'right' }}>Cost Price (Rands)</th>
+                            <th style={{ textAlign: 'right' }}>Cost Price (R)</th>
                             <th style={{ textAlign: 'center' }}>Mark-Up %</th>
-                            <th style={{ textAlign: 'right' }}>Landed Cost (Excl. VAT)</th>
+                            <th style={{ textAlign: 'right' }}>Landed Cost (R)</th>
                             <th style={{ textAlign: 'center' }}>Last Updated</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
-                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{activeProduct.supplier}</td>
-                            <td>{activeProduct.brand}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>R {activeProduct.unitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                            <td style={{ textAlign: 'center' }}>{activeProduct.markup}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {activeProduct.costing.landedCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{activeProduct.costing.lastUpdated}</td>
+                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{formFields.supplier || activeProduct.supplier}</td>
+                            <td>{formFields.brand || activeProduct.brand}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                              <input 
+                                type="number" 
+                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
+                                value={formFields.cost_price || ''}
+                                onChange={e => {
+                                  const cost = parseFloat(e.target.value) || 0;
+                                  setFormFields({ ...formFields, cost_price: cost });
+                                }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <input 
+                                type="text" 
+                                style={{ width: '70px', height: '28px', fontSize: '12px', textAlign: 'center', display: 'inline-block' }}
+                                value={formFields.markup || ''}
+                                onChange={e => setFormFields({ ...formFields, markup: e.target.value })}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{activeProduct.costing?.lastUpdated || 'Jan 25, 2026'}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1537,30 +1838,53 @@ export default function ProductsPage() {
                     {/* Pricing Tiers & Margin Structure */}
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
                       <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Pricing & Margin Structure</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg-secondary)' }}>
                             <th>Customer Tier</th>
-                            <th style={{ textAlign: 'right' }}>Target Retail Price</th>
-                            <th style={{ textAlign: 'right' }}>Applied Discount %</th>
-                            <th style={{ textAlign: 'right' }}>Net Retail Price</th>
+                            <th style={{ textAlign: 'right' }}>Target Price (R)</th>
                             <th style={{ textAlign: 'center' }}>Projected Margin %</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {activeProduct.costing.tiers.map((t, idx) => (
-                            <tr key={idx}>
-                              <td style={{ fontWeight: 600 }}>{t.name}</td>
-                              <td style={{ textAlign: 'right' }}>R {t.retailPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td style={{ textAlign: 'right' }}>{t.discount.toFixed(2)}%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600 }}>R {t.netRetail.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span className="badge b-success" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                                  {t.margin}% margin
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
+                          <tr>
+                            <td style={{ fontWeight: 600 }}>RRP Price (Selling Price)</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <input 
+                                type="number" 
+                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
+                                value={formFields.recommended_retail_price || ''}
+                                onChange={e => {
+                                  const rrp = parseFloat(e.target.value) || 0;
+                                  setFormFields({ ...formFields, recommended_retail_price: rrp });
+                                }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="badge b-success" style={{ fontWeight: 700, padding: '2px 8px' }}>
+                                {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}% margin
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ fontWeight: 600 }}>Trade / Partner Price</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <input 
+                                type="number" 
+                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
+                                value={formFields.trade_price || ''}
+                                onChange={e => {
+                                  const trade = parseFloat(e.target.value) || 0;
+                                  setFormFields({ ...formFields, trade_price: trade });
+                                }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="badge b-info" style={{ fontWeight: 700, padding: '2px 8px' }}>
+                                {formFields.trade_price > 0 ? Math.round(((formFields.trade_price - formFields.cost_price) / formFields.trade_price) * 100) : 0}% margin
+                              </span>
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
@@ -1568,20 +1892,22 @@ export default function ProductsPage() {
                     {/* Costing KPI row */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Projected Margin %</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>{activeProduct.margin}%</div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Projected Margin %</span>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>
+                          {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}%
+                        </div>
                       </div>
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Landed Cost</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>R {activeProduct.costing.landedCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                       </div>
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Retail Price</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {activeProduct.retailPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Price</span>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {(formFields.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                       </div>
                       <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Net Profit per Unit</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>R {activeProduct.costing.profitPerUnit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Net Profit per Unit</span>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>R {Math.max(0, (formFields.recommended_retail_price || 0) - (formFields.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                       </div>
                     </div>
 
@@ -1590,15 +1916,15 @@ export default function ProductsPage() {
                       <div>
                         <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Supplier Contact Info</h5>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Globe size={13} /> <a href={`https://${activeProduct.costing.contactInfo.website}`} target="_blank" rel="noreferrer">{activeProduct.costing.contactInfo.website}</a></span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Mail size={13} /> {activeProduct.costing.contactInfo.email}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={13} /> {activeProduct.costing.contactInfo.phone}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Globe size={13} /> <a href={`https://${activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}`} target="_blank" rel="noreferrer">{activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}</a></span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Mail size={13} /> {activeProduct.costing?.contactInfo?.email || 'orders@eldc.co.za'}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={13} /> {activeProduct.costing?.contactInfo?.phone || '+27 (0) 21 448 8658'}</span>
                         </div>
                       </div>
                       <div>
                         <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Fulfillment Terms</h5>
                         <p style={{ margin: 0, fontSize: '12px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                          {activeProduct.costing.terms}
+                          {activeProduct.costing?.terms || 'Standard payment structure: 50% deposit, balance paid in full prior to release.'}
                         </p>
                       </div>
                     </div>
