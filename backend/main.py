@@ -181,7 +181,9 @@ def init_db():
                     ("recommended_retail_price", "FLOAT DEFAULT 0.0"),
                     ("qr", "VARCHAR"),
                     ("qr_link", "VARCHAR"),
-                    ("client_code", "VARCHAR")
+                    ("client_code", "VARCHAR"),
+                    ("image_url", "VARCHAR"),
+                    ("technical_image_url", "VARCHAR")
                 ]
                 for col_name, col_type in new_cols:
                     if col_name not in existing_cols:
