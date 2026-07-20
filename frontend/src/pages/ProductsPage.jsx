@@ -584,6 +584,7 @@ export default function ProductsPage() {
   // Workspace Local Editing States to prevent Stock History bug
   const [editingStatus, setEditingStatus] = useState('In Stock');
   const [editingStock, setEditingStock] = useState(0);
+  const [formFields, setFormFields] = useState({});
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -626,6 +627,45 @@ export default function ProductsPage() {
     if (activeProduct) {
       setEditingStatus(activeProduct.status);
       setEditingStock(activeProduct.stock);
+      setFormFields({
+        name: activeProduct.name || '',
+        brand: activeProduct.brand || '',
+        sku: activeProduct.sku || '',
+        family: activeProduct.family || '',
+        category: activeProduct.category || '',
+        lead_time: activeProduct.leadTime || activeProduct.lead_time || '',
+        origin: activeProduct.origin || '',
+        color: activeProduct.color || '',
+        dimmable: activeProduct.dimmable || '',
+        dimming_protocol: activeProduct.dimmingProtocol || activeProduct.dimming_protocol || '',
+        driver_incl: activeProduct.driverIncl || activeProduct.driver_incl || '',
+        light_source_incl: activeProduct.lightSourceIncl || activeProduct.light_source_incl || '',
+        light_source_type: activeProduct.lightSourceType || activeProduct.light_source_type || '',
+        kelvin: activeProduct.kelvin || '',
+        beam_angle: activeProduct.beamAngle || activeProduct.beam_angle || '',
+        cri: activeProduct.cri || '',
+        ip_rating: activeProduct.ipRating || activeProduct.ip_rating || '',
+        system_power: activeProduct.systemPower || activeProduct.system_power || 0,
+        lighting_type: activeProduct.lightingType || activeProduct.lighting_type || '',
+        cutout: activeProduct.cutout || '',
+        driver_spec: activeProduct.driverSpec || activeProduct.driver_spec || '',
+        one_to_one_code: activeProduct.one_to_one_code || '',
+        foh_code_description: activeProduct.foh_code_description || '',
+        client_description: activeProduct.client_description || '',
+        fitting_type: activeProduct.fitting_type || '',
+        consignment: activeProduct.consignment || '',
+        selection: activeProduct.selection || '',
+        first_fix: activeProduct.first_fix || '',
+        red_list: activeProduct.red_list || '',
+        markup: activeProduct.markup || '',
+        recommended_retail_price: activeProduct.recommended_retail_price || activeProduct.retail_price || 0,
+        trade_price: activeProduct.tradePrice || activeProduct.trade_price || 0,
+        cost_price: activeProduct.unitCost || activeProduct.cost_price || 0,
+        reorder_level: activeProduct.reorderLevel || activeProduct.reorder_level || 100,
+        qr: activeProduct.qr || '',
+        qr_link: activeProduct.qr_link || '',
+        supplier: activeProduct.supplier || ''
+      });
     }
   }, [selectedSku, activeProduct]);
 
@@ -726,45 +766,45 @@ export default function ProductsPage() {
     const qty = editingStock;
 
     const payload = {
-      name: activeProduct.name,
-      brand: activeProduct.brand,
-      sku: activeProduct.sku,
-      cost_price: activeProduct.unitCost || activeProduct.cost_price || 0.0,
-      retail_price: activeProduct.retailPrice || activeProduct.retail_price || 0.0,
-      trade_price: activeProduct.tradePrice || activeProduct.trade_price || 0.0,
+      name: formFields.name,
+      brand: formFields.brand,
+      sku: formFields.sku,
+      cost_price: parseFloat(formFields.cost_price) || 0.0,
+      retail_price: parseFloat(formFields.recommended_retail_price) || 0.0,
+      trade_price: parseFloat(formFields.trade_price) || 0.0,
       stock_level: qty,
-      reorder_level: activeProduct.reorderLevel || activeProduct.reorder_level || 100,
+      reorder_level: parseInt(formFields.reorder_level) || 100,
       supplier_id: activeProduct.supplier_id,
-      family: activeProduct.family,
-      category: activeProduct.category,
-      lead_time: activeProduct.leadTime || activeProduct.lead_time,
-      origin: activeProduct.origin,
-      color: activeProduct.color,
-      dimmable: activeProduct.dimmable,
-      dimming_protocol: activeProduct.dimmingProtocol || activeProduct.dimming_protocol,
-      driver_incl: activeProduct.driverIncl || activeProduct.driver_incl,
-      light_source_incl: activeProduct.lightSourceIncl || activeProduct.light_source_incl,
-      light_source_type: activeProduct.lightSourceType || activeProduct.light_source_type,
-      kelvin: activeProduct.kelvin,
-      beam_angle: activeProduct.beamAngle || activeProduct.beam_angle,
-      cri: activeProduct.cri,
-      ip_rating: activeProduct.ipRating || activeProduct.ip_rating,
-      system_power: activeProduct.systemPower || activeProduct.system_power,
-      lighting_type: activeProduct.lightingType || activeProduct.lighting_type,
-      cutout: activeProduct.cutout,
-      driver_spec: activeProduct.driverSpec || activeProduct.driver_spec,
-      one_to_one_code: activeProduct.one_to_one_code,
-      foh_code_description: activeProduct.foh_code_description,
-      client_description: activeProduct.client_description,
-      fitting_type: activeProduct.fitting_type,
-      consignment: activeProduct.consignment,
-      selection: activeProduct.selection,
-      first_fix: activeProduct.first_fix,
-      red_list: activeProduct.red_list,
-      markup: activeProduct.markup,
-      recommended_retail_price: activeProduct.recommended_retail_price,
-      qr: activeProduct.qr,
-      qr_link: activeProduct.qr_link,
+      family: formFields.family,
+      category: formFields.category,
+      lead_time: formFields.lead_time,
+      origin: formFields.origin,
+      color: formFields.color,
+      dimmable: formFields.dimmable,
+      dimming_protocol: formFields.dimming_protocol,
+      driver_incl: formFields.driver_incl,
+      light_source_incl: formFields.light_source_incl,
+      light_source_type: formFields.light_source_type,
+      kelvin: formFields.kelvin,
+      beam_angle: formFields.beam_angle,
+      cri: formFields.cri,
+      ip_rating: formFields.ip_rating,
+      system_power: parseFloat(formFields.system_power) || 0.0,
+      lighting_type: formFields.lighting_type,
+      cutout: formFields.cutout,
+      driver_spec: formFields.driver_spec,
+      one_to_one_code: formFields.one_to_one_code,
+      foh_code_description: formFields.foh_code_description,
+      client_description: formFields.client_description,
+      fitting_type: formFields.fitting_type,
+      consignment: formFields.consignment,
+      selection: formFields.selection,
+      first_fix: formFields.first_fix,
+      red_list: formFields.red_list,
+      markup: formFields.markup,
+      recommended_retail_price: parseFloat(formFields.recommended_retail_price) || 0.0,
+      qr: formFields.qr,
+      qr_link: formFields.qr_link,
       client_code: activeProduct.client_code
     };
 
@@ -864,6 +904,28 @@ export default function ProductsPage() {
         fetchProducts();
       } else {
         alert("Failed to upload document");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Upload a product image or technical image directly onto the product record
+  const handleUploadImage = async (productId, file, fileCategory) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('file_category', fileCategory);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${productId}/upload-image`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(fileCategory === 'product_image' ? 'Product image updated!' : 'Technical image updated!');
+        fetchProducts();
+      } else {
+        alert('Failed to upload image');
       }
     } catch (err) {
       console.error(err);
@@ -1250,8 +1312,18 @@ export default function ProductsPage() {
                   {filteredProducts.map(p => (
                     <tr key={p.id} className="clickable" style={{ cursor: 'pointer' }} onClick={() => setSelectedSku(p.sku)}>
                       <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
-                        <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                          <ProductImageRenderer type={p.category.toLowerCase()} width="40" height="40" />
+                        <div style={{ width: '44px', height: '44px', position: 'relative', margin: '0 auto', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                          {p.image_url ? (
+                            <img
+                              src={`${API_BASE}${p.image_url}`}
+                              alt={p.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                            />
+                          ) : null}
+                          <div style={{ display: p.image_url ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)' }}>
+                            <ProductImageRenderer type={(p.category || 'downlight').toLowerCase()} width="44" height="44" />
+                          </div>
                         </div>
                       </td>
                       <td style={{ verticalAlign: 'middle', fontWeight: 600, color: 'var(--text-info)', textDecoration: 'underline' }}>
@@ -1388,25 +1460,82 @@ export default function ProductsPage() {
                 {activeTab === 'specs' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                      {/* Product Visual Mock Rendering */}
+                      {/* Product Images Panel — Photo + Technical Image */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', position: 'relative' }}>
-                          <span style={{ position: 'absolute', top: '10px', left: '12px', fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Visual Specification</span>
-                          <ProductImageRenderer type={formFields.category ? formFields.category.toLowerCase() : 'downlight'} height="260" />
-                          <div className="form-row" style={{ marginTop: '15px', textAlign: 'left' }}>
-                            <label className="form-label">Product Name</label>
-                            <input 
-                              type="text" 
-                              className="form-control" 
-                              value={formFields.name || ''} 
-                              onChange={e => setFormFields({ ...formFields, name: e.target.value })} 
-                            />
+
+                        {/* Product Photo Card */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                            📷 Product Photo
+                          </span>
+                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {activeProduct.image_url ? (
+                              <img
+                                src={`${API_BASE}${activeProduct.image_url}`}
+                                alt={activeProduct.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <div style={{ textAlign: 'center', padding: '20px' }}>
+                                <ProductImageRenderer type={(formFields.category || 'downlight').toLowerCase()} height="160" />
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo uploaded</p>
+                              </div>
+                            )}
                           </div>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
+                            📷 {activeProduct.image_url ? 'Replace Product Photo' : 'Upload Product Photo'}
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadImage(activeProduct.id, e.target.files[0], 'product_image');
+                              }
+                            }} />
+                          </label>
                         </div>
 
-                        {/* Custom status flags & Selection criteria */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <h4 style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Flags & Parameters</h4>
+                        {/* Technical Image Card */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                            📐 Technical / Spec Image
+                          </span>
+                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {activeProduct.technical_image_url ? (
+                              <img
+                                src={`${API_BASE}${activeProduct.technical_image_url}`}
+                                alt={`${activeProduct.name} - Technical`}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <div style={{ textAlign: 'center', padding: '20px' }}>
+                                <ProductCADRenderer cutout={activeProduct.cutout || 'N/A'} />
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No technical image uploaded</p>
+                              </div>
+                            )}
+                          </div>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
+                            📐 {activeProduct.technical_image_url ? 'Replace Technical Image' : 'Upload Technical Image'}
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadImage(activeProduct.id, e.target.files[0], 'technical_image');
+                              }
+                            }} />
+                          </label>
+                        </div>
+
+                        {/* Product Name field */}
+                        <div className="form-row" style={{ textAlign: 'left' }}>
+                          <label className="form-label">Product Name</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={formFields.name || ''}
+                            onChange={e => setFormFields({ ...formFields, name: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Custom status flags & Selection criteria */}
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <h4 style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Flags & Parameters</h4>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
                             <div className="form-row">
                               <label className="form-label">Consignment</label>
@@ -1758,7 +1887,6 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
 
                     {/* Accessories Requirements List */}
                     {activeProduct.accessories && activeProduct.accessories.length > 0 && (

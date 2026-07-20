@@ -57,6 +57,8 @@ class ProductBase(BaseModel):
     qr: Optional[str] = None
     qr_link: Optional[str] = None
     client_code: Optional[str] = None
+    image_url: Optional[str] = None
+    technical_image_url: Optional[str] = None
 
 class ProductCreate(ProductBase):
     pass
@@ -126,6 +128,8 @@ def serialize_product(product: Product):
         "qr": product.qr,
         "qr_link": product.qr_link,
         "client_code": product.client_code,
+        "image_url": product.image_url,
+        "technical_image_url": product.technical_image_url,
         "files": files_list,
         "supplier": supplier_info
     }
@@ -264,6 +268,46 @@ def upload_product_file(
             "file_name": new_file.file_name,
             "file_type": new_file.file_type
         }
+    }
+
+# Dedicated image upload endpoint — stores URL directly on the product row
+@router.post("/{product_id}/upload-image")
+def upload_product_image(
+    product_id: int,
+    file_category: str = Form(...),  # 'product_image' or 'technical_image'
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if file_category not in ("product_image", "technical_image"):
+        raise HTTPException(status_code=400, detail="file_category must be 'product_image' or 'technical_image'")
+
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    safe_filename = f"{int(time.time())}_{file.filename.replace(' ', '_')}"
+    file_path = os.path.join(upload_dir, safe_filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    db_file_path = f"/uploads/{safe_filename}"
+
+    if file_category == "product_image":
+        product.image_url = db_file_path
+    else:
+        product.technical_image_url = db_file_path
+
+    db.commit()
+    db.refresh(product)
+
+    return {
+        "message": f"{file_category} uploaded successfully",
+        "file_path": db_file_path,
+        "product": serialize_product(product)
     }
 
 # Also support deleting a file

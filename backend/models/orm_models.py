@@ -350,6 +350,8 @@ class Product(Base):
     qr = Column(String, nullable=True)
     qr_link = Column(String, nullable=True)
     client_code = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)        # Main product photo URL
+    technical_image_url = Column(String, nullable=True)  # Technical drawing/spec image URL
     
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
