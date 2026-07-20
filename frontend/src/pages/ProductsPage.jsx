@@ -1062,11 +1062,13 @@ export default function ProductsPage() {
     }
   };
 
-  const handleBulkImportExcel = (e) => {
+  const handleBulkImportExcel = async (e) => {
     if (!e.target.files || !e.target.files[0]) return;
     const file = e.target.files[0];
-    const reader = new FileReader();
+    e.target.value = '';
 
+    // Parse locally first to validate
+    const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
         const data = evt.target.result;
@@ -1080,27 +1082,53 @@ export default function ProductsPage() {
           return;
         }
 
-        const res = await fetch(`${API_BASE}/api/products/reconcile-products-bulk`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ products: rows })
-        });
+        triggerToast(`Importing ${rows.length} product(s)...`);
 
-        if (res.ok) {
-          const result = await res.json();
-          triggerToast(`Excel Import Successful! Added: ${result.added}, Updated: ${result.updated}`);
-          fetchProducts();
-        } else {
-          const errData = await res.json();
-          alert(`Import failed: ${errData.detail || 'Server error'}`);
+        // Send each row in chunks of 50 to avoid large payload / timeout issues
+        const CHUNK = 50;
+        let totalAdded = 0;
+        let totalUpdated = 0;
+        let failed = false;
+
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const chunk = rows.slice(i, i + CHUNK);
+          try {
+            const res = await fetch(`${API_BASE}/api/products/reconcile-products-bulk`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ products: chunk })
+            });
+
+            if (res.ok) {
+              const result = await res.json();
+              totalAdded += result.added || 0;
+              totalUpdated += result.updated || 0;
+            } else {
+              let detail = 'Server error';
+              try { const errData = await res.json(); detail = errData.detail || detail; } catch (_) {}
+              alert(`Import failed on rows ${i+1}–${i+chunk.length}: ${detail}`);
+              failed = true;
+              break;
+            }
+          } catch (fetchErr) {
+            console.error('Chunk fetch error:', fetchErr);
+            alert(`Network error on rows ${i+1}–${i+chunk.length}: ${fetchErr.message}\n\nCheck your connection and try again.`);
+            failed = true;
+            break;
+          }
         }
+
+        if (!failed) {
+          triggerToast(`Import complete! Added: ${totalAdded}, Updated: ${totalUpdated}`);
+          fetchProducts();
+        }
+
       } catch (err) {
-        console.error(err);
-        alert("Failed to parse Excel file: " + err.message);
+        console.error('Excel parse error:', err);
+        alert("Failed to read Excel file: " + err.message);
       }
     };
     reader.readAsBinaryString(file);
-    e.target.value = '';
   };
 
   const stockBadgeClass = (statusStr) => {
