@@ -959,7 +959,8 @@ export default function ProductsPage() {
         "cri", "ip_rating", "system_power", "lighting_type", "cutout", "driver_spec",
         "one_to_one_code", "foh_code_description", "client_description", "fitting_type",
         "consignment", "selection", "first_fix", "red_list", "markup",
-        "recommended_retail_price", "qr", "qr_link", "client_code"
+        "recommended_retail_price", "qr", "qr_link", "client_code",
+        "image_url", "technical_image_url"
       ];
       
       const sampleRow = {
@@ -1001,7 +1002,9 @@ export default function ProductsPage() {
         "recommended_retail_price": 3835.50, 
         "qr": "QR-CODE", 
         "qr_link": "https://example.com/qr", 
-        "client_code": "CLIENT-1002"
+        "client_code": "CLIENT-1002",
+        "image_url": "",
+        "technical_image_url": ""
       };
 
       const rows = products.length > 0 ? products.map(p => ({
@@ -1043,7 +1046,9 @@ export default function ProductsPage() {
         "recommended_retail_price": p.recommended_retail_price,
         "qr": p.qr,
         "qr_link": p.qr_link,
-        "client_code": p.client_code
+        "client_code": p.client_code,
+        "image_url": p.image_url || "",
+        "technical_image_url": p.technical_image_url || ""
       })) : [sampleRow];
 
       const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });

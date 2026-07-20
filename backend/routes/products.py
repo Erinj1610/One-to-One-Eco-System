@@ -357,7 +357,8 @@ def download_csv_template():
         "cri", "ip_rating", "system_power", "lighting_type", "cutout", "driver_spec",
         "one_to_one_code", "foh_code_description", "client_description", "fitting_type",
         "consignment", "selection", "first_fix", "red_list", "markup",
-        "recommended_retail_price", "qr", "qr_link", "client_code"
+        "recommended_retail_price", "qr", "qr_link", "client_code",
+        "image_url", "technical_image_url"
     ]
     writer.writerow(headers)
     
@@ -369,7 +370,7 @@ def download_csv_template():
         "90", "IP20", "14.0", "Architectural", "Ø76mm", "- External or Remote Driver",
         "1:1-ENT-RDS", "Front of House Entero S Description", "Entero RD-S Downlight White", "Recessed Downlight",
         "No", "Primary Selection", "First Fix", "No", "37%",
-        "3835.50", "QR-CODE", "https://example.com/qr", "CLIENT-1002"
+        "3835.50", "QR-CODE", "https://example.com/qr", "CLIENT-1002", "", ""
     ]
     writer.writerow(sample_row)
     
@@ -456,7 +457,9 @@ async def import_csv_file(
             "recommended_retail_price": rrp,
             "qr": row.get("qr"),
             "qr_link": row.get("qr_link"),
-            "client_code": row.get("client_code")
+            "client_code": row.get("client_code"),
+            "image_url": row.get("image_url") or None,
+            "technical_image_url": row.get("technical_image_url") or None
         }
         
         existing = db.query(Product).filter(Product.sku == sku).first()
@@ -541,7 +544,9 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
             "recommended_retail_price": rrp,
             "qr": row.get("qr"),
             "qr_link": row.get("qr_link"),
-            "client_code": row.get("client_code")
+            "client_code": row.get("client_code"),
+            "image_url": row.get("image_url") or None,
+            "technical_image_url": row.get("technical_image_url") or None
         }
         
         existing = db.query(Product).filter(Product.sku == sku).first()
