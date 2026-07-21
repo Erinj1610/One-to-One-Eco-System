@@ -336,7 +336,7 @@ export default function ReportsPage() {
       const orderDateParsed = getOrderMonthAndYear(order, 'order');
       const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
 
-      const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
+      const isEligibleForInvoiced = hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
       // KPI 1 & Annual Invoiced (Requires Date INV AND Invoice Reference)
       if (isEligibleForInvoiced) {
@@ -407,7 +407,7 @@ export default function ReportsPage() {
 
         const orderDateParsed = getOrderMonthAndYear(order, 'order');
         const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
-        const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
+        const isEligibleForInvoiced = hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
         // Sales Invoiced
         if (type === 'invoiced') {
