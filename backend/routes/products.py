@@ -489,11 +489,13 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
     valid_cols = {c.key for c in sa_inspect(Product).mapper.column_attrs}
 
     try:
+        seen_skus = set()  # Track SKUs processed in this batch to avoid duplicates
         for row in payload.products:
             sku = str(row.get("sku", "") or "").strip()
             name = str(row.get("name", "") or "").strip()
-            if not sku or not name:
+            if not sku or not name or sku in seen_skus:
                 continue
+            seen_skus.add(sku)
 
             try:
                 cost = float(row.get("cost_price", 0) or 0)
@@ -562,6 +564,7 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
             else:
                 new_p = Product(**prod_data)
                 db.add(new_p)
+                db.flush()  # Flush so subsequent queries in same transaction see this row
                 added_count += 1
 
         db.commit()
