@@ -4,7 +4,8 @@ import { API_BASE } from '../api_config';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
-  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2
+  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 const MONTHS_LIST = [
@@ -85,6 +86,43 @@ export default function ReportsPage() {
   // Budget Manager Active Editing States
   const [mgmtFy, setMgmtFy] = useState('2026-2027');
   const [newDivisionName, setNewDivisionName] = useState('');
+
+  // Drilldown Modal Sort State
+  const [drilldownSortField, setDrilldownSortField] = useState(null);
+  const [drilldownSortDirection, setDrilldownSortDirection] = useState('asc'); // 'asc' | 'desc'
+
+  const handleDrilldownSort = (field) => {
+    if (drilldownSortField === field) {
+      setDrilldownSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setDrilldownSortField(field);
+      setDrilldownSortDirection('asc');
+    }
+  };
+
+  const renderDrilldownSortIcon = (field) => {
+    if (drilldownSortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.4 }} />;
+    return drilldownSortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: '#3b82f6' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: '#3b82f6' }} />;
+  };
+
+  const sortedDrilldownItems = React.useMemo(() => {
+    const items = drilldownModal.items || [];
+    if (!drilldownSortField) return items;
+
+    return [...items].sort((a, b) => {
+      let valA = a[drilldownSortField] ?? '';
+      let valB = b[drilldownSortField] ?? '';
+
+      if (typeof valA === 'string') valA = valA.toLowerCase();
+      if (typeof valB === 'string') valB = valB.toLowerCase();
+
+      if (valA < valB) return drilldownSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return drilldownSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [drilldownModal.items, drilldownSortField, drilldownSortDirection]);
 
   // Load budgets config from db
   useEffect(() => {
@@ -1441,19 +1479,53 @@ export default function ReportsPage() {
                   <FolderOpen size={36} style={{ margin: '0 auto 12px auto', color: '#94a3b8' }} />
                   No database project orders found contributing to this calculation.
                 </div>
-              ) : (
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+              ) : (                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                   <thead>
                     <tr style={{ textAlign: 'left', borderBottom: '2px solid #cbd5e1', color: '#475569', background: '#f1f5f9' }}>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Project Name</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Quote ID</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Quote Name</th>
-                      <th style={{ padding: '12px', fontWeight: 700 }}>Date</th>
-                      <th style={{ padding: '12px', fontWeight: 700, textAlign: 'right' }}>Value</th>
+                      <th 
+                        onClick={() => handleDrilldownSort('projectName')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          PROJECT NAME {renderDrilldownSortIcon('projectName')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => handleDrilldownSort('orderId')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          QUOTE ID / INV {renderDrilldownSortIcon('orderId')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => handleDrilldownSort('quote_name')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          QUOTE NAME {renderDrilldownSortIcon('quote_name')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => handleDrilldownSort('date')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          DATE {renderDrilldownSortIcon('date')}
+                        </div>
+                      </th>
+                      <th 
+                        onClick={() => handleDrilldownSort('value')}
+                        style={{ padding: '12px', fontWeight: 700, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', width: '100%' }}>
+                          VALUE {renderDrilldownSortIcon('value')}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {drilldownModal.items.map((item, idx) => (
+                    {sortedDrilldownItems.map((item, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
                         <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
                         <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>{item.orderId}</td>
@@ -1468,6 +1540,7 @@ export default function ReportsPage() {
                     ))}
                   </tbody>
                 </table>
+
               )}
             </div>
 
