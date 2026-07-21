@@ -510,89 +510,121 @@ const StockTrendChart = ({ history }) => {
 
 export default function ProductsPage() {
   const { getModuleName } = useStore();
-  // Local state for product list
-  const [products, setProducts] = useState([]);
-  const [selectedSku, setSelectedSku] = useState(null); // String e.g. '28402 9240 FW'
-  const [activeTab, setActiveTab] = useState('specs'); // 'specs' | 'costing' | 'supplier' | 'history'
 
-  // Fetch products from database
-  const fetchProducts = async () => {
+  // Product list state
+  const [products, setProducts] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const PAGE_SIZE = 100;
+
+  // KPI summary (from lightweight endpoint)
+  const [summary, setSummary] = useState({ total: 0, low_stock: 0, out_of_stock: 0 });
+
+  const [selectedSku, setSelectedSku] = useState(null);
+  const [activeTab, setActiveTab] = useState('specs');
+
+  // Read-only / edit mode for detail view
+  const [isEditing, setIsEditing] = useState(false);
+
+  const mapProduct = (p) => {
+    const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - p.cost_price) / p.retail_price) * 100) : 37;
+    return {
+      ...p,
+      unitCost: p.cost_price || 0.0,
+      retailPrice: p.retail_price || 0.0,
+      tradePrice: p.trade_price || 0.0,
+      stock: p.stock_level || 0,
+      reorderLevel: p.reorder_level || 100,
+      status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock',
+      costing: p.costing || {
+        supplierSku: p.sku,
+        supplierUnitCost: p.cost_price || 0.0,
+        supplierDiscount: 0,
+        landedCost: Math.round((p.cost_price || 0.0) * 1.15),
+        lastUpdated: 'Jan 25, 2026',
+        tiers: [
+          { name: 'Retail / RRP', retailPrice: p.retail_price || 0.0, discount: 0, netRetail: p.retail_price || 0.0, margin: calculatedMargin },
+          { name: 'Trade / Partner', retailPrice: p.retail_price || 0.0, discount: 10, netRetail: p.trade_price || 0.0, margin: calculatedMargin - 5 }
+        ],
+        avgMargin: calculatedMargin,
+        profitPerUnit: (p.retail_price || 0.0) - (p.cost_price || 0.0),
+        contactInfo: { company: p.brand || 'Supplier', website: 'www.supplierportal.co.za', email: 'orders@supplierportal.co.za', phone: '+27 (0) 11 000 0000' },
+        terms: 'Payment terms subject to credit application approval.'
+      },
+      supplierDetails: p.supplierDetails || {
+        name: p.brand || 'Supplier', contactPerson: 'Account Team', role: 'Supplier Support Representative',
+        email: 'info@supplier.co.za', phone: '+27 11 000 0000', address: 'Supplier Corporate Business Park, JHB',
+        leadTime: p.lead_time || '6-8 Weeks', paymentTerms: 'COD', shippingMethod: 'Road Freight'
+      },
+      stockHistory: p.stockHistory || [
+        { date: '05 Jun 2026', type: 'Stock In', reference: 'Initial Stock Count', qty: `+${p.stock_level || 0}`, balance: p.stock_level || 0, staff: 'Dani' }
+      ]
+    };
+  };
+
+  // Fetch a single page from backend with server-side filtering
+  const fetchPage = async ({ page = 1, q = '', cat = 'All Categories', sup = 'All Suppliers' } = {}) => {
+    setIsLoadingProducts(true);
     try {
-      const res = await fetch(`${API_BASE}/api/products/`);
+      const offset = (page - 1) * PAGE_SIZE;
+      const params = new URLSearchParams({ limit: PAGE_SIZE, offset });
+      if (q) params.set('q', q);
+      if (cat && cat !== 'All Categories') params.set('category', cat);
+      const res = await fetch(`${API_BASE}/api/products/?${params}`);
       if (res.ok) {
         const data = await res.json();
-        // Map db properties to mockup properties
-        const mapped = data.map(p => {
-          const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - p.cost_price) / p.retail_price) * 100) : 37;
-          return {
-            ...p,
-            unitCost: p.cost_price || 0.0,
-            retailPrice: p.retail_price || 0.0,
-            tradePrice: p.trade_price || 0.0,
-            stock: p.stock_level || 0,
-            reorderLevel: p.reorder_level || 100,
-            status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock',
-            costing: p.costing || {
-              supplierSku: p.sku,
-              supplierUnitCost: p.cost_price || 0.0,
-              supplierDiscount: 0,
-              landedCost: Math.round((p.cost_price || 0.0) * 1.15),
-              lastUpdated: 'Jan 25, 2026',
-              tiers: [
-                { name: 'Retail / RRP', retailPrice: p.retail_price || 0.0, discount: 0, netRetail: p.retail_price || 0.0, margin: calculatedMargin },
-                { name: 'Trade / Partner', retailPrice: p.retail_price || 0.0, discount: 10, netRetail: p.trade_price || 0.0, margin: calculatedMargin - 5 }
-              ],
-              avgMargin: calculatedMargin,
-              profitPerUnit: (p.retail_price || 0.0) - (p.cost_price || 0.0),
-              contactInfo: {
-                company: p.brand || 'Supplier',
-                website: 'www.supplierportal.co.za',
-                email: 'orders@supplierportal.co.za',
-                phone: '+27 (0) 11 000 0000'
-              },
-              terms: 'Payment terms subject to credit application approval.'
-            },
-            supplierDetails: p.supplierDetails || {
-              name: p.brand || 'Supplier',
-              contactPerson: 'Account Team',
-              role: 'Supplier Support Representative',
-              email: 'info@supplier.co.za',
-              phone: '+27 11 000 0000',
-              address: 'Supplier Corporate Business Park, JHB',
-              leadTime: p.lead_time || '6-8 Weeks',
-              paymentTerms: 'COD',
-              shippingMethod: 'Road Freight'
-            },
-            stockHistory: p.stockHistory || [
-              { date: '05 Jun 2026', type: 'Stock In', reference: 'Initial Stock Count', qty: `+${p.stock_level || 0}`, balance: p.stock_level || 0, staff: 'Dani' }
-            ]
-          };
-        });
-        setProducts(mapped);
-      } else {
-        console.error("Failed to fetch products from DB");
+        setProducts((data.items || []).map(mapProduct));
+        setTotalCount(data.total || 0);
       }
     } catch (err) {
-      console.error("Error fetching products:", err);
+      console.error('Error fetching products:', err);
+    } finally {
+      setIsLoadingProducts(false);
     }
   };
 
+  // Fetch lightweight KPI summary counts
+  const fetchSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/summary`);
+      if (res.ok) setSummary(await res.json());
+    } catch (_) {}
+  };
+
+  // Backwards-compat alias used by import handler
+  const fetchProducts = () => {
+    fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+    fetchSummary();
+  };
+
   useEffect(() => {
-    fetchProducts();
+    fetchSummary();
+    fetchPage({ page: 1 });
   }, []);
 
-  // Workspace Local Editing States to prevent Stock History bug
+  // Workspace Local Editing States
   const [editingStatus, setEditingStatus] = useState('In Stock');
   const [editingStock, setEditingStock] = useState(0);
   const [formFields, setFormFields] = useState({});
 
-  // Filters State
+  // Filters State — changes trigger a new server fetch
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Re-fetch when search or filters change (debounced via useEffect)
+  const searchRef = React.useRef(null);
+  useEffect(() => {
+    clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => {
+      setCurrentPage(1);
+      fetchPage({ page: 1, q: searchQuery, cat: categoryFilter });
+    }, 350);
+  }, [searchQuery, categoryFilter]);
 
   // Toast System
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -624,6 +656,7 @@ export default function ProductsPage() {
 
   // Synchronize editing variables when SKU changes
   useEffect(() => {
+    setIsEditing(false); // always open new products in read-only mode
     if (activeProduct) {
       setEditingStatus(activeProduct.status);
       setEditingStock(activeProduct.stock);
@@ -708,56 +741,20 @@ export default function ProductsPage() {
     }
   };
 
-  // Filter list of products
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      // Date Check
-      if (!isProductInDateRange(p)) return false;
+  // Products already filtered server-side; just expose the loaded page
+  const filteredProducts = products;
 
-      // Category filter
-      if (categoryFilter !== 'All Categories' && p.category !== categoryFilter) return false;
-
-      // Supplier filter
-      if (supplierFilter !== 'All Suppliers' && p.supplier !== supplierFilter) return false;
-
-      // Search Query SKU / Name / Supplier
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matches = 
-          p.sku.toLowerCase().includes(q) ||
-          p.name.toLowerCase().includes(q) ||
-          p.supplier.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q);
-        if (!matches) return false;
-      }
-
-      return true;
-    });
-  }, [products, searchQuery, categoryFilter, supplierFilter, startDate, endDate]);
-
-  // Aggregate stats based on products list
+  // Aggregate stats — use lightweight summary for global counts
   const kpis = useMemo(() => {
-    const totalSku = products.length;
-    const lowStock = products.filter(p => p.stock <= p.reorderLevel && p.stock > 0).length;
-    const outStock = products.filter(p => p.stock === 0).length;
-    
-    // Average Margin of products
+    const totalSku = summary.total || totalCount;
+    const lowStock = summary.low_stock || 0;
+    const outStock = summary.out_of_stock || 0;
     const sumMargin = products.reduce((acc, p) => acc + (p.margin || 37), 0);
-    const avgMargin = totalSku > 0 ? Math.round(sumMargin / totalSku) : 37;
-
-    // Aggregate Valuation & Profit
+    const avgMargin = products.length > 0 ? Math.round(sumMargin / products.length) : 37;
     const totalVal = products.reduce((acc, p) => acc + (p.unitCost * p.stock), 0);
     const totalMargin = products.reduce((acc, p) => acc + ((p.retailPrice - p.unitCost) * p.stock), 0);
-
-    return {
-      totalSku,
-      lowStock,
-      outStock,
-      avgMargin,
-      totalVal,
-      totalMargin
-    };
-  }, [products]);
+    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin };
+  }, [summary, totalCount, products]);
 
   // Commit changes from Workspace Engine (Save button trigger)
   const handleCommitChanges = async () => {
@@ -815,7 +812,8 @@ export default function ProductsPage() {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        triggerToast(`Changes committed successfully for ${activeProduct.sku}!`);
+        triggerToast(`Changes saved for ${activeProduct.sku}!`);
+        setIsEditing(false);
         fetchProducts();
       } else {
         alert("Failed to commit changes to backend database");
@@ -1331,10 +1329,16 @@ export default function ProductsPage() {
                   <option>ELDC</option>
                   <option>Molecule Lighting</option>
                 </select>
-              </div>
 
-              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                Showing <strong>{filteredProducts.length}</strong> of <strong>{products.length}</strong> product records
+                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isLoadingProducts ? (
+                    <span>Loading products...</span>
+                  ) : (
+                    <span>
+                      Showing <strong>{totalCount > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}</strong>–<strong>{Math.min(currentPage * PAGE_SIZE, totalCount)}</strong> of <strong>{totalCount}</strong> products
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1373,10 +1377,8 @@ export default function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td style={{ verticalAlign: 'middle', fontWeight: 600, color: 'var(--text-info)', textDecoration: 'underline' }}>
-                        {p.sku}
-                      </td>
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500, color: 'var(--text-primary)' }}>
+                      <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>
                         {p.name}
                       </td>
                       <td style={{ verticalAlign: 'middle' }}>{p.family}</td>
@@ -1399,13 +1401,46 @@ export default function ProductsPage() {
                   {filteredProducts.length === 0 && (
                     <tr>
                       <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                        No products found matching the search and filter criteria.
+                        {isLoadingProducts ? 'Loading page products...' : 'No products found matching the search and filter criteria.'}
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+
+            {/* PAGINATION CONTROLS */}
+            {totalCount > PAGE_SIZE && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', padding: '8px 4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Page <strong>{currentPage}</strong> of <strong>{Math.ceil(totalCount / PAGE_SIZE)}</strong>
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={currentPage === 1 || isLoadingProducts}
+                    onClick={() => {
+                      const nextP = currentPage - 1;
+                      setCurrentPage(nextP);
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter });
+                    }}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE) || isLoadingProducts}
+                    onClick={() => {
+                      const nextP = currentPage + 1;
+                      setCurrentPage(nextP);
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter });
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -1439,39 +1474,60 @@ export default function ProductsPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: '8px' }}>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status:</span>
-                    <select
-                      className="form-control"
-                      style={{ width: '120px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                      value={editingStatus}
-                      onChange={e => setEditingStatus(e.target.value)}
-                    >
-                      <option value="In Stock">In Stock</option>
-                      <option value="Low Stock">Low Stock</option>
-                      <option value="Out of Stock">Out of Stock</option>
-                      <option value="In transit">In transit</option>
-                    </select>
-                  </div>
-                  
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stock Qty:</span>
-                    <input 
-                      type="number"
-                      className="form-control"
-                      style={{ width: '85px', height: '30px', padding: '2px 6px', fontSize: '12px', textAlign: 'center' }}
-                      value={editingStock}
-                      onChange={e => setEditingStock(Math.max(0, parseInt(e.target.value) || 0))}
-                    />
-                  </div>
+                  {isEditing ? (
+                    <>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status:</span>
+                        <select
+                          className="form-control"
+                          style={{ width: '120px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
+                          value={editingStatus}
+                          onChange={e => setEditingStatus(e.target.value)}
+                        >
+                          <option value="In Stock">In Stock</option>
+                          <option value="Low Stock">Low Stock</option>
+                          <option value="Out of Stock">Out of Stock</option>
+                          <option value="In transit">In transit</option>
+                        </select>
+                      </div>
 
-                  <button 
-                    className="btn btn-primary btn-sm" 
-                    style={{ height: '30px', fontSize: '11.5px', padding: '0 12px' }}
-                    onClick={handleCommitChanges}
-                  >
-                    Save Changes
-                  </button>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stock Qty:</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          style={{ width: '85px', height: '30px', padding: '2px 6px', fontSize: '12px', textAlign: 'center' }}
+                          value={editingStock}
+                          onChange={e => setEditingStock(Math.max(0, parseInt(e.target.value) || 0))}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ height: '30px', fontSize: '11.5px', padding: '0 12px' }}
+                          onClick={() => { setIsEditing(false); setEditingStatus(activeProduct.status); setEditingStock(activeProduct.stock); }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ height: '30px', fontSize: '11.5px', padding: '0 14px' }}
+                          onClick={handleCommitChanges}
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      style={{ height: '30px', fontSize: '11.5px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => setIsEditing(true)}
+                    >
+                      ✏️ Edit Product
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1505,6 +1561,7 @@ export default function ProductsPage() {
               <div className="animation-fade-in">
                 
                 {activeTab === 'specs' && (
+                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
                       {/* Product Images Panel — Photo + Technical Image */}
@@ -1959,7 +2016,8 @@ export default function ProductsPage() {
                         </table>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  </fieldset>
                 )}
 
                 {/* 2. COSTING VIEW */}

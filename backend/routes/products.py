@@ -134,21 +134,38 @@ def serialize_product(product: Product):
         "supplier": supplier_info
     }
 
+@router.get("/summary")
+def products_summary(db: Session = Depends(get_db)):
+    """Lightweight endpoint – returns just aggregate counts for the KPI cards."""
+    from sqlalchemy import func
+    total = db.query(func.count(Product.id)).scalar() or 0
+    low_stock = db.query(func.count(Product.id)).filter(
+        Product.stock_level > 0,
+        Product.stock_level <= Product.reorder_level
+    ).scalar() or 0
+    out_of_stock = db.query(func.count(Product.id)).filter(
+        Product.stock_level == 0
+    ).scalar() or 0
+    return {"total": total, "low_stock": low_stock, "out_of_stock": out_of_stock}
+
 @router.get("/")
 def list_products(
     q: Optional[str] = None,
     category: Optional[str] = None,
     brand: Optional[str] = None,
     status: Optional[str] = None,
+    limit: Optional[int] = 100,
+    offset: Optional[int] = 0,
     db: Session = Depends(get_db)
 ):
     query = db.query(Product)
     
     if q:
         query = query.filter(
-            (Product.name.like(f"%{q}%")) | 
-            (Product.sku.like(f"%{q}%")) | 
-            (Product.brand.like(f"%{q}%"))
+            (Product.name.ilike(f"%{q}%")) | 
+            (Product.sku.ilike(f"%{q}%")) | 
+            (Product.brand.ilike(f"%{q}%")) |
+            (Product.category.ilike(f"%{q}%"))
         )
         
     if category:
@@ -156,22 +173,24 @@ def list_products(
         
     if brand:
         query = query.filter(Product.brand == brand)
-        
-    # Standard query resolution
-    products = query.all()
-    
-    serialized = [serialize_product(p) for p in products]
-    
-    # Optional filtering by status in python (status is derived or saved)
+
     if status:
         if status.lower() == "in stock":
-            serialized = [p for p in serialized if p["stock_level"] > 0]
+            query = query.filter(Product.stock_level > 0)
         elif status.lower() == "out of stock":
-            serialized = [p for p in serialized if p["stock_level"] == 0]
+            query = query.filter(Product.stock_level == 0)
         elif status.lower() == "low stock":
-            serialized = [p for p in serialized if 0 < p["stock_level"] <= p["reorder_level"]]
+            query = query.filter(
+                Product.stock_level > 0,
+                Product.stock_level <= Product.reorder_level
+            )
+
+    total_count = query.count()
+    products = query.order_by(Product.name).offset(offset).limit(limit).all()
+    serialized = [serialize_product(p) for p in products]
             
-    return serialized
+    return {"items": serialized, "total": total_count, "limit": limit, "offset": offset}
+
 
 @router.get("/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
