@@ -233,8 +233,7 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 deposit_invoice_sent=order.get("depositInvoiceSent"),
                 deposit_payment_date=order.get("depositPaymentDate"),
                 balance_value=float(order.get("balanceValue")) if order.get("balanceValue") is not None else None,
-                balance_payment_date=order.get("balancePaymentDate"),
-                pm_name=order.get("pmName") or order.get("pm") or order.get("salesRep")
+                balance_payment_date=order.get("balancePaymentDate")
             )
             db.add(db_order)
             
