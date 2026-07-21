@@ -171,6 +171,12 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
         elif client_company and client_company != "—" and not project.client_name:
             project.client_name = client_company
 
+        # 1a. Extract PM / Sales Rep from order batch and attach directly to project.pm_name
+        first_order = next(iter(orders_dict.values()), {}) if orders_dict else {}
+        extracted_pm = first_order.get("pmName") or first_order.get("salesRep") or first_order.get("pm")
+        if extracted_pm and extracted_pm != "—" and extracted_pm != "Select Project Manager...":
+            project.pm_name = extracted_pm
+
         # 1b. Auto-create or link Client entity in clients table
         if client_company and client_company != "—":
             from models.orm_models import Client
