@@ -487,7 +487,7 @@ export default function ReportsPage() {
         if (type === 'invoiced') {
           const itemsList = order.itemsList || [];
           const clientInvoices = order.clientInvoices || [];
-          let pushedAny = false;
+          const invoiceGroupsMap = {};
 
           itemsList.forEach(item => {
             const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
@@ -508,8 +508,17 @@ export default function ReportsPage() {
                       if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                     }
                     if (match) {
-                      pushedAny = true;
-                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${hRef})`, quote_name: order.quote_name || 'General Spec', date: hDate, value: hVal });
+                      const groupKey = `${order.id || 'N/A'}_${hRef}_${hDate}`;
+                      if (!invoiceGroupsMap[groupKey]) {
+                        invoiceGroupsMap[groupKey] = {
+                          projectName: proj.name,
+                          orderId: `${order.id || 'N/A'} (${hRef})`,
+                          quote_name: order.quote_name || 'General Spec',
+                          date: hDate,
+                          value: 0
+                        };
+                      }
+                      invoiceGroupsMap[groupKey].value += hVal;
                     }
                   }
                 }
@@ -528,15 +537,26 @@ export default function ReportsPage() {
                     if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                   }
                   if (match) {
-                    pushedAny = true;
-                    list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${item.invoiceRef})`, quote_name: order.quote_name || 'General Spec', date: item.invoiceDate, value: itemVal });
+                    const groupKey = `${order.id || 'N/A'}_${item.invoiceRef}_${item.invoiceDate}`;
+                    if (!invoiceGroupsMap[groupKey]) {
+                      invoiceGroupsMap[groupKey] = {
+                        projectName: proj.name,
+                        orderId: `${order.id || 'N/A'} (${item.invoiceRef})`,
+                        quote_name: order.quote_name || 'General Spec',
+                        date: item.invoiceDate,
+                        value: 0
+                      };
+                    }
+                    invoiceGroupsMap[groupKey].value += itemVal;
                   }
                 }
               }
             }
           });
 
-          if (!pushedAny) {
+          if (Object.keys(invoiceGroupsMap).length > 0) {
+            Object.values(invoiceGroupsMap).forEach(g => list.push(g));
+          } else {
             if (clientInvoices.length > 0) {
               clientInvoices.forEach(cinv => {
                 const cRef = cinv.id || cinv.ref || order.invoiceRef;
