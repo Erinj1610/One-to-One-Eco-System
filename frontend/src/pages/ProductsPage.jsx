@@ -1586,14 +1586,16 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                            📷 {activeProduct.image_url ? 'Replace Product Photo' : 'Upload Product Photo'}
-                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleUploadImage(activeProduct.id, e.target.files[0], 'product_image');
-                              }
-                            }} />
-                          </label>
+                          {isEditing && (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
+                              📷 {activeProduct.image_url ? 'Replace Product Photo' : 'Upload Product Photo'}
+                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleUploadImage(activeProduct.id, e.target.files[0], 'product_image');
+                                }
+                              }} />
+                            </label>
+                          )}
                         </div>
 
                         {/* Technical Image Card */}
@@ -1615,14 +1617,16 @@ export default function ProductsPage() {
                               </div>
                             )}
                           </div>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                            📐 {activeProduct.technical_image_url ? 'Replace Technical Image' : 'Upload Technical Image'}
-                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleUploadImage(activeProduct.id, e.target.files[0], 'technical_image');
-                              }
-                            }} />
-                          </label>
+                          {isEditing && (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
+                              📐 {activeProduct.technical_image_url ? 'Replace Technical Image' : 'Upload Technical Image'}
+                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                                if (e.target.files && e.target.files[0]) {
+                                  handleUploadImage(activeProduct.id, e.target.files[0], 'technical_image');
+                                }
+                              }} />
+                            </label>
+                          )}
                         </div>
 
                         {/* Product Name field */}
@@ -1978,16 +1982,18 @@ export default function ProductsPage() {
                                 <Download size={14} color="var(--text-secondary)" />
                               </div>
                             )}
-                            <div style={{ marginTop: '4px' }}>
-                              <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
-                                <Plus size={12} /> Upload Technical Document
-                                <input type="file" style={{ display: 'none' }} onChange={(e) => {
-                                  if (e.target.files && e.target.files[0]) {
-                                    handleUploadFile(activeProduct.id, e.target.files[0]);
-                                  }
-                                }} />
-                              </label>
-                            </div>
+                            {isEditing && (
+                              <div style={{ marginTop: '4px' }}>
+                                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
+                                  <Plus size={12} /> Upload Technical Document
+                                  <input type="file" style={{ display: 'none' }} onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      handleUploadFile(activeProduct.id, e.target.files[0]);
+                                    }
+                                  }} />
+                                </label>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2022,6 +2028,7 @@ export default function ProductsPage() {
 
                 {/* 2. COSTING VIEW */}
                 {activeTab === 'costing' && (
+                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
                     {/* Supplier Costing Breakdown */}
@@ -2162,6 +2169,7 @@ export default function ProductsPage() {
                       </div>
                     </div>
                   </div>
+                  </fieldset>
                 )}
 
                 {/* 3. SUPPLIER DETAILS VIEW */}
