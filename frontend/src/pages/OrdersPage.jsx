@@ -123,6 +123,8 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
   const [isOpen, setIsOpen] = useState(false);
   const [searchVal, setSearchVal] = useState(value || '');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [apiProducts, setApiProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
 
   // Sync internal search value with prop
@@ -130,14 +132,50 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
     setSearchVal(value || '');
   }, [value]);
 
-  const filtered = useMemo(() => {
+  // Fetch options dynamically from backend API /api/products/
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchOptions = async () => {
+      setLoading(true);
+      try {
+        const query = searchVal.trim();
+        const url = `${API_BASE}/api/products/?limit=50${query ? `&q=${encodeURIComponent(query)}` : ''}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          const items = Array.isArray(data) ? data : (data.items || []);
+          const mapped = items.map(p => ({
+            code: p.sku,
+            description: p.name || '',
+            brand: p.brand || '',
+            dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
+            unitCost: p.cost_price || 0,
+            unitRetail: p.retail_price || p.trade_price || 0,
+            stockQty: p.stock_level || 0,
+            eta: p.lead_time || '4 weeks'
+          }));
+          setApiProducts(mapped);
+        }
+      } catch (err) {
+        console.error('Failed to fetch product code options', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timer = setTimeout(fetchOptions, 250);
+    return () => clearTimeout(timer);
+  }, [searchVal, isOpen]);
+
+  const filteredList = useMemo(() => {
+    const list = apiProducts.length > 0 ? apiProducts : PRODUCT_CATALOG;
     const query = searchVal.toLowerCase();
-    if (!query) return PRODUCT_CATALOG;
-    return PRODUCT_CATALOG.filter(prod =>
-      prod.code.toLowerCase().includes(query) ||
-      prod.description.toLowerCase().includes(query)
+    if (!query) return list;
+    return list.filter(prod =>
+      (prod.code || '').toLowerCase().includes(query) ||
+      (prod.description || '').toLowerCase().includes(query)
     );
-  }, [searchVal]);
+  }, [apiProducts, searchVal]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
@@ -147,7 +185,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
         e.preventDefault();
         e.stopPropagation();
       } else {
-        setHighlightedIndex(prev => Math.min(filtered.length - 1, prev + 1));
+        setHighlightedIndex(prev => Math.min(filteredList.length - 1, prev + 1));
         e.preventDefault();
         e.stopPropagation();
       }
@@ -158,10 +196,10 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
         e.stopPropagation();
       }
     } else if (e.key === 'Enter') {
-      if (isOpen && highlightedIndex >= 0 && filtered[highlightedIndex]) {
+      if (isOpen && highlightedIndex >= 0 && filteredList[highlightedIndex]) {
         e.preventDefault();
         e.stopPropagation();
-        const selected = filtered[highlightedIndex];
+        const selected = filteredList[highlightedIndex];
         onSelect(selected);
         setSearchVal(selected.code);
         setIsOpen(false);
@@ -171,7 +209,6 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
       e.preventDefault();
       e.stopPropagation();
     } else {
-      // Pass other keys to the grid keydown handler
       if (onKeyDown) {
         onKeyDown(e);
       }
@@ -198,7 +235,6 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
           setHighlightedIndex(0);
         }}
         onBlur={() => {
-          // Slight delay to register mouse downs on options before closing
           setTimeout(() => setIsOpen(false), 200);
         }}
         onKeyDown={handleKeyDown}
@@ -210,7 +246,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
         type="button"
         tabIndex={-1}
         onMouseDown={(e) => {
-          e.preventDefault(); // Prevents input focus loss and blur
+          e.preventDefault();
           setIsOpen(prev => !prev);
           setHighlightedIndex(0);
         }}
@@ -232,26 +268,36 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
       >
         ▼
       </button>
-      {isOpen && filtered.length > 0 && (
+      {isOpen && (
         <div style={{
           position: 'absolute',
           top: '100%',
           left: 0,
           right: 0,
-          backgroundColor: 'var(--card-bg, #1a1e29)',
-          border: '1px solid var(--border)',
-          borderRadius: '4px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          maxHeight: '250px',
+          backgroundColor: 'var(--bg-primary, #ffffff)',
+          border: '1px solid var(--border-strong, #ccc)',
+          borderRadius: '6px',
+          boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+          maxHeight: '260px',
           overflowY: 'auto',
           zIndex: 1000,
           textAlign: 'left'
         }}>
-          {filtered.map((prod, idx) => {
+          {loading && (
+            <div style={{ padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
+              Loading matching products...
+            </div>
+          )}
+          {!loading && filteredList.length === 0 && (
+            <div style={{ padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
+              No matching products found
+            </div>
+          )}
+          {!loading && filteredList.map((prod, idx) => {
             const isHighlighted = idx === highlightedIndex;
             return (
               <div
-                key={prod.code}
+                key={prod.code + idx}
                 onMouseDown={() => {
                   onSelect(prod);
                   setSearchVal(prod.code);
@@ -261,10 +307,10 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
                 style={{
                   padding: '8px 12px',
                   cursor: 'pointer',
-                  fontSize: '13px',
-                  backgroundColor: isHighlighted ? 'var(--primary-light, rgba(23, 100, 230, 0.2))' : 'transparent',
+                  fontSize: '12.5px',
+                  backgroundColor: isHighlighted ? 'var(--bg-info, rgba(23, 100, 230, 0.15))' : 'transparent',
                   borderBottom: '1px solid var(--border)',
-                  color: isHighlighted ? 'var(--primary, #1764e6)' : 'var(--text-main)',
+                  color: isHighlighted ? 'var(--text-info, #1764e6)' : 'var(--text-primary)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   gap: '10px'
@@ -282,6 +328,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
     </div>
   );
 }
+
 
 export default function OrdersPage() {
   const { 

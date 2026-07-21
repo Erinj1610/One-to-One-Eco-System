@@ -178,36 +178,62 @@ export default function ReportsPage() {
   const activeDivisionsList = activeFyConfig.divisions || [];
 
   // PM Name to Division auto-mapper helper
-  const mapPmToDivision = (pmName, projName = '') => {
-    if (!pmName) return 'INTERNAL - Office';
-    const name = pmName.toLowerCase();
-    const proj = projName.toLowerCase();
+  const mapPmToDivision = (pmName = '', projName = '', oneOneRep = '') => {
+    const name = (pmName || oneOneRep || '').toLowerCase();
+    const proj = (projName || '').toLowerCase();
     
     if (name.includes('ryan')) return 'MODUS PROFESSIONAL ( Ryan )';
     if (name.includes('thando')) return 'MODUS SIGNATURE ( Thando )';
-    if (name.includes('peer') || name.includes('jon')) return 'MADE ( Jon-Peer)';
+    if (name.includes('peer') || name.includes('jon') || name.includes('made')) return 'MADE ( Jon-Peer)';
     if (name.includes('luxe')) return 'LUXELINE';
-    if (name.includes('dani')) {
+    if (name.includes('dani') || name.includes('daniel')) {
       if (proj.includes('own') || proj.includes('personal')) {
         return 'PROJECTS (Dani own)';
       }
       return 'MODUS PROJECTS ( Dani )';
     }
+    if (name.includes('mood') || proj.includes('store')) return 'MOOD STORES';
+
+    // If PM name contains Martin / Merlyn or default rep names, check project name keywords before internal office
+    if (proj.includes('professional') || proj.includes('pro')) return 'MODUS PROFESSIONAL ( Ryan )';
+    if (proj.includes('signature')) return 'MODUS SIGNATURE ( Thando )';
+    if (proj.includes('projects') || proj.includes('project')) return 'MODUS PROJECTS ( Dani )';
+    if (proj.includes('made')) return 'MADE ( Jon-Peer)';
+    if (proj.includes('luxe')) return 'LUXELINE';
+
     return 'INTERNAL - Office';
   };
 
   const getOrderDivision = (order, proj) => {
-    return order.division || proj.division || mapPmToDivision(order.pmName || proj.pm, proj.name);
+    if (order.division && order.division !== 'INTERNAL - Office') return order.division;
+    if (proj.division && proj.division !== 'INTERNAL - Office') return proj.division;
+    return mapPmToDivision(order.pmName || order.pm_name || proj.pm || proj.pmName, proj.name || proj.projectName, order.oneOneRep || order.one_to_one_rep);
   };
 
   const getOrderMonthAndYear = (order) => {
-    if (!order.orderDate) return { monthName: 'July', year: 2026, monthIdx: 6 };
-    const dateParts = order.orderDate.split('/');
-    if (dateParts.length === 3) {
-      const monthIndex = parseInt(dateParts[1], 10) - 1;
-      const year = parseInt(dateParts[2], 10);
-      return { monthName: MONTHS_LIST[monthIndex] || 'July', year: year || 2026, monthIdx: monthIndex };
+    const rawDate = order.orderDate || order.order_date || order.date || order.created_at;
+    if (!rawDate) return { monthName: 'July', year: 2026, monthIdx: 6 };
+
+    // Format 1: DD/MM/YYYY or D/M/YYYY
+    if (typeof rawDate === 'string' && rawDate.includes('/')) {
+      const dateParts = rawDate.split('/');
+      if (dateParts.length === 3) {
+        const monthIndex = parseInt(dateParts[1], 10) - 1;
+        const year = parseInt(dateParts[2], 10);
+        if (!isNaN(monthIndex) && !isNaN(year)) {
+          return { monthName: MONTHS_LIST[monthIndex] || 'July', year: year || 2026, monthIdx: monthIndex };
+        }
+      }
     }
+
+    // Format 2: YYYY-MM-DD or ISO string
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      const monthIdx = d.getMonth();
+      const year = d.getFullYear();
+      return { monthName: MONTHS_LIST[monthIdx] || 'July', year, monthIdx };
+    }
+
     return { monthName: 'July', year: 2026, monthIdx: 6 };
   };
 
