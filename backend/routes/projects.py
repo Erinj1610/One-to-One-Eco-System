@@ -168,8 +168,24 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
             )
             db.add(project)
             db.flush() # Populate project.id
-            
-        for order_id, order in orders_dict.items():
+        elif client_company and client_company != "—" and not project.client_name:
+            project.client_name = client_company
+
+        # 1b. Auto-create or link Client entity in clients table
+        if client_company and client_company != "—":
+            from models.orm_models import Client
+            existing_client = db.query(Client).filter(Client.company == client_company).first()
+            if not existing_client:
+                existing_client = db.query(Client).filter(Client.name == client_company).first()
+            if not existing_client:
+                new_client = Client(
+                    name=client_company,
+                    company=client_company,
+                    status="Active",
+                    lifetime_revenue=0.0
+                )
+                db.add(new_client)
+                db.flush()
             # 2. Reset/Wipe existing Order items and document relationships in PostgreSQL
             db.query(OrderItem).filter(OrderItem.order_id == order_id).delete(synchronize_session=False)
             db.query(Order).filter(Order.po_number == order_id).delete(synchronize_session=False)
