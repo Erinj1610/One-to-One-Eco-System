@@ -429,6 +429,7 @@ export default function ReportsPage() {
 
       const isEligibleForInvoiced = processedInvoicedTotal > 0;
 
+      const orderDateParsed = getOrderMonthAndYear(order, 'order');
       const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = orderDateParsed;
       const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
