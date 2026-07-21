@@ -188,6 +188,20 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 db.flush()
 
         for order_id, order in orders_dict.items():
+            pm_candidate = order.get("pmName") or order.get("pm") or order.get("salesRep")
+            if pm_candidate and pm_candidate != "—" and pm_candidate != "Select Project Manager...":
+                try:
+                    from sqlalchemy import text
+                    res = db.execute(text("SELECT id FROM employees WHERE name = :name"), {"name": pm_candidate}).first()
+                    if not res:
+                        db.execute(text("""
+                            INSERT INTO employees (name, role, department)
+                            VALUES (:name, 'Project Manager', 'Design')
+                        """), {"name": pm_candidate})
+                        db.flush()
+                except Exception:
+                    pass
+
             # 2. Reset/Wipe existing Order items and document relationships in PostgreSQL
             db.query(OrderItem).filter(OrderItem.order_id == order_id).delete(synchronize_session=False)
             db.query(Order).filter(Order.po_number == order_id).delete(synchronize_session=False)
