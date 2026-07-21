@@ -1200,10 +1200,11 @@ export default function OrdersPage() {
     setInteriorDesigner(order.interiorDesigner || 'TBD Designer');
     setInteriorDesignerPhone(order.interiorDesignerPhone || '—');
 
-    setOneOneRep(order.oneOneRep || 'Martin Döller');
-    setPmName(order.pmName || proj.pm || 'Merlyn Mittins');
+    setOneOneRep(order.oneOneRep || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || 'Martin Döller');
+    const resolvedPm = order.pmName || order.pm_name || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || '';
+    setPmName(resolvedPm);
     setPmPhone(order.pmPhone || '083 570 7795');
-    setPmEmail(order.pmEmail || (proj.pm ? `${proj.pm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world'));
+    setPmEmail(order.pmEmail || (resolvedPm ? `${resolvedPm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world'));
     
     const formattedToday = new Date().toLocaleDateString('en-GB'); // "dd/mm/yyyy"
     setOrderDate(order.orderDate || formattedToday);
@@ -1213,7 +1214,18 @@ export default function OrdersPage() {
     setFileSource(order.fileSource || '');
     setProjectClass(order.projectClass || '');
     setQuotationSentDate(order.quotationSentDate || '');
-    setDivision(order.division || proj.division || '');
+
+    // Auto-resolve Division based on PM Name or Project if unassigned
+    let resolvedDiv = order.division || proj.division || '';
+    if (!resolvedDiv || resolvedDiv === 'INTERNAL - Office') {
+      const name = resolvedPm.toLowerCase();
+      if (name.includes('ryan')) resolvedDiv = 'MODUS PROFESSIONAL ( Ryan )';
+      else if (name.includes('thando')) resolvedDiv = 'MODUS SIGNATURE ( Thando )';
+      else if (name.includes('peer') || name.includes('jon') || name.includes('made')) resolvedDiv = 'MADE ( Jon-Peer)';
+      else if (name.includes('luxe')) resolvedDiv = 'LUXELINE';
+      else if (name.includes('dani') || name.includes('daniel')) resolvedDiv = 'MODUS PROJECTS ( Dani )';
+    }
+    setDivision(resolvedDiv);
     setQuoteName(order.quote_name || 'General Spec');
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
@@ -2438,12 +2450,19 @@ export default function OrdersPage() {
                             onChange={e => {
                               const val = e.target.value;
                               setPmName(val);
-                              setOneOneRep(val); // Keep synchronized
+                              setOneOneRep(val);
                               const found = (projectManagers || []).find(pm => pm.name === val);
                               if (found) {
                                 setPmPhone(found.phone || '');
                                 setPmEmail(found.email || '');
                               }
+                              // Auto-select matching Division
+                              const n = val.toLowerCase();
+                              if (n.includes('ryan')) setDivision('MODUS PROFESSIONAL ( Ryan )');
+                              else if (n.includes('thando')) setDivision('MODUS SIGNATURE ( Thando )');
+                              else if (n.includes('peer') || n.includes('jon') || n.includes('made')) setDivision('MADE ( Jon-Peer)');
+                              else if (n.includes('luxe')) setDivision('LUXELINE');
+                              else if (n.includes('dani') || n.includes('daniel')) setDivision('MODUS PROJECTS ( Dani )');
                             }}
                           >
                             <option value="">Select Project Manager...</option>

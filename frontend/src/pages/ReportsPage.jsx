@@ -178,8 +178,8 @@ export default function ReportsPage() {
   const activeDivisionsList = activeFyConfig.divisions || [];
 
   // PM Name to Division auto-mapper helper
-  const mapPmToDivision = (pmName = '', projName = '', oneOneRep = '') => {
-    const name = (pmName || oneOneRep || '').toLowerCase();
+  const mapPmToDivision = (pmName = '', projName = '', oneOneRep = '', salesRep = '') => {
+    const name = `${pmName} ${oneOneRep} ${salesRep}`.toLowerCase();
     const proj = (projName || '').toLowerCase();
     
     if (name.includes('ryan')) return 'MODUS PROFESSIONAL ( Ryan )';
@@ -194,20 +194,26 @@ export default function ReportsPage() {
     }
     if (name.includes('mood') || proj.includes('store')) return 'MOOD STORES';
 
-    // If PM name contains Martin / Merlyn or default rep names, check project name keywords before internal office
+    // Match keywords in project name or offering type
     if (proj.includes('professional') || proj.includes('pro')) return 'MODUS PROFESSIONAL ( Ryan )';
     if (proj.includes('signature')) return 'MODUS SIGNATURE ( Thando )';
     if (proj.includes('projects') || proj.includes('project')) return 'MODUS PROJECTS ( Dani )';
     if (proj.includes('made')) return 'MADE ( Jon-Peer)';
     if (proj.includes('luxe')) return 'LUXELINE';
 
-    return 'INTERNAL - Office';
+    // Default fallback division when PM is undefined or unassigned
+    return 'MODUS PROFESSIONAL ( Ryan )';
   };
 
   const getOrderDivision = (order, proj) => {
-    if (order.division && order.division !== 'INTERNAL - Office') return order.division;
+    if (order.division && order.division !== 'INTERNAL - Office' && order.division !== 'Auto-Detect (PM Name)') return order.division;
     if (proj.division && proj.division !== 'INTERNAL - Office') return proj.division;
-    return mapPmToDivision(order.pmName || order.pm_name || proj.pm || proj.pmName, proj.name || proj.projectName, order.oneOneRep || order.one_to_one_rep);
+    
+    const pm = order.pmName || order.pm_name || order.pm || proj.pm || proj.pmName || '';
+    const rep = order.oneOneRep || order.one_to_one_rep || order.salesRep || order.sales_rep || order.sales_rep_name || '';
+    const pName = proj.name || proj.projectName || order.projectFullName || order.projectName || '';
+    
+    return mapPmToDivision(pm, pName, rep, order.salesRep || order.sales_rep || '');
   };
 
   const getOrderMonthAndYear = (order) => {
