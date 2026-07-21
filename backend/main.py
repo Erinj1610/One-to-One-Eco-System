@@ -146,6 +146,16 @@ def init_db():
                 except Exception as alter_err:
                     print(f"Database migration is_credit (info/critical): {alter_err}")
                 
+                # Migrate orders table to ensure pm_name exists
+                try:
+                    order_cols = [c['name'] for c in inspector.get_columns('orders')]
+                    if 'pm_name' not in order_cols:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN pm_name VARCHAR;"))
+                        conn.commit()
+                        print("Database migration: ensured 'pm_name' column exists on 'orders' table.")
+                except Exception as alter_err:
+                    print(f"Database migration pm_name (info/critical): {alter_err}")
+                
                 # Migrate products table
                 inspector = inspect(engine)
                 existing_cols = [c["name"] for c in inspector.get_columns("products")]
