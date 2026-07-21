@@ -2469,6 +2469,9 @@ export default function OrdersPage() {
                             {(projectManagers || []).map(pm => (
                               <option key={pm.id} value={pm.name}>{pm.name} {pm.active === false ? '(Inactive)' : ''}</option>
                             ))}
+                            {pmName && !(projectManagers || []).some(pm => pm.name === pmName) && (
+                              <option value={pmName}>{pmName}</option>
+                            )}
                           </select>
                         </div>
                         <div>

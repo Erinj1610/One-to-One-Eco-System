@@ -23,7 +23,8 @@ const DEFAULT_BUDGETS_CONFIG = {
       'MODUS SIGNATURE ( Thando )',
       'MADE ( Jon-Peer)',
       'LUXELINE',
-      'INTERNAL - Office'
+      'INTERNAL - Office',
+      'UNALLOCATED / UNASSIGNED'
     ],
     budgetsKPI1: {
       'MODUS PROFESSIONAL ( Ryan )': { monthly: 1020000.00, ytd: 6953000.00 },
@@ -179,8 +180,11 @@ export default function ReportsPage() {
 
   // PM Name to Division auto-mapper helper
   const mapPmToDivision = (pmName = '', projName = '', oneOneRep = '', salesRep = '') => {
-    const name = `${pmName} ${oneOneRep} ${salesRep}`.toLowerCase();
-    const proj = (projName || '').toLowerCase();
+    const name = `${pmName} ${oneOneRep} ${salesRep}`.trim().toLowerCase();
+    const proj = (projName || '').trim().toLowerCase();
+
+    // Ignore generic/placeholder names
+    const isGenericName = !name || name === 'martin döller' || name === 'merlyn mittins' || name === 'select project manager...' || name === 'tbd';
     
     if (name.includes('ryan')) return 'MODUS PROFESSIONAL ( Ryan )';
     if (name.includes('thando')) return 'MODUS SIGNATURE ( Thando )';
@@ -194,26 +198,27 @@ export default function ReportsPage() {
     }
     if (name.includes('mood') || proj.includes('store')) return 'MOOD STORES';
 
-    // Match keywords in project name or offering type
-    if (proj.includes('professional') || proj.includes('pro')) return 'MODUS PROFESSIONAL ( Ryan )';
+    // Match keywords in project name or offering type if PM is generic
+    if (proj.includes('professional')) return 'MODUS PROFESSIONAL ( Ryan )';
     if (proj.includes('signature')) return 'MODUS SIGNATURE ( Thando )';
-    if (proj.includes('projects') || proj.includes('project')) return 'MODUS PROJECTS ( Dani )';
     if (proj.includes('made')) return 'MADE ( Jon-Peer)';
     if (proj.includes('luxe')) return 'LUXELINE';
 
-    // Default fallback division when PM is undefined or unassigned
-    return 'MODUS PROFESSIONAL ( Ryan )';
+    // Unallocated fallback row so unassigned orders are clearly visible
+    return 'UNALLOCATED / UNASSIGNED';
   };
 
   const getOrderDivision = (order, proj) => {
-    if (order.division && order.division !== 'INTERNAL - Office' && order.division !== 'Auto-Detect (PM Name)') return order.division;
+    if (order.division && order.division !== 'INTERNAL - Office' && order.division !== 'Auto-Detect (PM Name)' && order.division !== 'UNALLOCATED / UNASSIGNED') {
+      return order.division;
+    }
     if (proj.division && proj.division !== 'INTERNAL - Office') return proj.division;
     
-    const pm = order.pmName || order.pm_name || order.pm || proj.pm || proj.pmName || '';
-    const rep = order.oneOneRep || order.one_to_one_rep || order.salesRep || order.sales_rep || order.sales_rep_name || '';
+    const pm = order.pmName || order.pm_name || order.pm || order['PM NAME'] || order['PM'] || order.salesRep || order.sales_rep || order['Sales Rep'] || order['SALES REP'] || proj.pm || proj.pmName || '';
+    const rep = order.oneOneRep || order.one_to_one_rep || order['One One Rep'] || '';
     const pName = proj.name || proj.projectName || order.projectFullName || order.projectName || '';
     
-    return mapPmToDivision(pm, pName, rep, order.salesRep || order.sales_rep || '');
+    return mapPmToDivision(pm, pName, rep, order.salesRep || order.sales_rep || order['Sales Rep'] || '');
   };
 
   const getOrderMonthAndYear = (order) => {
