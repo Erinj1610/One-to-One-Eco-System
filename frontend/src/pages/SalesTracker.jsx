@@ -205,7 +205,7 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts, getModuleName, projectManagers, setInvoices } = useStore();
+  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices } = useStore();
   const location = useLocation();
 
   const navigate = useNavigate();
@@ -2400,6 +2400,36 @@ export default function SalesTracker() {
             nextInvs.unshift(newInv);
           });
           return nextInvs;
+        });
+      }
+
+      // Auto-register new Project Managers into projectManagers state list
+      const extractedPms = new Set();
+      entries.forEach(([_, projObj]) => {
+        const firstOrd = Object.values(projObj.orders || {})[0];
+        if (firstOrd) {
+          const rep = firstOrd.pmName || firstOrd.salesRep || firstOrd.pm;
+          if (rep && rep !== '—' && rep !== 'Select Project Manager...') {
+            extractedPms.add(rep.trim());
+          }
+        }
+      });
+      if (extractedPms.size > 0) {
+        setProjectManagers(prev => {
+          const updated = [...prev];
+          extractedPms.forEach(pmNameStr => {
+            const exists = updated.some(p => p && p.name && (p.name.toLowerCase() === pmNameStr.toLowerCase() || p.name.toLowerCase().includes(pmNameStr.toLowerCase())));
+            if (!exists) {
+              updated.push({
+                id: `pm-imported-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                name: pmNameStr,
+                email: `${pmNameStr.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world`,
+                phone: '083 570 7795',
+                active: true
+              });
+            }
+          });
+          return updated;
         });
       }
 
