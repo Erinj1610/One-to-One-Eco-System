@@ -221,18 +221,18 @@ export default function ReportsPage() {
     return mapPmToDivision(pm, pName, rep, order.salesRep || order.sales_rep || order['Sales Rep'] || '');
   };
 
-  const getOrderMonthAndYear = (order) => {
-    const rawDate = order.orderDate || order.order_date || order.date || order.created_at;
-    if (!rawDate) return { monthName: 'July', year: 2026, monthIdx: 6 };
+  const parseDateString = (rawDate) => {
+    if (!rawDate) return null;
 
     // Format 1: DD/MM/YYYY or D/M/YYYY
     if (typeof rawDate === 'string' && rawDate.includes('/')) {
       const dateParts = rawDate.split('/');
       if (dateParts.length === 3) {
+        const day = parseInt(dateParts[0], 10);
         const monthIndex = parseInt(dateParts[1], 10) - 1;
         const year = parseInt(dateParts[2], 10);
-        if (!isNaN(monthIndex) && !isNaN(year)) {
-          return { monthName: MONTHS_LIST[monthIndex] || 'July', year: year || 2026, monthIdx: monthIndex };
+        if (!isNaN(monthIndex) && !isNaN(year) && monthIndex >= 0 && monthIndex < 12) {
+          return { monthName: MONTHS_LIST[monthIndex], year: year || 2026, monthIdx: monthIndex };
         }
       }
     }
@@ -242,10 +242,53 @@ export default function ReportsPage() {
     if (!isNaN(d.getTime())) {
       const monthIdx = d.getMonth();
       const year = d.getFullYear();
-      return { monthName: MONTHS_LIST[monthIdx] || 'July', year, monthIdx };
+      return { monthName: MONTHS_LIST[monthIdx], year, monthIdx };
     }
 
+    return null;
+  };
+
+  const getOrderMonthAndYear = (order, targetField = 'invoice') => {
+    // If checking invoice date, search for Date INV first
+    if (targetField === 'invoice') {
+      let invDate = order.invoiceDate || order.dateInv || order.date_inv;
+      
+      // Check line items if order-level invoice date is missing
+      if (!invDate && order.itemsList) {
+        const itemWithInv = order.itemsList.find(it => it.invoiceDate || it.invoiceRef || (it.invoiceHistory && it.invoiceHistory[0]));
+        if (itemWithInv) {
+          const hist = itemWithInv.invoiceHistory && itemWithInv.invoiceHistory[0];
+          invDate = itemWithInv.invoiceDate || (hist ? hist.date : null);
+        }
+      }
+
+      if (!invDate && order.clientInvoices && order.clientInvoices.length > 0) {
+        invDate = order.clientInvoices[0].date;
+      }
+
+      const parsedInv = parseDateString(invDate);
+      if (parsedInv) return parsedInv;
+    }
+
+    // Fallback to order date
+    const rawOrderDate = order.orderDate || order.order_date || order.date || order.created_at;
+    const parsedOrder = parseDateString(rawOrderDate);
+    if (parsedOrder) return parsedOrder;
+
     return { monthName: 'July', year: 2026, monthIdx: 6 };
+  };
+
+  // Helper to check if an order/item has a valid invoice reference and date
+  const hasValidInvoiceRefAndDate = (order) => {
+    // Order level invoice ref
+    if (order.invoiceRef || order.invoice_ref || (order.clientInvoices && order.clientInvoices.length > 0)) {
+      return true;
+    }
+    // Item level invoice ref
+    if (order.itemsList && order.itemsList.some(it => (it.invoiceRef && it.invoiceRef.trim() !== '') || (it.invoiceHistory && it.invoiceHistory.length > 0 && it.invoiceHistory[0].ref))) {
+      return true;
+    }
+    return false;
   };
 
   // Initialize Aggregated KPI Models
@@ -277,28 +320,36 @@ export default function ReportsPage() {
       if (!dynamicInvoiced[div]) return;
 
       const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
-      const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = getOrderMonthAndYear(order);
-      const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
+      
+      const orderDateParsed = getOrderMonthAndYear(order, 'order');
+      const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
 
-      // KPI 1 & Annual Invoiced
-      if (order.status === 'Delivered' || order.status === 'Processing') {
-        if (orderMonth === selectedMonthName && orderYear === selectedYear) {
+      const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order);
+
+      // KPI 1 & Annual Invoiced (Requires Date INV AND Invoice Reference)
+      if (isEligibleForInvoiced) {
+        const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = invoiceDateParsed;
+        const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
+
+        if (invMonth === selectedMonthName && invYear === selectedYear) {
           dynamicInvoiced[div].actual += orderValue;
         }
         // Match only within same Financial Year YTD sequence (March -> Selected Month)
-        if (orderFy === currentFinancialYear) {
-          const orderSeqVal = getFyMonthSequenceVal(orderMonthIdx);
-          if (orderSeqVal <= selectedSeqIndex) {
+        if (invFy === currentFinancialYear) {
+          const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
+          if (invSeqVal <= selectedSeqIndex) {
             dynamicInvoiced[div].ytdActual += orderValue;
           }
           dynamicAnnual[div].invoiced += orderValue;
         }
       }
 
+      const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = orderDateParsed;
+      const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
 
       // KPI 2 & Annual Awaiting Stock
-      if (order.status === 'Pending') {
+      if (order.status === 'Pending' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
         if (rollingIdx !== -1) {
           dynamicAwaiting[div][`col${rollingIdx}`] += orderValue;
         }
@@ -329,22 +380,26 @@ export default function ReportsPage() {
         if (div !== division) return;
 
         const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
-        const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = getOrderMonthAndYear(order);
-        const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
+        const orderDateParsed = getOrderMonthAndYear(order, 'order');
+        const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
+        const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order);
 
         // Sales Invoiced
         if (type === 'invoiced') {
-          if (order.status === 'Delivered' || order.status === 'Processing') {
+          if (isEligibleForInvoiced) {
+            const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = invoiceDateParsed;
+            const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
+
             if (extraFilter === 'ytd') {
-              if (orderFy === currentFinancialYear) {
-                const orderSeqVal = getFyMonthSequenceVal(orderMonthIdx);
-                if (orderSeqVal <= selectedSeqIndex) {
-                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              if (invFy === currentFinancialYear) {
+                const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
+                if (invSeqVal <= selectedSeqIndex) {
+                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: orderValue });
                 }
               }
             } else {
-              if (orderMonth === selectedMonthName && orderYear === selectedYear) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              if (invMonth === selectedMonthName && invYear === selectedYear) {
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: orderValue });
               }
             }
           }
@@ -352,7 +407,8 @@ export default function ReportsPage() {
 
         // To Be Invoiced
         if (type === 'awaiting') {
-          if (order.status === 'Pending') {
+          if (order.status === 'Pending' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
+            const { monthName: orderMonth, year: orderYear } = orderDateParsed;
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
@@ -370,6 +426,7 @@ export default function ReportsPage() {
         // Pipeline Projections
         if (type === 'pipeline') {
           if (order.status === 'Draft' || !order.status) {
+            const { monthName: orderMonth, year: orderYear } = orderDateParsed;
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
               if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
