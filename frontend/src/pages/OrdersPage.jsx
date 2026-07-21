@@ -1201,10 +1201,25 @@ export default function OrdersPage() {
     setInteriorDesignerPhone(order.interiorDesignerPhone || '—');
 
     setOneOneRep(order.oneOneRep || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || 'Martin Döller');
-    const resolvedPm = order.pmName || order.pm_name || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || '';
+    
+    // Resolve PM Name, matching partial names like "Ryan" or "Dani" to full names in projectManagers list
+    let rawPm = order.pmName || order.pm_name || order.salesRep || order.sales_rep || order.sales_rep_name || order.pm || proj.pm || '';
+    if (rawPm) {
+      const lowerRaw = rawPm.trim().toLowerCase();
+      const matchedPmObj = (projectManagers || []).find(pm => {
+        const pmLower = pm.name.toLowerCase();
+        return pmLower === lowerRaw || pmLower.includes(lowerRaw) || lowerRaw.includes(pmLower.split(' ')[0]);
+      });
+      if (matchedPmObj) {
+        rawPm = matchedPmObj.name;
+      }
+    }
+    const resolvedPm = rawPm;
     setPmName(resolvedPm);
-    setPmPhone(order.pmPhone || '083 570 7795');
-    setPmEmail(order.pmEmail || (resolvedPm ? `${resolvedPm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world'));
+    
+    const matchedPmInfo = (projectManagers || []).find(pm => pm.name === resolvedPm);
+    setPmPhone(order.pmPhone || (matchedPmInfo ? matchedPmInfo.phone : '083 570 7795'));
+    setPmEmail(order.pmEmail || (matchedPmInfo ? matchedPmInfo.email : (resolvedPm ? `${resolvedPm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world')));
     
     const formattedToday = new Date().toLocaleDateString('en-GB'); // "dd/mm/yyyy"
     setOrderDate(order.orderDate || formattedToday);

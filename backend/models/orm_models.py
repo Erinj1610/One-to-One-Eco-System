@@ -227,6 +227,7 @@ class Order(Base):
     deposit_payment_date = Column(String, nullable=True)
     balance_value = Column(Float, nullable=True)
     balance_payment_date = Column(String, nullable=True)
+    pm_name = Column(String, nullable=True)
 
 
 
