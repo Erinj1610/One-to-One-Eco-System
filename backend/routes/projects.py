@@ -186,6 +186,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 )
                 db.add(new_client)
                 db.flush()
+
+        for order_id, order in orders_dict.items():
             # 2. Reset/Wipe existing Order items and document relationships in PostgreSQL
             db.query(OrderItem).filter(OrderItem.order_id == order_id).delete(synchronize_session=False)
             db.query(Order).filter(Order.po_number == order_id).delete(synchronize_session=False)
