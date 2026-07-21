@@ -2019,6 +2019,14 @@ export default function SalesTracker() {
           if (rowPfDate) {
             targetOrder.pfDate = rowPfDate;
           }
+          const rowInvRef = String(row["Invoice Reference"] || "").trim();
+          if (rowInvRef) {
+            targetOrder.invoiceRef = rowInvRef;
+          }
+          const rowDateInv = parseExcelDate(row["Date INV"]);
+          if (rowDateInv) {
+            targetOrder.invoiceDate = rowDateInv;
+          }
 
           const qty = Number(row["Qty"]) || 0;
           const unitCost = Number(row["Unit Cost Ex VAT"]) || 0;
@@ -2066,10 +2074,13 @@ export default function SalesTracker() {
 
           const invRef = String(row["Invoice Reference"] || "").trim();
           const dateInv = parseExcelDate(row["Date INV"]);
-          const qtyInv = Number(row["Qty INV"]) || 0;
+          let qtyInv = Number(row["Qty INV"]) || 0;
+          if (invRef && dateInv && qtyInv === 0 && qty !== 0) {
+            qtyInv = Math.abs(qty);
+          }
 
           const invoiceHistory = [];
-          if (invRef && dateInv && qtyInv !== 0) {
+          if (invRef && dateInv) {
             invoiceHistory.push({
               qty: qtyInv,
               ref: invRef,
