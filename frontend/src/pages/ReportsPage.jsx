@@ -321,10 +321,22 @@ export default function ReportsPage() {
 
       const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
       
+      // Compute precise actual invoiced value from line items / invoice history
+      const invoicedValue = (order.itemsList || []).reduce((s, item) => {
+        const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+        if (iHist.length > 0) {
+          return s + iHist.reduce((hSum, h) => hSum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
+        }
+        if (item.invoiceRef && item.invoiceDate) {
+          return s + ((Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0));
+        }
+        return s;
+      }, 0) || (order.invoiceRef && order.invoiceDate ? orderValue : 0);
+
       const orderDateParsed = getOrderMonthAndYear(order, 'order');
       const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
 
-      const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order);
+      const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
       // KPI 1 & Annual Invoiced (Requires Date INV AND Invoice Reference)
       if (isEligibleForInvoiced) {
@@ -332,15 +344,15 @@ export default function ReportsPage() {
         const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
 
         if (invMonth === selectedMonthName && invYear === selectedYear) {
-          dynamicInvoiced[div].actual += orderValue;
+          dynamicInvoiced[div].actual += invoicedValue;
         }
         // Match only within same Financial Year YTD sequence (March -> Selected Month)
         if (invFy === currentFinancialYear) {
           const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
           if (invSeqVal <= selectedSeqIndex) {
-            dynamicInvoiced[div].ytdActual += orderValue;
+            dynamicInvoiced[div].ytdActual += invoicedValue;
           }
-          dynamicAnnual[div].invoiced += orderValue;
+          dynamicAnnual[div].invoiced += invoicedValue;
         }
       }
 
@@ -380,9 +392,22 @@ export default function ReportsPage() {
         if (div !== division) return;
 
         const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
+        
+        // Compute precise actual invoiced value from line items / invoice history
+        const invoicedValue = (order.itemsList || []).reduce((s, item) => {
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+          if (iHist.length > 0) {
+            return s + iHist.reduce((hSum, h) => hSum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
+          }
+          if (item.invoiceRef && item.invoiceDate) {
+            return s + ((Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0));
+          }
+          return s;
+        }, 0) || (order.invoiceRef && order.invoiceDate ? orderValue : 0);
+
         const orderDateParsed = getOrderMonthAndYear(order, 'order');
         const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
-        const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order);
+        const isEligibleForInvoiced = (order.status === 'Delivered' || order.status === 'Processing') && hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
         // Sales Invoiced
         if (type === 'invoiced') {
@@ -394,12 +419,12 @@ export default function ReportsPage() {
               if (invFy === currentFinancialYear) {
                 const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
                 if (invSeqVal <= selectedSeqIndex) {
-                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: orderValue });
+                  list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: invoicedValue });
                 }
               }
             } else {
               if (invMonth === selectedMonthName && invYear === selectedYear) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: orderValue });
+                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate || order.orderDate || 'N/A', value: invoicedValue });
               }
             }
           }
