@@ -1095,11 +1095,41 @@ export default function SalesTracker() {
     setInteriorDesigner(order.interiorDesigner || 'TBD Designer');
     setInteriorDesignerPhone(order.interiorDesignerPhone || '—');
 
-    setOneOneRep(order.oneOneRep || 'Merlyn');
-    setPmName(order.pmName || proj.pm || 'Modus Special F');
-    setPmPhone(order.pmPhone || '083 570 7795');
-    setPmEmail(order.pmEmail || (proj.pm ? `${proj.pm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world'));
+    setOneOneRep(order.oneOneRep || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || 'Martin Döller');
     
+    // Resolve PM Name, matching partial names like "Ryan" or "Dani" to full names in projectManagers list
+    let rawPm = order.pmName || order.pm_name || order.salesRep || order.sales_rep || order.sales_rep_name || order.pm || proj.pm || '';
+    if (rawPm && typeof rawPm === 'string') {
+      const lowerRaw = rawPm.trim().toLowerCase();
+      const matchedPmObj = (projectManagers || []).find(pm => {
+        if (!pm || !pm.name || typeof pm.name !== 'string') return false;
+        const pmLower = pm.name.toLowerCase();
+        const firstName = pmLower.split(' ')[0] || '';
+        return pmLower === lowerRaw || pmLower.includes(lowerRaw) || (firstName && lowerRaw.includes(firstName));
+      });
+      if (matchedPmObj && matchedPmObj.name) {
+        rawPm = matchedPmObj.name;
+      }
+    }
+    const resolvedPm = rawPm;
+    setPmName(resolvedPm);
+
+    const matchedPmInfo = (projectManagers || []).find(pm => pm && pm.name === resolvedPm);
+    setPmPhone(order.pmPhone || (matchedPmInfo ? matchedPmInfo.phone : '083 570 7795'));
+    setPmEmail(order.pmEmail || (matchedPmInfo ? matchedPmInfo.email : (resolvedPm && typeof resolvedPm === 'string' ? `${resolvedPm.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world` : 'merlyn.mittins@1-to-1.world')));
+    
+    // Auto-resolve Division based on PM Name or Project if unassigned
+    let resolvedDiv = order.division || proj.division || '';
+    if (!resolvedDiv || resolvedDiv === 'INTERNAL - Office') {
+      const name = resolvedPm.toLowerCase();
+      if (name.includes('ryan')) resolvedDiv = 'MODUS PROFESSIONAL ( Ryan )';
+      else if (name.includes('thando')) resolvedDiv = 'MODUS SIGNATURE ( Thando )';
+      else if (name.includes('peer') || name.includes('jon') || name.includes('made')) resolvedDiv = 'MADE ( Jon-Peer)';
+      else if (name.includes('luxe')) resolvedDiv = 'LUXELINE';
+      else if (name.includes('dani') || name.includes('daniel')) resolvedDiv = 'MODUS PROJECTS ( Dani )';
+    }
+    setDivision(resolvedDiv);
+
     const formattedToday = new Date().toISOString().split('T')[0]; // "yyyy-mm-dd"
     setOrderDate(toInputDate(order.orderDate || formattedToday));
 
