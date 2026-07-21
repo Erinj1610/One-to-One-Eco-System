@@ -397,8 +397,9 @@ async def import_csv_file(
     updated_count = 0
     
     for row in csv_reader:
-        sku = row.get("sku")
-        if not sku or not row.get("name"):
+        sku = str(row.get("sku", "") or "").strip()
+        name = str(row.get("name", "") or "").strip()
+        if not sku or not name:
             continue
             
         try:
@@ -419,8 +420,8 @@ async def import_csv_file(
             rrp = 0.0
             
         prod_data = {
-            "name": row.get("name"),
-            "brand": row.get("brand"),
+            "name": name,
+            "brand": str(row.get("brand") or ""),
             "sku": sku,
             "cost_price": cost,
             "trade_price": trade,
@@ -489,8 +490,9 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
 
     try:
         for row in payload.products:
-            sku = row.get("sku")
-            if not sku or not row.get("name"):
+            sku = str(row.get("sku", "") or "").strip()
+            name = str(row.get("name", "") or "").strip()
+            if not sku or not name:
                 continue
 
             try:
@@ -506,7 +508,7 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
                 stock = 0; reorder = 100; power = 0.0; rrp = 0.0
 
             prod_data = {
-                "name": row.get("name"),
+                "name": name,
                 "brand": row.get("brand"),
                 "sku": sku,
                 "cost_price": cost,

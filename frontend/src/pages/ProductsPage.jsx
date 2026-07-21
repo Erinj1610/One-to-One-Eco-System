@@ -1075,12 +1075,26 @@ export default function ProductsPage() {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(worksheet);
+        const rawRows = XLSX.utils.sheet_to_json(worksheet);
 
-        if (rows.length === 0) {
+        if (rawRows.length === 0) {
           alert("Selected Excel sheet contains no data.");
           return;
         }
+
+        // Normalise: SKU and all text fields must be strings (Excel reads numeric SKUs as numbers)
+        const numericFields = new Set(['cost_price','trade_price','retail_price','stock_level','reorder_level','system_power','recommended_retail_price']);
+        const rows = rawRows.map(row => {
+          const out = {};
+          for (const [k, v] of Object.entries(row)) {
+            if (numericFields.has(k)) {
+              out[k] = v;
+            } else {
+              out[k] = v !== undefined && v !== null ? String(v).trim() : '';
+            }
+          }
+          return out;
+        });
 
         triggerToast(`Importing ${rows.length} product(s)...`);
 
