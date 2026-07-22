@@ -465,6 +465,13 @@ export default function ReportsPage() {
         }
       }
 
+      const isEligibleForInvoiced = processedInvoicedTotal > 0;
+
+      const orderDateParsed = getOrderMonthAndYear(order, 'order');
+      const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = orderDateParsed;
+      const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
+      const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
+
       // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
       // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
       // KPI 3 (Pipeline): Draft/unapproved order value.
