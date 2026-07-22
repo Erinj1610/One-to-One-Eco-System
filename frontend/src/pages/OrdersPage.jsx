@@ -1486,24 +1486,29 @@ export default function OrdersPage() {
 
   // Populate row fields based on selected product from catalog
   const handleItemCodeChange = (itemId, newCode) => {
-    const catalogItem = PRODUCT_CATALOG.find(p => p.code === newCode);
-    if (catalogItem) {
-      setActiveOrderItems(prev => prev.map(item => {
-        if (item.id === itemId) {
-          return {
-            ...item,
-            code: catalogItem.code,
-            description: catalogItem.description,
-            brand: catalogItem.brand,
-            dimming: catalogItem.dimming,
-            unitCost: catalogItem.unitCost,
-            unitRetail: catalogItem.unitRetail,
-            eta: catalogItem.eta
-          };
-        }
-        return item;
-      }));
-    }
+    // When code is selected, we want to look it up in both local catalog fallback or dynamically loaded products list
+    // We can also retrieve the product details from the dynamic search select options callback
+    // (SearchableCodeSelect passes the entire selected product object to onSelect)
+  };
+
+  const handleSelectProductFromCatalog = (itemId, selectedProduct) => {
+    if (!selectedProduct) return;
+    setActiveOrderItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          code: selectedProduct.code,
+          description: selectedProduct.description || '',
+          brand: selectedProduct.brand || '',
+          dimming: selectedProduct.dimming || 'Non-dim',
+          unitCost: Number(selectedProduct.unitCost) || 0,
+          unitRetail: Number(selectedProduct.unitRetail) || 0,
+          eta: selectedProduct.eta || '4 weeks',
+          supplier: selectedProduct.supplier || ''
+        };
+      }
+      return item;
+    }));
   };
 
   // Intercept unit cost/retail edits to check if item is used multiple times
@@ -3166,7 +3171,7 @@ export default function OrdersPage() {
                                         value={item.code || ''}
                                         onChange={val => handleUpdateSpreadsheetCell(item.id, 'code', val)}
                                         onSelect={prod => {
-                                          handleItemCodeChange(item.id, prod.code);
+                                          handleSelectProductFromCatalog(item.id, prod);
                                         }}
                                         rowIdx={index}
                                         colIdx={3}
