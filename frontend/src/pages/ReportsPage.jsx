@@ -465,30 +465,69 @@ export default function ReportsPage() {
         }
       }
 
-      const isEligibleForInvoiced = processedInvoicedTotal > 0;
+      // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
+      // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
+      // KPI 3 (Pipeline): Draft/unapproved order value.
+      
+      // Calculate outstanding amount for each item and place it in the item's ETA month
+      if (order.status !== 'Draft' && order.status) {
+        itemsList.forEach(item => {
+          // Total retail value for this item
+          const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+          
+          // Value already invoiced
+          let itemInvoicedVal = 0;
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+          if (iHist.length > 0) {
+            itemInvoicedVal = iHist.reduce((s, h) => s + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
+          } else if (item.invoiceRef && item.invoiceDate) {
+            itemInvoicedVal = (Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+          }
 
-      const orderDateParsed = getOrderMonthAndYear(order, 'order');
-      const { monthName: orderMonth, year: orderYear, monthIdx: orderMonthIdx } = orderDateParsed;
-      const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
-      const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
+          const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
 
-      // KPI 2 & Annual Awaiting Stock
-      if (order.status === 'Pending' || order.status === 'In transit' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
-        if (rollingIdx !== -1) {
-          dynamicAwaiting[div][`col${rollingIdx}`] += orderValue;
-        }
-        if (orderFy === currentFinancialYear) {
-          dynamicAnnual[div].toInvoice += orderValue;
-        }
+          if (outstandingVal > 0) {
+            // Find appropriate expected date: item.eta -> item.po_eta -> order.eta -> order.expected_delivery_date
+            const expectedDate = item.eta || item.po_eta || order.eta || order.expected_delivery_date;
+            const parsedExpected = parseDateString(expectedDate);
+
+            if (parsedExpected) {
+              const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
+              const expFy = getFinancialYearForPeriod(expMonthIdx, expYear);
+              
+              const expRollingIdx = rollingMonths.findIndex(rm => rm.monthName === expMonth && rm.year === expYear);
+              if (expRollingIdx !== -1) {
+                dynamicAwaiting[div][`col${expRollingIdx}`] += outstandingVal;
+              }
+              if (expFy === currentFinancialYear) {
+                dynamicAnnual[div].toInvoice += outstandingVal;
+              }
+            } else {
+              // Fallback to order month if no ETA
+              const { monthName: ordMonth, year: ordYear, monthIdx: ordMonthIdx } = orderDateParsed;
+              const ordFy = getFinancialYearForPeriod(ordMonthIdx, ordYear);
+              const ordRollingIdx = rollingMonths.findIndex(rm => rm.monthName === ordMonth && rm.year === ordYear);
+              if (ordRollingIdx !== -1) {
+                dynamicAwaiting[div][`col${ordRollingIdx}`] += outstandingVal;
+              }
+              if (ordFy === currentFinancialYear) {
+                dynamicAnnual[div].toInvoice += outstandingVal;
+              }
+            }
+          }
+        });
       }
 
-      // KPI 3 & Annual Pipeline
-      if (order.status === 'Draft' || !order.status) {
-        if (rollingIdx !== -1) {
-          dynamicPipeline[div][`col${rollingIdx}`] += orderValue;
-        }
-        if (orderFy === currentFinancialYear) {
-          dynamicAnnual[div].pipeline += orderValue;
+      // KPI 3 & Annual Pipeline: Unapproved / Draft orders
+      if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
+        const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
+        if (isEligibleForPipeline) {
+          if (rollingIdx !== -1) {
+            dynamicPipeline[div][`col${rollingIdx}`] += orderValue;
+          }
+          if (orderFy === currentFinancialYear) {
+            dynamicAnnual[div].pipeline += orderValue;
+          }
         }
       }
     });
@@ -636,37 +675,58 @@ export default function ReportsPage() {
           }
         }
 
-        // To Be Invoiced
+        // To Be Invoiced (Awaiting Stock)
         if (type === 'awaiting') {
-          if (order.status === 'Pending' || order.status === 'In transit' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
-            const { monthName: orderMonth, year: orderYear } = orderDateParsed;
-            if (extraFilter !== null) {
-              const targetMonth = rollingMonths[extraFilter];
-              if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+          if (order.status !== 'Draft' && order.status) {
+            itemsList.forEach(item => {
+              const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+              let itemInvoicedVal = 0;
+              const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+              if (iHist.length > 0) {
+                itemInvoicedVal = iHist.reduce((s, h) => s + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
+              } else if (item.invoiceRef && item.invoiceDate) {
+                itemInvoicedVal = (Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
               }
-            } else {
-              const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
-              if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
+
+              if (outstandingVal > 0) {
+                const expectedDate = item.eta || item.po_eta || order.eta || order.expected_delivery_date;
+                const parsedExpected = parseDateString(expectedDate) || orderDateParsed;
+                if (parsedExpected) {
+                  const { monthName: expMonth, year: expYear } = parsedExpected;
+                  if (extraFilter !== null) {
+                    const targetMonth = rollingMonths[extraFilter];
+                    if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
+                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal });
+                    }
+                  } else {
+                    const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
+                    if (inRolling) {
+                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal });
+                    }
+                  }
+                }
               }
-            }
+            });
           }
         }
 
-        // Pipeline Projections
+        // Pipeline Projections (Draft & Pending orders)
         if (type === 'pipeline') {
-          if (order.status === 'Draft' || !order.status) {
-            const { monthName: orderMonth, year: orderYear } = orderDateParsed;
-            if (extraFilter !== null) {
-              const targetMonth = rollingMonths[extraFilter];
-              if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
-              }
-            } else {
-              const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
-              if (inRolling) {
-                list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+          if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
+            const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
+            if (isEligibleForPipeline) {
+              const { monthName: orderMonth, year: orderYear } = orderDateParsed;
+              if (extraFilter !== null) {
+                const targetMonth = rollingMonths[extraFilter];
+                if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
+                  list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                }
+              } else {
+                const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
+                if (inRolling) {
+                  list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                }
               }
             }
           }
@@ -675,12 +735,30 @@ export default function ReportsPage() {
         // Annual consolidated totals
         if (type === 'annual') {
           if (orderFy === currentFinancialYear) {
-            if (extraFilter === 'invoiced' && (order.status === 'Delivered' || order.status === 'Processing')) {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
-            } else if (extraFilter === 'toInvoice' && order.status === 'Pending') {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
-            } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status)) {
-              list.push({ projectName: proj.name, orderId: order.id || order.orderId || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+            if (extraFilter === 'invoiced') {
+              // Handled by invoiced sum logic or we show actual value here if needed
+              if (isEligibleForInvoiced) {
+                list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: processedInvoicedTotal });
+              }
+            } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status) {
+              let orderOutstandingTotal = 0;
+              itemsList.forEach(item => {
+                const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+                let itemInvoicedVal = 0;
+                const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+                if (iHist.length > 0) {
+                  itemInvoicedVal = iHist.reduce((s, h) => s + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
+                } else if (item.invoiceRef && item.invoiceDate) {
+                  itemInvoicedVal = (Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
+                }
+                const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
+                orderOutstandingTotal += outstandingVal;
+              });
+              if (orderOutstandingTotal > 0) {
+                list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderOutstandingTotal });
+              }
+            } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced))) {
+              list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
             }
           }
         }
