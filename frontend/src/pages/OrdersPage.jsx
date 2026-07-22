@@ -595,7 +595,8 @@ export default function OrdersPage() {
         const res = await fetch(urlStr);
         if (res.ok) {
           const data = await res.json();
-          setCatalogProducts(data);
+          const itemsList = Array.isArray(data) ? data : (data.items || []);
+          setCatalogProducts(itemsList);
         }
       } catch (err) {
         console.error("Failed to load catalog products", err);
