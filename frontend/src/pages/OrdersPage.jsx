@@ -47,10 +47,10 @@ const PHI_ADVISORIES = {
 };
 
 const statusColor = { 
-  Delivered: 'b-success', 
-  'In transit': 'b-info', 
-  Pending: 'b-default', 
-  Processing: 'b-warning',
+  Complete: 'b-success', 
+  Ongoing: 'b-info', 
+  Pending: 'b-warning', 
+  Draft: 'b-default',
   Cancelled: 'b-danger'
 };
 
@@ -2147,10 +2147,11 @@ export default function OrdersPage() {
                     onChange={e => setFilterStatus(e.target.value)}
                   >
                     <option value="All">All Statuses</option>
+                    <option value="Draft">Draft</option>
                     <option value="Pending">Pending</option>
-                    <option value="Processing">Processing</option>
-                    <option value="In transit">In transit</option>
-                    <option value="Delivered">Delivered</option>
+                    <option value="Ongoing">Ongoing</option>
+                    <option value="Complete">Complete</option>
+                    <option value="Cancelled">Cancelled</option>
                   </select>
 
                   <select 
@@ -2422,10 +2423,10 @@ export default function OrdersPage() {
                       }
                     }}
                   >
+                    <option>Draft</option>
                     <option>Pending</option>
-                    <option>Processing</option>
-                    <option>In transit</option>
-                    <option>Delivered</option>
+                    <option>Ongoing</option>
+                    <option>Complete</option>
                     <option>Cancelled</option>
                   </select>
                 </div>
@@ -5546,10 +5547,10 @@ export default function OrdersPage() {
                       value={newPoForm.status} 
                       onChange={e => setNewPoForm({...newPoForm, status: e.target.value})}
                     >
+                      <option>Draft</option>
                       <option>Pending</option>
-                      <option>Processing</option>
-                      <option>In transit</option>
-                      <option>Delivered</option>
+                      <option>Ongoing</option>
+                      <option>Complete</option>
                     </select>
                   </div>
                   <div>

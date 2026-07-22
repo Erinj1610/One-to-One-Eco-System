@@ -1816,8 +1816,7 @@ export default function ProjectManagement() {
                                    </td>
                                    <td>{o.eta || '—'}</td>
                                    <td>
-                                     <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : o.status === 'Processing' ? 'b-warning' : 'b-default'}`}>
- 
+                                     <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
                                        {o.status}
                                      </span>
                                    </td>
@@ -2061,7 +2060,7 @@ export default function ProjectManagement() {
                                  <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
                                  <td style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{orderMargin}%</td>
                                  <td>
-                                   <span className={`badge ${o.status === 'Delivered' ? 'b-success' : o.status === 'In transit' ? 'b-info' : 'b-warning'}`}>{o.status}</span>
+                                   <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>{o.status}</span>
                                  </td>
                                </tr>
                              );
@@ -2479,10 +2478,10 @@ export default function ProjectManagement() {
                     onChange={e => setNewOrderForm({...newOrderForm, status: e.target.value})}
                     style={{ fontSize: '13px' }}
                   >
+                    <option>Draft</option>
                     <option>Pending</option>
-                    <option>Processing</option>
-                    <option>In transit</option>
-                    <option>Delivered</option>
+                    <option>Ongoing</option>
+                    <option>Complete</option>
                   </select>
                 </div>
               </div>
