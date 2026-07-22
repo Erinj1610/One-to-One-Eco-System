@@ -24,8 +24,15 @@ async def download_template(doc_type: str, db: Session = Depends(get_db)):
     # 1. Check database first
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
     if config and config.docx_binary:
+        binary_data = bytes(config.docx_binary)
+        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+            import base64
+            try:
+                binary_data = base64.b64decode(binary_data)
+            except Exception:
+                pass
         return Response(
-            content=config.docx_binary,
+            content=binary_data,
             media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             headers={"Content-Disposition": f"attachment; filename={doc_type.lower()}_template.docx"}
         )
@@ -150,9 +157,16 @@ async def get_template_metadata(doc_type: str, db: Session = Depends(get_db)):
     # 1. Check database first
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
     if config and config.docx_binary:
+        binary_data = bytes(config.docx_binary)
+        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+            import base64
+            try:
+                binary_data = base64.b64decode(binary_data)
+            except Exception:
+                pass
         return {
             "exists": True,
-            "size": len(config.docx_binary),
+            "size": len(binary_data),
             "last_modified": None
         }
         
@@ -252,8 +266,19 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
         print(f"DEBUG: Using custom template from database for {doc_type}")
         temp_dir = tempfile.mkdtemp()
         custom_template_temp_path = os.path.join(temp_dir, "db_template.docx")
+        
+        # PostgreSQL might return the docx file encoded as a base64 string bytes or base64 string
+        binary_data = bytes(config.docx_binary)
+        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+            import base64
+            try:
+                binary_data = base64.b64decode(binary_data)
+                print("DEBUG: Successfully base64 decoded custom template from DB")
+            except Exception as b64_err:
+                print(f"DEBUG: Failed to base64 decode custom template: {b64_err}")
+                
         with open(custom_template_temp_path, "wb") as f:
-            f.write(config.docx_binary)
+            f.write(binary_data)
         docx_template_path = custom_template_temp_path
     else:
         disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.docx'))
