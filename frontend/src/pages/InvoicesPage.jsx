@@ -36,8 +36,8 @@ export default function InvoicesPage() {
 
   // Grouping and Filtering states
   const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
-  const [filterProjectKey, setFilterProjectKey] = useState('All');
   const [filterPm, setFilterPm] = useState('All');
+  const [collapsedProjects, setCollapsedProjects] = useState({}); // { projectKey: boolean }
 
   // Gather all project orders to populate the invoice generation dropdown
   const allOrders = Object.values(projects).flatMap(p => 
@@ -77,26 +77,24 @@ export default function InvoicesPage() {
 
   // Search filter
   const filteredInvoices = activeInvoices.filter(inv => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = 
-      (inv.id || '').toLowerCase().includes(q) ||
-      (inv.project || '').toLowerCase().includes(q) ||
-      (inv.client || '').toLowerCase().includes(q);
-
-    // If grouping/filtering by specific project key:
-    let matchesProject = true;
-    if (filterProjectKey !== 'All') {
-      if (inv.type === 'order_invoice') {
-        matchesProject = inv.projectKey === filterProjectKey;
-      } else {
-        const matchingProj = Object.values(projects).find(p => p.name === inv.project);
-        matchesProject = matchingProj?.key === filterProjectKey;
-      }
+    const q = searchQuery.trim().toLowerCase();
+    
+    // Multi-word search matching: verify that every token typed is present in at least one field of the invoice
+    let matchesSearch = true;
+    if (q) {
+      const searchTokens = q.split(/\s+/);
+      matchesSearch = searchTokens.every(token => 
+        (inv.id || '').toLowerCase().includes(token) ||
+        (inv.project || '').toLowerCase().includes(token) ||
+        (inv.client || '').toLowerCase().includes(token)
+      );
     }
 
-    const matchesPm = filterPm === 'All' || (inv.projectPm || '').toLowerCase() === filterPm.toLowerCase();
+    // Direct string PM comparison (trim and lowercase check to ensure match regardless of case/spacing)
+    const matchesPm = filterPm === 'All' || 
+      (inv.projectPm && inv.projectPm.trim().toLowerCase() === filterPm.trim().toLowerCase());
 
-    return matchesSearch && matchesProject && matchesPm;
+    return matchesSearch && matchesPm;
   });
 
   // Selected invoice for detail view
@@ -629,7 +627,7 @@ export default function InvoicesPage() {
           </div>
 
           {/* Grouping and Filter Controls Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
             <div>
               <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
               <select 
@@ -657,21 +655,6 @@ export default function InvoicesPage() {
                 ))}
               </select>
             </div>
-
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Filter</label>
-              <select 
-                className="form-control"
-                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
-                value={filterProjectKey}
-                onChange={e => setFilterProjectKey(e.target.value)}
-              >
-                <option value="All">All Projects</option>
-                {Object.values(projects).map(p => (
-                  <option key={p.key} value={p.key}>{p.name}</option>
-                ))}
-              </select>
-            </div>
           </div>
 
           <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -680,7 +663,6 @@ export default function InvoicesPage() {
               (() => {
                 const groups = {};
                 filteredInvoices.forEach(inv => {
-                  // Resolve group name based on project string or projectKey mapping
                   let projName = inv.project || 'Direct Client / Other';
                   let groupKey = inv.projectKey || '';
                   if (!groupKey) {
@@ -705,48 +687,60 @@ export default function InvoicesPage() {
                   );
                 }
 
-                return Object.entries(groups).map(([projKey, group]) => (
-                  <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
-                    <div 
-                      style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', marginBottom: '8px' }}
-                      onClick={() => {
-                        if (projKey !== 'unassigned') {
-                          window.location.hash = `/projects/${projKey}`;
-                        }
-                      }}
-                    >
-                      📁 {group.projectName} {group.client && `(${group.client})`}
+                return Object.entries(groups).map(([projKey, group]) => {
+                  const isCollapsed = collapsedProjects[projKey] ?? false; // default to open
+                  return (
+                    <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
+                      <div 
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: isCollapsed ? '0' : '8px' }}
+                        onClick={() => {
+                          setCollapsedProjects(prev => ({
+                            ...prev,
+                            [projKey]: !prev[projKey]
+                          }));
+                        }}
+                      >
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textDecoration: 'underline' }}>
+                          📁 {group.projectName} {group.client && `(${group.client})`} ({group.docs.length})
+                        </span>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          {isCollapsed ? '▶ Click to Expand' : '▼ Click to Collapse'}
+                        </span>
+                      </div>
+
+                      {!isCollapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
+                          {group.docs.map(inv => {
+                            const isActive = inv.id === selectedInvoiceId;
+                            return (
+                              <div
+                                key={inv.id}
+                                onClick={() => setSelectedInvoiceId(inv.id)}
+                                style={{
+                                  background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
+                                  border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                                  borderRadius: '6px',
+                                  padding: '8px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{inv.id}</span>
+                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
+                                  <span>Issued: {inv.issued}</span>
+                                  {inv.orderId && <span>Order: {inv.orderId}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
-                      {group.docs.map(inv => {
-                        const isActive = inv.id === selectedInvoiceId;
-                        return (
-                          <div
-                            key={inv.id}
-                            onClick={() => setSelectedInvoiceId(inv.id)}
-                            style={{
-                              background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                              border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
-                              borderRadius: '6px',
-                              padding: '8px',
-                              cursor: 'pointer',
-                              fontSize: '11px'
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{inv.id}</span>
-                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
-                              <span>Issued: {inv.issued}</span>
-                              {inv.orderId && <span>Order: {inv.orderId}</span>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ));
+                  );
+                });
               })()
             ) : (
               // Standard Flat List Render
