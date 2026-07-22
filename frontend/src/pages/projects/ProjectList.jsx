@@ -55,16 +55,16 @@ export function calculateProjectStageAndProgress(p) {
     let orderSum = 0;
     orders.forEach(o => {
       const status = (o.status || 'Pending').toLowerCase();
-      if (status === 'delivered') {
+      if (status === 'complete') {
         orderSum += 100;
-      } else if (status === 'in transit') {
-        orderSum += 80;
-      } else if (status === 'processing') {
-        orderSum += 50;
-      } else if (status === 'pending' || status === 'draft') {
-        orderSum += 25;
-      } else {
+      } else if (status === 'ongoing') {
+        orderSum += 70;
+      } else if (status === 'pending') {
+        orderSum += 30;
+      } else if (status === 'draft') {
         orderSum += 10;
+      } else {
+        orderSum += 25;
       }
     });
     const avgOrderProgress = orderSum / orders.length;
@@ -638,8 +638,10 @@ export default function ProjectList() {
 
             <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option>All Statuses</option>
-              <option>On track</option>
-              <option>Off track</option>
+              <option>Draft</option>
+              <option>Pending</option>
+              <option>Ongoing</option>
+              <option>Complete</option>
             </select>
           </div>
         </div>
@@ -802,7 +804,7 @@ export default function ProjectList() {
                             style={{ 
                               width: `${progressPct}%`, 
                               height: '100%', 
-                              background: p.status === 'On track' ? 'var(--text-success)' : 'var(--text-danger)',
+                              background: p.status === 'Complete' ? 'var(--text-success)' : p.status === 'Ongoing' ? 'var(--text-info)' : p.status === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
                               borderRadius: '2px',
                               transition: 'width 0.4s ease'
                             }} 
@@ -819,8 +821,8 @@ export default function ProjectList() {
                       </div>
                     </td>
                     <td>
-                      <span className={`badge ${p.status === 'On track' ? 'b-success' : 'b-danger'}`} style={{ fontSize: '11px' }}>
-                        {p.status}
+                      <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                        {p.status || 'Draft'}
                       </span>
                     </td>
                     <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>

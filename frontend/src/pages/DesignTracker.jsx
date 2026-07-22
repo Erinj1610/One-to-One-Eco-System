@@ -589,8 +589,10 @@ export default function DesignTracker() {
               onChange={e => setStatusFilter(e.target.value)}
             >
               <option>All Statuses</option>
-              <option>On track</option>
-              <option>Off track</option>
+              <option>Draft</option>
+              <option>Pending</option>
+              <option>Ongoing</option>
+              <option>Complete</option>
             </select>
 
             <select
@@ -919,25 +921,11 @@ export default function DesignTracker() {
 
                     {/* 21. Status */}
                     <td style={{ padding: 0 }}>
-                      <select
-                        className="gs-cell-select"
-                        style={{ textAlign: 'center', fontWeight: 600, color: row.status === 'On track' ? 'var(--text-success)' : row.status === 'Cancelled' ? 'var(--text-secondary)' : 'var(--text-danger)' }}
-                        value={row.status || ''}
-                        onChange={e => {
-                          if (e.target.value === 'Cancelled') {
-                            setCancelModalItem({
-                              projectKey: row.projectKey,
-                              clientName: row.projectClientName
-                            });
-                          } else {
-                            updateProject(row.projectKey, 'status', e.target.value);
-                          }
-                        }}
-                      >
-                        <option value="On track">On track</option>
-                        <option value="Off track">Off track</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                        <span className={`badge ${row.status === 'Complete' ? 'b-success' : row.status === 'Ongoing' ? 'b-info' : row.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                          {row.status || 'Draft'}
+                        </span>
+                      </div>
                     </td>
 
                     {/* 22. Delay Reason */}

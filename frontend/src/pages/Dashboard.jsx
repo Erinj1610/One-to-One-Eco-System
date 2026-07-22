@@ -164,8 +164,8 @@ export default function Dashboard() {
                     <td><span className="badge b-default">{p.stage}</span></td>
                     <td>{p.deadline}</td>
                     <td>
-                      <span className={`badge ${p.status === 'On track' ? 'b-success' : 'b-danger'}`}>
-                        {p.status}
+                      <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
+                        {p.status || 'Draft'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-warning)' }}>

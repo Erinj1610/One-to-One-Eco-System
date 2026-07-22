@@ -538,6 +538,30 @@ export default function ProjectManagement() {
     const formattedPaid = `R ${grandPaidValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     const formattedOutstanding = `R ${grandOutstandingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+    // Calculate dynamic summarized project status based on orders
+    let computedStatus = 'Draft';
+    if (orders.length > 0) {
+      const statuses = orders.map(o => o.status || 'Pending');
+      const allComplete = statuses.every(s => s === 'Complete');
+      const allDraft = statuses.every(s => s === 'Draft');
+      const hasOngoing = statuses.some(s => s === 'Ongoing' || s === 'Complete');
+      const hasPending = statuses.some(s => s === 'Pending');
+
+      if (allComplete) {
+        computedStatus = 'Complete';
+      } else if (hasOngoing) {
+        computedStatus = 'Ongoing';
+      } else if (hasPending) {
+        computedStatus = 'Pending';
+      } else if (allDraft) {
+        computedStatus = 'Draft';
+      }
+    }
+
+    if (p?.status !== computedStatus) {
+      updateProject(id, 'status', computedStatus);
+    }
+
     if (p?.feeValue !== grandContractValue) {
       updateProject(id, 'feeValue', grandContractValue);
       updateProject(id, 'feeExcl', formattedFee);
@@ -548,7 +572,7 @@ export default function ProjectManagement() {
     if (p?.outstanding !== formattedOutstanding) {
       updateProject(id, 'outstanding', formattedOutstanding);
     }
-  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding]);
+  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding, p?.status, orders]);
 
   if (!p) return <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading Project...</div>;
 
@@ -798,7 +822,7 @@ export default function ProjectManagement() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
             <Lightbulb size={22} color="var(--text-info)" style={{ filter: 'drop-shadow(0 2px 8px rgba(24,95,165,0.2))' }} />
             <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{p.name || 'Draft Project'}</span>
-            <span className={`badge ${p.status === 'On track' ? 'b-success' : p.isDraft ? 'b-muted' : 'b-danger'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status}</span>
+            <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status || 'Draft'}</span>
             <span className="badge b-info" style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.projectType}</span>
           </div>
           

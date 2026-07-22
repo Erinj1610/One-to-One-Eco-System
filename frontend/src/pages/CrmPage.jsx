@@ -1797,7 +1797,7 @@ export default function CrmPage() {
                                style={{ 
                                  width: `${progressPct}%`, 
                                  height: '100%', 
-                                 background: p.status === 'On track' ? 'var(--text-success)' : 'var(--text-danger)',
+                                 background: p.status === 'Complete' ? 'var(--text-success)' : p.status === 'Ongoing' ? 'var(--text-info)' : p.status === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
                                  borderRadius: '2px',
                                  transition: 'width 0.4s ease'
                                }} 
@@ -1814,8 +1814,8 @@ export default function CrmPage() {
                          </div>
                        </td>
                        <td>
-                         <span className={`badge ${p.status === 'On track' ? 'b-success' : 'b-danger'}`} style={{ fontSize: '11px' }}>
-                           {p.status}
+                         <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                           {p.status || 'Draft'}
                          </span>
                        </td>
                        <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
