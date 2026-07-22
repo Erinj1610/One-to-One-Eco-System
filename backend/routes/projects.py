@@ -578,6 +578,25 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 p_key = re.sub(r'-+', '-', p_key).strip('-')
                 if not p_key:
                     p_key = f"p-{p.id}"
+            # Calculate dynamic project status based on orders
+            proj_orders = orders_by_project.get(p_key, [])
+            computed_status = 'Draft'
+            if proj_orders:
+                statuses = [o.get("status") or "Pending" for o in proj_orders]
+                all_complete = all(s == 'Complete' for s in statuses)
+                all_draft = all(s == 'Draft' for s in statuses)
+                has_ongoing = any(s == 'Ongoing' or s == 'Complete' for s in statuses)
+                has_pending = any(s == 'Pending' for s in statuses)
+
+                if all_complete:
+                    computed_status = 'Complete'
+                elif has_ongoing:
+                    computed_status = 'Ongoing'
+                elif has_pending:
+                    computed_status = 'Pending'
+                elif all_draft:
+                    computed_status = 'Draft'
+
             projects_dict[p_key] = {
                 "key": p_key,
                 "name": p.name,
@@ -585,7 +604,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "pm": p.pm_name,
                 "offering": p.offering,
                 "sqm": p.sqm,
-                "status": p.status,
+                "status": computed_status,
                 "deadline": p.deadline,
                 "start": p.start_date,
                 "complete": p.complete_status,
@@ -596,7 +615,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "s3": p.s3 or "",
                 "s4": p.s4 or "",
                 "s5": p.s5 or "",
-                "orders": orders_by_project.get(p_key, [])
+                "orders": proj_orders
             }
         return projects_dict
     except Exception as e:
