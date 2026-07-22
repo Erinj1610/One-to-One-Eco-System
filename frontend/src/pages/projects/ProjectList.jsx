@@ -730,6 +730,26 @@ export default function ProjectList() {
               {sortedProjects.map(p => {
                 const { stage, progressPct } = calculateProjectStageAndProgress(p);
                 
+                // Calculate dynamic summarized project status based on orders
+                let computedStatus = 'Draft';
+                if (p.orders && p.orders.length > 0) {
+                  const statuses = p.orders.map(o => o.status || 'Pending');
+                  const allComplete = statuses.every(s => s === 'Complete');
+                  const allDraft = statuses.every(s => s === 'Draft');
+                  const hasOngoing = statuses.some(s => s === 'Ongoing' || s === 'Complete');
+                  const hasPending = statuses.some(s => s === 'Pending');
+
+                  if (allComplete) {
+                    computedStatus = 'Complete';
+                  } else if (hasOngoing) {
+                    computedStatus = 'Ongoing';
+                  } else if (hasPending) {
+                    computedStatus = 'Pending';
+                  } else if (allDraft) {
+                    computedStatus = 'Draft';
+                  }
+                }
+
                 // Upgraded calculation blocks
                 let totalValue = p.feeValue || 0;
                 let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
@@ -804,7 +824,7 @@ export default function ProjectList() {
                             style={{ 
                               width: `${progressPct}%`, 
                               height: '100%', 
-                              background: p.status === 'Complete' ? 'var(--text-success)' : p.status === 'Ongoing' ? 'var(--text-info)' : p.status === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
+                              background: computedStatus === 'Complete' ? 'var(--text-success)' : computedStatus === 'Ongoing' ? 'var(--text-info)' : computedStatus === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
                               borderRadius: '2px',
                               transition: 'width 0.4s ease'
                             }} 
@@ -821,8 +841,8 @@ export default function ProjectList() {
                       </div>
                     </td>
                     <td>
-                      <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
-                        {p.status || 'Draft'}
+                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                        {computedStatus}
                       </span>
                     </td>
                     <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
