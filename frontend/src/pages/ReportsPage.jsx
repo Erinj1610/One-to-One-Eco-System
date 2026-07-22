@@ -494,8 +494,8 @@ export default function ReportsPage() {
           const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
 
           if (outstandingVal > 0) {
-            // Find appropriate expected date: item.eta -> item.po_eta -> order.eta -> order.expected_delivery_date
-            const expectedDate = item.eta || item.po_eta || order.eta || order.expected_delivery_date;
+            // Prefer item-level PO ETA first, then general item ETA, then order-level eta, then expected_delivery_date, then order PO date
+            const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
             const parsedExpected = parseDateString(expectedDate);
 
             if (parsedExpected) {
@@ -510,8 +510,10 @@ export default function ReportsPage() {
                 dynamicAnnual[div].toInvoice += outstandingVal;
               }
             } else {
-              // Fallback to order month if no ETA
-              const { monthName: ordMonth, year: ordYear, monthIdx: ordMonthIdx } = orderDateParsed;
+              // Fallback to order date month if no valid expected date is found (avoid defaulting to July if order is in another month)
+              const fallbackDate = order.orderDate || order.order_date || order.date || order.created_at || `${selectedMonthIdx + 1}/01/${selectedYear}`;
+              const parsedFallback = parseDateString(fallbackDate) || { monthName: selectedMonthName, year: selectedYear, monthIdx: selectedMonthIdx };
+              const { monthName: ordMonth, year: ordYear, monthIdx: ordMonthIdx } = parsedFallback;
               const ordFy = getFinancialYearForPeriod(ordMonthIdx, ordYear);
               const ordRollingIdx = rollingMonths.findIndex(rm => rm.monthName === ordMonth && rm.year === ordYear);
               if (ordRollingIdx !== -1) {
@@ -697,7 +699,7 @@ export default function ReportsPage() {
               const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
 
               if (outstandingVal > 0) {
-                const expectedDate = item.eta || item.po_eta || order.eta || order.expected_delivery_date;
+                const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
                 const parsedExpected = parseDateString(expectedDate) || orderDateParsed;
                 if (parsedExpected) {
                   const { monthName: expMonth, year: expYear } = parsedExpected;
