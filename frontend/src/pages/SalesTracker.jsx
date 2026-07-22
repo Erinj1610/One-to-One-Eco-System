@@ -858,6 +858,34 @@ export default function SalesTracker() {
           const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
           const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
 
+          // Standalone Payment Status calculation
+          const totalPaidVal = Number(o.paid) || 0;
+          const totalRetailVal = Number(o.value) || 0;
+          const isVatEnabled = true; // Assume standard 15% VAT on outstanding calculations
+          const valueInclVat = totalRetailVal * 1.15;
+          let paymentStatus = 'Unpaid';
+          if (totalPaidVal > 0) {
+            if (totalPaidVal >= valueInclVat - 1) { // 1 ZAR tolerance for rounding
+              paymentStatus = 'Fully Paid';
+            } else {
+              paymentStatus = 'Partially Paid';
+            }
+          }
+
+          // Dynamic Overhanging Order Status computation
+          let computedStatus = o.status; 
+          // If it is in DB, it is saved. Reevaluate if saved status was not draft (in workspace we handle Draft/Saved)
+          if (o.status !== 'Draft') {
+            const isFullyPaid = paymentStatus === 'Fully Paid';
+            if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
+              computedStatus = 'Pending';
+            } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+              computedStatus = 'Complete';
+            } else {
+              computedStatus = 'Ongoing';
+            }
+          }
+
           list.push({
             ...o,
             projectKey: p.key,
@@ -866,7 +894,9 @@ export default function SalesTracker() {
             projectStart: p.start,
             procPct,
             invPct,
-            delPct
+            delPct,
+            paymentStatus,
+            status: computedStatus
           });
         });
       }
@@ -911,9 +941,9 @@ export default function SalesTracker() {
     };
 
     const allGroup = dateFilteredOrders;
-    const pendingGroup = dateFilteredOrders.filter(o => o.status === 'Pending' || o.status === 'Processing');
-    const activeGroup = dateFilteredOrders.filter(o => o.status === 'In transit' || (o.status === 'Delivered' && (o.outstanding || 0) > 0));
-    const completeGroup = dateFilteredOrders.filter(o => o.status === 'Delivered' && (o.outstanding || 0) <= 0);
+    const pendingGroup = dateFilteredOrders.filter(o => o.status === 'Pending' || o.status === 'Draft');
+    const activeGroup = dateFilteredOrders.filter(o => o.status === 'Ongoing');
+    const completeGroup = dateFilteredOrders.filter(o => o.status === 'Complete');
 
     return {
       all: getGroupMetrics(allGroup),
@@ -942,11 +972,11 @@ export default function SalesTracker() {
       if (activeKpiFilter === 'all') {
         matchesKpi = true;
       } else if (activeKpiFilter === 'pending') {
-        matchesKpi = o.status === 'Pending' || o.status === 'Processing';
+        matchesKpi = o.status === 'Pending' || o.status === 'Draft';
       } else if (activeKpiFilter === 'active') {
-        matchesKpi = o.status === 'In transit' || (o.status === 'Delivered' && (o.outstanding || 0) > 0);
+        matchesKpi = o.status === 'Ongoing';
       } else if (activeKpiFilter === 'complete') {
-        matchesKpi = o.status === 'Delivered' && (o.outstanding || 0) <= 0;
+        matchesKpi = o.status === 'Complete';
       }
 
       return matchesSearch && matchesStatus && matchesProject && matchesKpi;
@@ -984,6 +1014,8 @@ export default function SalesTracker() {
           return margin;
         case 'status':
           return (o.status || '').toLowerCase();
+        case 'paymentStatus':
+          return (o.paymentStatus || '').toLowerCase();
         case 'procPct':
           return o.procPct || 0;
         case 'invPct':
@@ -2942,6 +2974,9 @@ export default function SalesTracker() {
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
                       </th>
+                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                      </th>
                       <th onClick={() => handleSort('procPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Procurement % {renderSortIcon('procPct')}</div>
                       </th>
@@ -2996,6 +3031,11 @@ export default function SalesTracker() {
                           </td>
                           <td>
                             <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                          </td>
+                          <td>
+                            <span className={`badge ${
+                                o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                              }`}>{o.paymentStatus}</span>
                           </td>
                           <td>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>

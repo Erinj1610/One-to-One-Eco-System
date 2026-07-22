@@ -1051,12 +1051,81 @@ export default function OrdersPage() {
 
   // Aggregate all orders/quotations from all projects in the store
   const allOrders = Object.values(projects).flatMap(p => 
-    (p.orders || []).map(o => ({
-      ...o,
-      projectKey: p.key,
-      projectName: p.name,
-      projectClient: p.client,
-    }))
+    (p.orders || []).map(o => {
+      // Calculate progress percentages dynamically
+      let totalQtyForProc = 0;
+      let totalProcQty = 0;
+      let totalQtyForInv = 0;
+      let totalInvQty = 0;
+      let totalQtyForDel = 0;
+      let totalDelQty = 0;
+
+      const itemsList = o.itemsList || [];
+      itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+        const q = Number(item.qty) || 0;
+        const isService = (item.itemType || item.item_type) === 'Service';
+        
+        // Simple mock defaults to calculate progress
+        const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+
+        if (isService) {
+          totalQtyForInv += q;
+          totalInvQty += Number(invoiced) || 0;
+          return;
+        }
+
+        totalQtyForProc += q;
+        totalQtyForInv += q;
+        totalQtyForDel += q;
+
+        const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+        const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+        const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+        totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+        totalInvQty += Number(invoiced) || 0;
+        totalDelQty += Number(delivered) || 0;
+      });
+
+      const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+      const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+      const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+      // Standalone Payment Status calculation
+      const totalPaidVal = Number(o.paid) || 0;
+      const totalRetailVal = Number(o.value) || 0;
+      const valueInclVat = totalRetailVal * 1.15;
+      let paymentStatus = 'Unpaid';
+      if (totalPaidVal > 0) {
+        if (totalPaidVal >= valueInclVat - 1) { // 1 ZAR tolerance for rounding
+          paymentStatus = 'Fully Paid';
+        } else {
+          paymentStatus = 'Partially Paid';
+        }
+      }
+
+      // Dynamic Overhanging Order Status computation
+      let computedStatus = o.status; 
+      if (o.status !== 'Draft') {
+        const isFullyPaid = paymentStatus === 'Fully Paid';
+        if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
+          computedStatus = 'Pending';
+        } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+          computedStatus = 'Complete';
+        } else {
+          computedStatus = 'Ongoing';
+        }
+      }
+
+      return {
+        ...o,
+        projectKey: p.key,
+        projectName: p.name,
+        projectClient: p.client,
+        paymentStatus,
+        status: computedStatus
+      };
+    })
   );
 
   // Check router state from location for automatic redirection/filtering
@@ -1136,6 +1205,8 @@ export default function OrdersPage() {
           return margin;
         case 'status':
           return (o.status || '').toLowerCase();
+        case 'paymentStatus':
+          return (o.paymentStatus || '').toLowerCase();
         default:
           return '';
       }
@@ -1703,7 +1774,7 @@ export default function OrdersPage() {
         return {
           ...o,
           supplier: orderSupplier,
-          status: orderStatus,
+          status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
           eta: orderEta,
           items: itemsCount,
           value: Math.round(discountedValue),
@@ -2194,6 +2265,9 @@ export default function OrdersPage() {
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
                       </th>
+                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                      </th>
                       <th style={{ textAlign: 'center' }}>Workspace Action</th>
                     </tr>
                   </thead>
@@ -2246,6 +2320,11 @@ export default function OrdersPage() {
                           </td>
                           <td>
                             <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                          </td>
+                          <td>
+                            <span className={`badge ${
+                              o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                            }`}>{o.paymentStatus}</span>
                           </td>
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
