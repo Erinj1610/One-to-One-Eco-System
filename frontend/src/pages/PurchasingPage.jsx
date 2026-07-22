@@ -15,6 +15,11 @@ export default function PurchasingPage() {
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
 
+  // Grouping and Filtering states
+  const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
+  const [filterProjectKey, setFilterProjectKey] = useState('All');
+  const [filterPm, setFilterPm] = useState('All');
+
   // Read filter routing parameter state on mount
   useEffect(() => {
     if (location.state?.filterOrderId) {
@@ -115,6 +120,7 @@ export default function PurchasingPage() {
       projectKey: p.key,
       projectName: p.name,
       projectClient: p.client,
+      projectPm: p.pm || o.pmName || '',
     }))
   );
 
@@ -131,6 +137,7 @@ export default function PurchasingPage() {
         projectName: order.projectName,
         projectClient: order.projectClient,
         supplier: po.supplier || order.supplier,
+        projectPm: order.projectPm,
         orderObj: order
       });
     });
@@ -144,6 +151,7 @@ export default function PurchasingPage() {
         projectName: order.projectName,
         projectClient: order.projectClient,
         supplier: order.supplier,
+        projectPm: order.projectPm,
         orderObj: order
       });
     });
@@ -152,13 +160,34 @@ export default function PurchasingPage() {
   // Sort documents by date/id descending
   allDocs.sort((a, b) => b.id.localeCompare(a.id));
 
+  // Extract unique PMs list for filter dropdown
+  const uniquePms = React.useMemo(() => {
+    const set = new Set();
+    Object.values(projects || {}).forEach(p => {
+      if (p.pm && p.pm.trim()) set.add(p.pm.trim());
+    });
+    allOrders.forEach(o => {
+      if (o.pmName && o.pmName.trim()) set.add(o.pmName.trim());
+    });
+    return Array.from(set).sort();
+  }, [projects, allOrders]);
+
   // Filtered documents for ledger
-  const filteredDocs = allDocs.filter(doc => 
-    doc.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (doc.supplier && doc.supplier.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredDocs = allDocs.filter(doc => {
+    const q = searchQuery.toLowerCase();
+    
+    const matchesSearch = 
+      (doc.id || '').toLowerCase().includes(q) ||
+      (doc.projectName || '').toLowerCase().includes(q) ||
+      (doc.orderId || '').toLowerCase().includes(q) ||
+      (doc.supplier || '').toLowerCase().includes(q) ||
+      (doc.projectClient || '').toLowerCase().includes(q);
+
+    const matchesProject = filterProjectKey === 'All' || doc.projectKey === filterProjectKey;
+    const matchesPm = filterPm === 'All' || (doc.projectPm || '').toLowerCase() === filterPm.toLowerCase();
+
+    return matchesSearch && matchesProject && matchesPm;
+  });
 
   // Selected document to preview
   const activeDoc = allDocs.find(d => d.id === selectedDocId);
@@ -719,7 +748,7 @@ export default function PurchasingPage() {
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
               <input 
                 type="text" 
-                placeholder="Search by ID, supplier, project or order ID..."
+                placeholder="Search by ID, supplier, client, project or order ID..."
                 className="form-control"
                 style={{ paddingLeft: '30px', height: '34px', fontSize: '12px' }}
                 value={searchQuery}
@@ -731,77 +760,195 @@ export default function PurchasingPage() {
             )}
           </div>
 
+          {/* Grouping and Filter Controls Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={groupingMode}
+                onChange={e => setGroupingMode(e.target.value)}
+              >
+                <option value="none">Show All Orders (List)</option>
+                <option value="project">Group Per Project</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Manager</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterPm}
+                onChange={e => setFilterPm(e.target.value)}
+              >
+                <option value="All">All PMs</option>
+                {uniquePms.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Filter</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterProjectKey}
+                onChange={e => setFilterProjectKey(e.target.value)}
+              >
+                <option value="All">All Projects</option>
+                {Object.values(projects).map(p => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div style={{ overflowY: 'auto', flex: 1 }}>
-            <table className="table" style={{ fontSize: '12px' }}>
-              <thead>
-                <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
-                  <th>Document ID</th>
-                  <th>Type</th>
-                  <th>Project / Client</th>
-                  <th>Supplier</th>
-                  <th>Date</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Items</th>
-                  <th style={{ width: '70px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredDocs.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+            {groupingMode === 'project' ? (
+              // Grouped Render
+              (() => {
+                const groups = {};
+                filteredDocs.forEach(doc => {
+                  const key = doc.projectKey || 'unassigned';
+                  if (!groups[key]) {
+                    groups[key] = {
+                      projectName: doc.projectName || 'Direct Client / Other',
+                      projectClient: doc.projectClient || '',
+                      docs: []
+                    };
+                  }
+                  groups[key].docs.push(doc);
+                });
+
+                if (Object.keys(groups).length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
                       No documents found matching filters.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDocs.map(doc => {
-                    const isActive = doc.id === selectedDocId;
-                    return (
-                      <tr 
-                        key={doc.id} 
-                        className="clickable"
-                        onClick={() => {
-                          setSelectedDocId(doc.id);
-                          setSelectedProjectKey(doc.projectKey);
-                        }}
-                        style={{
-                          background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                          borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
-                        }}
-                      >
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{doc.id}</td>
-                        <td>
-                          <span className={`badge ${doc.type === 'purchase_order' ? 'b-info' : 'b-success'}`} style={{ textTransform: 'uppercase', fontSize: '9px' }}>
-                            {doc.type === 'purchase_order' ? 'PO' : 'GRN'}
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{doc.projectName}</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
-                            Client: {doc.projectClient} | Order: {doc.orderId} {(() => {
-                              const p = projects[doc.projectKey];
-                              const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
-                              return o?.quote_name ? `(${o.quote_name})` : '';
-                            })()}
-                          </div>
-                        </td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{doc.supplier || '—'}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{doc.date}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{(doc.items || []).length}</td>
-                        <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                          <button 
-                            className="btn btn-ghost text-danger" 
-                            style={{ padding: '4px' }} 
-                            title="Delete Document"
-                            onClick={() => handleDeleteDoc(doc)}
+                    </div>
+                  );
+                }
+
+                return Object.entries(groups).map(([projKey, group]) => (
+                  <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
+                    <div 
+                      style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', marginBottom: '8px' }}
+                      onClick={() => navigate(`/projects/${projKey}`)}
+                    >
+                      📁 {group.projectName} {group.projectClient && `(${group.projectClient})`}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
+                      {group.docs.map(doc => {
+                        const isActive = doc.id === selectedDocId;
+                        return (
+                          <div
+                            key={doc.id}
+                            onClick={() => {
+                              setSelectedDocId(doc.id);
+                              setSelectedProjectKey(doc.projectKey);
+                            }}
+                            style={{
+                              background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
+                              border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                              borderRadius: '6px',
+                              padding: '8px',
+                              cursor: 'pointer',
+                              fontSize: '11px'
+                            }}
                           >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{doc.id}</span>
+                              <span className={`badge ${doc.type === 'purchase_order' ? 'b-info' : 'b-success'}`} style={{ fontSize: '8px', textTransform: 'uppercase' }}>
+                                {doc.type === 'purchase_order' ? 'PO' : 'GRN'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
+                              <span>Order: {doc.orderId}</span>
+                              <span>Supplier: {doc.supplier || '—'}</span>
+                              <span>Items: {(doc.items || []).length}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()
+            ) : (
+              // Standard Flat List Render
+              <table className="table" style={{ fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
+                    <th>Document ID</th>
+                    <th>Type</th>
+                    <th>Project / Client</th>
+                    <th>Supplier</th>
+                    <th>Date</th>
+                    <th style={{ width: '80px', textAlign: 'center' }}>Items</th>
+                    <th style={{ width: '70px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDocs.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                        No documents found matching filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDocs.map(doc => {
+                      const isActive = doc.id === selectedDocId;
+                      return (
+                        <tr 
+                          key={doc.id} 
+                          className="clickable"
+                          onClick={() => {
+                            setSelectedDocId(doc.id);
+                            setSelectedProjectKey(doc.projectKey);
+                          }}
+                          style={{
+                            background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                            borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
+                          }}
+                        >
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{doc.id}</td>
+                          <td>
+                            <span className={`badge ${doc.type === 'purchase_order' ? 'b-info' : 'b-success'}`} style={{ textTransform: 'uppercase', fontSize: '9px' }}>
+                              {doc.type === 'purchase_order' ? 'PO' : 'GRN'}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{doc.projectName}</div>
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                              Client: {doc.projectClient} | Order: {doc.orderId} {(() => {
+                                const p = projects[doc.projectKey];
+                                const o = (p?.orders || []).find(ord => ord.id === doc.orderId);
+                                return o?.quote_name ? `(${o.quote_name})` : '';
+                              })()}
+                            </div>
+                          </td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{doc.supplier || '—'}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{doc.date}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>{(doc.items || []).length}</td>
+                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                            <button 
+                              className="btn btn-ghost text-danger" 
+                              style={{ padding: '4px' }} 
+                              title="Delete Document"
+                              onClick={() => handleDeleteDoc(doc)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

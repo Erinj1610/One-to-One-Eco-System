@@ -34,24 +34,10 @@ export default function InvoicesPage() {
   const [editInvoiceDate, setEditInvoiceDate] = useState('');
   const [editInvoiceItemInputs, setEditInvoiceItemInputs] = useState({});
 
-  // 1. Gather all design invoices (those without type: 'order_invoice')
-  const designInvoices = invoices.filter(i => i.type !== 'order_invoice');
-
-  // 2. Gather all order invoices (either from global invoices state or from project orders)
-  const orderInvoices = invoices.filter(i => i.type === 'order_invoice');
-
-  // Filter based on active tab
-  const activeInvoices = activeTab === 'design' ? designInvoices : orderInvoices;
-
-  // Search filter
-  const filteredInvoices = activeInvoices.filter(inv => 
-    inv.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    inv.project.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    inv.client.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Selected invoice for detail view
-  const selectedInvoice = invoices.find(i => i.id === selectedInvoiceId);
+  // Grouping and Filtering states
+  const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
+  const [filterProjectKey, setFilterProjectKey] = useState('All');
+  const [filterPm, setFilterPm] = useState('All');
 
   // Gather all project orders to populate the invoice generation dropdown
   const allOrders = Object.values(projects).flatMap(p => 
@@ -60,8 +46,61 @@ export default function InvoicesPage() {
       projectKey: p.key,
       projectName: p.name,
       projectClient: p.client,
+      projectPm: p.pm || o.pmName || '',
     }))
   );
+
+  // 1. Gather all design invoices (those without type: 'order_invoice')
+  const designInvoices = invoices.filter(i => i.type !== 'order_invoice').map(i => {
+    // Map project PM name to invoice for filtering
+    const matchingProj = Object.values(projects).find(p => p.name === i.project);
+    return { ...i, projectPm: matchingProj?.pm || '' };
+  });
+
+  // 2. Gather all order invoices (either from global invoices state or from project orders)
+  const orderInvoices = invoices.filter(i => i.type === 'order_invoice').map(i => {
+    const matchingProj = Object.values(projects).find(p => p.key === i.projectKey);
+    return { ...i, projectPm: matchingProj?.pm || '' };
+  });
+
+  // Filter based on active tab
+  const activeInvoices = activeTab === 'design' ? designInvoices : orderInvoices;
+
+  // Extract unique PMs list for filter dropdown
+  const uniquePms = React.useMemo(() => {
+    const set = new Set();
+    Object.values(projects || {}).forEach(p => {
+      if (p.pm && p.pm.trim()) set.add(p.pm.trim());
+    });
+    return Array.from(set).sort();
+  }, [projects]);
+
+  // Search filter
+  const filteredInvoices = activeInvoices.filter(inv => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = 
+      (inv.id || '').toLowerCase().includes(q) ||
+      (inv.project || '').toLowerCase().includes(q) ||
+      (inv.client || '').toLowerCase().includes(q);
+
+    // If grouping/filtering by specific project key:
+    let matchesProject = true;
+    if (filterProjectKey !== 'All') {
+      if (inv.type === 'order_invoice') {
+        matchesProject = inv.projectKey === filterProjectKey;
+      } else {
+        const matchingProj = Object.values(projects).find(p => p.name === inv.project);
+        matchesProject = matchingProj?.key === filterProjectKey;
+      }
+    }
+
+    const matchesPm = filterPm === 'All' || (inv.projectPm || '').toLowerCase() === filterPm.toLowerCase();
+
+    return matchesSearch && matchesProject && matchesPm;
+  });
+
+  // Selected invoice for detail view
+  const selectedInvoice = invoices.find(i => i.id === selectedInvoiceId);
 
   // Helper: Count total invoice documents issued to generate next ID
   const getNextInvoiceId = () => {
@@ -589,70 +628,192 @@ export default function InvoicesPage() {
             )}
           </div>
 
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            <table className="table" style={{ fontSize: '12px' }}>
-              <thead>
-                <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
-                  <th>Invoice #</th>
-                  <th>Project / Client</th>
-                  <th>Amount</th>
-                  <th>Issued</th>
-                  <th style={{ width: '70px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredInvoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                      No invoices found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredInvoices.map(inv => {
-                    const isActive = inv.id === selectedInvoiceId;
-                    return (
-                      <tr 
-                        key={inv.id} 
-                        className="clickable"
-                        onClick={() => setSelectedInvoiceId(inv.id)}
-                        style={{
-                          background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                          borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
-                        }}
-                      >
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{inv.id}</td>
-                        <td>
-                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{inv.project}</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{inv.client}</div>
-                          {inv.orderId && (
-                            <div style={{ fontSize: '10px', color: 'var(--text-info)', fontFamily: 'monospace', marginTop: '2px' }}>
-                              Order: {inv.orderId} {(() => {
-                                const p = projects[inv.projectKey];
-                                const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
-                                return o?.quote_name ? `(${o.quote_name})` : '';
-                              })()}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ fontWeight: 600 }}>{inv.amount}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>
+          {/* Grouping and Filter Controls Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={groupingMode}
+                onChange={e => setGroupingMode(e.target.value)}
+              >
+                <option value="none">Show All Orders (List)</option>
+                <option value="project">Group Per Project</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Manager</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterPm}
+                onChange={e => setFilterPm(e.target.value)}
+              >
+                <option value="All">All PMs</option>
+                {uniquePms.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
+            </div>
 
-                        <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                          <button 
-                            className="btn btn-ghost text-danger" 
-                            style={{ padding: '4px' }} 
-                            title="Delete Invoice"
-                            onClick={() => handleDeleteInvoice(inv)}
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Filter</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterProjectKey}
+                onChange={e => setFilterProjectKey(e.target.value)}
+              >
+                <option value="All">All Projects</option>
+                {Object.values(projects).map(p => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {groupingMode === 'project' ? (
+              // Grouped Render
+              (() => {
+                const groups = {};
+                filteredInvoices.forEach(inv => {
+                  // Resolve group name based on project string or projectKey mapping
+                  let projName = inv.project || 'Direct Client / Other';
+                  let groupKey = inv.projectKey || '';
+                  if (!groupKey) {
+                    const match = Object.values(projects).find(p => p.name === inv.project);
+                    groupKey = match?.key || 'unassigned';
+                  }
+                  if (!groups[groupKey]) {
+                    groups[groupKey] = {
+                      projectName: projName,
+                      client: inv.client || '',
+                      docs: []
+                    };
+                  }
+                  groups[groupKey].docs.push(inv);
+                });
+
+                if (Object.keys(groups).length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                      No invoices found.
+                    </div>
+                  );
+                }
+
+                return Object.entries(groups).map(([projKey, group]) => (
+                  <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
+                    <div 
+                      style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', marginBottom: '8px' }}
+                      onClick={() => {
+                        if (projKey !== 'unassigned') {
+                          window.location.hash = `/projects/${projKey}`;
+                        }
+                      }}
+                    >
+                      📁 {group.projectName} {group.client && `(${group.client})`}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
+                      {group.docs.map(inv => {
+                        const isActive = inv.id === selectedInvoiceId;
+                        return (
+                          <div
+                            key={inv.id}
+                            onClick={() => setSelectedInvoiceId(inv.id)}
+                            style={{
+                              background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
+                              border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                              borderRadius: '6px',
+                              padding: '8px',
+                              cursor: 'pointer',
+                              fontSize: '11px'
+                            }}
                           >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{inv.id}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
+                              <span>Issued: {inv.issued}</span>
+                              {inv.orderId && <span>Order: {inv.orderId}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()
+            ) : (
+              // Standard Flat List Render
+              <table className="table" style={{ fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
+                    <th>Invoice #</th>
+                    <th>Project / Client</th>
+                    <th>Amount</th>
+                    <th>Issued</th>
+                    <th style={{ width: '70px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                        No invoices found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredInvoices.map(inv => {
+                      const isActive = inv.id === selectedInvoiceId;
+                      return (
+                        <tr 
+                          key={inv.id} 
+                          className="clickable"
+                          onClick={() => setSelectedInvoiceId(inv.id)}
+                          style={{
+                            background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                            borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
+                          }}
+                        >
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{inv.id}</td>
+                          <td>
+                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{inv.project}</div>
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{inv.client}</div>
+                            {inv.orderId && (
+                              <div style={{ fontSize: '10px', color: 'var(--text-info)', fontFamily: 'monospace', marginTop: '2px' }}>
+                                Order: {inv.orderId} {(() => {
+                                  const p = projects[inv.projectKey];
+                                  const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
+                                  return o?.quote_name ? `(${o.quote_name})` : '';
+                                })()}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{inv.amount}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>
+
+                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                            <button 
+                              className="btn btn-ghost text-danger" 
+                              style={{ padding: '4px' }} 
+                              title="Delete Invoice"
+                              onClick={() => handleDeleteInvoice(inv)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

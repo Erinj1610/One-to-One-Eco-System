@@ -15,6 +15,11 @@ export default function LogisticsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+  
+  // Grouping and Filtering states
+  const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
+  const [filterProjectKey, setFilterProjectKey] = useState('All');
+  const [filterPm, setFilterPm] = useState('All');
 
   // Read filter routing parameter state on mount
   useEffect(() => {
@@ -59,6 +64,7 @@ export default function LogisticsPage() {
       projectKey: p.key,
       projectName: p.name,
       projectClient: p.client,
+      projectPm: p.pm || o.pmName || '',
     }))
   );
 
@@ -75,6 +81,7 @@ export default function LogisticsPage() {
         projectName: order.projectName,
         projectClient: order.projectClient,
         supplier: order.supplier,
+        projectPm: order.projectPm,
         orderObj: order
       });
     });
@@ -88,6 +95,7 @@ export default function LogisticsPage() {
         projectName: order.projectName,
         projectClient: order.projectClient,
         supplier: order.supplier,
+        projectPm: order.projectPm,
         orderObj: order
       });
     });
@@ -96,13 +104,35 @@ export default function LogisticsPage() {
   // Sort documents by date/id descending
   allDocs.sort((a, b) => b.id.localeCompare(a.id));
 
+  // Extract unique PMs list for filter dropdown
+  const uniquePms = React.useMemo(() => {
+    const set = new Set();
+    Object.values(projects || {}).forEach(p => {
+      if (p.pm && p.pm.trim()) set.add(p.pm.trim());
+    });
+    allOrders.forEach(o => {
+      if (o.pmName && o.pmName.trim()) set.add(o.pmName.trim());
+    });
+    return Array.from(set).sort();
+  }, [projects, allOrders]);
+
   // Filtered documents for ledger
-  const filteredDocs = allDocs.filter(doc => 
-    (doc.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (doc.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (doc.orderId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (doc.supplier || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredDocs = allDocs.filter(doc => {
+    const q = searchQuery.toLowerCase();
+    
+    // Exact/nested property safety checks to avoid "cannot read properties of undefined (reading 'toLowerCase')"
+    const matchesSearch = 
+      (doc.id || '').toLowerCase().includes(q) ||
+      (doc.projectName || '').toLowerCase().includes(q) ||
+      (doc.orderId || '').toLowerCase().includes(q) ||
+      (doc.supplier || '').toLowerCase().includes(q) ||
+      (doc.projectClient || '').toLowerCase().includes(q);
+
+    const matchesProject = filterProjectKey === 'All' || doc.projectKey === filterProjectKey;
+    const matchesPm = filterPm === 'All' || (doc.projectPm || '').toLowerCase() === filterPm.toLowerCase();
+
+    return matchesSearch && matchesProject && matchesPm;
+  });
 
 
   // Selected document to preview
@@ -537,7 +567,7 @@ export default function LogisticsPage() {
             <Search size={14} className="search-icon" style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
             <input 
               type="text" 
-              placeholder="Search documents, projects, orders, or suppliers..." 
+              placeholder="Search documents, projects, orders, or clients..." 
               className="form-control"
               style={{ paddingLeft: '32px', height: '32px', fontSize: '12.5px', background: 'var(--bg-primary)' }}
               value={searchQuery}
@@ -545,12 +575,127 @@ export default function LogisticsPage() {
             />
           </div>
 
+          {/* Grouping and Filter Controls Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '11px' }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={groupingMode}
+                onChange={e => setGroupingMode(e.target.value)}
+              >
+                <option value="none">Show All Orders (List)</option>
+                <option value="project">Group Per Project</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Manager</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterPm}
+                onChange={e => setFilterPm(e.target.value)}
+              >
+                <option value="All">All PMs</option>
+                {uniquePms.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Filter</label>
+              <select 
+                className="form-control"
+                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
+                value={filterProjectKey}
+                onChange={e => setFilterProjectKey(e.target.value)}
+              >
+                <option value="All">All Projects</option>
+                {Object.values(projects).map(p => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '680px', overflowY: 'auto', paddingRight: '2px' }}>
             {filteredDocs.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
                 No issued packing lists or delivery notes found.
               </div>
+            ) : groupingMode === 'project' ? (
+              // Grouped Render
+              (() => {
+                // Group by projectKey
+                const groups = {};
+                filteredDocs.forEach(doc => {
+                  const key = doc.projectKey || 'unassigned';
+                  if (!groups[key]) {
+                    groups[key] = {
+                      projectName: doc.projectName || 'Direct Client / Other',
+                      projectClient: doc.projectClient || '',
+                      docs: []
+                    };
+                  }
+                  groups[key].docs.push(doc);
+                });
+
+                return Object.entries(groups).map(([projKey, group]) => (
+                  <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '4px' }}>
+                    <div 
+                      style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', marginBottom: '8px' }}
+                      onClick={() => navigate(`/projects/${projKey}`)}
+                    >
+                      📁 {group.projectName} {group.projectClient && `(${group.projectClient})`}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
+                      {group.docs.map(doc => {
+                        const isSelected = doc.id === selectedDocId;
+                        const isPL = doc.type === 'packing_list';
+                        const totalQty = doc.items.reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+                        return (
+                          <div
+                            key={doc.id}
+                            onClick={() => {
+                              setSelectedDocId(doc.id);
+                              setSelectedProjectKey(doc.projectKey);
+                            }}
+                            style={{
+                              background: isSelected ? 'rgba(139, 92, 246, 0.12)' : 'var(--bg-secondary)',
+                              border: isSelected ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                              borderRadius: '6px',
+                              padding: '8px',
+                              cursor: 'pointer',
+                              fontSize: '11px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{doc.id}</span>
+                              <span style={{
+                                fontSize: '8px',
+                                background: isPL ? '#1e3a8a' : '#14532d',
+                                color: 'white',
+                                padding: '1px 4px',
+                                borderRadius: '3px',
+                                textTransform: 'uppercase'
+                              }}>{isPL ? 'PL' : 'DN'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
+                              <span>Order: {doc.orderId}</span>
+                              <span>Qty: {totalQty}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()
             ) : (
+              // Standard Flat List Render
               filteredDocs.map(doc => {
                 const isSelected = doc.id === selectedDocId;
                 const isPL = doc.type === 'packing_list';

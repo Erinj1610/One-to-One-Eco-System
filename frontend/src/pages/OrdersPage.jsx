@@ -447,6 +447,33 @@ export default function OrdersPage() {
   const [linkClient, setLinkClient] = useState('');
   const [linkProjectKey, setLinkProjectKey] = useState('');
 
+  // Union of hardcoded contacts and unique client names from database projects
+  const combinedContacts = useMemo(() => {
+    const projectClients = new Set();
+    Object.values(projects || {}).forEach(p => {
+      if (p.client && p.client.trim()) {
+        projectClients.add(p.client.trim());
+      }
+    });
+
+    const list = [...(contacts || [])];
+    projectClients.forEach(clientName => {
+      const exists = list.some(c => (c.name || '').toLowerCase() === clientName.toLowerCase());
+      if (!exists) {
+        list.push({
+          id: `dyn-${clientName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
+          name: clientName,
+          company: clientName,
+          type: 'Private',
+          email: '',
+          phone: '',
+          status: 'Active'
+        });
+      }
+    });
+    return list;
+  }, [contacts, projects]);
+
   // Editable Client & Project Registration details on the order
   const [clientCompany, setClientCompany] = useState('');
   const [clientContact, setClientContact] = useState('');
@@ -2555,9 +2582,9 @@ export default function OrdersPage() {
                               <select 
                                 className="form-control" 
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
-                                value={contacts.find(c => c.name === clientContact)?.name || ''}
+                                value={combinedContacts.find(c => c.name === clientContact)?.name || ''}
                                 onChange={e => {
-                                  const contact = contacts.find(c => c.name === e.target.value);
+                                  const contact = combinedContacts.find(c => c.name === e.target.value);
                                   if (contact) {
                                     setClientContact(contact.name);
                                     setClientCompany(contact.company || '');
@@ -2567,7 +2594,7 @@ export default function OrdersPage() {
                                 }}
                               >
                                 <option value="">-- Choose from Contacts CRM --</option>
-                                {contacts.map(c => (
+                                {combinedContacts.map(c => (
                                   <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
                                 ))}
                               </select>
@@ -5744,7 +5771,7 @@ export default function OrdersPage() {
                   disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
-                  {contacts.map(c => (
+                  {combinedContacts.map(c => (
                     <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
                   ))}
                 </select>
@@ -5766,7 +5793,7 @@ export default function OrdersPage() {
                 type="button" 
                 className="btn btn-primary"
                 onClick={() => {
-                  const targetClient = contacts.find(c => c.name === linkClient) || {};
+                  const targetClient = combinedContacts.find(c => c.name === linkClient) || {};
                   const oldProjectKey = linkModalItem.projectKey;
                   
                   // Compute target project key
