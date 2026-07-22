@@ -688,7 +688,7 @@ export default function InvoicesPage() {
                 }
 
                 return Object.entries(groups).map(([projKey, group]) => {
-                  const isCollapsed = collapsedProjects[projKey] ?? false; // default to open
+                  const isCollapsed = collapsedProjects[projKey] ?? true; // default to collapsed (true)
                   return (
                     <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
                       <div 
