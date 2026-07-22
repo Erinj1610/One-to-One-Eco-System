@@ -180,13 +180,21 @@ export default function PurchasingPage() {
     let matchesSearch = true;
     if (q) {
       const searchTokens = q.split(/\s+/);
-      matchesSearch = searchTokens.every(token => 
-        (doc.id || '').toLowerCase().includes(token) ||
-        (doc.projectName || '').toLowerCase().includes(token) ||
-        (doc.orderId || '').toLowerCase().includes(token) ||
-        (doc.supplier || '').toLowerCase().includes(token) ||
-        (doc.projectClient || '').toLowerCase().includes(token)
-      );
+      matchesSearch = searchTokens.every(token => {
+        const idMatch = (doc.id || '').toLowerCase().includes(token);
+        const projectMatch = (doc.projectName || '').toLowerCase().includes(token);
+        const orderMatch = (doc.orderId || '').toLowerCase().includes(token);
+        const supplierMatch = (doc.supplier || '').toLowerCase().includes(token);
+        const clientMatch = (doc.projectClient || '').toLowerCase().includes(token);
+        
+        // Also check if matches item codes or descriptions inside the document to prevent random omissions
+        const itemMatch = (doc.items || []).some(item => 
+          (item.code || '').toLowerCase().includes(token) ||
+          (item.description || '').toLowerCase().includes(token)
+        );
+
+        return idMatch || projectMatch || orderMatch || supplierMatch || clientMatch || itemMatch;
+      });
     }
 
     // Direct string PM comparison (trim and lowercase check to ensure match regardless of case/spacing)

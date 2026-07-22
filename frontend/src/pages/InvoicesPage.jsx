@@ -83,11 +83,20 @@ export default function InvoicesPage() {
     let matchesSearch = true;
     if (q) {
       const searchTokens = q.split(/\s+/);
-      matchesSearch = searchTokens.every(token => 
-        (inv.id || '').toLowerCase().includes(token) ||
-        (inv.project || '').toLowerCase().includes(token) ||
-        (inv.client || '').toLowerCase().includes(token)
-      );
+      matchesSearch = searchTokens.every(token => {
+        const idMatch = (inv.id || '').toLowerCase().includes(token);
+        const projectMatch = (inv.project || '').toLowerCase().includes(token);
+        const clientMatch = (inv.client || '').toLowerCase().includes(token);
+        const orderMatch = (inv.orderId || '').toLowerCase().includes(token);
+        
+        // Also check if matches item codes or descriptions inside the invoice items list to prevent random omissions
+        const itemMatch = (inv.items || []).some(item => 
+          (item.code || '').toLowerCase().includes(token) ||
+          (item.description || '').toLowerCase().includes(token)
+        );
+
+        return idMatch || projectMatch || clientMatch || orderMatch || itemMatch;
+      });
     }
 
     // Direct string PM comparison (trim and lowercase check to ensure match regardless of case/spacing)
