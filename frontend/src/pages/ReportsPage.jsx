@@ -473,7 +473,7 @@ export default function ReportsPage() {
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
 
       // KPI 2 & Annual Awaiting Stock
-      if (order.status === 'Pending' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
+      if (order.status === 'Pending' || order.status === 'In transit' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
         if (rollingIdx !== -1) {
           dynamicAwaiting[div][`col${rollingIdx}`] += orderValue;
         }
@@ -638,7 +638,7 @@ export default function ReportsPage() {
 
         // To Be Invoiced
         if (type === 'awaiting') {
-          if (order.status === 'Pending' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
+          if (order.status === 'Pending' || order.status === 'In transit' || ((order.status === 'Delivered' || order.status === 'Processing') && !isEligibleForInvoiced)) {
             const { monthName: orderMonth, year: orderYear } = orderDateParsed;
             if (extraFilter !== null) {
               const targetMonth = rollingMonths[extraFilter];
