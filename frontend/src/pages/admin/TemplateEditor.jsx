@@ -990,7 +990,7 @@ export default function TemplateHub() {
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                       {metadata?.exists 
-                        ? `${(metadata.size / 1024).toFixed(1)} KB — Last Modified: ${new Date(metadata.last_modified * 1000).toLocaleString()}`
+                        ? `${(metadata.size / 1024).toFixed(1)} KB — Last Modified: ${metadata.last_modified ? new Date(metadata.last_modified * 1000).toLocaleString() : 'Just Now'}`
                         : 'Upload a Microsoft Word (.docx) file to get started.'}
                     </div>
                   </div>
@@ -1030,26 +1030,29 @@ export default function TemplateHub() {
               <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-info)' }}>🔖 Template Token Directory</h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                  {activeDoc.tokens && Object.entries(activeDoc.tokens).map(([category, list]) => (
-                    <div key={category}>
-                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>{category}</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {list.map(token => (
-                          <code 
-                            key={token} 
-                            style={{ padding: '2px 6px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.15)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-info)', cursor: 'pointer' }}
-                            onClick={() => {
-                              navigator.clipboard.writeText(`{{${token}}}`);
-                              setMessage({ type: 'success', text: `Copied {{${token}}}` });
-                              setTimeout(() => setMessage(null), 2000);
-                            }}
-                          >
-                            {`{{${token}}}`}
-                          </code>
-                        ))}
+                  {activeDoc.tokens && Object.entries(activeDoc.tokens).map(([category, list]) => {
+                    const safeList = Array.isArray(list) ? list : [];
+                    return (
+                      <div key={category}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>{category}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {safeList.map(token => (
+                            <code 
+                              key={token} 
+                              style={{ padding: '2px 6px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.15)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-info)', cursor: 'pointer' }}
+                              onClick={() => {
+                                navigator.clipboard.writeText(`{{${token}}}`);
+                                setMessage({ type: 'success', text: `Copied {{${token}}}` });
+                                setTimeout(() => setMessage(null), 2000);
+                              }}
+                            >
+                              {`{{${token}}}`}
+                            </code>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
