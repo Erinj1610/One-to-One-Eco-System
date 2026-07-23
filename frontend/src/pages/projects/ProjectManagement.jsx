@@ -508,21 +508,21 @@ export default function ProjectManagement() {
     }
   };
 
-  // Dynamic Blended Profit Margin
+  // Dynamic Blended Profit Margin (computed solely on the hardware/product orders, excluding design fees)
   const blendedMargin = useMemo(() => {
     if (!p) return 18;
-    if (grandContractValue === 0) return p?.actualMargin || 18;
+    if (orders.length === 0) return p?.targetMargin || 18;
     
-    // Weighted sum of actual design margins + detailed cost prices of order spec sheets
-    const designMarginCost = designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0);
-    const orderMarginCost = orders.reduce((sum, o) => {
+    const totalOrderVal = orders.reduce((sum, o) => sum + (o.value || 0), 0);
+    if (totalOrderVal === 0) return p?.targetMargin || 18;
+
+    const orderCost = orders.reduce((sum, o) => {
       // If we have actual itemized costValue, use it! Otherwise assume 20% margin (80% cost price)
       return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
     }, 0);
-    const blendedCost = designMarginCost + orderMarginCost;
 
-    return Math.round(((grandContractValue - blendedCost) / grandContractValue) * 100);
-  }, [designFees, orders, grandContractValue, p?.actualMargin]);
+    return Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
+  }, [orders, p?.targetMargin]);
 
   // Sync blended margin back to database store when calculated
   useEffect(() => {
@@ -851,9 +851,9 @@ export default function ProjectManagement() {
             <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : computedStage}</span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Blended Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || grandContractValue === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || alertSettings?.defaultTargetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
-              {p.isDraft || grandContractValue === 0 ? '—' : `${blendedMargin}%`}
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Margin</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || orders.length === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || alertSettings?.defaultTargetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+              {p.isDraft || orders.length === 0 ? '—' : `${blendedMargin}%`}
             </span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
@@ -2048,8 +2048,8 @@ export default function ProjectManagement() {
                     <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '8px' }}>R {grandOutstandingValue.toLocaleString()}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Blended Margin</span>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{grandContractValue === 0 ? '—' : `${blendedMargin}%`}</div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Product Orders Margin</span>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{orders.length === 0 ? '—' : `${blendedMargin}%`}</div>
                   </div>
                 </div>
 

@@ -329,15 +329,17 @@ export default function ProjectList() {
           return progressPct;
         }
         case 'margin': {
-          let totalValue = p.feeValue || 0;
           let actualMargin = p.actualMargin || 18;
-          if (p.designFees && p.orders) {
-            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
-            totalValue = dfVal + poVal;
-            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                              p.orders.reduce((sum, o) => sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8)), 0);
-            actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
+          if (p.orders && p.orders.length > 0) {
+            const totalOrderVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            if (totalOrderVal > 0) {
+              const orderCost = p.orders.reduce((sum, o) => {
+                return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
+              }, 0);
+              actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
+            }
+          } else {
+            actualMargin = p.targetMargin || 18;
           }
           return actualMargin;
         }
@@ -716,7 +718,7 @@ export default function ProjectList() {
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderSortIcon('stage')}</div>
                 </th>
                 <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Blended Margin {renderSortIcon('margin')}</div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
                 </th>
                 <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
@@ -755,20 +757,28 @@ export default function ProjectList() {
                 let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
                 let actualMargin = p.actualMargin || 18;
 
-                if (p.designFees && p.orders) {
-                  const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-                  const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-                  
-                  const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
-                  const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+                if (p.orders && p.orders.length > 0) {
+                   const totalOrderVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+                   if (totalOrderVal > 0) {
+                     const orderCost = p.orders.reduce((sum, o) => {
+                       return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
+                     }, 0);
+                     actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
+                   } else {
+                     actualMargin = p.targetMargin || 18;
+                   }
+                 } else {
+                   actualMargin = p.targetMargin || 18;
+                 }
 
-                  totalValue = dfVal + poVal;
-                  totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
-
-                  const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                                    p.orders.reduce((sum, o) => sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8)), 0);
-                  actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
-                }
+                 if (p.designFees && p.orders) {
+                   const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+                   const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+                   const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+                   const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+                   totalValue = dfVal + poVal;
+                   totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+                 }
 
                 // Margin Health Indicator
                 const isUnderTarget = actualMargin < (p.targetMargin || 18);

@@ -1719,7 +1719,7 @@ export default function CrmPage() {
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderProjSortIcon('stage')}</div>
                    </th>
                    <th onClick={() => handleProjSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderProjSortIcon('margin')}</div>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderProjSortIcon('margin')}</div>
                    </th>
                    <th onClick={() => handleProjSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderProjSortIcon('status')}</div>
@@ -1738,6 +1738,20 @@ export default function CrmPage() {
                    let totalValue = p.feeValue || 0;
                    let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
                    let actualMargin = p.actualMargin || 18;
+
+                   if (p.orders && p.orders.length > 0) {
+                      const totalOrderVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+                      if (totalOrderVal > 0) {
+                        const orderCost = p.orders.reduce((sum, o) => {
+                          return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
+                        }, 0);
+                        actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
+                      } else {
+                        actualMargin = p.targetMargin || 18;
+                      }
+                    } else {
+                      actualMargin = p.targetMargin || 18;
+                    }
  
                    if (p.designFees && p.orders) {
                      const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
@@ -1747,12 +1761,8 @@ export default function CrmPage() {
  
                      totalValue = dfVal + poVal;
                      totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
- 
-                     const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                                       p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
-                     actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
                    }
- 
+
                    const isUnderTarget = actualMargin < (p.targetMargin || 18);
  
                    const typeColors = {
