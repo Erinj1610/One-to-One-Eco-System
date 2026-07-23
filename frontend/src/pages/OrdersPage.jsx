@@ -510,6 +510,9 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
+  const [clientFilter, setClientFilter] = useState('All');
+  const [pmFilter, setPmFilter] = useState('All');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('All');
 
   // Sorting States
   const [sortField, setSortField] = useState(null);
@@ -1122,6 +1125,7 @@ export default function OrdersPage() {
         projectKey: p.key,
         projectName: p.name,
         projectClient: p.client,
+        projectPm: p.pm || p.pmName || '',
         paymentStatus,
         status: computedStatus
       };
@@ -1150,13 +1154,16 @@ export default function OrdersPage() {
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
       (o.id || '').toLowerCase().includes(query) ||
+      (o.quote_name || '').toLowerCase().includes(query) ||
       (o.projectName || '').toLowerCase().includes(query) ||
-      (o.projectFullName || '').toLowerCase().includes(query) ||
-      (o.supplier || '').toLowerCase().includes(query) ||
-      (o.quote_name || '').toLowerCase().includes(query);
+      (o.projectClient || '').toLowerCase().includes(query) ||
+      (o.projectPm || '').toLowerCase().includes(query);
       
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
     const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
+    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter;
+    const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
+    const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
     
     let matchesDate = true;
     if (startDate || endDate) {
@@ -1169,7 +1176,7 @@ export default function OrdersPage() {
       }
     }
     
-    return matchesSearch && matchesStatus && matchesProject && matchesDate;
+    return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesDate;
   });
 
   // Sort Logic for All Columns in Orders Module
@@ -2132,7 +2139,7 @@ export default function OrdersPage() {
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
                       type="text"
-                      placeholder="Search by quotation ref, client, or supplier..."
+                      placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
                       value={searchQuery}
@@ -2142,7 +2149,7 @@ export default function OrdersPage() {
                   
                   <select 
                     className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
                     value={filterStatus}
                     onChange={e => setFilterStatus(e.target.value)}
                   >
@@ -2156,14 +2163,53 @@ export default function OrdersPage() {
 
                   <select 
                     className="form-control"
-                    style={{ width: '200px', height: '34px', fontSize: '13px' }}
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
                     value={projectFilterKey}
                     onChange={e => setProjectFilterKey(e.target.value)}
                   >
-                    <option value="All">All Linked Projects</option>
-                    {Object.values(projects).map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
+                    <option value="All">All Projects</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort().map(projName => {
+                      const foundObj = allOrders.find(o => o.projectName === projName);
+                      return (
+                        <option key={foundObj.projectKey} value={foundObj.projectKey}>{projName}</option>
+                      );
+                    })}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={clientFilter}
+                    onChange={e => setClientFilter(e.target.value)}
+                  >
+                    <option value="All">All Clients</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort().map(client => (
+                      <option key={client} value={client}>{client}</option>
                     ))}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={pmFilter}
+                    onChange={e => setPmFilter(e.target.value)}
+                  >
+                    <option value="All">All PMs</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort().map(pm => (
+                      <option key={pm} value={pm}>{pm}</option>
+                    ))}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={paymentStatusFilter}
+                    onChange={e => setPaymentStatusFilter(e.target.value)}
+                  >
+                    <option value="All">All Payments</option>
+                    <option value="Fully Paid">Fully Paid</option>
+                    <option value="Partially Paid">Partially Paid</option>
+                    <option value="Unpaid">Unpaid</option>
                   </select>
                 </div>
 
