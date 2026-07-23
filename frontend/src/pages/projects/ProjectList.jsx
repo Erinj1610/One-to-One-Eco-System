@@ -629,49 +629,66 @@ export default function ProjectList() {
         </div>
 
         {/* FILTER & CONTROL LEDGER BAR */}
-        <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '240px' }}>
-            <Search size={16} color="var(--text-tertiary)" />
-            <input 
-              type="text" 
-              placeholder="Search projects, clients or managers..." 
-              value={search} 
-              onChange={e => setSearch(e.target.value)} 
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '100%', fontSize: '13px', outline: 'none' }}
-            />
-          </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+              <input 
+                type="text" 
+                placeholder="Search Project name, Client, or PM..." 
+                className="form-control"
+                style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+              />
+            </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {activeKpiFilter && (
               <button 
                 className="btn btn-sm btn-ghost" 
                 onClick={() => setActiveKpiFilter(null)}
-                style={{ fontSize: '11px', color: 'var(--text-danger)' }}
+                style={{ fontSize: '11px', color: 'var(--text-danger)', height: '34px' }}
               >
-                Clear Metric Filter ({activeKpiFilter})
+                Clear Filter ({activeKpiFilter})
               </button>
             )}
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Filter size={12} color="var(--text-tertiary)" />
-              <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={pmFilter} onChange={e => setPmFilter(e.target.value)}>
-                {pmList.map(pm => (
-                  <option key={pm} value={pm}>{pm}</option>
-                ))}
-              </select>
-            </div>
 
-            <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
-              {clientsList.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-
-            <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <select 
+              className="form-control" 
+              style={{ width: '130px', height: '34px', fontSize: '13px' }} 
+              value={statusFilter} 
+              onChange={e => setStatusFilter(e.target.value)}
+            >
               {statusesList.map(st => (
-                <option key={st} value={st}>{st}</option>
+                <option key={st} value={st === 'All Statuses' ? 'All Statuses' : st}>{st}</option>
               ))}
             </select>
+
+            <select 
+              className="form-control" 
+              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
+              value={clientFilter} 
+              onChange={e => setClientFilter(e.target.value)}
+            >
+              {clientsList.map(c => (
+                <option key={c} value={c === 'All Clients' ? 'All Clients' : c}>{c === 'All Clients' ? 'All Clients' : c}</option>
+              ))}
+            </select>
+
+            <select 
+              className="form-control" 
+              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
+              value={pmFilter} 
+              onChange={e => setPmFilter(e.target.value)}
+            >
+              {pmList.map(pm => (
+                <option key={pm} value={pm === 'All PMs' ? 'All PMs' : pm}>{pm === 'All PMs' ? 'All PMs' : pm}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Showing <strong>{filteredProjects.length}</strong> active projects
           </div>
         </div>
 
