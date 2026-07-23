@@ -266,18 +266,56 @@ export default function ProjectList() {
     };
   }, [dateFilteredProjects]);
 
+  // Dynamic list of unique project managers for the dropdown filter
+  const pmList = useMemo(() => {
+    const pms = Object.values(projects).map(p => p.pm).filter(Boolean);
+    return ['All PMs', ...Array.from(new Set(pms))].sort();
+  }, [projects]);
+
   // Dynamic list of unique clients for the dropdown filter
   const clientsList = useMemo(() => {
     const cls = Object.values(projects).map(p => p.client).filter(Boolean);
     return ['All Clients', ...Array.from(new Set(cls))].sort();
   }, [projects]);
 
+  // Dynamic list of unique statuses computed across all projects
+  const statusesList = useMemo(() => {
+    const statuses = Object.values(projects).map(p => {
+      if (p.isDraft) return null;
+      if (p.orders && p.orders.length > 0) {
+        const oStatuses = p.orders.map(o => o.status || 'Pending');
+        if (oStatuses.every(s => s === 'Cancelled')) return 'Cancelled';
+        if (oStatuses.every(s => s === 'Complete')) return 'Complete';
+        if (oStatuses.some(s => s === 'Ongoing' || s === 'Complete')) return 'Ongoing';
+        return 'Pending';
+      }
+      return 'Pending';
+    }).filter(Boolean);
+    return ['All Statuses', ...Array.from(new Set(statuses))].sort();
+  }, [projects]);
+
   // Project List Filter Logic
   const filteredProjects = useMemo(() => {
     return dateFilteredProjects.filter(p => {
-      // Search matches
+      // Calculate dynamic computed status for matching search & filter
+      let computedStatus = 'Pending';
+      if (p.orders && p.orders.length > 0) {
+        const statuses = p.orders.map(o => o.status || 'Pending');
+        if (statuses.every(s => s === 'Cancelled')) {
+          computedStatus = 'Cancelled';
+        } else if (statuses.every(s => s === 'Complete')) {
+          computedStatus = 'Complete';
+        } else if (statuses.some(s => s === 'Ongoing' || s === 'Complete')) {
+          computedStatus = 'Ongoing';
+        } else {
+          computedStatus = 'Pending';
+        }
+      }
+
+      // Search matches (Project name, Client, or PM)
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                            (p.client || '').toLowerCase().includes(search.toLowerCase());
+                            (p.client || '').toLowerCase().includes(search.toLowerCase()) ||
+                            (p.pm || '').toLowerCase().includes(search.toLowerCase());
       
       // PM matches
       const matchesPm = pmFilter === 'All PMs' || p.pm === pmFilter;
@@ -289,18 +327,18 @@ export default function ProjectList() {
       const matchesType = typeFilter === 'All Types' || p.projectType === typeFilter;
 
       // Status matches
-      const matchesStatus = statusFilter === 'All Statuses' || p.status === statusFilter;
+      const matchesStatus = statusFilter === 'All Statuses' || computedStatus === statusFilter;
 
       // KPI interactive filter matches
       let matchesKpi = true;
       if (activeKpiFilter === 'total') {
         matchesKpi = true;
       } else if (activeKpiFilter === 'pending') {
-        matchesKpi = p.complete !== 'Complete' && (p.stage === 'Stage 1' || p.status === 'Pending' || p.status === 'Awaiting deposit');
+        matchesKpi = p.complete !== 'Complete' && (p.stage === 'Stage 1' || computedStatus === 'Pending' || p.status === 'Awaiting deposit');
       } else if (activeKpiFilter === 'active') {
-        matchesKpi = p.complete !== 'Complete' && p.stage !== 'Stage 1' && p.status !== 'Pending';
+        matchesKpi = p.complete !== 'Complete' && p.stage !== 'Stage 1' && computedStatus !== 'Pending';
       } else if (activeKpiFilter === 'complete') {
-        matchesKpi = p.complete === 'Complete';
+        matchesKpi = p.complete === 'Complete' || computedStatus === 'Complete';
       }
 
       return matchesSearch && matchesPm && matchesClient && matchesType && matchesStatus && matchesKpi;
@@ -598,7 +636,7 @@ export default function ProjectList() {
             <Search size={16} color="var(--text-tertiary)" />
             <input 
               type="text" 
-              placeholder="Search projects or clients..." 
+              placeholder="Search projects, clients or managers..." 
               value={search} 
               onChange={e => setSearch(e.target.value)} 
               style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '100%', fontSize: '13px', outline: 'none' }}
@@ -619,9 +657,9 @@ export default function ProjectList() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Filter size={12} color="var(--text-tertiary)" />
               <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={pmFilter} onChange={e => setPmFilter(e.target.value)}>
-                <option>All PMs</option>
-                <option>Dani</option>
-                <option>Martin</option>
+                {pmList.map(pm => (
+                  <option key={pm} value={pm}>{pm}</option>
+                ))}
               </select>
             </div>
 
@@ -639,11 +677,9 @@ export default function ProjectList() {
             </select>
 
             <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option>All Statuses</option>
-              <option>Draft</option>
-              <option>Pending</option>
-              <option>Ongoing</option>
-              <option>Complete</option>
+              {statusesList.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -743,19 +779,18 @@ export default function ProjectList() {
                 let computedStatus = 'Pending';
                 if (p.orders && p.orders.length > 0) {
                   const statuses = p.orders.map(o => o.status || 'Pending');
+                  const allCancelled = statuses.every(s => s === 'Cancelled');
                   const allComplete = statuses.every(s => s === 'Complete');
-                  const allDraft = statuses.every(s => s === 'Draft');
-                  const hasOngoing = statuses.some(s => s === 'Ongoing' || s === 'Complete');
-                  const hasPending = statuses.some(s => s === 'Pending');
+                  const hasOngoing = statuses.some(s => s === 'Ongoing');
 
-                  if (allComplete) {
+                  if (allCancelled) {
+                    computedStatus = 'Cancelled';
+                  } else if (allComplete) {
                     computedStatus = 'Complete';
                   } else if (hasOngoing) {
                     computedStatus = 'Ongoing';
-                  } else if (hasPending) {
+                  } else {
                     computedStatus = 'Pending';
-                  } else if (allDraft) {
-                    computedStatus = 'Draft';
                   }
                 }
 
