@@ -79,7 +79,40 @@ async def download_xlsx_template(doc_type: str, db: Session = Depends(get_db)):
     # 2. Fall back to local file
     path = os.path.abspath(os.path.join(TEMPLATES_BASE_DIR, doc_type, 'template.xlsx'))
     if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Excel template for {doc_type} not found")
+        # Auto-create a default Excel layout structure if it doesn't exist on disk
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Template Definition"
+        
+        ws['A1'] = "CLIENT / CUSTOMER: {{CLIENT_COMPANY}}"
+        ws['A2'] = "PROJECT NAME: {{PROJECT_NAME}}"
+        ws['A3'] = "DOCUMENT REFERENCE: {{DOCUMENT_NUMBER}}"
+        ws['A4'] = "DATE: {{DATE}}"
+        
+        ws['A6'] = "{{#each items}}"
+        ws['A7'] = "{{index}}"
+        ws['B7'] = "{{type}}"
+        ws['C7'] = "{{description}}"
+        ws['D7'] = "{{qty}}"
+        ws['E7'] = "{{unitCost}}"
+        ws['F7'] = "{{retail}}"
+        ws['G7'] = "{{totalRetail}}"
+        ws['H7'] = "{{stockStatus}}"
+        ws['A8'] = "{{/each}}"
+        
+        ws['F10'] = "Subtotal:"
+        ws['G10'] = "{{SUBTOTAL}}"
+        ws['F11'] = "Discount Amount:"
+        ws['G11'] = "{{DISCOUNT_AMOUNT}}"
+        ws['F12'] = "VAT (15%):"
+        ws['G12'] = "{{VAT_AMOUNT}}"
+        ws['F13'] = "Grand Total:"
+        ws['G13'] = "{{TOTAL_RETAIL}}"
+        
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        wb.save(path)
+        print(f"DEBUG: Auto-initialized Excel template on disk for {doc_type}")
     
     return FileResponse(
         path, 
