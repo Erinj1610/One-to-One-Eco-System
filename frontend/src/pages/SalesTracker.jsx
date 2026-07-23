@@ -3257,42 +3257,133 @@ export default function SalesTracker() {
                 );
               })()}
               
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginRight: '10px' }}>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Status:</span>
-                  <select 
-                    className="form-control"
-                    style={{ width: '110px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                    value={orderStatus}
-                    onChange={e => setOrderStatus(e.target.value)}
-                  >
-                    <option>Draft</option>
-                    <option>Pending</option>
-                    <option>Ongoing</option>
-                    <option>Complete</option>
-                  </select>
+              {/* Vitals Grid and Actions Container */}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                {(() => {
+                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                  const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
                   
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    style={{ fontSize: '11px', padding: '4px 10px', height: '30px', display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
-                    onClick={() => setShowPaymentViewer(true)}
-                  >
-                    💳 Paid: <strong>R {Math.round(orderPaidAmount).toLocaleString()}</strong>
-                  </button>
+                  // Calculate dynamic status and percentages
+                  let totalQtyForProc = 0;
+                  let totalProcQty = 0;
+                  let totalQtyForInv = 0;
+                  let totalInvQty = 0;
+                  let totalQtyForDel = 0;
+                  let totalDelQty = 0;
 
-                  <div style={{ display: 'inline-flex', gap: '4px', marginLeft: '8px', alignItems: 'center' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
-                      Proc: <strong>{procPct}%</strong>
-                    </div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
-                      Inv: <strong>{invPct}%</strong>
-                    </div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
-                      Del: <strong>{delPct}%</strong>
-                    </div>
-                  </div>
-                </div>
+                  activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+                    const q = Number(item.qty) || 0;
+                    const isService = (item.itemType || item.item_type) === 'Service';
+                    const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+
+                    if (isService) {
+                      totalQtyForInv += q;
+                      totalInvQty += Number(invoiced) || 0;
+                      return;
+                    }
+
+                    totalQtyForProc += q;
+                    totalQtyForInv += q;
+                    totalQtyForDel += q;
+
+                    const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+                    const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+                    const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+                    totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+                    totalInvQty += Number(invoiced) || 0;
+                    totalDelQty += Number(delivered) || 0;
+                  });
+
+                  const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+                  const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+                  const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+                  const valueInclVat = discountedRetail * 1.15;
+                  let paymentStatus = 'Unpaid';
+                  if (orderPaidAmount > 0) {
+                    if (orderPaidAmount >= valueInclVat - 1) {
+                      paymentStatus = 'Fully Paid';
+                    } else {
+                      paymentStatus = 'Partially Paid';
+                    }
+                  }
+
+                  let computedStatus = orderStatus || 'Pending';
+                  if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
+                    const isFullyPaid = paymentStatus === 'Fully Paid';
+                    if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
+                      computedStatus = 'Pending';
+                    } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+                      computedStatus = 'Complete';
+                    } else {
+                      computedStatus = 'Ongoing';
+                    }
+                  }
+
+                  let progressPct = 0;
+                  if (computedStatus === 'Complete') {
+                    progressPct = 100;
+                  } else if (computedStatus === 'Ongoing') {
+                    progressPct = 50;
+                  }
+
+                  const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
+
+                  return (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '600px' }}>
+                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
+                          <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                        </div>
+                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Stage</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{progressPct}%</span>
+                        </div>
+                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                        </div>
+                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                        </div>
+                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        style={{ fontSize: '11px', padding: '4px 10px', height: '30px', display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                        onClick={() => setShowPaymentViewer(true)}
+                      >
+                        💳 Paid: <strong>R {Math.round(orderPaidAmount).toLocaleString()}</strong>
+                      </button>
+
+                      <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                          Proc: <strong>{procPct}%</strong>
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                          Inv: <strong>{invPct}%</strong>
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', height: '30px', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                          Del: <strong>{delPct}%</strong>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 <button 
                   className="btn btn-ghost btn-sm" 
@@ -3312,6 +3403,7 @@ export default function SalesTracker() {
                 </button>
               </div>
             </div>
+
 
             {/* SALES TRACKER MIRROR VIEW TITLE */}
             <div style={{ padding: '0 4px', fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>

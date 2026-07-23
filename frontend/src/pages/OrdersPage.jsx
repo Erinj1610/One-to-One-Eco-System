@@ -2432,136 +2432,110 @@ export default function OrdersPage() {
                 </h2>
               </div>
 
-              {/* Vitals Grid */}
-              {(() => {
-                const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-                const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                
-                // Calculate dynamic status and percentages
-                let totalQtyForProc = 0;
-                let totalProcQty = 0;
-                let totalQtyForInv = 0;
-                let totalInvQty = 0;
-                let totalQtyForDel = 0;
-                let totalDelQty = 0;
+              {/* Vitals Grid and Actions Container */}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                {(() => {
+                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                  const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
+                  
+                  // Calculate dynamic status and percentages
+                  let totalQtyForProc = 0;
+                  let totalProcQty = 0;
+                  let totalQtyForInv = 0;
+                  let totalInvQty = 0;
+                  let totalQtyForDel = 0;
+                  let totalDelQty = 0;
 
-                activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
-                  const q = Number(item.qty) || 0;
-                  const isService = (item.itemType || item.item_type) === 'Service';
-                  const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+                  activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+                    const q = Number(item.qty) || 0;
+                    const isService = (item.itemType || item.item_type) === 'Service';
+                    const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
-                  if (isService) {
+                    if (isService) {
+                      totalQtyForInv += q;
+                      totalInvQty += Number(invoiced) || 0;
+                      return;
+                    }
+
+                    totalQtyForProc += q;
                     totalQtyForInv += q;
+                    totalQtyForDel += q;
+
+                    const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+                    const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+                    const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+                    totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
                     totalInvQty += Number(invoiced) || 0;
-                    return;
+                    totalDelQty += Number(delivered) || 0;
+                  });
+
+                  const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+                  const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+                  const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+                  const valueInclVat = discountedRetail * 1.15;
+                  let paymentStatus = 'Unpaid';
+                  if (orderPaidAmount > 0) {
+                    if (orderPaidAmount >= valueInclVat - 1) {
+                      paymentStatus = 'Fully Paid';
+                    } else {
+                      paymentStatus = 'Partially Paid';
+                    }
                   }
 
-                  totalQtyForProc += q;
-                  totalQtyForInv += q;
-                  totalQtyForDel += q;
-
-                  const received = item.receivedQty !== undefined ? item.receivedQty : 0;
-                  const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
-                  const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
-
-                  totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
-                  totalInvQty += Number(invoiced) || 0;
-                  totalDelQty += Number(delivered) || 0;
-                });
-
-                const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-                const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-                const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
-
-                const valueInclVat = discountedRetail * 1.15;
-                let paymentStatus = 'Unpaid';
-                if (orderPaidAmount > 0) {
-                  if (orderPaidAmount >= valueInclVat - 1) {
-                    paymentStatus = 'Fully Paid';
-                  } else {
-                    paymentStatus = 'Partially Paid';
+                  let computedStatus = orderStatus || 'Pending';
+                  if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
+                    const isFullyPaid = paymentStatus === 'Fully Paid';
+                    if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
+                      computedStatus = 'Pending';
+                    } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+                      computedStatus = 'Complete';
+                    } else {
+                      computedStatus = 'Ongoing';
+                    }
                   }
-                }
 
-                let computedStatus = orderStatus || 'Pending';
-                if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
-                  const isFullyPaid = paymentStatus === 'Fully Paid';
-                  if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
-                    computedStatus = 'Pending';
-                  } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
-                    computedStatus = 'Complete';
-                  } else {
-                    computedStatus = 'Ongoing';
+                  let progressPct = 0;
+                  if (computedStatus === 'Complete') {
+                    progressPct = 100;
+                  } else if (computedStatus === 'Ongoing') {
+                    progressPct = 50;
                   }
-                }
 
-                let progressPct = 0;
-                if (computedStatus === 'Complete') {
-                  progressPct = 100;
-                } else if (computedStatus === 'Ongoing') {
-                  progressPct = 50;
-                }
+                  const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
 
-                const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
-
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '550px', marginLeft: '24px', marginRight: 'auto' }}>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
-                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '600px' }}>
+                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
+                        <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                      </div>
+                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Stage</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{progressPct}%</span>
+                      </div>
+                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                      </div>
+                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                      </div>
+                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Stage</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{progressPct}%</span>
-                    </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
-                    </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
-                    </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
-                    </div>
-                  </div>
-                );
-              })()}
-              
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginRight: '10px' }}>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Status:</span>
-                  <select 
-                    className="form-control"
-                    style={{ width: '110px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
-                    value={orderStatus}
-                    onChange={e => {
-                      if (e.target.value === 'Cancelled') {
-                        setCancelModalItem({
-                          orderId: selectedOrderId,
-                          projectKey: selectedProjectKey,
-                          clientName: clientContact
-                        });
-                      } else {
-                        setOrderStatus(e.target.value);
-                      }
-                    }}
-                  >
-                    <option>Draft</option>
-                    <option>Pending</option>
-                    <option>Ongoing</option>
-                    <option>Complete</option>
-                    <option>Cancelled</option>
-                  </select>
-                </div>
+                  );
+                })()}
 
                 <button 
                   className="btn btn-ghost btn-sm" 
@@ -2581,6 +2555,7 @@ export default function OrdersPage() {
                 </button>
               </div>
             </div>
+
 
             {/* CSS STYLE INJECTIONS FOR ENHANCED LEGIBILITY & SPACING */}
             <style>{`
