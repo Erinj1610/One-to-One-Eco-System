@@ -738,6 +738,9 @@ export default function SalesTracker() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
+  const [clientFilter, setClientFilter] = useState('All');
+  const [pmFilter, setPmFilter] = useState('All');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('All');
 
   // Sorting States
   const [sortField, setSortField] = useState(null);
@@ -892,6 +895,7 @@ export default function SalesTracker() {
             projectKey: p.key,
             projectName: p.name,
             projectClient: p.client,
+            projectPm: p.pm || p.pmName || '',
             projectStart: p.start,
             procPct,
             invPct,
@@ -960,13 +964,16 @@ export default function SalesTracker() {
       const query = searchQuery.toLowerCase();
       const matchesSearch = 
         (o.id || '').toLowerCase().includes(query) ||
+        (o.quote_name || '').toLowerCase().includes(query) ||
         (o.projectName || '').toLowerCase().includes(query) ||
-        (o.projectFullName || '').toLowerCase().includes(query) ||
-        (o.supplier || '').toLowerCase().includes(query) ||
-        (o.quote_name || '').toLowerCase().includes(query);
+        (o.projectClient || '').toLowerCase().includes(query) ||
+        (o.projectPm || '').toLowerCase().includes(query);
         
       const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
       const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
+      const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter;
+      const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
+      const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
       
       // KPI interactive filter matching
       let matchesKpi = true;
@@ -980,9 +987,9 @@ export default function SalesTracker() {
         matchesKpi = o.status === 'Complete';
       }
 
-      return matchesSearch && matchesStatus && matchesProject && matchesKpi;
+      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi;
     });
-  }, [dateFilteredOrders, searchQuery, filterStatus, projectFilterKey, activeKpiFilter]);
+  }, [dateFilteredOrders, searchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter]);
 
   // Sort Logic for All Columns in Sales Tracker Module
   const sortedOrders = useMemo(() => {
@@ -1003,6 +1010,8 @@ export default function SalesTracker() {
           return (o.projectFullName || o.projectName || '').toLowerCase();
         case 'client':
           return ((o.clientCompany || o.projectClient) || '').toLowerCase();
+        case 'pm':
+          return (o.projectPm || '').toLowerCase();
         case 'supplier':
           return (o.supplier || '').toLowerCase();
         case 'value':
@@ -1025,7 +1034,6 @@ export default function SalesTracker() {
           return o.delPct || 0;
         default:
           return '';
-
       }
     };
 
@@ -2831,7 +2839,7 @@ export default function SalesTracker() {
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
                       type="text"
-                      placeholder="Search by quotation ref, client, or supplier..."
+                      placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
                       value={searchQuery}
@@ -2841,7 +2849,7 @@ export default function SalesTracker() {
                   
                   <select 
                     className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
                     value={filterStatus}
                     onChange={e => setFilterStatus(e.target.value)}
                   >
@@ -2855,14 +2863,53 @@ export default function SalesTracker() {
 
                   <select 
                     className="form-control"
-                    style={{ width: '200px', height: '34px', fontSize: '13px' }}
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
                     value={projectFilterKey}
                     onChange={e => setProjectFilterKey(e.target.value)}
                   >
-                    <option value="All">All Linked Projects</option>
-                    {Object.values(projects).map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
+                    <option value="All">All Projects</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort().map(projName => {
+                      const foundObj = allOrders.find(o => o.projectName === projName);
+                      return (
+                        <option key={foundObj.projectKey} value={foundObj.projectKey}>{projName}</option>
+                      );
+                    })}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={clientFilter}
+                    onChange={e => setClientFilter(e.target.value)}
+                  >
+                    <option value="All">All Clients</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort().map(client => (
+                      <option key={client} value={client}>{client}</option>
                     ))}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={pmFilter}
+                    onChange={e => setPmFilter(e.target.value)}
+                  >
+                    <option value="All">All PMs</option>
+                    {Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort().map(pm => (
+                      <option key={pm} value={pm}>{pm}</option>
+                    ))}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                    value={paymentStatusFilter}
+                    onChange={e => setPaymentStatusFilter(e.target.value)}
+                  >
+                    <option value="All">All Payments</option>
+                    <option value="Fully Paid">Fully Paid</option>
+                    <option value="Partially Paid">Partially Paid</option>
+                    <option value="Unpaid">Unpaid</option>
                   </select>
                 </div>
 
@@ -2950,28 +2997,31 @@ export default function SalesTracker() {
                         />
                       </th>
                       <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote ID {renderSortIcon('id')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
                       </th>
                       <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote Name {renderSortIcon('quote_name')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
                       </th>
                       <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Name {renderSortIcon('project')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
                       </th>
                       <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client Name {renderSortIcon('client')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                      </th>
+                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                      </th>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
                       </th>
                       <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Retail Value Ex Vat {renderSortIcon('value')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
                       </th>
                       <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
                       </th>
                       <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Outstanding {renderSortIcon('outstanding')}</div>
-                      </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
                       </th>
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
@@ -3023,13 +3073,14 @@ export default function SalesTracker() {
                           <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
+                          <td style={{ fontWeight: 600 }}>{o.projectPm || '—'}</td>
+                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                          </td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
                           <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
                             R {(o.outstanding || 0).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                           </td>
                           <td>
                             <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
