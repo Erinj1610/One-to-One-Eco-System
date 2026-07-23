@@ -623,6 +623,29 @@ export default function OrdersPage() {
 
   const [exportingDocx, setExportingDocx] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
+  const [activeEngineMode, setActiveEngineMode] = useState('word');
+
+  // Dynamically fetch the selected document's active template engine mode configuration
+  useEffect(() => {
+    const fetchActiveEngineMode = async () => {
+      let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
+      try {
+        const res = await fetch(`${API_BASE}/admin/configs/${docType}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.config_json && data.config_json.engine_mode) {
+            setActiveEngineMode(data.config_json.engine_mode);
+          } else {
+            setActiveEngineMode('word');
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching active template engine mode:", err);
+      }
+    };
+    fetchActiveEngineMode();
+  }, [activeDocType]);
+
 
   const handleDownloadXlsxTemplate = async () => {
     let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
@@ -4261,48 +4284,52 @@ export default function OrdersPage() {
                   </div>
 
                   {/* PRINT / EXPORT ACTIONS */}
-                  <button 
-                    className="btn btn-primary"
-                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #2b579a 0%, #1e3f70 100%)', border: 'none' }}
-                    onClick={handleExportDocxTemplate}
-                    disabled={exportingDocx}
-                  >
-                    <FileText size={15} /> {exportingDocx ? 'Compiling PDF...' : 'Download PDF (Word Template) 📝'}
-                  </button>
-
-                  <button 
-                    className="btn btn-success"
-                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}
-                    onClick={handleExportXlsxTemplate}
-                    disabled={exportingXlsx}
-                  >
-                    <FileText size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF (Spreadsheet Template) 📊'}
-                  </button>
-
-                  <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Spreadsheet Template (.xlsx)</div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                  {activeEngineMode === 'word' ? (
+                    <button 
+                      className="btn btn-primary"
+                      style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #2b579a 0%, #1e3f70 100%)', border: 'none', width: '100%' }}
+                      onClick={handleExportDocxTemplate}
+                      disabled={exportingDocx}
+                    >
+                      <FileText size={15} /> {exportingDocx ? 'Compiling PDF...' : 'Download PDF (Word Template) 📝'}
+                    </button>
+                  ) : (
+                    <>
                       <button 
-                        className="btn btn-sm"
-                        style={{ flex: 1, fontSize: '11px', padding: '6px' }}
-                        onClick={handleDownloadXlsxTemplate}
+                        className="btn btn-success"
+                        style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff', width: '100%' }}
+                        onClick={handleExportXlsxTemplate}
+                        disabled={exportingXlsx}
                       >
-                        Download Starter
+                        <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF (Spreadsheet Template) 📊'}
                       </button>
-                      <label 
-                        className="btn btn-sm"
-                        style={{ flex: 1, fontSize: '11px', padding: '6px', textAlign: 'center', cursor: 'pointer', margin: 0 }}
-                      >
-                        Upload Template
-                        <input 
-                          type="file" 
-                          accept=".xlsx"
-                          style={{ display: 'none' }}
-                          onChange={handleUploadXlsxTemplate}
-                        />
-                      </label>
-                    </div>
-                  </div>
+
+                      <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Spreadsheet Template (.xlsx)</div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            className="btn btn-sm"
+                            style={{ flex: 1, fontSize: '11px', padding: '6px' }}
+                            onClick={handleDownloadXlsxTemplate}
+                          >
+                            Download Starter
+                          </button>
+                          <label 
+                            className="btn btn-sm"
+                            style={{ flex: 1, fontSize: '11px', padding: '6px', textAlign: 'center', cursor: 'pointer', margin: 0 }}
+                          >
+                            Upload Template
+                            <input 
+                              type="file" 
+                              accept=".xlsx"
+                              style={{ display: 'none' }}
+                              onChange={handleUploadXlsxTemplate}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <button 
                     className="btn"

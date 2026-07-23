@@ -502,11 +502,12 @@ export default function TemplateHub() {
         body: JSON.stringify({
           ...config,
           layout_blocks: blocks,
-          global_settings: globalSettings
+          global_settings: globalSettings,
+          engine_mode: config.engine_mode || 'word'
         })
       });
       if (res.ok) {
-        setMessage({ type: 'success', text: 'MS Word configuration updated!' });
+        setMessage({ type: 'success', text: 'Template settings updated successfully!' });
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to update settings.' });
@@ -514,6 +515,50 @@ export default function TemplateHub() {
       setSaving(false);
     }
   };
+
+  const handleUploadXlsxTemplate = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setMessage(null);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Spreadsheet template file uploaded!' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Error uploading template file.' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadXlsxTemplate = async (e) => {
+    e.preventDefault();
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/download`);
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedDoc.toLowerCase()}_template.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Error downloading Excel template.' });
+    }
+  };
+
 
   const handleSaveVisualTemplate = async () => {
     setSaving(true);
@@ -974,43 +1019,100 @@ export default function TemplateHub() {
             
             /* WORD ENGINE CONFIG */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ 
-                    width: '36px', height: '36px', borderRadius: '50%', 
-                    background: metadata?.exists ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: metadata?.exists ? 'var(--text-success)' : 'var(--text-danger)'
-                  }}>
-                    <FileText size={18} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                      {metadata?.exists ? 'MS Word Template File Active' : 'No Word File Uploaded'}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      {metadata?.exists 
-                        ? `${(metadata.size / 1024).toFixed(1)} KB — Last Modified: ${metadata.last_modified ? new Date(metadata.last_modified * 1000).toLocaleString() : 'Just Now'}`
-                        : 'Upload a Microsoft Word (.docx) file to get started.'}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button 
-                    onClick={handleDownload}
-                    className="btn"
-                    style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
+              
+              {config && (
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Select Active Template Engine Mode</label>
+                  <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)' }}>Choose which template engine will compile output PDFs for this module. You can switch between Microsoft Word (.docx) templates and Microsoft Excel (.xlsx) templates instantly.</p>
+                  <select 
+                    className="form-control"
+                    style={{ height: '36px', fontSize: '13px', maxWidth: '300px', marginTop: '4px' }}
+                    value={config.engine_mode || 'word'}
+                    onChange={e => setConfig({ ...config, engine_mode: e.target.value })}
                   >
-                    <Download size={13} /> Download File
-                  </button>
-
-                  <label className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
-                    <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Word Template'}
-                    <input type="file" accept=".docx" onChange={handleFileUpload} style={{ display: 'none' }} disabled={uploading} />
-                  </label>
+                    <option value="word">Microsoft Word (.docx) Template Engine</option>
+                    <option value="excel">Microsoft Excel (.xlsx) Template Engine</option>
+                  </select>
                 </div>
-              </div>
+              )}
+
+              {/* Conditional Card depending on engine_mode choice */}
+              {(config?.engine_mode || 'word') === 'word' ? (
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ 
+                      width: '36px', height: '36px', borderRadius: '50%', 
+                      background: metadata?.exists ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: metadata?.exists ? 'var(--text-success)' : 'var(--text-danger)'
+                    }}>
+                      <FileText size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                        {metadata?.exists ? 'MS Word Template File Active' : 'No Word File Uploaded'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {metadata?.exists 
+                          ? `${(metadata.size / 1024).toFixed(1)} KB — Last Modified: ${metadata.last_modified ? new Date(metadata.last_modified * 1000).toLocaleString() : 'Just Now'}`
+                          : 'Upload a Microsoft Word (.docx) file to get started.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button 
+                      onClick={handleDownload}
+                      className="btn"
+                      style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
+                    >
+                      <Download size={13} /> Download File
+                    </button>
+
+                    <label className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
+                      <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Word Template'}
+                      <input type="file" accept=".docx" onChange={handleFileUpload} style={{ display: 'none' }} disabled={uploading} />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ 
+                      width: '36px', height: '36px', borderRadius: '50%', 
+                      background: 'rgba(31, 154, 85, 0.1)', 
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#1f9a55'
+                    }}>
+                      <Layers size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                        Spreadsheet Template Hub (.xlsx)
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        Upload custom spreadsheet templates with placeholders.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button 
+                      onClick={handleDownloadXlsxTemplate}
+                      className="btn"
+                      style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
+                    >
+                      <Download size={13} /> Download File
+                    </button>
+
+                    <label className="btn btn-success" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}>
+                      <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Excel Template'}
+                      <input type="file" accept=".xlsx" onChange={handleUploadXlsxTemplate} style={{ display: 'none' }} disabled={uploading} />
+                    </label>
+                  </div>
+                </div>
+              )}
+
 
               {config && (
                 <div>
