@@ -142,6 +142,43 @@ export default function ProjectManagement() {
   const orders = useMemo(() => {
     const list = p?.orders || [];
     const mapped = list.map(o => {
+      // Calculate progress percentages dynamically
+      let totalQtyForProc = 0;
+      let totalProcQty = 0;
+      let totalQtyForInv = 0;
+      let totalInvQty = 0;
+      let totalQtyForDel = 0;
+      let totalDelQty = 0;
+
+      const itemsList = o.itemsList || [];
+      itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+        const q = Number(item.qty) || 0;
+        const isService = (item.itemType || item.item_type) === 'Service';
+        const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+
+        if (isService) {
+          totalQtyForInv += q;
+          totalInvQty += Number(invoiced) || 0;
+          return;
+        }
+
+        totalQtyForProc += q;
+        totalQtyForInv += q;
+        totalQtyForDel += q;
+
+        const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+        const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+        const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+        totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+        totalInvQty += Number(invoiced) || 0;
+        totalDelQty += Number(delivered) || 0;
+      });
+
+      const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+      const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+      const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
       const totalPaidVal = Number(o.paid) || 0;
       const totalRetailVal = Number(o.value) || 0;
       const valueInclVat = totalRetailVal * 1.15;
@@ -153,9 +190,24 @@ export default function ProjectManagement() {
           paymentStatus = 'Partially Paid';
         }
       }
+
+      // Dynamic Overhanging Order Status computation
+      let computedStatus = o.status; 
+      if (o.status !== 'Draft' && o.status !== 'Cancelled') {
+        const isFullyPaid = paymentStatus === 'Fully Paid';
+        if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
+          computedStatus = 'Pending';
+        } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+          computedStatus = 'Complete';
+        } else {
+          computedStatus = 'Ongoing';
+        }
+      }
+
       return {
         ...o,
-        paymentStatus
+        paymentStatus,
+        status: computedStatus
       };
     });
     if (isAdmin) return mapped;
@@ -560,20 +612,22 @@ export default function ProjectManagement() {
     // Calculate dynamic summarized project status based on orders
     let computedStatus = 'Pending';
     if (orders.length > 0) {
-      const statuses = orders.map(o => o.status || 'Pending');
-      const allComplete = statuses.every(s => s === 'Complete');
-      const allDraft = statuses.every(s => s === 'Draft');
-      const hasOngoing = statuses.some(s => s === 'Ongoing' || s === 'Complete');
-      const hasPending = statuses.some(s => s === 'Pending');
+      const statuses = orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+      const allCancelled = statuses.every(s => s === 'cancelled');
+      const allComplete = statuses.every(s => s === 'complete');
+      const allDraft = statuses.every(s => s === 'draft');
+      const hasOngoing = statuses.some(s => s === 'ongoing' || s === 'processing' || s === 'complete');
 
-      if (allComplete) {
+      if (allCancelled) {
+        computedStatus = 'Cancelled';
+      } else if (allComplete) {
         computedStatus = 'Complete';
       } else if (hasOngoing) {
         computedStatus = 'Ongoing';
-      } else if (hasPending) {
-        computedStatus = 'Pending';
       } else if (allDraft) {
         computedStatus = 'Draft';
+      } else {
+        computedStatus = 'Pending';
       }
     }
 
@@ -864,24 +918,32 @@ export default function ProjectManagement() {
         </div>
 
         {/* Right side: Vitals Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Active Stage</span>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Project Status</span>
+            <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px', display: 'inline-block', marginTop: '2px' }}>{p.status || 'Draft'}</span>
+          </div>
+          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Stage</span>
             <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : computedStage}</span>
           </div>
           <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Margin</span>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Project Value</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandContractValue.toLocaleString()}`}</span>
+          </div>
+          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandPaidValue.toLocaleString()}`}</span>
+          </div>
+          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : grandOutstandingValue > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandOutstandingValue.toLocaleString()}`}</span>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
             <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || orders.length === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || alertSettings?.defaultTargetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
               {p.isDraft || orders.length === 0 ? '—' : `${blendedMargin}%`}
             </span>
-          </div>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Contract Value</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandContractValue.toLocaleString()}`}</span>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : grandOutstandingValue > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandOutstandingValue.toLocaleString()}`}</span>
           </div>
         </div>
       </div>
