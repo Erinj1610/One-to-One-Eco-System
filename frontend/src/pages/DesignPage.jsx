@@ -62,6 +62,82 @@ export default function DesignPage() {
   const [feeStatus, setFeeStatus] = useState('Draft');
   const [feePaidAmount, setFeePaidAmount] = useState(0);
 
+  // New design fee modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newFeeName, setNewFeeName] = useState('');
+  const [newFeeProjectKey, setNewFeeProjectKey] = useState('');
+
+  const handleCreateDesignFee = () => {
+    if (!newFeeName.trim()) {
+      alert("Please enter a name for the design fee.");
+      return;
+    }
+    if (!newFeeProjectKey) {
+      alert("Please select a project to link the design fee to.");
+      return;
+    }
+
+    const proj = projects[newFeeProjectKey];
+    if (!proj) return;
+
+    // Generate unique ID in the format DF-XXXX (4-digit number)
+    const existingIds = Object.values(projects)
+      .flatMap(p => p.designFees || [])
+      .map(f => f.id);
+    
+    let nextIdVal = 101;
+    while (existingIds.includes(`DF-${nextIdVal}`)) {
+      nextIdVal++;
+    }
+    const newId = `DF-${nextIdVal}`;
+
+    const newFee = {
+      id: newId,
+      name: newFeeName.trim(),
+      sqm: 1000,
+      landscapeSqm: 500,
+      feeType: 'Signature',
+      flatBaseFee: 50000,
+      includeConcept: true,
+      includeSchematic: true,
+      includeFinal: true,
+      includeSite: false,
+      includeCommissioning: false,
+      adjustmentPercent: 0,
+      procurementDiscountActive: false,
+      status: 'Draft',
+      paid: 0,
+      outstanding: 0,
+      margin: 18,
+      feeValue: 0,
+      milestones: [
+        { label: 'Deposit / Commitment Fee', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Concept Design Approval', percent: 30, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Schematic Layout Approval', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false },
+        { label: 'Final Delivery & Sign-off', percent: 20, invoicedAmount: 0, paidAmount: 0, invoiceRef: '', isBilled: false }
+      ]
+    };
+
+    const updatedFees = [...(proj.designFees || []), newFee];
+    updateProject(newFeeProjectKey, 'designFees', updatedFees);
+
+    // Reset create fields
+    setNewFeeName('');
+    setNewFeeProjectKey('');
+    setShowCreateModal(false);
+
+    // Auto-open workspace for the newly created fee
+    handleOpenWorkspace({
+      ...newFee,
+      projectKey: proj.key,
+      projectName: proj.name,
+      projectClient: proj.client,
+      pmName: proj.pm,
+      projectStart: proj.start
+    });
+  };
+
+
   // Form registration details
   const [clientCompany, setClientCompany] = useState('');
   const [clientContact, setClientContact] = useState('');
@@ -813,7 +889,17 @@ export default function DesignPage() {
                     ))}
                   </select>
                 </div>
+
+                <button 
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ height: '34px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '0 16px', background: 'var(--text-info)', borderColor: 'var(--text-info)', color: '#fff' }}
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <Plus size={14} /> Create Design Fee
+                </button>
               </div>
+
 
               {/* TABLE */}
               <div style={{ overflowX: 'auto' }}>
@@ -2180,6 +2266,64 @@ export default function DesignPage() {
           </div>
         </div>
       )}
+
+      {/* CREATE NEW DESIGN FEE MODAL */}
+      {showCreateModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700 }}>Create New Design Fee</div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowCreateModal(false)}>✕</button>
+            </div>
+            
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Design Fee Name</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="e.g. Phase 2 Concept Fee"
+                  value={newFeeName} 
+                  onChange={e => setNewFeeName(e.target.value)} 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Link to Project</label>
+                <select 
+                  className="form-control" 
+                  value={newFeeProjectKey} 
+                  onChange={e => setNewFeeProjectKey(e.target.value)}
+                >
+                  <option value="">-- Select Project --</option>
+                  {Object.values(projects).map(p => (
+                    <option key={p.key} value={p.key}>{p.name} ({p.client})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="btn" onClick={() => setShowCreateModal(false)}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                disabled={!newFeeName.trim() || !newFeeProjectKey}
+                onClick={handleCreateDesignFee}
+                style={{ background: 'var(--text-info)', borderColor: 'var(--text-info)', color: '#fff' }}
+              >
+                Create & Setup Fee
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
