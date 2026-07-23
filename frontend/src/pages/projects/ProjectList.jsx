@@ -731,7 +731,7 @@ export default function ProjectList() {
                 const { stage, progressPct } = calculateProjectStageAndProgress(p);
                 
                 // Calculate dynamic summarized project status based on orders
-                let computedStatus = 'Draft';
+                let computedStatus = 'Pending';
                 if (p.orders && p.orders.length > 0) {
                   const statuses = p.orders.map(o => o.status || 'Pending');
                   const allComplete = statuses.every(s => s === 'Complete');

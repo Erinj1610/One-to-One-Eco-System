@@ -580,7 +580,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     p_key = f"p-{p.id}"
             # Calculate dynamic project status based on orders
             proj_orders = orders_by_project.get(p_key, [])
-            computed_status = 'Draft'
+            computed_status = 'Pending'
             if proj_orders:
                 statuses = [o.get("status") or "Pending" for o in proj_orders]
                 all_complete = all(s == 'Complete' for s in statuses)

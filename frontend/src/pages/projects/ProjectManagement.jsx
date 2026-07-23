@@ -539,7 +539,7 @@ export default function ProjectManagement() {
     const formattedOutstanding = `R ${grandOutstandingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
     // Calculate dynamic summarized project status based on orders
-    let computedStatus = 'Draft';
+    let computedStatus = 'Pending';
     if (orders.length > 0) {
       const statuses = orders.map(o => o.status || 'Pending');
       const allComplete = statuses.every(s => s === 'Complete');
