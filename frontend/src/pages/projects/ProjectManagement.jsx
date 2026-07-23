@@ -86,16 +86,18 @@ export default function ProjectManagement() {
   }, ['ref', 'title', 'sqm', 'value', 'paid', 'outstanding', 'margin', 'status']);
 
   const { widths: ordersWidths, onResizeStart: onOrdersResizeStart } = useResizableTable('pm_orders_pipeline', {
-    ref: 120,
-    name: 180,
-    supplier: 180,
-    items: 100,
-    value: 150,
-    paid: 120,
-    outstanding: 150,
-    eta: 100,
-    status: 90
-  }, ['ref', 'name', 'supplier', 'items', 'value', 'paid', 'outstanding', 'eta', 'status']);
+    ref: 110,
+    name: 160,
+    supplier: 130,
+    items: 90,
+    value: 130,
+    paid: 110,
+    outstanding: 130,
+    margin: 80,
+    eta: 90,
+    status: 90,
+    paymentStatus: 110
+  }, ['ref', 'name', 'supplier', 'items', 'value', 'paid', 'outstanding', 'margin', 'eta', 'status', 'paymentStatus']);
 
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -1779,12 +1781,19 @@ export default function ProjectManagement() {
                                  Balance Outstanding
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('outstanding', e)} />
                                </th>
+                               <th style={{ width: ordersWidths.margin, position: 'relative' }}>
+                                 Margin
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('margin', e)} />
+                               </th>
                                <th style={{ width: ordersWidths.eta, position: 'relative' }}>
                                  ETA
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('eta', e)} />
                                </th>
                                <th style={{ width: ordersWidths.status, position: 'relative' }}>
-                                 Status
+                                 Order Status
+                               </th>
+                               <th style={{ width: ordersWidths.paymentStatus, position: 'relative' }}>
+                                 Payment Status
                                </th>
                              </tr>
                            </thead>
@@ -1838,11 +1847,19 @@ export default function ProjectManagement() {
                                    <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
                                      R {(o.outstanding || 0).toLocaleString()}
                                    </td>
+                                   <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                     {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                                   </td>
                                    <td>{o.eta || '—'}</td>
                                    <td>
-                                     <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
+                                     <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' || o.status === 'Processing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
                                        {o.status}
                                      </span>
+                                   </td>
+                                   <td>
+                                     <span className={`badge ${
+                                       o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                     }`}>{o.paymentStatus}</span>
                                    </td>
                                  </tr>
                                );
