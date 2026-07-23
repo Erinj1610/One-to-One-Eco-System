@@ -10,6 +10,70 @@ import {
 import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSidebar';
 
 
+export function getOrderDynamicStatus(o) {
+  const totalPaidVal = Number(o.paid) || 0;
+  const totalRetailVal = Number(o.value) || 0;
+  const valueInclVat = totalRetailVal * 1.15;
+  let paymentStatus = 'Unpaid';
+  if (totalPaidVal > 0) {
+    if (totalPaidVal >= valueInclVat - 1) {
+      paymentStatus = 'Fully Paid';
+    } else {
+      paymentStatus = 'Partially Paid';
+    }
+  }
+
+  // Calculate progress percentages dynamically
+  let totalQtyForProc = 0;
+  let totalProcQty = 0;
+  let totalQtyForInv = 0;
+  let totalInvQty = 0;
+  let totalQtyForDel = 0;
+  let totalDelQty = 0;
+
+  const itemsList = o.itemsList || [];
+  itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+    const q = Number(item.qty) || 0;
+    const isService = (item.itemType || item.item_type) === 'Service';
+    const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+
+    if (isService) {
+      totalQtyForInv += q;
+      totalInvQty += Number(invoiced) || 0;
+      return;
+    }
+
+    totalQtyForProc += q;
+    totalQtyForInv += q;
+    totalQtyForDel += q;
+
+    const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+    const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+    const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+    totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+    totalInvQty += Number(invoiced) || 0;
+    totalDelQty += Number(delivered) || 0;
+  });
+
+  const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+  const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+  const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+  let computedStatus = o.status || 'Pending'; 
+  if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
+    const isFullyPaid = paymentStatus === 'Fully Paid';
+    if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
+      computedStatus = 'Pending';
+    } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+      computedStatus = 'Complete';
+    } else {
+      computedStatus = 'Ongoing';
+    }
+  }
+  return computedStatus;
+}
+
 export function calculateProjectStageAndProgress(p) {
   const orders = p.orders || [];
   
@@ -19,10 +83,10 @@ export function calculateProjectStageAndProgress(p) {
 
   let orderSum = 0;
   orders.forEach(o => {
-    const status = (o.status || 'Pending').toLowerCase();
+    const status = getOrderDynamicStatus(o).toLowerCase();
     if (status === 'complete') {
       orderSum += 100;
-    } else if (status === 'ongoing' || status === 'processing') {
+    } else if (status === 'ongoing') {
       orderSum += 50;
     } else {
       orderSum += 0;
@@ -220,10 +284,10 @@ export default function ProjectList() {
     const statuses = Object.values(projects).map(p => {
       if (p.isDraft) return null;
       if (p.orders && p.orders.length > 0) {
-        const oStatuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+        const oStatuses = p.orders.map(o => getOrderDynamicStatus(o).toLowerCase());
         if (oStatuses.every(s => s === 'cancelled')) return 'Cancelled';
         if (oStatuses.every(s => s === 'complete')) return 'Complete';
-        if (oStatuses.some(s => s === 'ongoing' || s === 'processing' || s === 'complete')) return 'Ongoing';
+        if (oStatuses.some(s => s === 'ongoing' || s === 'complete')) return 'Ongoing';
         return 'Pending';
       }
       return 'Pending';
@@ -237,12 +301,12 @@ export default function ProjectList() {
       // Calculate dynamic computed status for matching search & filter
       let computedStatus = 'Pending';
       if (p.orders && p.orders.length > 0) {
-        const statuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+        const statuses = p.orders.map(o => getOrderDynamicStatus(o).toLowerCase());
         if (statuses.every(s => s === 'cancelled')) {
           computedStatus = 'Cancelled';
         } else if (statuses.every(s => s === 'complete')) {
           computedStatus = 'Complete';
-        } else if (statuses.some(s => s === 'ongoing' || s === 'processing' || s === 'complete')) {
+        } else if (statuses.some(s => s === 'ongoing' || s === 'complete')) {
           computedStatus = 'Ongoing';
         } else {
           computedStatus = 'Pending';
@@ -705,10 +769,10 @@ export default function ProjectList() {
                 // Calculate dynamic summarized project status based on orders
                 let computedStatus = 'Pending';
                 if (p.orders && p.orders.length > 0) {
-                  const statuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+                  const statuses = p.orders.map(o => getOrderDynamicStatus(o).toLowerCase());
                   const allCancelled = statuses.every(s => s === 'cancelled');
                   const allComplete = statuses.every(s => s === 'complete');
-                  const hasOngoing = statuses.some(s => s === 'ongoing' || s === 'processing');
+                  const hasOngoing = statuses.some(s => s === 'ongoing');
 
                   if (allCancelled) {
                     computedStatus = 'Cancelled';
