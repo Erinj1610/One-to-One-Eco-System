@@ -88,16 +88,16 @@ export default function ProjectManagement() {
   const { widths: ordersWidths, onResizeStart: onOrdersResizeStart } = useResizableTable('pm_orders_pipeline', {
     ref: 110,
     name: 160,
-    supplier: 130,
-    items: 90,
+    project: 140,
+    client: 130,
+    pm: 120,
+    margin: 80,
     value: 130,
     paid: 110,
     outstanding: 130,
-    margin: 80,
-    eta: 90,
     status: 90,
     paymentStatus: 110
-  }, ['ref', 'name', 'supplier', 'items', 'value', 'paid', 'outstanding', 'margin', 'eta', 'status', 'paymentStatus']);
+  }, ['ref', 'name', 'project', 'client', 'pm', 'margin', 'value', 'paid', 'outstanding', 'status', 'paymentStatus']);
 
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState(null);
@@ -1754,23 +1754,31 @@ export default function ProjectManagement() {
                            <thead>
                              <tr>
                                <th style={{ width: ordersWidths.ref, position: 'relative' }}>
-                                 Quote/Order Ref
+                                 Order ID
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('ref', e)} />
                                </th>
                                <th style={{ width: ordersWidths.name, position: 'relative' }}>
                                  Order Name
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('name', e)} />
                                </th>
-                               <th style={{ width: ordersWidths.supplier, position: 'relative' }}>
-                                 Hardware Supplier
-                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('supplier', e)} />
+                               <th style={{ width: ordersWidths.project, position: 'relative' }}>
+                                 Linked Project
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('project', e)} />
                                </th>
-                               <th style={{ width: ordersWidths.items, position: 'relative', textAlign: 'center' }}>
-                                 BOQ Items
-                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('items', e)} />
+                               <th style={{ width: ordersWidths.client, position: 'relative' }}>
+                                 Client
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('client', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.pm, position: 'relative' }}>
+                                 Project Manager
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('pm', e)} />
+                               </th>
+                               <th style={{ width: ordersWidths.margin, position: 'relative' }}>
+                                 Order Margin
+                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('margin', e)} />
                                </th>
                                <th style={{ width: ordersWidths.value, position: 'relative' }}>
-                                 Billed Retail (EX VAT)
+                                 Order Value
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('value', e)} />
                                </th>
                                <th style={{ width: ordersWidths.paid, position: 'relative' }}>
@@ -1780,14 +1788,6 @@ export default function ProjectManagement() {
                                <th style={{ width: ordersWidths.outstanding, position: 'relative' }}>
                                  Balance Outstanding
                                  <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('outstanding', e)} />
-                               </th>
-                               <th style={{ width: ordersWidths.margin, position: 'relative' }}>
-                                 Margin
-                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('margin', e)} />
-                               </th>
-                               <th style={{ width: ordersWidths.eta, position: 'relative' }}>
-                                 ETA
-                                 <div className="resize-handle" onMouseDown={e => onOrdersResizeStart('eta', e)} />
                                </th>
                                <th style={{ width: ordersWidths.status, position: 'relative' }}>
                                  Order Status
@@ -1840,17 +1840,17 @@ export default function ProjectManagement() {
                                      )}
                                    </td>
                                    <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                                   <td>{o.supplier}</td>
-                                   <td style={{ textAlign: 'center' }}>{o.items} items</td>
+                                   <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName || p.name}</td>
+                                   <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.projectClient || p.client) } }); }}>{(o.projectClient || p.client) || '—'}</td>
+                                   <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || p.pm || '—'}</td>
+                                   <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                     {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                                   </td>
                                    <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
                                    <td>R {(o.paid || 0).toLocaleString()}</td>
                                    <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
                                      R {(o.outstanding || 0).toLocaleString()}
                                    </td>
-                                   <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                                     {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
-                                   </td>
-                                   <td>{o.eta || '—'}</td>
                                    <td>
                                      <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' || o.status === 'Processing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
                                        {o.status}

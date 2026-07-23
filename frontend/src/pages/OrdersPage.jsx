@@ -2237,22 +2237,25 @@ export default function OrdersPage() {
                         />
                       </th>
                       <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote ID {renderSortIcon('id')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
                       </th>
                       <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote Name {renderSortIcon('quote_name')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
                       </th>
                       <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
                       </th>
                       <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client Name {renderSortIcon('client')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
                       </th>
-                      <th onClick={() => handleSort('items')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>BOQ Items {renderSortIcon('items')}</div>
+                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                      </th>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
                       </th>
                       <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Retail Value (EX VAT) {renderSortIcon('value')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
                       </th>
                       <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
@@ -2260,16 +2263,12 @@ export default function OrdersPage() {
                       <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
                       </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
-                      </th>
                       <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
                       </th>
                       <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
                       </th>
-                      <th style={{ textAlign: 'center' }}>Workspace Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2310,14 +2309,14 @@ export default function OrdersPage() {
                           <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                          <td>{o.items} fixtures</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || o.pm || '—'}</td>
+                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                          </td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
                           <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
                             R {(o.outstanding || 0).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                           </td>
                           <td>
                             <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
@@ -2326,23 +2325,6 @@ export default function OrdersPage() {
                             <span className={`badge ${
                               o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
                             }`}>{o.paymentStatus}</span>
-                          </td>
-                          <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                              {o.status !== 'Cancelled' && (
-                                <button 
-                                  className="btn btn-ghost btn-sm" 
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-danger)', border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.02)' }}
-                                  onClick={() => setCancelModalItem({
-                                    orderId: o.id,
-                                    projectKey: o.projectKey,
-                                    clientName: o.projectClient
-                                  })}
-                                >
-                                  <TrendingDown size={13} /> Cancel
-                                </button>
-                              )}
-                            </div>
                           </td>
                         </tr>
                       );
