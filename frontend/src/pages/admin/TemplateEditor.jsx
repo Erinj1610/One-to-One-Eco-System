@@ -1006,7 +1006,7 @@ export default function TemplateHub() {
           {/* Main Top Header Instruction */}
           <div style={{ paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
             <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings size={16} /> Microsoft Word (.docx) Engine Settings
+              <Settings size={16} /> {(config?.engine_mode || 'word') === 'excel' ? 'Microsoft Excel (.xlsx) Engine Settings' : 'Microsoft Word (.docx) Engine Settings'}
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
               Configure variables, upload new template files, and establish naming conventions.
