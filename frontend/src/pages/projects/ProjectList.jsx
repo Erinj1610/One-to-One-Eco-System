@@ -678,20 +678,21 @@ export default function ProjectList() {
           <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
             <table className="table" style={{ margin: 0 }}>
             <colgroup>
-              <col style={{ width: '4%' }} />
+              <col style={{ width: '3%' }} />
               <col style={{ width: '13%' }} />
-              <col style={{ width: '14%' }} />
+              <col style={{ width: '12%' }} />
               <col style={{ width: '11%' }} />
               <col style={{ width: '8%' }} />
+              <col style={{ width: '7%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '11%' }} />
             </colgroup>
             <thead>
               <tr>
-                <th style={{ width: '4%', textAlign: 'center' }}>
+                <th style={{ width: '3%', textAlign: 'center' }}>
                   <input 
                     type="checkbox" 
                     checked={sortedProjects.length > 0 && sortedProjects.every(p => selectedKeys.has(p.key))}
@@ -705,8 +706,8 @@ export default function ProjectList() {
                 <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
                 </th>
-                <th onClick={() => handleSort('projectType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Type {renderSortIcon('projectType')}</div>
+                <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
                 </th>
                 <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderSortIcon('designFees')}</div>
@@ -714,23 +715,29 @@ export default function ProjectList() {
                 <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderSortIcon('orders')}</div>
                 </th>
-                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderSortIcon('stage')}</div>
-                </th>
                 <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                </th>
+                <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Value {renderSortIcon('value')}</div>
+                </th>
+                <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderSortIcon('paid')}</div>
+                </th>
+                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
                 </th>
                 <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
                 </th>
-                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
+                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage {renderSortIcon('stage')}</div>
                 </th>
               </tr>
             </thead>
             <tbody>
               {sortedProjects.map(p => {
-                const { stage, progressPct } = calculateProjectStageAndProgress(p);
+                const { progressPct } = calculateProjectStageAndProgress(p);
                 
                 // Calculate dynamic summarized project status based on orders
                 let computedStatus = 'Pending';
@@ -771,24 +778,19 @@ export default function ProjectList() {
                    actualMargin = p.targetMargin || 18;
                  }
 
+                 let totalPaid = 0;
                  if (p.designFees && p.orders) {
                    const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
                    const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
                    const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
                    const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
                    totalValue = dfVal + poVal;
+                   totalPaid = dfPaid + poPaid;
                    totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
                  }
 
                 // Margin Health Indicator
                 const isUnderTarget = actualMargin < (p.targetMargin || 18);
-
-                // Type badge coloring helper
-                const typeColors = {
-                  'Design & Orders': 'b-info',
-                  'Design-Only': 'b-warning',
-                  'Orders-Only': 'b-success'
-                };
 
                 return (
                   <tr 
@@ -812,10 +814,7 @@ export default function ProjectList() {
                       <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</div>
                     </td>
                     <td>
-                      <span className={`badge ${typeColors[p.projectType || 'Design & Orders']}`} style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        {p.projectType === 'Orders-Only' ? <ShoppingBag size={10} /> : p.projectType === 'Design-Only' ? <FolderGit size={10} /> : <Briefcase size={10} />}
-                        {p.projectType || 'Design & Orders'}
-                      </span>
+                      <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || '—'}</div>
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {p.designFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
@@ -824,10 +823,31 @@ export default function ProjectList() {
                       {p.orders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
                     </td>
                     <td>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                          {actualMargin}%
+                        </span>
+                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
+                      </div>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
+                      R {totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-success)' }}>
+                      R {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                      R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </td>
+                    <td>
+                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                        {computedStatus}
+                      </span>
+                    </td>
+                    <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 500 }}>
-                          <span>{stage}</span>
-                          <span style={{ color: 'var(--text-tertiary)' }}>{progressPct}%</span>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{progressPct}%</span>
                         </div>
                         <div style={{ width: '100%', height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
                           <div 
@@ -842,28 +862,12 @@ export default function ProjectList() {
                         </div>
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                          {actualMargin}%
-                        </span>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
-                        {computedStatus}
-                      </span>
-                    </td>
-                    <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                      R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
                   </tr>
                 );
               })}
               {sortedProjects.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
                     No converted projects matched the active filters.
                   </td>
                 </tr>
