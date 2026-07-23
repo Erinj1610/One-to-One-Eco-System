@@ -11,87 +11,26 @@ import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSid
 
 
 export function calculateProjectStageAndProgress(p) {
-  const designFees = p.designFees || [];
   const orders = p.orders || [];
   
-  if (designFees.length === 0 && orders.length === 0) {
-    const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
-    const manualStage = p.stage || 'Stage 1';
-    const manualIdx = stagesList.indexOf(manualStage);
-    const manualProgress = manualIdx === -1 ? 0 : Math.round(((manualIdx + 1) / stagesList.length) * 100);
-    return { stage: manualStage, progressPct: manualProgress };
+  if (orders.length === 0) {
+    return { stage: '0%', progressPct: 0 };
   }
 
-  let totalWeight = 0;
-  let earnedProgress = 0;
+  let orderSum = 0;
+  orders.forEach(o => {
+    const status = (o.status || 'Pending').toLowerCase();
+    if (status === 'complete') {
+      orderSum += 100;
+    } else if (status === 'ongoing' || status === 'processing') {
+      orderSum += 50;
+    } else {
+      orderSum += 0;
+    }
+  });
 
-  const hasDesign = designFees.length > 0;
-  const hasOrders = orders.length > 0;
-  
-  const designWeight = (hasDesign && hasOrders) ? 0.4 : 1.0;
-  const orderWeight = (hasDesign && hasOrders) ? 0.6 : 1.0;
-
-  if (hasDesign) {
-    let feeSum = 0;
-    designFees.forEach(df => {
-      if (df.status === 'Paid' || df.feeStatus === 'Final Phase') {
-        feeSum += 100;
-      } else if (df.feeStatus === 'Detailed Design') {
-        feeSum += 80;
-      } else if (df.feeStatus === 'Schematic Phase') {
-        feeSum += 50;
-      } else if (df.feeStatus === 'Concept Phase') {
-        feeSum += 25;
-      } else {
-        feeSum += 10;
-      }
-    });
-    const avgFeeProgress = feeSum / designFees.length;
-    earnedProgress += avgFeeProgress * designWeight;
-    totalWeight += designWeight;
-  }
-
-  if (hasOrders) {
-    let orderSum = 0;
-    orders.forEach(o => {
-      const status = (o.status || 'Pending').toLowerCase();
-      if (status === 'complete') {
-        orderSum += 100;
-      } else if (status === 'ongoing') {
-        orderSum += 70;
-      } else if (status === 'pending') {
-        orderSum += 30;
-      } else if (status === 'draft') {
-        orderSum += 10;
-      } else {
-        orderSum += 25;
-      }
-    });
-    const avgOrderProgress = orderSum / orders.length;
-    earnedProgress += avgOrderProgress * orderWeight;
-    totalWeight += orderWeight;
-  }
-
-  const progressPct = Math.round(earnedProgress / totalWeight);
-  
-  let stage = 'Stage 1';
-  if (progressPct >= 100) {
-    stage = 'Complete';
-  } else if (progressPct >= 85) {
-    stage = 'Snags';
-  } else if (progressPct >= 70) {
-    stage = 'Stage 5';
-  } else if (progressPct >= 50) {
-    stage = 'Stage 4';
-  } else if (progressPct >= 30) {
-    stage = 'Stage 3';
-  } else if (progressPct >= 15) {
-    stage = 'Stage 2';
-  } else {
-    stage = 'Stage 1';
-  }
-
-  return { stage, progressPct };
+  const progressPct = Math.round(orderSum / orders.length);
+  return { stage: `${progressPct}%`, progressPct };
 }
 
 export default function ProjectList() {
