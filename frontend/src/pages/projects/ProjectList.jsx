@@ -136,11 +136,9 @@ export default function ProjectList() {
     }
   };
 
-  // Search & Filter States
   const [search, setSearch] = useState('');
   const [pmFilter, setPmFilter] = useState('All PMs');
   const [clientFilter, setClientFilter] = useState('All Clients');
-  const [typeFilter, setTypeFilter] = useState('All Types');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [activeKpiFilter, setActiveKpiFilter] = useState(null); // 'total', 'pending', 'active', 'complete'
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -283,10 +281,10 @@ export default function ProjectList() {
     const statuses = Object.values(projects).map(p => {
       if (p.isDraft) return null;
       if (p.orders && p.orders.length > 0) {
-        const oStatuses = p.orders.map(o => o.status || 'Pending');
-        if (oStatuses.every(s => s === 'Cancelled')) return 'Cancelled';
-        if (oStatuses.every(s => s === 'Complete')) return 'Complete';
-        if (oStatuses.some(s => s === 'Ongoing' || s === 'Complete')) return 'Ongoing';
+        const oStatuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+        if (oStatuses.every(s => s === 'cancelled')) return 'Cancelled';
+        if (oStatuses.every(s => s === 'complete')) return 'Complete';
+        if (oStatuses.some(s => s === 'ongoing' || s === 'complete')) return 'Ongoing';
         return 'Pending';
       }
       return 'Pending';
@@ -300,12 +298,12 @@ export default function ProjectList() {
       // Calculate dynamic computed status for matching search & filter
       let computedStatus = 'Pending';
       if (p.orders && p.orders.length > 0) {
-        const statuses = p.orders.map(o => o.status || 'Pending');
-        if (statuses.every(s => s === 'Cancelled')) {
+        const statuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+        if (statuses.every(s => s === 'cancelled')) {
           computedStatus = 'Cancelled';
-        } else if (statuses.every(s => s === 'Complete')) {
+        } else if (statuses.every(s => s === 'complete')) {
           computedStatus = 'Complete';
-        } else if (statuses.some(s => s === 'Ongoing' || s === 'Complete')) {
+        } else if (statuses.some(s => s === 'ongoing' || s === 'complete')) {
           computedStatus = 'Ongoing';
         } else {
           computedStatus = 'Pending';
@@ -323,9 +321,6 @@ export default function ProjectList() {
       // Client matches
       const matchesClient = clientFilter === 'All Clients' || p.client === clientFilter;
 
-      // Project Type matches
-      const matchesType = typeFilter === 'All Types' || p.projectType === typeFilter;
-
       // Status matches
       const matchesStatus = statusFilter === 'All Statuses' || computedStatus === statusFilter;
 
@@ -341,9 +336,9 @@ export default function ProjectList() {
         matchesKpi = p.complete === 'Complete' || computedStatus === 'Complete';
       }
 
-      return matchesSearch && matchesPm && matchesClient && matchesType && matchesStatus && matchesKpi;
+      return matchesSearch && matchesPm && matchesClient && matchesStatus && matchesKpi;
     });
-  }, [dateFilteredProjects, search, pmFilter, clientFilter, typeFilter, statusFilter, activeKpiFilter]);
+  }, [dateFilteredProjects, search, pmFilter, clientFilter, statusFilter, activeKpiFilter]);
 
   // Sort Logic for All Columns
   const sortedProjects = useMemo(() => {
@@ -667,13 +662,6 @@ export default function ProjectList() {
               {clientsList.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
-
-            <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-              <option>All Types</option>
-              <option>Design & Orders</option>
-              <option>Design-Only</option>
-              <option>Orders-Only</option>
             </select>
 
             <select className="t-sel" style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
