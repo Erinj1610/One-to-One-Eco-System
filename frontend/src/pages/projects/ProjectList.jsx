@@ -284,7 +284,7 @@ export default function ProjectList() {
         const oStatuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
         if (oStatuses.every(s => s === 'cancelled')) return 'Cancelled';
         if (oStatuses.every(s => s === 'complete')) return 'Complete';
-        if (oStatuses.some(s => s === 'ongoing' || s === 'complete')) return 'Ongoing';
+        if (oStatuses.some(s => s === 'ongoing' || s === 'processing' || s === 'complete')) return 'Ongoing';
         return 'Pending';
       }
       return 'Pending';
@@ -303,7 +303,7 @@ export default function ProjectList() {
           computedStatus = 'Cancelled';
         } else if (statuses.every(s => s === 'complete')) {
           computedStatus = 'Complete';
-        } else if (statuses.some(s => s === 'ongoing' || s === 'complete')) {
+        } else if (statuses.some(s => s === 'ongoing' || s === 'processing' || s === 'complete')) {
           computedStatus = 'Ongoing';
         } else {
           computedStatus = 'Pending';
@@ -766,10 +766,10 @@ export default function ProjectList() {
                 // Calculate dynamic summarized project status based on orders
                 let computedStatus = 'Pending';
                 if (p.orders && p.orders.length > 0) {
-                  const statuses = p.orders.map(o => o.status || 'Pending');
-                  const allCancelled = statuses.every(s => s === 'Cancelled');
-                  const allComplete = statuses.every(s => s === 'Complete');
-                  const hasOngoing = statuses.some(s => s === 'Ongoing');
+                  const statuses = p.orders.map(o => (o.status || 'Pending').trim().toLowerCase());
+                  const allCancelled = statuses.every(s => s === 'cancelled');
+                  const allComplete = statuses.every(s => s === 'complete');
+                  const hasOngoing = statuses.some(s => s === 'ongoing' || s === 'processing');
 
                   if (allCancelled) {
                     computedStatus = 'Cancelled';
