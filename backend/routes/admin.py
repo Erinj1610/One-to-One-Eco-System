@@ -8,7 +8,7 @@ from models.orm_models import TemplateConfig
 
 router = APIRouter()
 
-# Base path for all system templates
+# Base path for all system templates (Deployment Trigger Comment)
 TEMPLATES_BASE_DIR = os.path.join(os.path.dirname(__file__), '..', 'templates')
 
 def get_template_path(doc_type: str):
