@@ -462,9 +462,10 @@ export default function TemplateHub() {
     setLoading(true);
     try {
       const resConf = await fetch(`${API_BASE}/admin/configs/${docType}`);
+      let configObj = {};
       if (resConf.ok) {
         const dataConf = await resConf.json();
-        setConfig(dataConf.config_json || {});
+        configObj = dataConf.config_json || {};
         const layout = dataConf.config_json?.layout_blocks || [];
         setBlocks(layout);
         setHistory([JSON.parse(JSON.stringify(layout))]);
@@ -473,15 +474,20 @@ export default function TemplateHub() {
           setGlobalSettings(dataConf.config_json.global_settings);
         }
       }
+      setConfig(configObj);
       
       const resMeta = await fetch(`${API_BASE}/admin/templates/${docType}/metadata`);
       if (resMeta.ok) {
         const dataMeta = await resMeta.json();
         setMetadata(dataMeta);
+      } else {
+        setMetadata({ exists: false });
       }
     } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: 'Error loading template.' });
+      setConfig({});
+      setMetadata({ exists: false });
+      setMessage({ type: 'error', text: 'Error loading template settings.' });
     } finally {
       setLoading(false);
     }
