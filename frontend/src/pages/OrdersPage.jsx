@@ -622,6 +622,155 @@ export default function OrdersPage() {
   const [pendingPriceEdit, setPendingPriceEdit] = useState(null); // { itemId, field, value, code }
 
   const [exportingDocx, setExportingDocx] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+
+  const handleDownloadXlsxTemplate = async () => {
+    let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/${docType}/xlsx/download`);
+      if (!res.ok) throw new Error("Failed to download Excel template.");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docType.toLowerCase()}_template.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      alert(`Error downloading Excel template: ${err.message}`);
+    }
+  };
+
+  const handleUploadXlsxTemplate = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.lowerCase().endsWith('.xlsx')) {
+      alert("Only .xlsx files are allowed.");
+      return;
+    }
+    let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/${docType}/xlsx/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Upload failed.");
+      }
+      alert("Excel template uploaded successfully!");
+    } catch (err) {
+      alert(`Error uploading Excel template: ${err.message}`);
+    }
+  };
+
+  const handleExportXlsxTemplate = async () => {
+    let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
+    setExportingXlsx(true);
+    if (logActivity) {
+      logActivity('document_export', `Exported ${docType} Excel-rendered PDF for order ${selectedOrderId}`);
+    }
+    try {
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const vatAmount = discountedRetail * 0.15;
+      const finalTotalInclVat = discountedRetail * 1.15;
+
+      const finalItems = activeOrderItems.map((item, idx) => ({
+        index: (idx + 1).toString(),
+        code: item.code || '',
+        oneOneCode: item.oneOneCode || '',
+        type: item.type || '',
+        description: item.description || '',
+        qty: (item.qty || 0).toString(),
+        brand: item.brand || '',
+        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: item.dimming || 'Non-dim',
+        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        stockStatus: item.stockStatus || 'In Stock',
+        eta: item.eta || '4 weeks'
+      }));
+
+      const tokens = {
+        PROJECT_NAME: projectFullName || 'Private Client Project',
+        CLIENT_NAME: clientContact || 'Client Name',
+        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
+        ORDER_STATUS: orderStatus || 'Draft',
+        
+        CLIENT_COMPANY: clientCompany || 'Private Client',
+        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+        CLIENT_EMAIL: clientEmail || '',
+        CLIENT_PHONE: clientPhone || '',
+        CLIENT_VAT: '',
+        DELIVERY_ADDRESS: deliveryAddress || '',
+        
+        ONEONE_REP: oneOneRep || 'Martin Döller',
+        PM_NAME: pmName || 'Merlyn Mittins',
+        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PM_PHONE: pmPhone || '083 570 7795',
+        PM_PPHONE: pmPhone || '083 570 7795',
+        PROJECT_PM: pmName || 'Merlyn Mittins',
+        PROJECT_SIZE: projectSize || '—',
+        PROJECT_TIER: projectTier || 'Signature',
+        
+        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        
+        items: finalItems,
+        payments: (orderPayments || []).map((p, idx) => ({
+          index: (idx + 1).toString(),
+          date: p.date || '',
+          reference: p.reference || '',
+          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate document from Excel template.');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docType.toLowerCase()}_${selectedOrderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error(err);
+      alert(`Error generating spreadsheet PDF: ${err.message}`);
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
+
   const [livePreviewUrl, setLivePreviewUrl] = useState(null);
   const [loadingLivePreview, setLoadingLivePreview] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
@@ -4122,8 +4271,42 @@ export default function OrdersPage() {
                   </button>
 
                   <button 
+                    className="btn btn-success"
+                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}
+                    onClick={handleExportXlsxTemplate}
+                    disabled={exportingXlsx}
+                  >
+                    <FileText size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF (Spreadsheet Template) 📊'}
+                  </button>
+
+                  <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Custom Spreadsheet Template (.xlsx)</div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="btn btn-sm"
+                        style={{ flex: 1, fontSize: '11px', padding: '6px' }}
+                        onClick={handleDownloadXlsxTemplate}
+                      >
+                        Download Starter
+                      </button>
+                      <label 
+                        className="btn btn-sm"
+                        style={{ flex: 1, fontSize: '11px', padding: '6px', textAlign: 'center', cursor: 'pointer', margin: 0 }}
+                      >
+                        Upload Template
+                        <input 
+                          type="file" 
+                          accept=".xlsx"
+                          style={{ display: 'none' }}
+                          onChange={handleUploadXlsxTemplate}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <button 
                     className="btn"
-                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', width: '100%' }}
                     onClick={() => window.print()}
                   >
                     <Printer size={15} /> Print Browser View 🖨️
