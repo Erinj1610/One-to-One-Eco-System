@@ -141,8 +141,25 @@ export default function ProjectManagement() {
 
   const orders = useMemo(() => {
     const list = p?.orders || [];
-    if (isAdmin) return list;
-    return list.filter(o => {
+    const mapped = list.map(o => {
+      const totalPaidVal = Number(o.paid) || 0;
+      const totalRetailVal = Number(o.value) || 0;
+      const valueInclVat = totalRetailVal * 1.15;
+      let paymentStatus = 'Unpaid';
+      if (totalPaidVal > 0) {
+        if (totalPaidVal >= valueInclVat - 1) {
+          paymentStatus = 'Fully Paid';
+        } else {
+          paymentStatus = 'Partially Paid';
+        }
+      }
+      return {
+        ...o,
+        paymentStatus
+      };
+    });
+    if (isAdmin) return mapped;
+    return mapped.filter(o => {
       const matchEmail = o.clientEmail?.toLowerCase() === user?.email?.toLowerCase();
       const matchName = o.clientContact?.toLowerCase() === userContact?.name?.toLowerCase();
       return matchEmail || matchName;
@@ -1846,7 +1863,7 @@ export default function ProjectManagement() {
                                    <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
                                      {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                                    </td>
-                                   <td style={{ fontWeight: 600, color: 'white' }}>R {retail.toLocaleString()}</td>
+                                   <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                                    <td>R {(o.paid || 0).toLocaleString()}</td>
                                    <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
                                      R {(o.outstanding || 0).toLocaleString()}
