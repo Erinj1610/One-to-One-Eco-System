@@ -496,10 +496,9 @@ export default function TemplateHub() {
         setMetadata({ exists: false });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Config fetch error:", err);
       setConfig({});
       setMetadata({ exists: false });
-      setMessage({ type: 'error', text: 'Error loading template settings.' });
     } finally {
       setLoading(false);
     }
