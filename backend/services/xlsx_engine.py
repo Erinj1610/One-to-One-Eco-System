@@ -209,8 +209,11 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         # Estimate expanded rows to shift sheet contents down below floor_end
         expanded_row_count = 0
         for f in floors:
+            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+            if not valid_areas:
+                continue
             expanded_row_count += 1 # Floor Header
-            for a in f.get("areas", []):
+            for a in valid_areas:
                 expanded_row_count += 1 # Area Header
                 expanded_row_count += len(a.get("items", [])) # Product rows
                 expanded_row_count += 1 # Area Subtotal Footer
@@ -223,6 +226,10 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             
         curr_row = floor_start
         for f in floors:
+            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+            if not valid_areas:
+                continue
+                
             # 1. Output Floor Header Row
             for cell_def in floor_header_row_design:
                 target_cell = ws.cell(row=curr_row, column=cell_def["col"])
@@ -237,7 +244,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 target_cell.value = val_str
             curr_row += 1
             
-            for a in f.get("areas", []):
+            for a in valid_areas:
                 # 2. Output Area Header Row
                 for cell_def in area_header_row_design:
                     target_cell = ws.cell(row=curr_row, column=cell_def["col"])
