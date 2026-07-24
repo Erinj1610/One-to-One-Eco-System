@@ -6,8 +6,11 @@ const originalFetch = window.fetch;
 window.fetch = async (url, options = {}) => {
   const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
   const cleanUrl = urlStr.replace(/^https?:\/\/[^\/]+/, '');
+  
+  // Explicitly check if the target destination matches the backend host URL
   const isBackendRequest = 
     urlStr.startsWith(API_BASE) || 
+    urlStr.includes('one-to-one-backend-858977785048.us-central1.run.app') ||
     urlStr.includes('one-to-one-backend') || 
     urlStr.startsWith('/') ||
     cleanUrl.startsWith('/api/') || 
@@ -50,8 +53,8 @@ window.fetch = async (url, options = {}) => {
       }
     }
     
-    // For file downloads (GET) and file uploads (POST multipart), if credentials mode is set or default, 
-    // we must allow credentials matching the backend allow_credentials CORS settings
+    // Explicitly configure mode to cors to enable CORS preflight handshakes
+    newOptions.mode = 'cors';
     newOptions.credentials = 'include';
     
     return originalFetch(url, newOptions);
