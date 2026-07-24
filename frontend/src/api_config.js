@@ -15,7 +15,16 @@ window.fetch = async (url, options = {}) => {
   if (isBackendRequest) {
     let headers = options.headers || {};
     const isHeadersInstance = headers instanceof Headers;
-    
+    let headersObj = new Headers();
+    if (isHeadersInstance) {
+      headersObj = headers;
+    } else {
+      // Loop over plain object properties and set them
+      Object.keys(headers).forEach(key => {
+        headersObj.set(key, headers[key]);
+      });
+    }
+
     let token = null;
     const currentUser = auth.currentUser;
     
@@ -33,16 +42,9 @@ window.fetch = async (url, options = {}) => {
     }
 
     if (token) {
-      if (isHeadersInstance) {
-        headers.set('Authorization', `Bearer ${token}`);
-      } else {
-        headers = {
-          ...headers,
-          'Authorization': `Bearer ${token}`
-        };
-      }
+      headersObj.set('Authorization', `Bearer ${token}`);
     }
-    options.headers = headers;
+    options.headers = headersObj;
   }
   return originalFetch(url, options);
 };
