@@ -137,9 +137,13 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     
     # Search for start and end tags. Support block loop formats:
     # {{#each items}} or {{#floor}} or {{#area}} 
+    from openpyxl.cell.cell import MergedCell
     for r in range(1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
-            val = str(ws.cell(row=r, column=c).value or '')
+            cell = ws.cell(row=r, column=c)
+            if isinstance(cell, MergedCell):
+                continue
+            val = str(cell.value or '')
             if "{{#each items}}" in val or "{{#floor}}" in val or "{{#area}}" in val:
                 loop_start_row = r
             if "{{/each}}" in val or "{{/floor}}" in val or "{{/area}}" in val:
