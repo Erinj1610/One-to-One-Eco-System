@@ -14,13 +14,11 @@ window.fetch = async (url, options = {}) => {
     cleanUrl.startsWith('/admin/');
 
   if (isBackendRequest) {
-    if (!options.headers) {
-      options.headers = {};
-    }
+    // Clone options and headers strictly as shallow copies if modified to avoid mutating default references
+    options = { ...options };
     
     let token = null;
     const currentUser = auth.currentUser;
-    
     if (currentUser) {
       try {
         token = await currentUser.getIdToken();
@@ -36,9 +34,19 @@ window.fetch = async (url, options = {}) => {
 
     if (token) {
       if (options.headers instanceof Headers) {
-        options.headers.set('Authorization', `Bearer ${token}`);
+        // If it's a Headers instance, clone it to modify safely
+        const clonedHeaders = new Headers(options.headers);
+        clonedHeaders.set('Authorization', `Bearer ${token}`);
+        options.headers = clonedHeaders;
+      } else if (Array.isArray(options.headers)) {
+        // Handle list of pairs safely
+        options.headers = [...options.headers, ['Authorization', `Bearer ${token}`]];
       } else {
-        options.headers['Authorization'] = `Bearer ${token}`;
+        // Handle plain objects cleanly
+        options.headers = {
+          ...options.headers,
+          'Authorization': `Bearer ${token}`
+        };
       }
     }
   }
