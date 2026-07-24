@@ -5,7 +5,14 @@ import { auth } from './firebase';
 const originalFetch = window.fetch;
 window.fetch = async (url, options = {}) => {
   const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
-  if (urlStr.startsWith(API_BASE) || urlStr.includes('/api/') || urlStr.includes('/admin/')) {
+  const cleanUrl = urlStr.replace(/^https?:\/\/[^\/]+/, '');
+  const isBackendRequest = 
+    urlStr.startsWith(API_BASE) || 
+    urlStr.includes('one-to-one-backend-') || 
+    cleanUrl.startsWith('/api/') || 
+    cleanUrl.startsWith('/admin/');
+
+  if (isBackendRequest) {
     let headers = options.headers || {};
     const isHeadersInstance = headers instanceof Headers;
     
