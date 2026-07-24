@@ -180,10 +180,13 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             
         # Fill in the looped data
         curr_row = loop_start_row
+        from openpyxl.cell.cell import MergedCell
         for idx, item in enumerate(items):
             for t_row_idx, t_row in enumerate(loop_rows_data):
                 for cell_def in t_row:
                     target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+                    if isinstance(target_cell, MergedCell):
+                        continue
                     
                     # Copy styling
                     if cell_def["font"]: target_cell.font = cell_def["font"]
@@ -226,11 +229,15 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 curr_row += 1
     
     # 2. Second Pass: Find and replace single global variables
+    from openpyxl.cell.read_only import ReadOnlyCell
+    from openpyxl.cell.cell import MergedCell
     for r in range(1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             cell = ws.cell(row=r, column=c)
+            if isinstance(cell, MergedCell):
+                continue
             val = str(cell.value or '')
-            if val and "{?" in val or "{{" in val:
+            if val and ("{?" in val or "{{" in val):
                 for k, v in tokens.items():
                     if not isinstance(v, (list, dict)):
                         val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
