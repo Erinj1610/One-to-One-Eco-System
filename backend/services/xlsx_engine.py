@@ -292,8 +292,16 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     curr_row += 1
                     
                 # 4. Output Area Footer / Subtotal
-                # For totals we will compute and display area subtotal
-                area_subtotal = sum(float(item.get("totalRetail") or 0.0) for item in a.get("items", []))
+                # Clean monetary values (e.g. "R 15.79" or with commas) before parsing to float
+                def clean_price(val_in):
+                    if not val_in: return 0.0
+                    if isinstance(val_in, (int, float)): return float(val_in)
+                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
+                    try:
+                        return float(val_s)
+                    except ValueError:
+                        return 0.0
+                area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                 for cell_def in area_footer_row_design:
                     target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                     if isinstance(target_cell, MergedCell): continue
