@@ -201,15 +201,22 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                             
                         # Try to cast to float/int if it's purely numerical after substitution to preserve excel calculations
                         try:
-                            if val_str.strip().startswith('R '):
-                                clean_val = val_str.replace('R ', '').replace(',', '').strip()
-                                target_cell.value = float(clean_val)
-                            else:
-                                if '.' in val_str:
-                                    target_cell.value = float(val_str)
+                            # Strict match for numeric characters before casting
+                            stripped_val = val_str.strip()
+                            if stripped_val.startswith('R '):
+                                clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                                if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                    target_cell.value = float(clean_val)
                                 else:
-                                    target_cell.value = int(val_str)
-                        except ValueError:
+                                    target_cell.value = val_str
+                            elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                                if '.' in stripped_val:
+                                    target_cell.value = float(stripped_val)
+                                else:
+                                    target_cell.value = int(stripped_val)
+                            else:
+                                target_cell.value = val_str
+                        except Exception:
                             target_cell.value = val_str
                     else:
                         target_cell.value = None
@@ -227,15 +234,22 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 
                 # Check if cell can be cast to float to keep calculations intact
                 try:
-                    if val.strip().startswith('R '):
-                        clean_val = val.replace('R ', '').replace(',', '').strip()
-                        cell.value = float(clean_val)
-                    else:
-                        if '.' in val:
-                            cell.value = float(val)
+                    # Strict match for numeric characters before casting
+                    stripped_val = val.strip()
+                    if stripped_val.startswith('R '):
+                        clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                        if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                            cell.value = float(clean_val)
                         else:
-                            cell.value = int(val)
-                except ValueError:
+                            cell.value = val
+                    elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                        if '.' in stripped_val:
+                            cell.value = float(stripped_val)
+                        else:
+                            cell.value = int(stripped_val)
+                    else:
+                        cell.value = val
+                except Exception:
                     cell.value = val
 
     # Save to a temporary workbook
