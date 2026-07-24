@@ -56,9 +56,13 @@ def convert_xlsx_to_pdf_local(xlsx_path, pdf_path):
         return False
         
     try:
-        # xlTypePDF = 0
         wb = excel.Workbooks.Open(os.path.abspath(xlsx_path))
-        # ExportAsFixedFormat(Type, Filename, Quality, IncludeDocProperties, IgnorePrintAreas, From, To, OpenAfterPublish)
+        # Ensure column widths adjust to prevent visual clipping (which exports as ###)
+        for ws in wb.Worksheets:
+            try:
+                ws.Columns.AutoFit()
+            except Exception:
+                pass
         wb.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
         wb.Close(SaveChanges=False)
         logger.info(f"Local Excel conversion successful: {pdf_path}")
@@ -117,7 +121,7 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
 def merge_xlsx_template(template_path, tokens, output_pdf_path):
     """
     Reads an .xlsx template, fills placeholders dynamically using openpyxl,
-    handles row expansion for {{#each items}} ... {{/each}}, and exports to PDF.
+    handles row expansion for {{#each items}} ... {{/each}} or floor/area loops, and exports to PDF.
     """
     logger.info(f"Merging XLSX template: {template_path}")
     import openpyxl
@@ -127,22 +131,21 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     
     items = tokens.get("items", [])
     
-    # 1. First Pass: Find the repeating list boundaries
+    # 1. First Pass: Find repeating list boundaries
     loop_start_row = None
     loop_end_row = None
-    loop_template_cells = []
     
-    # Locate row index containing {{#each items}} and {{/each}}
+    # Search for start and end tags. Support block loop formats:
+    # {{#each items}} or {{#floor}} or {{#area}} 
     for r in range(1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             val = str(ws.cell(row=r, column=c).value or '')
-            if "{{#each items}}" in val:
+            if "{{#each items}}" in val or "{{#floor}}" in val or "{{#area}}" in val:
                 loop_start_row = r
-            if "{{/each}}" in val:
+            if "{{/each}}" in val or "{{/floor}}" in val or "{{/area}}" in val:
                 loop_end_row = r
                 
     if loop_start_row is not None and loop_end_row is not None:
-        # Capture layout style, formulas, and cells format from the templates row(s) between start and end tags
         template_rows_count = (loop_end_row - loop_start_row) - 1
         
         # Read cell tokens for the rows in the loop
@@ -169,10 +172,8 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 
         # Insert rows based on items length
         total_items = len(items)
-        needed_rows = total_items * len(loop_rows_data)
         
         # If we need to expand or shrink the template rows space
-        # We shift down everything below loop_end_row
         if total_items > 1:
             rows_to_insert = (total_items - 1) * len(loop_rows_data)
             ws.insert_rows(loop_end_row, amount=rows_to_insert)
@@ -194,9 +195,11 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     # Process placeholders in the text value
                     val_str = str(cell_def["value"] or '')
                     if val_str:
-                        # Substitute fields
+                        # Substitute index fields
                         val_str = val_str.replace("{{index}}", str(idx + 1))
+                        # Support item prefix as well as flat object properties
                         for k, v in item.items():
+                            val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
                             val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
                             
                         # Try to cast to float/int if it's purely numerical after substitution to preserve excel calculations
@@ -227,10 +230,11 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         for c in range(1, ws.max_column + 1):
             cell = ws.cell(row=r, column=c)
             val = str(cell.value or '')
-            if val and "{{" in val and "}}" in val:
+            if val and "{?" in val or "{{" in val:
                 for k, v in tokens.items():
                     if not isinstance(v, (list, dict)):
                         val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                        val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
                 
                 # Check if cell can be cast to float to keep calculations intact
                 try:
