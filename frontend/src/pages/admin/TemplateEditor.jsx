@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../api_config';
+import { auth } from '../../firebase';
 import { 
   Upload, Download, FileText, Settings, Eye, Code, Save, Trash2, RefreshCw, 
   ArrowUp, ArrowDown, LayoutGrid, Image as ImageIcon, CheckCircle, Plus, 
