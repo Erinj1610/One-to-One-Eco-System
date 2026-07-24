@@ -4,7 +4,8 @@ import { auth } from './firebase';
 
 const originalFetch = window.fetch;
 window.fetch = async (url, options = {}) => {
-  if (typeof url === 'string' && (url.startsWith(API_BASE) || url.includes('/api/') || url.includes('/admin/'))) {
+  const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
+  if (urlStr.startsWith(API_BASE) || urlStr.includes('/api/') || urlStr.includes('/admin/')) {
     let headers = options.headers || {};
     const isHeadersInstance = headers instanceof Headers;
     
@@ -28,7 +29,6 @@ window.fetch = async (url, options = {}) => {
       if (isHeadersInstance) {
         headers.set('Authorization', `Bearer ${token}`);
       } else {
-        // Plain object: clone it to ensure we don't mutate shared references or lose content-type
         headers = {
           ...headers,
           'Authorization': `Bearer ${token}`
