@@ -7,8 +7,9 @@ window.fetch = async (url, options = {}) => {
   const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
   const cleanUrl = urlStr.replace(/^https?:\/\/[^\/]+/, '');
   const isBackendRequest = 
-    urlStr.startsWith(API_BASE) || 
-    urlStr.includes('one-to-one-backend-') || 
+    urlStr.includes('one-to-one-backend-858977785048.us-central1.run.app') || 
+    urlStr.startsWith('/') || 
+    urlStr.startsWith(API_BASE) ||
     cleanUrl.startsWith('/api/') || 
     cleanUrl.startsWith('/admin/');
 
