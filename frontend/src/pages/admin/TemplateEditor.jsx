@@ -539,10 +539,10 @@ export default function TemplateHub() {
         setMessage({ type: 'success', text: 'Spreadsheet template file uploaded!' });
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setMessage({ type: 'error', text: errorData.detail || 'Error uploading spreadsheet template.' });
+        setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). Server details: ${errorData.detail || JSON.stringify(errorData) || 'None'}` });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error uploading template file.' });
+      setMessage({ type: 'error', text: `Error uploading template file: ${err.message || err}` });
     } finally {
       setUploading(false);
     }
@@ -553,7 +553,10 @@ export default function TemplateHub() {
     setMessage(null);
     try {
       const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/download`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Status ${res.status} (${res.statusText}). Details: ${errorData.detail || JSON.stringify(errorData) || 'None'}`);
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -564,7 +567,7 @@ export default function TemplateHub() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error downloading Excel template.' });
+      setMessage({ type: 'error', text: `Error downloading Excel template: ${err.message}` });
     }
   };
 
@@ -870,10 +873,10 @@ export default function TemplateHub() {
         }
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setMessage({ type: 'error', text: errorData.detail || 'Error uploading Word template.' });
+        setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). Server details: ${errorData.detail || JSON.stringify(errorData) || 'None'}` });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error uploading template file.' });
+      setMessage({ type: 'error', text: `Error uploading template file: ${err.message || err}` });
     } finally {
       setUploading(false);
     }
@@ -884,7 +887,10 @@ export default function TemplateHub() {
     setMessage(null);
     try {
       const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/download`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Status ${res.status} (${res.statusText}). Details: ${errorData.detail || JSON.stringify(errorData) || 'None'}`);
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -895,7 +901,7 @@ export default function TemplateHub() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error downloading template.' });
+      setMessage({ type: 'error', text: `Error downloading template: ${err.message}` });
     }
   };
 
