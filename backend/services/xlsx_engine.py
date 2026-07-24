@@ -195,11 +195,12 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     if isinstance(target_cell, MergedCell):
                         continue
                     
-                    # Copy styling
-                    if cell_def["font"]: target_cell.font = cell_def["font"]
-                    if cell_def["fill"]: target_cell.fill = cell_def["fill"]
-                    if cell_def["border"]: target_cell.border = cell_def["border"]
-                    if cell_def["alignment"]: target_cell.alignment = cell_def["alignment"]
+                    # Copy styling using copy module to prevent StyleProxy unhashable errors
+                    import copy
+                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
+                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                     if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
                     
                     # Process placeholders in the text value
