@@ -462,7 +462,16 @@ export default function TemplateHub() {
   const fetchConfigAndMetadata = async (docType) => {
     setLoading(true);
     try {
-      const resConf = await fetch(`${API_BASE}/admin/configs/${docType}`);
+      let headers = {};
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const token = await currentUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const resConf = await fetch(`${API_BASE}/admin/configs/${docType}`, {
+        headers: headers
+      });
       let configObj = {};
       if (resConf.ok) {
         const dataConf = await resConf.json();
@@ -477,7 +486,9 @@ export default function TemplateHub() {
       }
       setConfig(configObj);
       
-      const resMeta = await fetch(`${API_BASE}/admin/templates/${docType}/metadata`);
+      const resMeta = await fetch(`${API_BASE}/admin/templates/${docType}/metadata`, {
+        headers: headers
+      });
       if (resMeta.ok) {
         const dataMeta = await resMeta.json();
         setMetadata(dataMeta);
