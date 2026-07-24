@@ -993,7 +993,8 @@ export default function OrdersPage() {
       });
 
       if (!res.ok) {
-        throw new Error('Preview compilation failed');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Preview compilation failed: ${errorData.detail || 'Status ' + res.status} ${errorData.trace || ''}`);
       }
 
       const blob = await res.blob();
@@ -1004,6 +1005,7 @@ export default function OrdersPage() {
       setLivePreviewUrl(url);
     } catch (err) {
       console.error("Failed to compile preview:", err);
+      alert(`Preview compile error: ${err.message}`);
     } finally {
       setLoadingLivePreview(false);
     }
