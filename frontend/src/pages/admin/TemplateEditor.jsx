@@ -542,7 +542,9 @@ export default function TemplateHub() {
         setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). Server details: ${errorData.detail || JSON.stringify(errorData) || 'None'}` });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: `Error uploading template file: ${err.message || err}` });
+      console.error("XLSX Upload Error Detail Logged:", err);
+      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
+      setMessage({ type: 'error', text: `Error uploading template file: ${errStr}` });
     } finally {
       setUploading(false);
     }
@@ -567,7 +569,9 @@ export default function TemplateHub() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setMessage({ type: 'error', text: `Error downloading Excel template: ${err.message}` });
+      console.error("XLSX Download Error Detail Logged:", err);
+      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
+      setMessage({ type: 'error', text: `Error downloading Excel template: ${errStr}` });
     }
   };
 
@@ -876,7 +880,9 @@ export default function TemplateHub() {
         setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). Server details: ${errorData.detail || JSON.stringify(errorData) || 'None'}` });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: `Error uploading template file: ${err.message || err}` });
+      console.error("Word Upload Error Detail Logged:", err);
+      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
+      setMessage({ type: 'error', text: `Error uploading template file: ${errStr}` });
     } finally {
       setUploading(false);
     }
@@ -901,7 +907,9 @@ export default function TemplateHub() {
       window.URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setMessage({ type: 'error', text: `Error downloading template: ${err.message}` });
+      console.error("Word Download Error Detail Logged:", err);
+      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
+      setMessage({ type: 'error', text: `Error downloading template: ${errStr}` });
     }
   };
 
