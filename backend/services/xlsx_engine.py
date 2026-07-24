@@ -166,9 +166,12 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             loop_rows_data.append(row_cells)
             
         # Clear loop tag rows and loop rows content
+        from openpyxl.cell.cell import MergedCell
         for r in range(loop_start_row, loop_end_row + 1):
             for c in range(1, ws.max_column + 1):
-                ws.cell(row=r, column=c).value = None
+                cell = ws.cell(row=r, column=c)
+                if not isinstance(cell, MergedCell):
+                    cell.value = None
                 
         # Insert rows based on items length
         total_items = len(items)
