@@ -542,16 +542,8 @@ export default function TemplateHub() {
     formData.append('file', file);
 
     try {
-      let headers = {};
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/upload`, {
         method: 'POST',
-        headers: headers,
         body: formData
       });
       if (res.ok) {
@@ -571,16 +563,7 @@ export default function TemplateHub() {
     e.preventDefault();
     setMessage(null);
     try {
-      let headers = {};
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/download`, {
-        headers: headers
-      });
+      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/download`);
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -885,23 +868,13 @@ export default function TemplateHub() {
     formData.append('file', file);
 
     try {
-      let headers = {};
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/upload`, {
         method: 'POST',
-        headers: headers,
         body: formData
       });
       if (res.ok) {
         setMessage({ type: 'success', text: 'MS Word template file uploaded!' });
-        const resMeta = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/metadata`, {
-          headers: headers
-        });
+        const resMeta = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/metadata`);
         if (resMeta.ok) {
           const dataMeta = await resMeta.json();
           setMetadata(dataMeta);
@@ -921,16 +894,7 @@ export default function TemplateHub() {
     e.preventDefault();
     setMessage(null);
     try {
-      let headers = {};
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/download`, {
-        headers: headers
-      });
+      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/download`);
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
