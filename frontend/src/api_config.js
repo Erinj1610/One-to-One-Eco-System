@@ -28,6 +28,7 @@ window.fetch = async (url, options = {}) => {
       if (isHeadersInstance) {
         headers.set('Authorization', `Bearer ${token}`);
       } else {
+        // Plain object: clone it to ensure we don't mutate shared references or lose content-type
         headers = {
           ...headers,
           'Authorization': `Bearer ${token}`
