@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import sys
@@ -39,6 +39,24 @@ app.add_middleware(
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "Backend is running"}
+
+import traceback
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_tb = traceback.format_exc()
+    print(f"CRITICAL BACKEND ERROR: {error_tb}")
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": f"Backend Error: {str(exc)}", "trace": error_tb}
+    )
+    # Ensure CORS headers are attached to the error response
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 from services.firebase_auth import verify_firebase_token
 
