@@ -160,6 +160,18 @@ def init_db():
                 except Exception as alter_err:
                     print(f"Database migration (non-critical info): {alter_err}")
                 
+                # Migrate template_configs table to ensure xlsx_binary exists
+                try:
+                    db_type = engine.name
+                    if db_type == 'sqlite':
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN xlsx_binary BLOB;"))
+                    else:
+                        conn.execute(text("ALTER TABLE template_configs ADD COLUMN IF NOT EXISTS xlsx_binary BYTEA;"))
+                    conn.commit()
+                    print("Database migration: ensured 'xlsx_binary' column exists on 'template_configs' table.")
+                except Exception as alter_err:
+                    print(f"Database migration xlsx_binary (non-critical info): {alter_err}")
+                
                 # Migrate order_items table to ensure is_credit exists
                 try:
                     order_item_cols = [c['name'] for c in inspector.get_columns('order_items')]
