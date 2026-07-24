@@ -7,25 +7,17 @@ window.fetch = async (url, options = {}) => {
   const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
   const cleanUrl = urlStr.replace(/^https?:\/\/[^\/]+/, '');
   const isBackendRequest = 
-    urlStr.includes('one-to-one-backend-858977785048.us-central1.run.app') || 
-    urlStr.startsWith('/') || 
-    urlStr.startsWith(API_BASE) ||
+    urlStr.startsWith(API_BASE) || 
+    urlStr.includes('one-to-one-backend') || 
+    urlStr.startsWith('/') ||
     cleanUrl.startsWith('/api/') || 
     cleanUrl.startsWith('/admin/');
 
   if (isBackendRequest) {
-    let headers = options.headers || {};
-    const isHeadersInstance = headers instanceof Headers;
-    let headersObj = new Headers();
-    if (isHeadersInstance) {
-      headersObj = headers;
-    } else {
-      // Loop over plain object properties and set them
-      Object.keys(headers).forEach(key => {
-        headersObj.set(key, headers[key]);
-      });
+    if (!options.headers) {
+      options.headers = {};
     }
-
+    
     let token = null;
     const currentUser = auth.currentUser;
     
@@ -43,9 +35,12 @@ window.fetch = async (url, options = {}) => {
     }
 
     if (token) {
-      headersObj.set('Authorization', `Bearer ${token}`);
+      if (options.headers instanceof Headers) {
+        options.headers.set('Authorization', `Bearer ${token}`);
+      } else {
+        options.headers['Authorization'] = `Bearer ${token}`;
+      }
     }
-    options.headers = headersObj;
   }
   return originalFetch(url, options);
 };
