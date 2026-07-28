@@ -154,6 +154,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     item_row = None
     area_footer_row = None
     floor_footer_row = None
+    fixed_rows = []
     
     loop_start_row = None
     loop_end_row = None
@@ -161,6 +162,10 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     for r in range(1, ws.max_row + 1):
         cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
         
+        if "[FIXED]" in cell_a_val:
+            fixed_rows.append(r)
+            continue
+            
         # Check Column A tags
         if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
             floor_header_row = r
@@ -238,9 +243,16 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 if not isinstance(cell, MergedCell):
                     cell.value = None
 
-        # Shift everything below the loop block down
+        # Determine insertion point (above first [FIXED] row or loop_end_row + 1)
+        insertion_row = (loop_end_row + 1)
+        if fixed_rows:
+            first_fixed = min(r for r in fixed_rows if r > loop_start_row) if any(r > loop_start_row for r in fixed_rows) else None
+            if first_fixed:
+                insertion_row = first_fixed
+
+        # Shift fixed rows and everything below cleanly down
         if diff_height > 0:
-            ws.insert_rows(loop_end_row + 1, amount=diff_height)
+            ws.insert_rows(insertion_row, amount=diff_height)
             
         # Clean up any unwanted merged cells that openpyxl copied into the newly expanded row area
         total_dynamic_rows = expanded_row_count
