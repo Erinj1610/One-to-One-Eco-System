@@ -209,8 +209,13 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         area_footer_row_design = None
         floor_footer_row_design = template_layout[-1]
         
+        # We will also keep track of table header rows (rows between area_start and the item row)
+        table_header_rows_design = []
+        
+        item_row_idx = None
+        area_footer_row_idx = None
+        
         for idx, r_data in enumerate(template_layout):
-            row_idx = floor_start + idx
             # Scan values in this row
             has_item_var = False
             has_area_close = False
@@ -223,14 +228,23 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             
             if has_item_var:
                 item_row_design = r_data
+                item_row_idx = idx
             elif has_area_close:
                 area_footer_row_design = r_data
+                area_footer_row_idx = idx
                 
         # Fallbacks if markers aren't explicitly matched
         if not item_row_design:
-            item_row_design = template_layout[(area_start - floor_start) + 2] if (area_start - floor_start) + 2 < len(template_layout) else template_layout[(area_start - floor_start) + 1]
+            item_row_idx = (area_start - floor_start) + 2 if (area_start - floor_start) + 2 < len(template_layout) else (area_start - floor_start) + 1
+            item_row_design = template_layout[item_row_idx]
         if not area_footer_row_design:
-            area_footer_row_design = template_layout[area_end - floor_start]
+            area_footer_row_idx = area_end - floor_start
+            area_footer_row_design = template_layout[area_footer_row_idx]
+            
+        # Any rows between area header and item row are treated as table headers (e.g. Qty, Made Code...)
+        area_header_idx = area_start - floor_start
+        for idx in range(area_header_idx + 1, item_row_idx):
+            table_header_rows_design.append(template_layout[idx])
         
         # Estimate expanded rows to shift sheet contents down below floor_end
         expanded_row_count = 0
@@ -241,6 +255,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             expanded_row_count += 1 # Floor Header
             for a in valid_areas:
                 expanded_row_count += 1 # Area Header
+                expanded_row_count += len(table_header_rows_design) # Table Header Rows
                 expanded_row_count += len(a.get("items", [])) # Product rows
                 expanded_row_count += 1 # Area Subtotal Footer
             expanded_row_count += 1 # Floor Footer
@@ -279,11 +294,24 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
                     if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
                     if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                    
                     val_str = str(cell_def["value"] or '')
                     val_str = val_str.replace("{{#area}}", "").replace("{{area.name}}", a.get("name", ""))
                     target_cell.value = val_str
                 curr_row += 1
+                
+                # Output Table Header Rows (Qty, Made Code, Description...)
+                for header_row in table_header_rows_design:
+                    for cell_def in header_row:
+                        target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+                        if isinstance(target_cell, MergedCell): continue
+                        if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
+                        if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                        if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                        if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
+                        if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
+                        
+                        target_cell.value = cell_def["value"]
+                    curr_row += 1
                 
                 # 3. Output Item Rows
                 for idx, item in enumerate(a.get("items", [])):
