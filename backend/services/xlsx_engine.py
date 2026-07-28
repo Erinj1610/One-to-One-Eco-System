@@ -303,6 +303,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     
             return use_row
 
+        curr_row = insert_at
         for f in floors:
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
             if not valid_areas: continue
