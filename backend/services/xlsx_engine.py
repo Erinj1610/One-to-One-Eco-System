@@ -199,12 +199,38 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 if not isinstance(cell, MergedCell):
                     cell.value = None
                     
-        # Extract row designs from layout
+        # Extract row designs from layout dynamically based on content tags
         floor_header_row_design = template_layout[0]
         area_header_row_design = template_layout[area_start - floor_start]
-        item_row_design = template_layout[(area_start - floor_start) + 1]
-        area_footer_row_design = template_layout[area_end - floor_start]
+        
+        # Find which template row design corresponds to the item description row,
+        # the area footer subtotal row, and the floor footer row
+        item_row_design = None
+        area_footer_row_design = None
         floor_footer_row_design = template_layout[-1]
+        
+        for idx, r_data in enumerate(template_layout):
+            row_idx = floor_start + idx
+            # Scan values in this row
+            has_item_var = False
+            has_area_close = False
+            for cell_def in r_data:
+                cell_val = str(cell_def["value"] or '')
+                if "{{item." in cell_val or "{{index}}" in cell_val or "{{qty}}" in cell_val:
+                    has_item_var = True
+                if "{{/area}}" in cell_val:
+                    has_area_close = True
+            
+            if has_item_var:
+                item_row_design = r_data
+            elif has_area_close:
+                area_footer_row_design = r_data
+                
+        # Fallbacks if markers aren't explicitly matched
+        if not item_row_design:
+            item_row_design = template_layout[(area_start - floor_start) + 2] if (area_start - floor_start) + 2 < len(template_layout) else template_layout[(area_start - floor_start) + 1]
+        if not area_footer_row_design:
+            area_footer_row_design = template_layout[area_end - floor_start]
         
         # Estimate expanded rows to shift sheet contents down below floor_end
         expanded_row_count = 0
