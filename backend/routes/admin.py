@@ -275,16 +275,16 @@ import tempfile
 from fastapi import Body
 
 @router.post("/generate/{doc_type}")
-def generate_document(doc_type: str, page: int = None, data: dict = Body(...), db: Session = Depends(get_db)):
+def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data: dict = Body(...), db: Session = Depends(get_db)):
     """
-    High-Fidelity Document Generator (Google Docs API Bridge).
+    High-Fidelity Document Generator (HTML, Word, and Excel Spreadsheet Engines).
     """
-    print(f"DEBUG: Generating {doc_type} with tokens: {list(data.keys())} for page: {page}")
+    print(f"DEBUG: Generating {doc_type} format={format} with tokens: {list(data.keys())} for page: {page}")
     
     config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
     
     # 1. First check if a custom visual HTML template exists in the database
-    if config and config.html_content:
+    if config and config.html_content and format not in ['xlsx', 'excel']:
         print(f"DEBUG: Found custom visual HTML template in DB. Rendering using html_engine...")
         from services.html_engine import render_html_template_to_pdf
         pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
@@ -370,10 +370,35 @@ def generate_document(doc_type: str, page: int = None, data: dict = Body(...), d
             xlsx_template_path = disk_xlsx_path
 
     if xlsx_template_path:
-        print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine...")
-        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+        print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format}...")
         try:
-            success = merge_xlsx_template(xlsx_template_path, data, pdf_path)
+            if format in ['xlsx', 'excel']:
+                xlsx_out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+                success = merge_xlsx_template(xlsx_template_path, data, output_xlsx_path=xlsx_out_path)
+                if not success:
+                    raise HTTPException(status_code=500, detail="Failed to compile Excel spreadsheet")
+                
+                filename = f"Document_{doc_type.lower()}.xlsx"
+                naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
+                if naming_conv:
+                    temp_name = naming_conv
+                    for k, v in data.items():
+                        temp_name = temp_name.replace("{{" + k + "}}", str(v))
+                    import re
+                    filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
+                    if filename.lower().endswith(".pdf"):
+                        filename = filename[:-4] + ".xlsx"
+                    elif not filename.lower().endswith(".xlsx"):
+                        filename += ".xlsx"
+
+                return FileResponse(
+                    xlsx_out_path,
+                    media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    filename=filename
+                )
+
+            pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+            success = merge_xlsx_template(xlsx_template_path, data, output_pdf_path=pdf_path)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to compile PDF from Excel template")
             

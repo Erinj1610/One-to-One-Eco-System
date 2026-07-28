@@ -114,31 +114,26 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
             logger.info("LibreOffice Excel conversion successful.")
             return True
         return False
-    except Exception as e:
-        logger.error(f"LibreOffice Excel conversion crashed: {e}")
-        return False
-
-def merge_xlsx_template(template_path, tokens, output_pdf_path):
+def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None) -> bool:
     """
-    Reads an .xlsx template, fills placeholders dynamically using openpyxl,
-    handles nested floor/area groupings and row expansion, and exports to PDF.
+    High-fidelity Excel template merger with 0-call delete_rows.
+    Merges dynamic tokens into an .xlsx template and converts to PDF or exports populated .xlsx.
     """
     logger.info(f"Merging XLSX template: {template_path}")
     import openpyxl
     import copy
     from openpyxl.cell.cell import MergedCell
     
-    wb = openpyxl.load_workbook(template_path)
-    ws = wb.active
-    
-    # 1. First Pass: Scan Column A to identify control rows
-    # Expected Column A Markers:
-    #   [FLOOR_HEADER]
-    #   [AREA_HEADER]
-    #   [TABLE_HEADER]
-    #   [ITEM]
-    #   [AREA_FOOTER]
-    #   [FLOOR_FOOTER]
+    if not os.path.exists(template_path):
+        print(f"Error: Excel template missing at {template_path}")
+        return False
+        
+    try:
+        wb = openpyxl.load_workbook(template_path)
+        ws = wb.active
+    except Exception as e:
+        print(f"Error loading Excel template: {e}")
+        return False
     
     floor_header_row = None
     area_header_row = None
@@ -244,6 +239,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
 
         insert_at = min_ctrl_row
 
+        floors = tokens.get("floors", [])
         ctrl_row_indices = list(range(min_ctrl_row, max_ctrl_row + 1))
         ctrl_idx_pointer = 0
 
@@ -508,7 +504,12 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             if "[" in val_a and "]" in val_a:
                 cell_a.value = None
 
-    # Save to a temporary workbook
+    # If direct XLSX output is requested, save and return directly
+    if output_xlsx_path:
+        wb.save(output_xlsx_path)
+        return True
+
+    # Save to a temporary workbook for PDF conversion
     temp_xlsx = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     temp_xlsx_path = temp_xlsx.name
     temp_xlsx.close()

@@ -763,7 +763,25 @@ export default function OrdersPage() {
           date: p.date || '',
           reference: p.reference || '',
           amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        }))
+        })),
+        floors: (() => {
+          const floorMap = {};
+          finalItems.forEach(item => {
+            const fName = item.floor || 'Unspecified';
+            const aName = item.area || 'Unspecified';
+            if (!floorMap[fName]) {
+              floorMap[fName] = { name: fName, areas: {} };
+            }
+            if (!floorMap[fName].areas[aName]) {
+              floorMap[fName].areas[aName] = { name: aName, items: [] };
+            }
+            floorMap[fName].areas[aName].items.push(item);
+          });
+          return Object.values(floorMap).map(f => ({
+            name: f.name,
+            areas: Object.values(f.areas)
+          }));
+        })()
       };
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
@@ -789,6 +807,126 @@ export default function OrdersPage() {
     } catch (err) {
       console.error(err);
       alert(`Error generating spreadsheet PDF: ${err.message}`);
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
+
+  const handleDownloadExcelFile = async () => {
+    let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
+    setExportingXlsx(true);
+    if (logActivity) {
+      logActivity('document_export', `Exported ${docType} Excel file for order ${selectedOrderId}`);
+    }
+    try {
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const vatAmount = discountedRetail * 0.15;
+      const finalTotalInclVat = discountedRetail * 1.15;
+
+      const finalItems = activeOrderItems.map((item, idx) => ({
+        index: (idx + 1).toString(),
+        code: item.code || '',
+        oneOneCode: item.oneOneCode || '',
+        type: item.type || '',
+        description: item.description || '',
+        qty: (item.qty || 0).toString(),
+        brand: item.brand || '',
+        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: item.dimming || 'Non-dim',
+        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        stockStatus: item.stockStatus || 'In Stock',
+        eta: item.eta || '4 weeks'
+      }));
+
+      const tokens = {
+        PROJECT_NAME: projectFullName || 'Private Client Project',
+        CLIENT_NAME: clientContact || 'Client Name',
+        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
+        ORDER_STATUS: orderStatus || 'Draft',
+        
+        CLIENT_COMPANY: clientCompany || 'Private Client',
+        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+        CLIENT_EMAIL: clientEmail || '',
+        CLIENT_PHONE: clientPhone || '',
+        CLIENT_VAT: '',
+        DELIVERY_ADDRESS: deliveryAddress || '',
+        
+        ONEONE_REP: oneOneRep || 'Martin Döller',
+        PM_NAME: pmName || 'Merlyn Mittins',
+        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
+        PM_PHONE: pmPhone || '083 570 7795',
+        PM_PPHONE: pmPhone || '083 570 7795',
+        PROJECT_PM: pmName || 'Merlyn Mittins',
+        PROJECT_SIZE: projectSize || '—',
+        PROJECT_TIER: projectTier || 'Signature',
+        
+        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        
+        items: finalItems,
+        payments: (orderPayments || []).map((p, idx) => ({
+          index: (idx + 1).toString(),
+          date: p.date || '',
+          reference: p.reference || '',
+          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        })),
+        floors: (() => {
+          const floorMap = {};
+          finalItems.forEach(item => {
+            const fName = item.floor || 'Unspecified';
+            const aName = item.area || 'Unspecified';
+            if (!floorMap[fName]) {
+              floorMap[fName] = { name: fName, areas: {} };
+            }
+            if (!floorMap[fName].areas[aName]) {
+              floorMap[fName].areas[aName] = { name: aName, items: [] };
+            }
+            floorMap[fName].areas[aName].items.push(item);
+          });
+          return Object.values(floorMap).map(f => ({
+            name: f.name,
+            areas: Object.values(f.areas)
+          }));
+        })()
+      };
+
+      const res = await fetch(`${API_BASE}/admin/generate/${docType}?format=xlsx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate Excel spreadsheet.');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${docType.toLowerCase()}_${selectedOrderId}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error(err);
+      alert(`Error generating Excel spreadsheet: ${err.message}`);
     } finally {
       setExportingXlsx(false);
     }
@@ -4304,6 +4442,15 @@ export default function OrdersPage() {
                         disabled={exportingXlsx}
                       >
                         <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF (Spreadsheet Template) 📊'}
+                      </button>
+
+                      <button 
+                        className="btn"
+                        style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: '#0284c7', border: 'none', color: '#fff', width: '100%', fontWeight: 600 }}
+                        onClick={handleDownloadExcelFile}
+                        disabled={exportingXlsx}
+                      >
+                        <FileSpreadsheet size={15} /> {exportingXlsx ? 'Generating Excel...' : 'Download Excel Spreadsheet (.xlsx) 📥'}
                       </button>
 
                       <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
