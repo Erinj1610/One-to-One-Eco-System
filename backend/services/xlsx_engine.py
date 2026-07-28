@@ -189,18 +189,13 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     )
     
     if has_tagged_loop:
-        # Delete Column A immediately if Column A contains control markers
-        has_col_a_markers = any(ws.cell(row=r, column=1).value and "[" in str(ws.cell(row=r, column=1).value) for r in range(1, ws.max_row + 1))
-        if has_col_a_markers:
-            ws.delete_cols(1, 1)
-
-        # 2. Extract layouts of control rows across the whole sheet width
+        # 2. Extract layouts of control rows starting ONLY from Column B (index 2 onwards)
         def get_row_design(row_num):
             cells = []
-            for c in range(1, ws.max_column + 1):
+            for c in range(2, ws.max_column + 1):
                 cell = ws.cell(row=row_num, column=c)
                 cells.append({
-                    "col": c,
+                    "col": c, # Keep absolute column index (2, 3, 4...)
                     "value": cell.value,
                     "number_format": cell.number_format,
                     "font": cell.font,
@@ -236,9 +231,9 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         original_height = (loop_end_row - loop_start_row) + 1
         diff_height = expanded_row_count - original_height
         
-        # Clear original loop rows (Col 1 to Max Column)
+        # Clear original loop rows content ONLY in Column B onwards (Col 2 to Max Column)
         for r in range(loop_start_row, loop_end_row + 1):
-            for c in range(1, ws.max_column + 1):
+            for c in range(2, ws.max_column + 1):
                 cell = ws.cell(row=r, column=c)
                 if not isinstance(cell, MergedCell):
                     cell.value = None
@@ -253,7 +248,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             if not valid_areas:
                 continue
                 
-            # 1. Output Floor Header Row
+            # 1. Output Floor Header Row (Col B onwards)
             for cell_def in floor_header_design:
                 target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                 if isinstance(target_cell, MergedCell): continue
