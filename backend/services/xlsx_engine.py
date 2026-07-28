@@ -147,48 +147,60 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     area_footer_row = None
     floor_footer_row = None
     
-    # We also track the overall boundaries of the control loop block
+    # 1. First Pass: Scan Column A (or cell values) to identify control rows
+    floor_header_row = None
+    area_header_row = None
+    table_header_rows = []
+    item_row = None
+    area_footer_row = None
+    floor_footer_row = None
+    
     loop_start_row = None
     loop_end_row = None
     
     for r in range(1, ws.max_row + 1):
         cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
-        if not cell_a_val:
-            continue
-            
-        if cell_a_val == "[FLOOR_HEADER]":
+        
+        # Check Column A tags
+        if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
             floor_header_row = r
-            if loop_start_row is None:
-                loop_start_row = r
-        elif cell_a_val == "[AREA_HEADER]":
+            if loop_start_row is None: loop_start_row = r
+        elif "[AREA_HEADER]" in cell_a_val or "{{#area}}" in cell_a_val:
             area_header_row = r
-        elif cell_a_val == "[TABLE_HEADER]":
+        elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
-        elif cell_a_val == "[ITEM]":
-            item_row = r
-        elif cell_a_val == "[AREA_FOOTER]":
+        elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
+            if item_row is None:
+                item_row = r
+        elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
             area_footer_row = r
-        elif cell_a_val == "[FLOOR_FOOTER]":
+        elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
             loop_end_row = r
 
-    # Determine if we found a valid tagged loop block structure
+    # If no explicit floor footer row was found, default loop_end_row to area_footer_row
+    if loop_end_row is None and area_footer_row is not None:
+        loop_end_row = area_footer_row
+
     has_tagged_loop = (
         floor_header_row is not None and 
         area_header_row is not None and 
-        item_row is not None and 
-        area_footer_row is not None and 
-        floor_footer_row is not None
+        item_row is not None
     )
     
     if has_tagged_loop:
-        # 2. Extract layouts of control rows (starting from Column B, index 2)
+        # Delete Column A immediately if Column A contains control markers
+        has_col_a_markers = any(ws.cell(row=r, column=1).value and "[" in str(ws.cell(row=r, column=1).value) for r in range(1, ws.max_row + 1))
+        if has_col_a_markers:
+            ws.delete_cols(1, 1)
+
+        # 2. Extract layouts of control rows across the whole sheet width
         def get_row_design(row_num):
             cells = []
-            for c in range(2, ws.max_column + 1):
+            for c in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row_num, column=c)
                 cells.append({
-                    "col": c - 1, # Shift left by 1 since Column A gets deleted
+                    "col": c,
                     "value": cell.value,
                     "number_format": cell.number_format,
                     "font": cell.font,
@@ -202,8 +214,8 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         area_header_design = get_row_design(area_header_row)
         table_header_designs = [get_row_design(r) for r in table_header_rows]
         item_design = get_row_design(item_row)
-        area_footer_design = get_row_design(area_footer_row)
-        floor_footer_design = get_row_design(floor_footer_row)
+        area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
+        floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
         
         floors = tokens.get("floors", [])
         
@@ -224,9 +236,9 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         original_height = (loop_end_row - loop_start_row) + 1
         diff_height = expanded_row_count - original_height
         
-        # Clear original loop rows (Col B to Max Column)
+        # Clear original loop rows (Col 1 to Max Column)
         for r in range(loop_start_row, loop_end_row + 1):
-            for c in range(2, ws.max_column + 1):
+            for c in range(1, ws.max_column + 1):
                 cell = ws.cell(row=r, column=c)
                 if not isinstance(cell, MergedCell):
                     cell.value = None
@@ -243,7 +255,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 
             # 1. Output Floor Header Row
             for cell_def in floor_header_design:
-                target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1) # Shift for writing
+                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                 if isinstance(target_cell, MergedCell): continue
                 if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                 if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -258,7 +270,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             for a in valid_areas:
                 # 2. Output Area Header Row
                 for cell_def in area_header_design:
-                    target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
+                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                     if isinstance(target_cell, MergedCell): continue
                     if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                     if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -273,7 +285,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 # 3. Output Table Header Rows (Qty, Made Code, Plan Code...)
                 for header_row in table_header_designs:
                     for cell_def in header_row:
-                        target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
+                        target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                         if isinstance(target_cell, MergedCell): continue
                         if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                         if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -287,7 +299,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 # 4. Output Item Rows
                 for idx, item in enumerate(a.get("items", [])):
                     for cell_def in item_design:
-                        target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
+                        target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                         if isinstance(target_cell, MergedCell): continue
                         if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                         if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -335,7 +347,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                         
                 area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                 for cell_def in area_footer_design:
-                    target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
+                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                     if isinstance(target_cell, MergedCell): continue
                     if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                     if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -352,7 +364,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 
             # 6. Output Floor Footer
             for cell_def in floor_footer_design:
-                target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
+                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
                 if isinstance(target_cell, MergedCell): continue
                 if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                 if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
@@ -460,9 +472,9 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                             target_cell.value = None
                     curr_row += 1
     
-    # 2. Second Pass: Find and replace single global variables in other rows (Col B to Max Column)
+    # 2. Second Pass: Find and replace single global variables in other rows (Col 1 to Max Column)
     for r in range(1, ws.max_row + 1):
-        for c in range(2, ws.max_column + 1):
+        for c in range(1, ws.max_column + 1):
             cell = ws.cell(row=r, column=c)
             if isinstance(cell, MergedCell): continue
             val = str(cell.value or '')
