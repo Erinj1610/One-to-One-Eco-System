@@ -114,6 +114,10 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
             logger.info("LibreOffice Excel conversion successful.")
             return True
         return False
+    except Exception as e:
+        logger.error(f"LibreOffice Excel conversion crashed: {e}")
+        return False
+
 def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None) -> bool:
     """
     High-fidelity Excel template merger with 0-call delete_rows.
