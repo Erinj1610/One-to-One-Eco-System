@@ -183,9 +183,10 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             floor_footer_row = r
             loop_end_row = r
 
-    # If no explicit floor footer row was found, default loop_end_row to area_footer_row
-    if loop_end_row is None and area_footer_row is not None:
-        loop_end_row = area_footer_row
+    # Set loop_end_row as the max row index among all found control tags
+    tagged_rows = [r for r in [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows if r is not None]
+    if tagged_rows:
+        loop_end_row = max(tagged_rows)
 
     has_tagged_loop = (
         floor_header_row is not None and 
@@ -237,23 +238,19 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         original_height = (loop_end_row - loop_start_row) + 1
         diff_height = expanded_row_count - original_height
         
-        # Clear original loop rows content ONLY in Column B onwards (Col 2 to Max Column)
-        for r in range(loop_start_row, loop_end_row + 1):
-            for c in range(2, ws.max_column + 1):
-                cell = ws.cell(row=r, column=c)
-                if not isinstance(cell, MergedCell):
-                    cell.value = None
-
-        # Determine insertion point (above first [FIXED] row or loop_end_row + 1)
-        insertion_row = (loop_end_row + 1)
-        if fixed_rows:
-            first_fixed = min(r for r in fixed_rows if r > loop_start_row) if any(r > loop_start_row for r in fixed_rows) else None
-            if first_fixed:
-                insertion_row = first_fixed
+        # Determine insertion point right below the template loop block
+        insertion_row = loop_end_row + 1
 
         # Shift fixed rows and everything below cleanly down
         if diff_height > 0:
             ws.insert_rows(insertion_row, amount=diff_height)
+            
+        # Clear dynamic area (from loop_start_row up to loop_start_row + expanded_row_count) Col B onwards
+        for r in range(loop_start_row, loop_start_row + max(expanded_row_count, original_height)):
+            for c in range(2, ws.max_column + 1):
+                cell = ws.cell(row=r, column=c)
+                if not isinstance(cell, MergedCell):
+                    cell.value = None
             
         # Clean up any unwanted merged cells that openpyxl copied into the newly expanded row area
         total_dynamic_rows = expanded_row_count
