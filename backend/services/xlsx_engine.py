@@ -197,6 +197,8 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     if has_tagged_loop:
         # 2. Extract layouts of control rows starting ONLY from Column B (index 2 onwards)
         def get_row_design(row_num):
+            if row_num is None:
+                return []
             cells = []
             for c in range(2, ws.max_column + 1):
                 cell = ws.cell(row=row_num, column=c)
