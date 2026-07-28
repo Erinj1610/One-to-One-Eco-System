@@ -242,6 +242,22 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         if diff_height > 0:
             ws.insert_rows(loop_end_row + 1, amount=diff_height)
             
+        # Clean up any unwanted merged cells that openpyxl copied into the newly expanded row area
+        total_dynamic_rows = expanded_row_count
+        new_loop_end = loop_start_row + total_dynamic_rows - 1
+        
+        merged_ranges_to_remove = []
+        for merged_range in list(ws.merged_cells.ranges):
+            # Check if this merged range overlaps inside our dynamic loop output area
+            if merged_range.min_row >= loop_start_row and merged_range.max_row <= new_loop_end + 10:
+                merged_ranges_to_remove.append(merged_range)
+                
+        for m_range in merged_ranges_to_remove:
+            try:
+                ws.unmerge_cells(str(m_range))
+            except Exception:
+                pass
+            
         curr_row = loop_start_row
         for f in floors:
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
@@ -497,8 +513,13 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 except Exception:
                     cell.value = val
 
-    # 3. Third Pass: Delete Column A (which held control markers) so the user never sees it
-    ws.delete_cols(1, 1)
+    # 3. Third Pass: Clear Column A text (control markers) so they are invisible, keeping layout columns untouched
+    for r in range(1, ws.max_row + 1):
+        cell_a = ws.cell(row=r, column=1)
+        if not isinstance(cell_a, MergedCell):
+            val_a = str(cell_a.value or '')
+            if "[" in val_a and "]" in val_a:
+                cell_a.value = None
 
     # Save to a temporary workbook
     temp_xlsx = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
