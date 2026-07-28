@@ -195,7 +195,7 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     )
     
     if has_tagged_loop:
-        # 2. Extract layouts of control rows starting ONLY from Column B (index 2 onwards)
+        # 2. Extract designs for fixed rows and control rows starting ONLY from Column B (index 2 onwards)
         def get_row_design(row_num):
             if row_num is None:
                 return []
@@ -206,13 +206,15 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     "col": c, # Keep absolute column index (2, 3, 4...)
                     "value": cell.value,
                     "number_format": cell.number_format,
-                    "font": cell.font,
-                    "fill": cell.fill,
-                    "border": cell.border,
-                    "alignment": cell.alignment
+                    "font": copy.copy(cell.font) if cell.font else None,
+                    "fill": copy.copy(cell.fill) if cell.fill else None,
+                    "border": copy.copy(cell.border) if cell.border else None,
+                    "alignment": copy.copy(cell.alignment) if cell.alignment else None
                 })
             return cells
 
+        fixed_row_designs = [get_row_design(r) for r in fixed_rows if r > loop_start_row]
+        
         floor_header_design = get_row_design(floor_header_row)
         area_header_design = get_row_design(area_header_row)
         table_header_designs = [get_row_design(r) for r in table_header_rows]
@@ -247,21 +249,17 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
         if diff_height > 0:
             ws.insert_rows(insertion_row, amount=diff_height)
             
-        # Clear dynamic area (from loop_start_row up to loop_start_row + expanded_row_count) Col B onwards
-        for r in range(loop_start_row, loop_start_row + max(expanded_row_count, original_height)):
+        # Clear everything from loop_start_row to bottom of sheet in Col B onwards
+        for r in range(loop_start_row, ws.max_row + 1):
             for c in range(2, ws.max_column + 1):
                 cell = ws.cell(row=r, column=c)
                 if not isinstance(cell, MergedCell):
                     cell.value = None
             
         # Clean up any unwanted merged cells that openpyxl copied into the newly expanded row area
-        total_dynamic_rows = expanded_row_count
-        new_loop_end = loop_start_row + total_dynamic_rows - 1
-        
         merged_ranges_to_remove = []
         for merged_range in list(ws.merged_cells.ranges):
-            # Check if this merged range overlaps inside our dynamic loop output area
-            if merged_range.min_row >= loop_start_row and merged_range.max_row <= new_loop_end + 10:
+            if merged_range.min_row >= loop_start_row:
                 merged_ranges_to_remove.append(merged_range)
                 
         for m_range in merged_ranges_to_remove:
@@ -398,6 +396,20 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                     val_str = str(cell_def["value"] or '')
                     target_cell.value = val_str
                 curr_row += 1
+                
+        # 7. Output Fixed Static Rows below dynamic tables
+        for row_design in fixed_row_designs:
+            for cell_def in row_design:
+                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+                if isinstance(target_cell, MergedCell): continue
+                if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
+                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
+                if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
+                
+                target_cell.value = cell_def["value"]
+            curr_row += 1
             
     else:
         # Standard Flat Loop Fallback Logic
