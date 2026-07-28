@@ -225,13 +225,24 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             if m.min_row == item_row:
                 item_merges.append((m.min_col, m.max_col))
 
-        # Delete template loop rows from bottom to top so row indices don't shift during deletion
-        delete_rows = sorted(list(set(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))), reverse=True)
-        
-        insert_at = delete_rows[-1] # Target insertion starting position
-        
-        for r in delete_rows:
-            ws.delete_rows(r, 1)
+        # Unmerge any merged ranges in the template control loop section so delete_rows doesn't corrupt openpyxl
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
+        min_ctrl_row = min(control_rows)
+        max_ctrl_row = max(control_rows)
+
+        for m in list(ws.merged_cells.ranges):
+            if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
+                try: ws.unmerge_cells(str(m))
+                except Exception: pass
+
+        # Clear values in control rows (Col 1 to Max Column)
+        for r in range(min_ctrl_row, max_ctrl_row + 1):
+            for c in range(1, ws.max_column + 1):
+                cell = ws.cell(row=r, column=c)
+                if not isinstance(cell, MergedCell):
+                    cell.value = None
+
+        insert_at = min_ctrl_row
 
         floors = tokens.get("floors", [])
         curr_row = insert_at
@@ -344,6 +355,11 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
             if floor_footer_design:
                 apply_design(curr_row, floor_footer_design)
                 curr_row += 1
+                
+        # Delete original blank control template rows that were pushed down during insertion
+        ctrl_height = (max_ctrl_row - min_ctrl_row) + 1
+        for _ in range(ctrl_height):
+            ws.delete_rows(curr_row, 1)
             
     else:
         # Standard Flat Loop Fallback Logic
