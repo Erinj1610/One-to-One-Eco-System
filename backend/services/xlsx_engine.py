@@ -231,7 +231,8 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 expanded_row_count += len(table_header_designs) # Table Header Rows
                 expanded_row_count += len(a.get("items", [])) # Product Rows
                 expanded_row_count += 1 # Area Subtotal Footer
-            expanded_row_count += 1 # Floor Footer
+            if floor_footer_design:
+                expanded_row_count += 1 # Floor Footer
             
         original_height = (loop_end_row - loop_start_row) + 1
         diff_height = expanded_row_count - original_height
@@ -385,18 +386,19 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                         target_cell.value = val_str
                 curr_row += 1
                 
-            # 6. Output Floor Footer
-            for cell_def in floor_footer_design:
-                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                if isinstance(target_cell, MergedCell): continue
-                if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                
-                val_str = str(cell_def["value"] or '')
-                target_cell.value = val_str
-            curr_row += 1
+            # 6. Output Floor Footer (Only if floor_footer_design is present)
+            if floor_footer_design:
+                for cell_def in floor_footer_design:
+                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+                    if isinstance(target_cell, MergedCell): continue
+                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
+                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
+                    
+                    val_str = str(cell_def["value"] or '')
+                    target_cell.value = val_str
+                curr_row += 1
             
     else:
         # Standard Flat Loop Fallback Logic
