@@ -195,15 +195,14 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
     )
     
     if has_tagged_loop:
-        # 2. Extract designs for fixed rows and control rows starting ONLY from Column B (index 2 onwards)
+        # Extract row designs starting from Column A (Col 1 to Max Column)
         def get_row_design(row_num):
-            if row_num is None:
-                return []
+            if row_num is None: return []
             cells = []
-            for c in range(2, ws.max_column + 1):
+            for c in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row_num, column=c)
                 cells.append({
-                    "col": c, # Keep absolute column index (2, 3, 4...)
+                    "col": c,
                     "value": cell.value,
                     "number_format": cell.number_format,
                     "font": copy.copy(cell.font) if cell.font else None,
@@ -213,203 +212,138 @@ def merge_xlsx_template(template_path, tokens, output_pdf_path):
                 })
             return cells
 
-        fixed_row_designs = [get_row_design(r) for r in fixed_rows if r > loop_start_row]
-        
         floor_header_design = get_row_design(floor_header_row)
         area_header_design = get_row_design(area_header_row)
         table_header_designs = [get_row_design(r) for r in table_header_rows]
         item_design = get_row_design(item_row)
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
-        
-        floors = tokens.get("floors", [])
-        
-        # Calculate dynamic expanded rows count
-        expanded_row_count = 0
-        for f in floors:
-            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
-            if not valid_areas:
-                continue
-            expanded_row_count += 1 # Floor Header
-            for a in valid_areas:
-                expanded_row_count += 1 # Area Header
-                expanded_row_count += len(table_header_designs) # Table Header Rows
-                expanded_row_count += len(a.get("items", [])) # Product Rows
-                expanded_row_count += 1 # Area Subtotal Footer
-            if floor_footer_design:
-                expanded_row_count += 1 # Floor Footer
-            
-        original_height = (loop_end_row - loop_start_row) + 1
-        diff_height = expanded_row_count - original_height
-        
-        # Determine insertion point right below the template loop block
-        insertion_row = loop_end_row + 1
 
-        # Shift fixed rows and everything below cleanly down
-        if diff_height > 0:
-            ws.insert_rows(insertion_row, amount=diff_height)
+        # Find merged cell definitions in item_row / control rows
+        item_merges = []
+        for m in list(ws.merged_cells.ranges):
+            if m.min_row == item_row:
+                item_merges.append((m.min_col, m.max_col))
+
+        # Delete template loop rows from bottom to top so row indices don't shift during deletion
+        delete_rows = sorted(list(set(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))), reverse=True)
+        
+        insert_at = delete_rows[-1] # Target insertion starting position
+        
+        for r in delete_rows:
+            ws.delete_rows(r, 1)
+
+        floors = tokens.get("floors", [])
+        curr_row = insert_at
+
+        def apply_design(target_row, design_list, value_replacements=None, number_format=None):
+            # Insert a brand new row at target_row, pushing everything down
+            ws.insert_rows(target_row, 1)
             
-        # Clear everything from loop_start_row to bottom of sheet in Col B onwards
-        for r in range(loop_start_row, ws.max_row + 1):
-            for c in range(2, ws.max_column + 1):
-                cell = ws.cell(row=r, column=c)
-                if not isinstance(cell, MergedCell):
-                    cell.value = None
+            # Clean openpyxl auto-merged ranges on newly inserted row
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row <= target_row <= m.max_row and (m.max_row - m.min_row) > 0:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
             
-        # Clean up any unwanted merged cells that openpyxl copied into the newly expanded row area
-        merged_ranges_to_remove = []
-        for merged_range in list(ws.merged_cells.ranges):
-            if merged_range.min_row >= loop_start_row:
-                merged_ranges_to_remove.append(merged_range)
-                
-        for m_range in merged_ranges_to_remove:
-            try:
-                ws.unmerge_cells(str(m_range))
-            except Exception:
-                pass
-            
-        curr_row = loop_start_row
-        for f in floors:
-            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
-            if not valid_areas:
-                continue
-                
-            # 1. Output Floor Header Row (Col B onwards)
-            for cell_def in floor_header_design:
-                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+            for cell_def in design_list:
+                col_idx = cell_def["col"]
+                target_cell = ws.cell(row=target_row, column=col_idx)
                 if isinstance(target_cell, MergedCell): continue
-                if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                 
-                val_str = str(cell_def["value"] or '')
-                val_str = val_str.replace("{{floor.name}}", f.get("name", ""))
-                target_cell.value = val_str
-            curr_row += 1
-            
-            for a in valid_areas:
-                # 2. Output Area Header Row
-                for cell_def in area_header_design:
-                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                    if isinstance(target_cell, MergedCell): continue
-                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                    
-                    val_str = str(cell_def["value"] or '')
-                    val_str = val_str.replace("{{area.name}}", a.get("name", ""))
-                    target_cell.value = val_str
-                curr_row += 1
-                
-                # 3. Output Table Header Rows (Qty, Made Code, Plan Code...)
-                for header_row in table_header_designs:
-                    for cell_def in header_row:
-                        target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                        if isinstance(target_cell, MergedCell): continue
-                        if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                        if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                        if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                        if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                        if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
-                        
-                        target_cell.value = cell_def["value"]
-                    curr_row += 1
-                
-                # 4. Output Item Rows
-                for idx, item in enumerate(a.get("items", [])):
-                    for cell_def in item_design:
-                        target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                        if isinstance(target_cell, MergedCell): continue
-                        if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                        if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                        if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                        if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                        if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
-                        
-                        val_str = str(cell_def["value"] or '')
-                        if val_str:
-                            val_str = val_str.replace("{{index}}", str(idx + 1))
-                            for k, v in item.items():
-                                val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
-                                val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                                
-                            try:
-                                stripped_val = val_str.strip()
-                                if stripped_val.startswith('R '):
-                                    clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
-                                    if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
-                                        target_cell.value = float(clean_val)
-                                    else:
-                                        target_cell.value = val_str
-                                elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
-                                    if '.' in stripped_val:
-                                        target_cell.value = float(stripped_val)
-                                    else:
-                                        target_cell.value = int(stripped_val)
-                                else:
-                                    target_cell.value = val_str
-                            except Exception:
-                                target_cell.value = val_str
-                        else:
-                            target_cell.value = None
-                    curr_row += 1
-                    
-                # 5. Output Area Footer / Subtotal
-                def clean_price(val_in):
-                    if not val_in: return 0.0
-                    if isinstance(val_in, (int, float)): return float(val_in)
-                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
-                    try:
-                        return float(val_s)
-                    except ValueError:
-                        return 0.0
-                        
-                area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
-                for cell_def in area_footer_design:
-                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                    if isinstance(target_cell, MergedCell): continue
-                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                    
-                    val_str = str(cell_def["value"] or '')
-                    if "{{SUBTOTAL}}" in val_str:
-                        target_cell.value = area_subtotal
-                        target_cell.number_format = '"R"#,##0.00'
-                    else:
-                        target_cell.value = val_str
-                curr_row += 1
-                
-            # 6. Output Floor Footer (Only if floor_footer_design is present)
-            if floor_footer_design:
-                for cell_def in floor_footer_design:
-                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                    if isinstance(target_cell, MergedCell): continue
-                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                    
-                    val_str = str(cell_def["value"] or '')
-                    target_cell.value = val_str
-                curr_row += 1
-                
-        # 7. Output Fixed Static Rows below dynamic tables
-        for row_design in fixed_row_designs:
-            for cell_def in row_design:
-                target_cell = ws.cell(row=curr_row, column=cell_def["col"])
-                if isinstance(target_cell, MergedCell): continue
                 if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
                 if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
                 if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
                 if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                 if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
                 
-                target_cell.value = cell_def["value"]
+                val = cell_def["value"]
+                if value_replacements and val:
+                    val_str = str(val)
+                    for k, v in value_replacements.items():
+                        val_str = val_str.replace(k, str(v if v is not None else ''))
+                    
+                    try:
+                        stripped_val = val_str.strip()
+                        if stripped_val.startswith('R '):
+                            clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                            if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                target_cell.value = float(clean_val)
+                            else:
+                                target_cell.value = val_str
+                        elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                            if '.' in stripped_val:
+                                target_cell.value = float(stripped_val)
+                            else:
+                                target_cell.value = int(stripped_val)
+                        else:
+                            target_cell.value = val_str
+                    except Exception:
+                        target_cell.value = val_str
+                else:
+                    target_cell.value = val
+
+        for f in floors:
+            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+            if not valid_areas: continue
+
+            # 1. Insert Floor Header
+            apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")})
             curr_row += 1
+
+            for a in valid_areas:
+                # 2. Insert Area Header
+                apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")})
+                curr_row += 1
+
+                # 3. Insert Table Headers
+                for h_design in table_header_designs:
+                    apply_design(curr_row, h_design)
+                    curr_row += 1
+
+                # 4. Insert Items
+                for idx, item in enumerate(a.get("items", [])):
+                    repls = {"{{index}}": str(idx + 1)}
+                    for k, v in item.items():
+                        repls["{{item." + str(k) + "}}"] = v
+                        repls["{{" + str(k) + "}}"] = v
+                        
+                    apply_design(curr_row, item_design, repls)
+                    
+                    # Re-apply item merged cells if template item row had merges
+                    for min_c, max_c in item_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
+                        
+                    curr_row += 1
+
+                # 5. Insert Area Footer / Subtotal
+                def clean_price(val_in):
+                    if not val_in: return 0.0
+                    if isinstance(val_in, (int, float)): return float(val_in)
+                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
+                    try: return float(val_s)
+                    except ValueError: return 0.0
+
+                area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
+                
+                # Check for subtotal token replacement
+                subtotal_repls = {"{{SUBTOTAL}}": area_subtotal}
+                apply_design(curr_row, area_footer_design, subtotal_repls)
+                
+                # Format subtotal cell value if formula was used
+                for cell_def in area_footer_design:
+                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
+                        tc = ws.cell(row=curr_row, column=cell_def["col"])
+                        tc.value = area_subtotal
+                        tc.number_format = '"R"#,##0.00'
+                        
+                curr_row += 1
+
+            # 6. Insert Floor Footer
+            if floor_footer_design:
+                apply_design(curr_row, floor_footer_design)
+                curr_row += 1
             
     else:
         # Standard Flat Loop Fallback Logic
