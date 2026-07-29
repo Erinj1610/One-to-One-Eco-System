@@ -532,10 +532,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if isinstance(cell, MergedCell): continue
             val = str(cell.value or '')
             if val and ("{?" in val or "{{" in val):
+                # Clean block tags from text
+                val = val.replace("{{#floor}}", "").replace("{{#area}}", "").replace("{{/area}}", "").replace("{{/floor}}", "").strip()
+                
                 for k, v in tokens.items():
                     if not isinstance(v, (list, dict)):
                         val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
                         val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
+                
+                # Remove any leftover unhandled mustache tokens
+                val = re.sub(r'\{\{[^}]+\}\}', '', val).strip()
                 
                 try:
                     stripped_val = val.strip()
@@ -551,9 +557,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         else:
                             cell.value = int(stripped_val)
                     else:
-                        cell.value = val
+                        cell.value = val if val != "" else None
                 except Exception:
-                    cell.value = val
+                    cell.value = val if val != "" else None
 
     # 3. Third Pass: Clear Column A text (control markers) so they are invisible, keeping layout columns untouched
     for r in range(1, ws.max_row + 1):
