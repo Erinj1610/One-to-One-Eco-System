@@ -221,50 +221,26 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if m.min_row == item_row:
                 item_merges.append((m.min_col, m.max_col))
 
-        # Unmerge any merged ranges in the template control loop section so delete_rows doesn't corrupt openpyxl
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
         min_ctrl_row = min(control_rows)
-        max_ctrl_row = max(control_rows)
-
-        for m in list(ws.merged_cells.ranges):
-            if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
-                try: ws.unmerge_cells(str(m))
-                except Exception: pass
-
-        # Clear values in control rows (Col 1 to Max Column)
-        for r in range(min_ctrl_row, max_ctrl_row + 1):
-            for c in range(1, ws.max_column + 1):
-                cell = ws.cell(row=r, column=c)
-                if not isinstance(cell, MergedCell):
-                    cell.value = None
-
-        insert_at = min_ctrl_row
+        ctrl_height = len(control_rows)
 
         floors = tokens.get("floors", [])
-        curr_row = insert_at
-        ctrl_row_indices = list(range(min_ctrl_row, max_ctrl_row + 1))
-        ctrl_idx_pointer = 0
+        curr_row = min_ctrl_row
 
         def apply_design(target_row, design_list, value_replacements=None, number_format=None):
-            nonlocal ctrl_idx_pointer
+            # Always insert a brand-new row at target_row, naturally pushing all [FIXED] rows down
+            ws.insert_rows(target_row, 1)
             
-            # If we are within the template control rows block, overwrite in-place.
-            # If we have exceeded the template control block height, insert new rows pushing fixed content down.
-            if ctrl_idx_pointer < len(ctrl_row_indices):
-                use_row = ctrl_row_indices[ctrl_idx_pointer]
-                ctrl_idx_pointer += 1
-            else:
-                use_row = target_row
-                ws.insert_rows(use_row, 1)
-                # Clean openpyxl auto-merged ranges on newly inserted row
-                for m in list(ws.merged_cells.ranges):
-                    if m.min_row <= use_row <= m.max_row and (m.max_row - m.min_row) > 0:
-                        try: ws.unmerge_cells(str(m))
-                        except Exception: pass
+            # Clean openpyxl auto-merged ranges on newly inserted row
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row <= target_row <= m.max_row and (m.max_row - m.min_row) > 0:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
 
             for cell_def in design_list:
                 col_idx = cell_def["col"]
-                target_cell = ws.cell(row=use_row, column=col_idx)
+                target_cell = ws.cell(row=target_row, column=col_idx)
                 if isinstance(target_cell, MergedCell): continue
                 
                 if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
@@ -299,46 +275,45 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     target_cell.value = val
                     
-            return use_row
+            return target_row
 
-        curr_row = insert_at
         for f in floors:
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
             if not valid_areas: continue
 
-            # 1. Insert/Overwrite Floor Header (if present)
+            # 1. Insert Floor Header (if present)
             if floor_header_design:
-                written_row = apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")})
-                curr_row = max(curr_row + 1, written_row + 1)
+                apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")})
+                curr_row += 1
 
             for a in valid_areas:
-                # 2. Insert/Overwrite Area Header (if present)
+                # 2. Insert Area Header (if present)
                 if area_header_design:
-                    written_row = apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")})
-                    curr_row = max(curr_row + 1, written_row + 1)
+                    apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")})
+                    curr_row += 1
 
-                # 3. Insert/Overwrite Table Headers
+                # 3. Insert Table Headers
                 for h_design in table_header_designs:
-                    written_row = apply_design(curr_row, h_design)
-                    curr_row = max(curr_row + 1, written_row + 1)
+                    apply_design(curr_row, h_design)
+                    curr_row += 1
 
-                # 4. Insert/Overwrite Items
+                # 4. Insert Items
                 for idx, item in enumerate(a.get("items", [])):
                     repls = {"{{index}}": str(idx + 1)}
                     for k, v in item.items():
                         repls["{{item." + str(k) + "}}"] = v
                         repls["{{" + str(k) + "}}"] = v
                         
-                    written_row = apply_design(curr_row, item_design, repls)
+                    apply_design(curr_row, item_design, repls)
                     
                     # Re-apply item merged cells if template item row had merges
                     for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=written_row, start_column=min_c, end_row=written_row, end_column=max_c)
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
                         
-                    curr_row = max(curr_row + 1, written_row + 1)
+                    curr_row += 1
 
-                # 5. Insert/Overwrite Area Footer / Subtotal (if present)
+                # 5. Insert Area Footer / Subtotal (if present)
                 if area_footer_design:
                     def clean_price(val_in):
                         if not val_in: return 0.0
@@ -350,28 +325,32 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                     
                     subtotal_repls = {"{{SUBTOTAL}}": area_subtotal}
-                    written_row = apply_design(curr_row, area_footer_design, subtotal_repls)
+                    apply_design(curr_row, area_footer_design, subtotal_repls)
                     
                     # Format subtotal cell value if formula was used
                     for cell_def in area_footer_design:
                         if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                            tc = ws.cell(row=written_row, column=cell_def["col"])
+                            tc = ws.cell(row=curr_row, column=cell_def["col"])
                             tc.value = area_subtotal
                             tc.number_format = '"R"#,##0.00'
                             
-                    curr_row = max(curr_row + 1, written_row + 1)
+                    curr_row += 1
 
-            # 6. Insert/Overwrite Floor Footer
+            # 6. Insert Floor Footer (if present)
             if floor_footer_design:
-                written_row = apply_design(curr_row, floor_footer_design)
-                curr_row = max(curr_row + 1, written_row + 1)
+                apply_design(curr_row, floor_footer_design)
+                curr_row += 1
                 
-        # Clear any unused remaining template control rows if fewer rows were generated than template height
-        while ctrl_idx_pointer < len(ctrl_row_indices):
-            unused_r = ctrl_row_indices[ctrl_idx_pointer]
-            ctrl_idx_pointer += 1
+        # The original template control rows have been pushed down to [curr_row ... curr_row + ctrl_height - 1]
+        # Unmerge and clear those original placeholder rows cleanly
+        for m in list(ws.merged_cells.ranges):
+            if m.min_row >= curr_row and m.max_row <= (curr_row + ctrl_height + 2):
+                try: ws.unmerge_cells(str(m))
+                except Exception: pass
+
+        for r in range(curr_row, curr_row + ctrl_height):
             for c in range(1, ws.max_column + 1):
-                cell = ws.cell(row=unused_r, column=c)
+                cell = ws.cell(row=r, column=c)
                 if not isinstance(cell, MergedCell):
                     cell.value = None
             
