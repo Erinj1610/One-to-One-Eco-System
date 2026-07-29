@@ -178,11 +178,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             elif m.min_row > max_ctrl_row:
                 fixed_merges_below.append((m.min_row, m.max_row, m.min_col, m.max_col))
 
-        # Completely unmerge the sheet during row insertions so openpyxl merged_cells range logic is 100% clean
-        for m in list(ws.merged_cells.ranges):
-            try: ws.unmerge_cells(str(m))
-            except Exception: pass
-
         def get_row_design(row_num):
             if row_num is None: return []
             cells = []
@@ -199,7 +194,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 })
             return cells
 
-        # Dynamic extraction of control row merges directly from original template snapshot
+        floor_header_design = get_row_design(floor_header_row)
+        area_header_design = get_row_design(area_header_row)
+        table_header_designs = [get_row_design(r) for r in table_header_rows]
+        item_design = get_row_design(item_row)
+        area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
+        floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
+
+        # Capture control row merges from original template before unmerging
         def get_row_merges(row_num):
             if row_num is None: return []
             merges = []
@@ -208,18 +210,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     merges.append((m.min_col, m.max_col))
             return merges
 
-        floor_header_design = get_row_design(floor_header_row)
-        area_header_design = get_row_design(area_header_row)
-        table_header_designs = [get_row_design(r) for r in table_header_rows]
-        item_design = get_row_design(item_row)
-        area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
-        floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
-
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
         item_merges = get_row_merges(item_row)
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
+
+        # Completely unmerge the sheet during row insertions so openpyxl merged_cells range logic is 100% clean
+        for m in list(ws.merged_cells.ranges):
+            try: ws.unmerge_cells(str(m))
+            except Exception: pass
 
         row_heights = {}
         for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("item", item_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
