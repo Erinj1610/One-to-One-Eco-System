@@ -171,6 +171,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
 
+        # Snapshot original row heights across the whole sheet before doing any operations
+        original_row_heights = {r: dim.height for r, dim in ws.row_dimensions.items() if dim.height is not None}
+
         # Snapshot all template merged cell ranges before doing any row operations
         fixed_merges_above = []
         fixed_merges_below = []
@@ -225,10 +228,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         row_heights = {}
         for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("item", item_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
-            if r_num and ws.row_dimensions[r_num].height:
-                row_heights[r_idx] = ws.row_dimensions[r_num].height
+            if r_num and original_row_heights.get(r_num):
+                row_heights[r_idx] = original_row_heights.get(r_num)
                 
-        table_header_heights = [ws.row_dimensions[r].height for r in table_header_rows if ws.row_dimensions[r].height]
+        table_header_heights = [original_row_heights.get(r) for r in table_header_rows if original_row_heights.get(r)]
 
         # Delete placeholder block rows (min_ctrl_row to max_ctrl_row)
         ws.delete_rows(min_ctrl_row, original_ctrl_height)
@@ -360,6 +363,17 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 inserted_rows_count += 1
 
         delta_rows = inserted_rows_count - original_ctrl_height
+
+        # Clear and shift row heights for fixed rows below min_ctrl_row
+        for r in list(ws.row_dimensions.keys()):
+            if r >= min_ctrl_row:
+                ws.row_dimensions[r].height = None
+
+        for r, h in original_row_heights.items():
+            if r < min_ctrl_row:
+                ws.row_dimensions[r].height = h
+            elif r > max_ctrl_row:
+                ws.row_dimensions[r + delta_rows].height = h
 
         # Re-apply all fixed merged cell ranges above the loop
         for min_r, max_r, min_c, max_c in fixed_merges_above:
