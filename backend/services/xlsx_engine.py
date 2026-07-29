@@ -316,12 +316,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         def apply_design(target_row, design_list, value_replacements=None, row_height=None):
             # Insert a brand-new blank row at target_row, shifting all lower fixed rows & heights down by 1 row
             insert_row_and_shift_dimensions(target_row, row_height)
-            
-            # Clean openpyxl auto-merged ranges created on newly inserted row (unmerge any range intersecting target_row)
-            for m in list(ws.merged_cells.ranges):
-                if m.min_row <= target_row <= m.max_row:
-                    try: ws.unmerge_cells(str(m))
-                    except Exception: pass
 
             for cell_def in design_list:
                 col_idx = cell_def["col"]
