@@ -550,13 +550,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text (control markers) so they are invisible
+    # 3. Third Pass: Clear Column A text (control markers) and shrink Column A width to 0 to eliminate left margin
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
             val_a = str(cell_a.value or '')
             if "[" in val_a and "]" in val_a:
                 cell_a.value = None
+
+    ws.column_dimensions['A'].width = 0.001
+    ws.column_dimensions['A'].hidden = True
 
     # 4. Enforce Fit-To-Width (1 Page Wide, Automatic Height) for PDF conversion
     ws.page_setup.fitToWidth = 1
