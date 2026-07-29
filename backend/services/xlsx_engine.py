@@ -558,20 +558,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
     ws.column_dimensions['A'].width = 0.001
 
-    # 4. Enforce Fit-To-Width and zero left/right margins for PDF conversion
+    # 4. Fit-To-Page setup for PDF conversion
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
-    ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
-    ws.page_setup.center_horizontally = True
-    
     if ws.sheet_properties and ws.sheet_properties.pageSetUpPr:
         ws.sheet_properties.pageSetUpPr.fitToPage = True
-
-    if ws.page_margins:
-        ws.page_margins.left = 0.1
-        ws.page_margins.right = 0.1
-        ws.page_margins.top = 0.25
-        ws.page_margins.bottom = 0.25
 
     if output_xlsx_path:
         wb.save(output_xlsx_path)
