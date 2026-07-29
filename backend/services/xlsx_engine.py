@@ -231,20 +231,86 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
         min_ctrl_row = min(control_rows)
-        ctrl_height = len(control_rows)
+        max_ctrl_row = max(control_rows)
+        ctrl_height = max_ctrl_row - min_ctrl_row + 1
 
-        floors = tokens.get("floors", [])
-        curr_row = min_ctrl_row
+        # 1. Unmerge any ranges inside the original placeholder block
+        for m in list(ws.merged_cells.ranges):
+            if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
+                try: ws.unmerge_cells(str(m))
+                except Exception: pass
+
+        # Helper to safely delete a row and shift all lower row_dimensions heights & merged ranges up
+        def delete_row_and_shift_dimensions(target_row):
+            max_r = ws.max_row + 15
+            saved_heights = {}
+            for r in range(target_row + 1, max_r + 1):
+                if r in ws.row_dimensions:
+                    saved_heights[r] = ws.row_dimensions[r].height
+
+            # Shift merged cell ranges that start below target_row UP by 1 row
+            existing_merges = list(ws.merged_cells.ranges)
+            for m in existing_merges:
+                if m.min_row > target_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+                    new_min = m.min_row - 1
+                    new_max = m.max_row - 1
+                    try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
+                    except Exception: pass
+
+            ws.delete_rows(target_row, 1)
+
+            # Shift saved heights up by -1
+            for r in range(target_row, max_r):
+                next_r = r + 1
+                if next_r in saved_heights:
+                    ws.row_dimensions[r].height = saved_heights[next_r]
+                elif r in ws.row_dimensions:
+                    ws.row_dimensions[r].height = None
+
+        # Helper to safely insert a row and shift all lower row_dimensions heights & merged ranges down
+        def insert_row_and_shift_dimensions(target_row, new_height=None):
+            # Save heights of rows from target_row downwards before inserting
+            max_r = ws.max_row + 15
+            saved_heights = {}
+            for r in range(target_row, max_r + 1):
+                if r in ws.row_dimensions:
+                    saved_heights[r] = ws.row_dimensions[r].height
+                    
+            # Shift merged cell ranges that start at or below target_row DOWN by 1 row
+            existing_merges = list(ws.merged_cells.ranges)
+            for m in existing_merges:
+                if m.min_row >= target_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+                    new_min = m.min_row + 1
+                    new_max = m.max_row + 1
+                    try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
+                    except Exception: pass
+
+            ws.insert_rows(target_row, 1)
+
+            # Shift saved heights down by +1
+            for r in range(max_r, target_row, -1):
+                prev_r = r - 1
+                if prev_r in saved_heights:
+                    ws.row_dimensions[r].height = saved_heights[prev_r]
+                elif r in ws.row_dimensions:
+                    ws.row_dimensions[r].height = None
+
+            if new_height:
+                ws.row_dimensions[target_row].height = new_height
+            elif target_row in ws.row_dimensions:
+                ws.row_dimensions[target_row].height = None
 
         def apply_design(target_row, design_list, value_replacements=None, row_height=None):
-            # Always insert a brand-new row at target_row, naturally pushing all [FIXED] rows down
-            ws.insert_rows(target_row, 1)
-            if row_height:
-                ws.row_dimensions[target_row].height = row_height
+            # Insert a brand-new blank row at target_row, shifting all lower fixed rows & heights down by 1 row
+            insert_row_and_shift_dimensions(target_row, row_height)
             
-            # Clean openpyxl auto-merged ranges created on newly inserted row
+            # Clean openpyxl auto-merged ranges created on newly inserted row (unmerge any range intersecting target_row)
             for m in list(ws.merged_cells.ranges):
-                if m.min_row <= target_row <= m.max_row and (m.max_row - m.min_row) > 0:
+                if m.min_row <= target_row <= m.max_row:
                     try: ws.unmerge_cells(str(m))
                     except Exception: pass
 
@@ -286,6 +352,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     target_cell.value = val
                     
             return target_row
+
+        # 2. Delete the entire placeholder block from bottom to top so we start with a clean insertion point
+        for r in range(max_ctrl_row, min_ctrl_row - 1, -1):
+            try: delete_row_and_shift_dimensions(r)
+            except Exception: pass
+
+        floors = tokens.get("floors", [])
+        curr_row = min_ctrl_row
 
         for f in floors:
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
@@ -351,20 +425,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if floor_footer_design:
                 apply_design(curr_row, floor_footer_design, None, row_heights.get("floor_footer"))
                 curr_row += 1
-                
-        # Unmerge any merged cells in the original placeholder block before deleting them
-        pushed_control_start = curr_row
-        pushed_control_end = curr_row + ctrl_height - 1
-        
-        for m in list(ws.merged_cells.ranges):
-            if m.min_row >= pushed_control_start and m.max_row <= (pushed_control_end + 2):
-                try: ws.unmerge_cells(str(m))
-                except Exception: pass
-
-        # Delete the original pushed placeholder rows from bottom to top
-        for r in range(pushed_control_end, pushed_control_start - 1, -1):
-            try: ws.delete_rows(r, 1)
-            except Exception: pass
             
     else:
         # Standard Flat Loop Fallback Logic
@@ -392,76 +452,78 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         loop_end_row = r
                         
         if loop_start_row is not None and loop_end_row is not None:
-            # Simple item collection logic
-            loop_rows_data = []
-            start_scan = loop_start_row + 1 if loop_start_row != loop_end_row else loop_start_row
-            end_scan = loop_end_row if loop_start_row != loop_end_row else loop_end_row + 1
-            for r in range(start_scan, end_scan):
-                row_cells = []
-                for c in range(2, ws.max_column + 1):
-                    cell = ws.cell(row=r, column=c)
-                    row_cells.append({
-                        "col": c - 1,
-                        "value": cell.value,
-                        "number_format": cell.number_format,
-                        "font": cell.font,
-                        "fill": cell.fill,
-                        "border": cell.border,
-                        "alignment": cell.alignment
-                    })
-                loop_rows_data.append(row_cells)
-                
-            for r in range(loop_start_row, loop_end_row + 1):
-                for c in range(2, ws.max_column + 1):
-                    cell = ws.cell(row=r, column=c)
-                    if not isinstance(cell, MergedCell):
-                        cell.value = None
-                        
-            total_items = len(items)
-            if total_items > 1:
-                rows_to_insert = (total_items - 1) * len(loop_rows_data)
-                ws.insert_rows(loop_end_row + 1, amount=rows_to_insert)
-                
+            # 1. Unmerge any ranges inside the loop block
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row >= loop_start_row and m.max_row <= loop_end_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+
+            # 2. Extract item template row design (the row inside the loop block containing tokens)
+            template_item_row = loop_start_row + 1 if loop_start_row != loop_end_row else loop_start_row
+            item_row_height = ws.row_dimensions[template_item_row].height
+
+            item_design = []
+            for c in range(1, ws.max_column + 1):
+                cell = ws.cell(row=template_item_row, column=c)
+                item_design.append({
+                    "col": c,
+                    "value": cell.value,
+                    "number_format": cell.number_format,
+                    "font": copy.copy(cell.font) if cell.font else None,
+                    "fill": copy.copy(cell.fill) if cell.fill else None,
+                    "border": copy.copy(cell.border) if cell.border else None,
+                    "alignment": copy.copy(cell.alignment) if cell.alignment else None
+                })
+
+            # 3. Delete original loop placeholder block ({{#each items}} to {{/each}}) from bottom to top
+            for r in range(loop_end_row, loop_start_row - 1, -1):
+                try: ws.delete_rows(r, 1)
+                except Exception: pass
+
+            # 4. Insert each dynamic item cleanly into a new row
             curr_row = loop_start_row
             for idx, item in enumerate(items):
-                for t_row_idx, t_row in enumerate(loop_rows_data):
-                    for cell_def in t_row:
-                        target_cell = ws.cell(row=curr_row, column=cell_def["col"] + 1)
-                        if isinstance(target_cell, MergedCell): continue
-                        
-                        if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
-                        if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                        if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                        if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
-                        if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
-                        
-                        val_str = str(cell_def["value"] or '')
-                        if val_str:
-                            val_str = val_str.replace("{{index}}", str(idx + 1))
-                            for k, v in item.items():
-                                val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
-                                val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                                
-                            try:
-                                stripped_val = val_str.strip()
-                                if stripped_val.startswith('R '):
-                                    clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
-                                    if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
-                                        target_cell.value = float(clean_val)
-                                    else:
-                                        target_cell.value = val_str
-                                elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
-                                    if '.' in stripped_val:
-                                        target_cell.value = float(stripped_val)
-                                    else:
-                                        target_cell.value = int(stripped_val)
+                ws.insert_rows(curr_row, 1)
+                if item_row_height:
+                    ws.row_dimensions[curr_row].height = item_row_height
+
+                for cell_def in item_design:
+                    target_cell = ws.cell(row=curr_row, column=cell_def["col"])
+                    if isinstance(target_cell, MergedCell): continue
+
+                    if cell_def["font"]: target_cell.font = copy.copy(cell_def["font"])
+                    if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                    if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                    if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
+                    if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
+
+                    val_str = str(cell_def["value"] or '')
+                    if val_str:
+                        val_str = val_str.replace("{{index}}", str(idx + 1))
+                        for k, v in item.items():
+                            val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
+                            val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+
+                        try:
+                            stripped_val = val_str.strip()
+                            if stripped_val.startswith('R '):
+                                clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                                if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                    target_cell.value = float(clean_val)
                                 else:
                                     target_cell.value = val_str
-                            except Exception:
+                            elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                                if '.' in stripped_val:
+                                    target_cell.value = float(stripped_val)
+                                else:
+                                    target_cell.value = int(stripped_val)
+                            else:
                                 target_cell.value = val_str
-                        else:
-                            target_cell.value = None
-                    curr_row += 1
+                        except Exception:
+                            target_cell.value = val_str
+                    else:
+                        target_cell.value = None
+                curr_row += 1
     
     # 2. Second Pass: Find and replace single global variables in other rows (Col 1 to Max Column)
     for r in range(1, ws.max_row + 1):
