@@ -351,8 +351,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             else:
                                 tc.number_format = '"R"#,##0.00'
                             
-                    for min_c, max_c in area_footer_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                    # Ensure area footer merge spans to Column 13 (M) like table header
+                    if area_footer_merges:
+                        for min_c, max_c in area_footer_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=2, end_row=curr_row, end_column=13)
+                            except Exception: pass
+                    else:
+                        try: ws.merge_cells(start_row=curr_row, start_column=2, end_row=curr_row, end_column=13)
                         except Exception: pass
 
                     curr_row += 1
@@ -386,8 +391,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         else:
                             tc.number_format = '"R"#,##0.00'
 
-                for min_c, max_c in floor_footer_merges:
-                    try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                if floor_footer_merges:
+                    for min_c, max_c in floor_footer_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=2, end_row=curr_row, end_column=13)
+                        except Exception: pass
+                else:
+                    try: ws.merge_cells(start_row=curr_row, start_column=2, end_row=curr_row, end_column=13)
                     except Exception: pass
                 curr_row += 1
                 inserted_rows_count += 1
