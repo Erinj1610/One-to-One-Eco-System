@@ -333,19 +333,19 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                     area_name = a.get("name", "")
-                    subtotal_label = f"{area_name} Subtotal" if area_name else "Subtotal"
                     
                     subtotal_repls = {
-                        "{{SUBTOTAL}}": area_subtotal,
+                        "{{SUBTOTAL}}": f"R {area_subtotal:,.2f}",
                         "{{area.name}}": area_name,
                         "{{floor.name}}": f.get("name", ""),
-                        "Subtotal": subtotal_label
+                        "Subtotal": f"{area_name} Subtotal" if area_name else "Subtotal"
                     }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
                     for cell_def in area_footer_design:
-                        if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                            tc = ws.cell(row=curr_row, column=cell_def["col"])
+                        cell_val_s = str(cell_def["value"] or '')
+                        tc = ws.cell(row=curr_row, column=cell_def["col"])
+                        if cell_val_s.strip() == "{{SUBTOTAL}}":
                             tc.value = area_subtotal
                             if cell_def["number_format"] and cell_def["number_format"] != 'General':
                                 tc.number_format = cell_def["number_format"]
@@ -370,18 +370,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                 floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
                 floor_name = f.get("name", "")
-                floor_subtotal_label = f"{floor_name} Subtotal" if floor_name else "Subtotal"
 
                 floor_subtotal_repls = {
-                    "{{SUBTOTAL}}": floor_subtotal,
+                    "{{SUBTOTAL}}": f"R {floor_subtotal:,.2f}",
                     "{{floor.name}}": floor_name,
-                    "Subtotal": floor_subtotal_label
+                    "Subtotal": f"{floor_name} Subtotal" if floor_name else "Subtotal"
                 }
                 apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                 
                 for cell_def in floor_footer_design:
-                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                        tc = ws.cell(row=curr_row, column=cell_def["col"])
+                    cell_val_s = str(cell_def["value"] or '')
+                    tc = ws.cell(row=curr_row, column=cell_def["col"])
+                    if cell_val_s.strip() == "{{SUBTOTAL}}":
                         tc.value = floor_subtotal
                         if cell_def["number_format"] and cell_def["number_format"] != 'General':
                             tc.number_format = cell_def["number_format"]
