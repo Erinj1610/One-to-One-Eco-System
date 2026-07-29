@@ -60,11 +60,6 @@ def convert_xlsx_to_pdf_local(xlsx_path, pdf_path):
         
     try:
         wb = excel.Workbooks.Open(os.path.abspath(xlsx_path))
-        for ws in wb.Worksheets:
-            try:
-                ws.Columns.AutoFit()
-            except Exception:
-                pass
         wb.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
         wb.Close(SaveChanges=False)
         logger.info(f"Local Excel conversion successful: {pdf_path}")
@@ -337,7 +332,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         except ValueError: return 0.0
 
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
-                    subtotal_repls = {"{{SUBTOTAL}}": area_subtotal}
+                    subtotal_repls = {
+                        "{{SUBTOTAL}}": area_subtotal,
+                        "{{area.name}}": a.get("name", ""),
+                        "{{floor.name}}": f.get("name", "")
+                    }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
                     for cell_def in area_footer_design:
@@ -355,7 +354,26 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
             # 6. Insert Floor Footer
             if floor_footer_design:
-                apply_design(curr_row, floor_footer_design, None, row_heights.get("floor_footer"))
+                def clean_price(val_in):
+                    if not val_in: return 0.0
+                    if isinstance(val_in, (int, float)): return float(val_in)
+                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
+                    try: return float(val_s)
+                    except ValueError: return 0.0
+
+                floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
+                floor_subtotal_repls = {
+                    "{{SUBTOTAL}}": floor_subtotal,
+                    "{{floor.name}}": f.get("name", "")
+                }
+                apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
+                
+                for cell_def in floor_footer_design:
+                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
+                        tc = ws.cell(row=curr_row, column=cell_def["col"])
+                        tc.value = floor_subtotal
+                        tc.number_format = '"R"#,##0.00'
+
                 for min_c, max_c in floor_footer_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                     except Exception: pass
