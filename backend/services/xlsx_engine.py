@@ -544,6 +544,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if "[" in val_a and "]" in val_a:
                 cell_a.value = None
 
+    # 4. Enforce Fit-To-Width (1 Page Wide, Automatic Height) for PDF conversion
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    if ws.sheet_properties and ws.sheet_properties.pageSetUpPr:
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
     if output_xlsx_path:
         wb.save(output_xlsx_path)
         return True
