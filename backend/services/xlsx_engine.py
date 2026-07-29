@@ -333,18 +333,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                     subtotal_repls = {
-                        "{{SUBTOTAL}}": "",
+                        "{{SUBTOTAL}}": f"R{area_subtotal:,.2f}",
                         "{{area.name}}": a.get("name", ""),
                         "{{floor.name}}": f.get("name", "")
                     }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
-                    # Place subtotal value right-aligned in Column 13 (Total column)
-                    tc = ws.cell(row=curr_row, column=13)
-                    tc.value = area_subtotal
-                    tc.number_format = '"R"#,##0.00'
-                    if not tc.font or not tc.font.bold:
-                        tc.font = copy.copy(ws.cell(row=curr_row, column=2).font) if ws.cell(row=curr_row, column=2).font else None
+                    # Ensure numeric formatting for cells with {{SUBTOTAL}}
+                    for cell_def in area_footer_design:
+                        if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
+                            tc = ws.cell(row=curr_row, column=cell_def["col"])
+                            tc.value = area_subtotal
+                            tc.number_format = '"R"#,##0.00'
                             
                     for min_c, max_c in area_footer_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
@@ -364,17 +364,17 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                 floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
                 floor_subtotal_repls = {
-                    "{{SUBTOTAL}}": "",
+                    "{{SUBTOTAL}}": f"R{floor_subtotal:,.2f}",
                     "{{floor.name}}": f.get("name", "")
                 }
                 apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                 
-                # Place subtotal value right-aligned in Column 13 (Total column)
-                tc = ws.cell(row=curr_row, column=13)
-                tc.value = floor_subtotal
-                tc.number_format = '"R"#,##0.00'
-                if not tc.font or not tc.font.bold:
-                    tc.font = copy.copy(ws.cell(row=curr_row, column=2).font) if ws.cell(row=curr_row, column=2).font else None
+                # Ensure numeric formatting for cells with {{SUBTOTAL}}
+                for cell_def in floor_footer_design:
+                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
+                        tc = ws.cell(row=curr_row, column=cell_def["col"])
+                        tc.value = floor_subtotal
+                        tc.number_format = '"R"#,##0.00'
 
                 for min_c, max_c in floor_footer_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
