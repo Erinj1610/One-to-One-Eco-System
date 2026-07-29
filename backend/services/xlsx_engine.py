@@ -574,23 +574,28 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 # Remove any leftover unhandled mustache tokens
                 val = re.sub(r'\{\{[^}]+\}\}', '', val).strip()
                 
-                try:
-                    stripped_val = val.strip()
-                    if stripped_val.startswith('R '):
-                        clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
-                        if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
-                            cell.value = float(clean_val)
+                if val:
+                    try:
+                        stripped_val = val.strip()
+                        if stripped_val.startswith('R '):
+                            clean_val = stripped_val.replace('R ', '').replace('R', '').replace(',', '').strip()
+                            if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                cell.value = float(clean_val)
+                                cell.number_format = '"R"#,##0.00'
+                            else:
+                                cell.value = val
+                        elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                            if '.' in stripped_val:
+                                cell.value = float(stripped_val)
+                                cell.number_format = '"R"#,##0.00'
+                            else:
+                                cell.value = int(stripped_val)
                         else:
                             cell.value = val
-                    elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
-                        if '.' in stripped_val:
-                            cell.value = float(stripped_val)
-                        else:
-                            cell.value = int(stripped_val)
-                    else:
-                        cell.value = val if val != "" else None
-                except Exception:
-                    cell.value = val if val != "" else None
+                    except Exception:
+                        cell.value = val
+                else:
+                    cell.value = None
 
     # 3. Third Pass: Clear Column A text (control markers) so they are invisible, keeping layout columns untouched
     for r in range(1, ws.max_row + 1):
