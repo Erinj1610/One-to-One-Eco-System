@@ -337,8 +337,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     subtotal_repls = {
                         "{{SUBTOTAL}}": f"R {area_subtotal:,.2f}",
                         "{{area.name}}": area_name,
-                        "{{floor.name}}": f.get("name", ""),
-                        "Subtotal": f"{area_name} Subtotal" if area_name else "Subtotal"
+                        "{{floor.name}}": f.get("name", "")
                     }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
@@ -373,8 +372,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                 floor_subtotal_repls = {
                     "{{SUBTOTAL}}": f"R {floor_subtotal:,.2f}",
-                    "{{floor.name}}": floor_name,
-                    "Subtotal": f"{floor_name} Subtotal" if floor_name else "Subtotal"
+                    "{{floor.name}}": floor_name
                 }
                 apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                 
@@ -550,7 +548,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text (control markers) and shrink Column A width to 0 to eliminate left margin
+    # 3. Third Pass: Clear Column A text and delete Column A completely so left margin is 0
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
@@ -558,8 +556,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if "[" in val_a and "]" in val_a:
                 cell_a.value = None
 
-    ws.column_dimensions['A'].width = 0.001
-    ws.column_dimensions['A'].hidden = True
+    # Shift all merged ranges left by 1 column to stay perfectly aligned when Column A is deleted
+    all_merges = list(ws.merged_cells.ranges)
+    for m in all_merges:
+        try: ws.unmerge_cells(str(m))
+        except Exception: pass
+        if m.min_col > 1:
+            try: ws.merge_cells(start_row=m.min_row, start_column=m.min_col - 1, end_row=m.max_row, end_column=m.max_col - 1)
+            except Exception: pass
+
+    ws.delete_cols(1)
 
     # 4. Enforce Fit-To-Width (1 Page Wide, Automatic Height) for PDF conversion
     ws.page_setup.fitToWidth = 1
