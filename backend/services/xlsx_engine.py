@@ -257,7 +257,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 if r in ws.row_dimensions:
                     saved_heights[r] = ws.row_dimensions[r].height
 
-            # Shift merged cell ranges that start below target_row UP by 1 row
+            # Shift merged cell ranges that start or end below target_row UP by 1 row
             existing_merges = list(ws.merged_cells.ranges)
             for m in existing_merges:
                 if m.min_row > target_row:
@@ -267,6 +267,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     new_max = m.max_row - 1
                     try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
                     except Exception: pass
+                elif m.min_row <= target_row <= m.max_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+                    new_min = m.min_row
+                    new_max = max(m.min_row, m.max_row - 1)
+                    if new_min < new_max or m.min_col != m.max_col:
+                        try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
+                        except Exception: pass
 
             ws.delete_rows(target_row, 1)
 
@@ -294,6 +302,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     try: ws.unmerge_cells(str(m))
                     except Exception: pass
                     new_min = m.min_row + 1
+                    new_max = m.max_row + 1
+                    try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
+                    except Exception: pass
+                elif m.min_row < target_row <= m.max_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+                    new_min = m.min_row
                     new_max = m.max_row + 1
                     try: ws.merge_cells(start_row=new_min, start_column=m.min_col, end_row=new_max, end_column=m.max_col)
                     except Exception: pass
