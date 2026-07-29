@@ -157,6 +157,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     
     loop_start_row = None
     loop_end_row = None
+    curr_row = 1
     
     for r in range(1, ws.max_row + 1):
         cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
@@ -187,11 +188,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     if tagged_rows:
         loop_end_row = max(tagged_rows)
 
-    has_tagged_loop = (
-        floor_header_row is not None and 
-        area_header_row is not None and 
-        item_row is not None
-    )
+    has_tagged_loop = (item_row is not None)
     
     if has_tagged_loop:
         # Extract row designs starting from Column A (Col 1 to Max Column)
@@ -244,6 +241,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         insert_at = min_ctrl_row
 
         floors = tokens.get("floors", [])
+        curr_row = insert_at
         ctrl_row_indices = list(range(min_ctrl_row, max_ctrl_row + 1))
         ctrl_idx_pointer = 0
 
@@ -308,14 +306,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
             if not valid_areas: continue
 
-            # 1. Insert/Overwrite Floor Header
-            written_row = apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")})
-            curr_row = max(curr_row + 1, written_row + 1)
+            # 1. Insert/Overwrite Floor Header (if present)
+            if floor_header_design:
+                written_row = apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")})
+                curr_row = max(curr_row + 1, written_row + 1)
 
             for a in valid_areas:
-                # 2. Insert/Overwrite Area Header
-                written_row = apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")})
-                curr_row = max(curr_row + 1, written_row + 1)
+                # 2. Insert/Overwrite Area Header (if present)
+                if area_header_design:
+                    written_row = apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")})
+                    curr_row = max(curr_row + 1, written_row + 1)
 
                 # 3. Insert/Overwrite Table Headers
                 for h_design in table_header_designs:
@@ -338,27 +338,28 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         
                     curr_row = max(curr_row + 1, written_row + 1)
 
-                # 5. Insert/Overwrite Area Footer / Subtotal
-                def clean_price(val_in):
-                    if not val_in: return 0.0
-                    if isinstance(val_in, (int, float)): return float(val_in)
-                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
-                    try: return float(val_s)
-                    except ValueError: return 0.0
+                # 5. Insert/Overwrite Area Footer / Subtotal (if present)
+                if area_footer_design:
+                    def clean_price(val_in):
+                        if not val_in: return 0.0
+                        if isinstance(val_in, (int, float)): return float(val_in)
+                        val_s = str(val_in).replace("R", "").replace(",", "").strip()
+                        try: return float(val_s)
+                        except ValueError: return 0.0
 
-                area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
-                
-                subtotal_repls = {"{{SUBTOTAL}}": area_subtotal}
-                written_row = apply_design(curr_row, area_footer_design, subtotal_repls)
-                
-                # Format subtotal cell value if formula was used
-                for cell_def in area_footer_design:
-                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                        tc = ws.cell(row=written_row, column=cell_def["col"])
-                        tc.value = area_subtotal
-                        tc.number_format = '"R"#,##0.00'
-                        
-                curr_row = max(curr_row + 1, written_row + 1)
+                    area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
+                    
+                    subtotal_repls = {"{{SUBTOTAL}}": area_subtotal}
+                    written_row = apply_design(curr_row, area_footer_design, subtotal_repls)
+                    
+                    # Format subtotal cell value if formula was used
+                    for cell_def in area_footer_design:
+                        if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
+                            tc = ws.cell(row=written_row, column=cell_def["col"])
+                            tc.value = area_subtotal
+                            tc.number_format = '"R"#,##0.00'
+                            
+                    curr_row = max(curr_row + 1, written_row + 1)
 
             # 6. Insert/Overwrite Floor Footer
             if floor_footer_design:
