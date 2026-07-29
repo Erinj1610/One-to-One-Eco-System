@@ -215,11 +215,20 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
-        # Find merged cell definitions in item_row / control rows
-        item_merges = []
-        for m in list(ws.merged_cells.ranges):
-            if m.min_row == item_row:
-                item_merges.append((m.min_col, m.max_col))
+        # Find merged cell definitions in all control rows
+        def get_row_merges(row_num):
+            if row_num is None: return []
+            merges = []
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row == row_num:
+                    merges.append((m.min_col, m.max_col))
+            return merges
+
+        floor_header_merges = get_row_merges(floor_header_row)
+        area_header_merges = get_row_merges(area_header_row)
+        item_merges = get_row_merges(item_row)
+        area_footer_merges = get_row_merges(area_footer_row)
+        floor_footer_merges = get_row_merges(floor_footer_row)
 
         # Record original row heights of template control rows
         row_heights = {}
@@ -368,12 +377,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             # 1. Insert Floor Header (if present)
             if floor_header_design:
                 apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
+                for min_c, max_c in floor_header_merges:
+                    try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                    except Exception: pass
                 curr_row += 1
 
             for a in valid_areas:
                 # 2. Insert Area Header (if present)
                 if area_header_design:
                     apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
+                    for min_c, max_c in area_header_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
                     curr_row += 1
 
                 # 3. Insert Table Headers
@@ -419,11 +434,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             tc.value = area_subtotal
                             tc.number_format = '"R"#,##0.00'
                             
+                    for min_c, max_c in area_footer_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
+
                     curr_row += 1
 
             # 6. Insert Floor Footer (if present)
             if floor_footer_design:
                 apply_design(curr_row, floor_footer_design, None, row_heights.get("floor_footer"))
+                for min_c, max_c in floor_footer_merges:
+                    try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                    except Exception: pass
                 curr_row += 1
             
     else:
