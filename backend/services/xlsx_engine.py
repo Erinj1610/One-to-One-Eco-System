@@ -332,10 +332,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         except ValueError: return 0.0
 
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
+                    area_name = a.get("name", "")
+                    subtotal_label = f"{area_name} Subtotal" if area_name else "Subtotal"
+                    
                     subtotal_repls = {
                         "{{SUBTOTAL}}": area_subtotal,
-                        "{{area.name}}": a.get("name", ""),
-                        "{{floor.name}}": f.get("name", "")
+                        "{{area.name}}": area_name,
+                        "{{floor.name}}": f.get("name", ""),
+                        "Subtotal": subtotal_label
                     }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
@@ -365,9 +369,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     except ValueError: return 0.0
 
                 floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
+                floor_name = f.get("name", "")
+                floor_subtotal_label = f"{floor_name} Subtotal" if floor_name else "Subtotal"
+
                 floor_subtotal_repls = {
                     "{{SUBTOTAL}}": floor_subtotal,
-                    "{{floor.name}}": f.get("name", "")
+                    "{{floor.name}}": floor_name,
+                    "Subtotal": floor_subtotal_label
                 }
                 apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                 
