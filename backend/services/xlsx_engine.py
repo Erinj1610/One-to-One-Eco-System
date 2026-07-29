@@ -199,14 +199,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 })
             return cells
 
+        # Dynamic extraction of control row merges directly from original template snapshot
         def get_row_merges(row_num):
             if row_num is None: return []
-            # Default full banner span (Col 2 to 13 for headers, 2 to 11 for footers) if merged in original
-            if row_num in [floor_header_row, area_header_row]:
-                return [(2, 13)]
-            if row_num in [area_footer_row, floor_footer_row]:
-                return [(2, 11)]
-            return []
+            merges = []
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row == row_num:
+                    merges.append((m.min_col, m.max_col))
+            return merges
 
         floor_header_design = get_row_design(floor_header_row)
         area_header_design = get_row_design(area_header_row)
@@ -333,17 +333,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
                     subtotal_repls = {
-                        "{{SUBTOTAL}}": area_subtotal,
+                        "{{SUBTOTAL}}": "",
                         "{{area.name}}": a.get("name", ""),
                         "{{floor.name}}": f.get("name", "")
                     }
                     apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
                     
-                    for cell_def in area_footer_design:
-                        if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                            tc = ws.cell(row=curr_row, column=cell_def["col"])
-                            tc.value = area_subtotal
-                            tc.number_format = '"R"#,##0.00'
+                    # Place subtotal value right-aligned in Column 13 (Total column)
+                    tc = ws.cell(row=curr_row, column=13)
+                    tc.value = area_subtotal
+                    tc.number_format = '"R"#,##0.00'
+                    if not tc.font or not tc.font.bold:
+                        tc.font = copy.copy(ws.cell(row=curr_row, column=2).font) if ws.cell(row=curr_row, column=2).font else None
                             
                     for min_c, max_c in area_footer_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
@@ -363,16 +364,17 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                 floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
                 floor_subtotal_repls = {
-                    "{{SUBTOTAL}}": floor_subtotal,
+                    "{{SUBTOTAL}}": "",
                     "{{floor.name}}": f.get("name", "")
                 }
                 apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                 
-                for cell_def in floor_footer_design:
-                    if "{{SUBTOTAL}}" in str(cell_def["value"] or ''):
-                        tc = ws.cell(row=curr_row, column=cell_def["col"])
-                        tc.value = floor_subtotal
-                        tc.number_format = '"R"#,##0.00'
+                # Place subtotal value right-aligned in Column 13 (Total column)
+                tc = ws.cell(row=curr_row, column=13)
+                tc.value = floor_subtotal
+                tc.number_format = '"R"#,##0.00'
+                if not tc.font or not tc.font.bold:
+                    tc.font = copy.copy(ws.cell(row=curr_row, column=2).font) if ws.cell(row=curr_row, column=2).font else None
 
                 for min_c, max_c in floor_footer_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
