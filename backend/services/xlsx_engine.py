@@ -560,11 +560,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     for r in range(1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             cell = ws.cell(row=r, column=c)
-            if isinstance(cell, MergedCell): continue
+            # Skip slave cells of merged ranges (they have string type MergedCell in openpyxl)
+            if type(cell).__name__ == 'MergedCell': continue
             val = str(cell.value or '')
             if val and ("{?" in val or "{{" in val):
                 # Clean block tags from text
-                val = val.replace("{{#floor}}", "").replace("{{#area}}", "").replace("{{/area}}", "").replace("{{/floor}}", "").strip()
+                val = val.replace("{{#floor}}", "").replace("{{#area}}", "").replace("{{/area}}", "").replace("{{/floor}}", "")
                 
                 for k, v in tokens.items():
                     if not isinstance(v, (list, dict)):
@@ -572,9 +573,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
                 
                 # Remove any leftover unhandled mustache tokens
-                val = re.sub(r'\{\{[^}]+\}\}', '', val).strip()
+                val = re.sub(r'\{\{[^}]+\}\}', '', val)
                 
-                if val:
+                if val != "":
                     try:
                         stripped_val = val.strip()
                         if stripped_val.startswith('R '):
@@ -595,7 +596,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     except Exception:
                         cell.value = val
                 else:
-                    cell.value = None
+                    # Do not overwrite with None if value was text without tokens
+                    pass
 
     # 3. Third Pass: Clear Column A text (control markers) so they are invisible, keeping layout columns untouched
     for r in range(1, ws.max_row + 1):
