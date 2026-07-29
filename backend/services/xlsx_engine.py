@@ -548,7 +548,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text and delete Column A completely so left margin is 0
+    # 3. Third Pass: Clear Column A text (control markers) and shrink Column A width to 0.001
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
@@ -556,22 +556,22 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if "[" in val_a and "]" in val_a:
                 cell_a.value = None
 
-    # Shift all merged ranges left by 1 column to stay perfectly aligned when Column A is deleted
-    all_merges = list(ws.merged_cells.ranges)
-    for m in all_merges:
-        try: ws.unmerge_cells(str(m))
-        except Exception: pass
-        if m.min_col > 1:
-            try: ws.merge_cells(start_row=m.min_row, start_column=m.min_col - 1, end_row=m.max_row, end_column=m.max_col - 1)
-            except Exception: pass
+    ws.column_dimensions['A'].width = 0.001
 
-    ws.delete_cols(1)
-
-    # 4. Enforce Fit-To-Width (1 Page Wide, Automatic Height) for PDF conversion
+    # 4. Enforce Fit-To-Width and zero left/right margins for PDF conversion
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
+    ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+    ws.page_setup.center_horizontally = True
+    
     if ws.sheet_properties and ws.sheet_properties.pageSetUpPr:
         ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    if ws.page_margins:
+        ws.page_margins.left = 0.1
+        ws.page_margins.right = 0.1
+        ws.page_margins.top = 0.25
+        ws.page_margins.bottom = 0.25
 
     if output_xlsx_path:
         wb.save(output_xlsx_path)
