@@ -412,7 +412,8 @@ export default function TemplateHub() {
   const dragItem = useRef(null);
   const dragOverItem = useRef(null);
 
-  const activeDoc = DOCUMENT_TYPES[selectedDoc];
+  const [docTypesList, setDocTypesList] = useState(DOCUMENT_TYPES);
+  const activeDoc = docTypesList[selectedDoc] || { id: selectedDoc, name: selectedDoc, description: `Custom template mapping for ${selectedDoc}`, tokens: SHARED_ORDER_TOKENS };
 
   useEffect(() => {
     if (!isAdmin) navigate('/');
@@ -995,8 +996,10 @@ export default function TemplateHub() {
             💰 Design Fee Costings Matrix
           </button>
 
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '12px 0 6px 0' }}>Document Types</div>
-          {Object.values(DOCUMENT_TYPES).map(doc => (
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '12px 0 6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Document Types</span>
+          </div>
+          {Object.values(docTypesList).map(doc => (
             <button
               key={doc.id}
               onClick={() => setSelectedDoc(doc.id)}
@@ -1014,6 +1017,31 @@ export default function TemplateHub() {
               {doc.name}
             </button>
           ))}
+
+          <button
+            onClick={() => {
+              const name = prompt("Enter new Document Type name (e.g. Proforma Invoice, Work Order):");
+              if (!name || !name.trim()) return;
+              const key = name.toUpperCase().replace(/[^A_Z0-9]/g, '_').replace(/_+/g, '_');
+              const newDoc = {
+                id: key,
+                name: `📄 ${name.trim()}`,
+                description: `Custom Excel template mapping for ${name.trim()}.`,
+                tokens: SHARED_ORDER_TOKENS
+              };
+              setDocTypesList(prev => ({ ...prev, [key]: newDoc }));
+              setSelectedDoc(key);
+            }}
+            className="btn btn-ghost"
+            style={{
+              textAlign: 'left', padding: '10px 12px', borderRadius: '6px',
+              width: '100%', justifyContent: 'flex-start', fontSize: '12px',
+              border: '1.5px dashed var(--border-info)',
+              color: 'var(--text-info)', marginTop: '8px', fontWeight: 600
+            }}
+          >
+            ➕ Add Custom Document Type
+          </button>
         </div>
 
         {/* Builder Workbench Frame */}
