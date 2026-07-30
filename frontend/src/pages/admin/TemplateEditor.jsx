@@ -412,25 +412,34 @@ export default function TemplateHub() {
   const dragItem = useRef(null);
   const dragOverItem = useRef(null);
 
-  const [docTypesList, setDocTypesList] = useState(() => {
-    try {
-      const saved = localStorage.getItem('CUSTOM_DOC_TYPES');
-      if (saved) {
-        return { ...DOCUMENT_TYPES, ...JSON.parse(saved) };
-      }
-    } catch (e) {}
-    return DOCUMENT_TYPES;
-  });
+  const [docTypesList, setDocTypesList] = useState(DOCUMENT_TYPES);
 
   useEffect(() => {
+    fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.config_json && Object.keys(data.config_json).length > 0) {
+          setDocTypesList({ ...DOCUMENT_TYPES, ...data.config_json });
+        }
+      })
+      .catch(err => console.error("Error loading live custom document types:", err));
+  }, []);
+
+  const saveCustomDocsToDatabase = async (updatedList) => {
+    const customOnly = {};
+    Object.keys(updatedList).forEach(k => {
+      if (!DOCUMENT_TYPES[k]) customOnly[k] = updatedList[k];
+    });
     try {
-      const customOnly = {};
-      Object.keys(docTypesList).forEach(k => {
-        if (!DOCUMENT_TYPES[k]) customOnly[k] = docTypesList[k];
+      await fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customOnly)
       });
-      localStorage.setItem('CUSTOM_DOC_TYPES', JSON.stringify(customOnly));
-    } catch (e) {}
-  }, [docTypesList]);
+    } catch (e) {
+      console.error("Error saving custom doc types to DB:", e);
+    }
+  };
 
   const activeDoc = docTypesList[selectedDoc] || { id: selectedDoc, name: selectedDoc, description: `Custom template mapping for ${selectedDoc}`, tokens: SHARED_ORDER_TOKENS };
 
@@ -1038,7 +1047,7 @@ export default function TemplateHub() {
           ))}
 
           <button
-            onClick={() => {
+            onClick={async () => {
               const name = prompt("Enter new Document Type name (e.g. Proforma Invoice, Work Order):");
               if (!name || !name.trim()) return;
               const key = name.toUpperCase().replace(/[^A_Z0-9]/g, '_').replace(/_+/g, '_');
@@ -1048,8 +1057,10 @@ export default function TemplateHub() {
                 description: `Custom Excel template mapping for ${name.trim()}.`,
                 tokens: SHARED_ORDER_TOKENS
               };
-              setDocTypesList(prev => ({ ...prev, [key]: newDoc }));
+              const newList = { ...docTypesList, [key]: newDoc };
+              setDocTypesList(newList);
               setSelectedDoc(key);
+              await saveCustomDocsToDatabase(newList);
             }}
             className="btn btn-ghost"
             style={{

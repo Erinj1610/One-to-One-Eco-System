@@ -624,6 +624,18 @@ export default function OrdersPage() {
   const [exportingDocx, setExportingDocx] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const [activeEngineMode, setActiveEngineMode] = useState('word');
+  const [liveCustomDocs, setLiveCustomDocs] = useState({});
+
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.config_json) {
+          setLiveCustomDocs(data.config_json);
+        }
+      })
+      .catch(err => console.error("Error loading live custom docs in Orders:", err));
+  }, []);
 
   // Dynamically fetch the selected document's active template engine mode configuration
   useEffect(() => {
@@ -4411,19 +4423,16 @@ export default function OrdersPage() {
                         { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
                         { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
                       ];
-                      try {
-                        const saved = localStorage.getItem('CUSTOM_DOC_TYPES');
-                        if (saved) {
-                          const parsed = JSON.parse(saved);
-                          Object.values(parsed).forEach(cd => {
-                            baseDocs.push({
-                              id: cd.id.toLowerCase(),
-                              name: cd.name,
-                              icon: <FileText size={14} />
-                            });
+                      
+                      Object.values(liveCustomDocs).forEach(cd => {
+                        if (!baseDocs.some(b => b.id === cd.id.toLowerCase())) {
+                          baseDocs.push({
+                            id: cd.id.toLowerCase(),
+                            name: cd.name,
+                            icon: <FileText size={14} />
                           });
                         }
-                      } catch (e) {}
+                      });
 
                       return baseDocs.map(doc => {
                         const isSelected = selectedDocType === doc.id;
