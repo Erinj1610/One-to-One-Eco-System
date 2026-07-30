@@ -182,7 +182,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or area_footer_row is not None or floor_footer_row is not None)
     
     if has_tagged_loop:
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
@@ -308,8 +308,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
             if not valid_areas: continue
 
-            # 1. Insert Floor Header (Only if floor_header_row exists and floor name is specified)
-            if floor_header_design and floor_name and floor_name.lower() != 'unspecified':
+            # 1. Insert Floor Header (Only if floor_header_row exists)
+            if floor_header_design:
                 apply_design(curr_row, floor_header_design, {"{{floor.name}}": floor_name}, row_heights.get("floor_header"))
                 for min_c, max_c in floor_header_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
@@ -320,7 +320,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             for a in valid_areas:
                 area_name = str(a.get("name", "")).strip()
                 # 2. Insert Area Header
-                if area_header_design and area_name and area_name.lower() != 'unspecified':
+                if area_header_design:
                     apply_design(curr_row, area_header_design, {"{{area.name}}": area_name}, row_heights.get("area_header"))
                     for min_c, max_c in area_header_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
