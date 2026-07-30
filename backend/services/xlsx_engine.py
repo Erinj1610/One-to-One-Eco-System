@@ -166,9 +166,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (item_row is not None)
+    # A template is a nested area/floor loop ONLY if floor or area headers are present alongside [ITEM]
+    has_nested_loop = (item_row is not None) and (floor_header_row is not None or area_header_row is not None)
     
-    if has_tagged_loop:
+    if has_nested_loop:
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
