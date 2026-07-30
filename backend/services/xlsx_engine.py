@@ -128,10 +128,19 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         
     try:
         wb = openpyxl.load_workbook(template_path)
-        if sheet_name and sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
+        matched_sheet = None
+        if sheet_name:
+            clean_target = str(sheet_name).strip().lower().replace('_', ' ')
+            for s_name in wb.sheetnames:
+                clean_s = str(s_name).strip().lower().replace('_', ' ')
+                if clean_s == clean_target:
+                    matched_sheet = s_name
+                    break
+        
+        if matched_sheet:
+            ws = wb[matched_sheet]
             for s in list(wb.sheetnames):
-                if s != sheet_name:
+                if s != matched_sheet:
                     del wb[s]
         else:
             ws = wb.active
