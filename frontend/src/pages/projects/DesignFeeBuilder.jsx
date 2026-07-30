@@ -324,6 +324,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
   return (
     <>
+      <div className="stat-card" style={{ marginBottom: '2rem', borderLeft: '4px solid var(--accent-purple)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h3 style={{ margin: 0 }}>💰 1. Master Design Fee Builder</h3>
