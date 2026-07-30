@@ -623,20 +623,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text (control markers) and calculate exact active column print boundary
-    for r in range(1, ws.max_row + 1):
-        cell_a = ws.cell(row=r, column=1)
-        if type(cell_a).__name__ != 'MergedCell':
-            val_a = str(cell_a.value or '')
-            if "[" in val_a and "]" in val_a:
-                cell_a.value = None
-
-    ws.column_dimensions['A'].width = 0.001
-    
-    # Calculate exact max occupied column letter dynamically (skipping Column A)
+    # Calculate exact max occupied column letter dynamically
     max_col_idx = 2
-    for r in range(1, min(ws.max_row + 1, 100)):
-        for c in range(ws.max_column, 1, -1):
+    for r in range(1, ws.max_row + 1):
+        for c in range(ws.max_column, 0, -1):
             cell = ws.cell(row=r, column=c)
             if cell.value is not None and str(cell.value).strip() != '':
                 if c > max_col_idx:
@@ -645,7 +635,24 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
     from openpyxl.utils import get_column_letter
     max_col_letter = get_column_letter(max_col_idx)
-    ws.print_area = f"B1:{max_col_letter}{ws.max_row}"
+
+    # 3. Third Pass: Clear Column A text (control markers)
+    has_column_a_control_tags = False
+    for r in range(1, ws.max_row + 1):
+        cell_a = ws.cell(row=r, column=1)
+        if type(cell_a).__name__ != 'MergedCell':
+            val_a = str(cell_a.value or '')
+            if "[" in val_a and "]" in val_a:
+                has_column_a_control_tags = True
+                cell_a.value = None
+
+    if has_column_a_control_tags:
+        ws.column_dimensions['A'].width = 0.001
+        start_col = "B"
+    else:
+        start_col = "A"
+
+    ws.print_area = f"{start_col}1:{max_col_letter}{ws.max_row}"
 
     # 4. Fit-To-Page setup for PDF conversion
     ws.page_setup.fitToWidth = 1
