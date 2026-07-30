@@ -548,62 +548,6 @@ export default function TemplateHub() {
     }
   };
 
-  const DEFAULT_COSTING_MATRIX = {
-    currency_rates: { usdConv: 20.00 },
-    phase_multipliers: { schematicPercent: 0.80, finalPercent: 0.65, siteSupportPercent: 0.2272, commissioningPercent: 0.1070 },
-    area_rates: {
-      experiential_living: { archFitting: 1050.00, conceptLighting: 180.00 },
-      secondary_living: { archFitting: 750.00, conceptLighting: 105.00 },
-      non_experiential_living: { archFitting: 300.00, conceptLighting: 30.00 },
-      experiential_landscape: { archFitting: 825.00, conceptLighting: 140.00 },
-      secondary_landscape: { archFitting: 525.00, conceptLighting: 55.00 }
-    },
-    default_discounts: { designDiscountRate: 0.20, archDiscountRate: 0.04 },
-    signature_consultant_flat: { siteSupport: 4000.00, commissioning: 4000.00 }
-  };
-
-  const [costingRates, setCostingRates] = useState(DEFAULT_COSTING_MATRIX);
-
-  const fetchGlobalCostings = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/configs/DESIGN_FEE_RATES`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.config_json && Object.keys(data.config_json).length > 0) {
-          setCostingRates(data.config_json);
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching global costings:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchGlobalCostings();
-  }, []);
-
-  const handleSaveGlobalCostings = async () => {
-    setSaving(true);
-    setMessage(null);
-    try {
-      const res = await fetch(`${API_BASE}/admin/configs/DESIGN_FEE_RATES`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(costingRates)
-      });
-      if (res.ok) {
-        setMessage({ type: 'success', text: 'Global Design Fee Costings Matrix saved to live database!' });
-        setTimeout(() => setMessage(null), 3000);
-      } else {
-        setMessage({ type: 'error', text: 'Failed to save Design Fee Costings Matrix.' });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Error saving costings matrix.' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSaveDocTabConfig = async () => {
     setSaving(true);
     setMessage(null);
@@ -978,24 +922,7 @@ export default function TemplateHub() {
         
         {/* Document Left Selector */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '16px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Global Costings</div>
-          <button
-            onClick={() => setSelectedDoc('DESIGN_FEE_COSTINGS')}
-            className="btn btn-ghost"
-            style={{
-              textAlign: 'left', padding: '10px 12px', borderRadius: '6px',
-              width: '100%', justifyContent: 'flex-start', fontSize: '12.5px',
-              border: '1px solid',
-              borderColor: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'var(--border-info)' : 'transparent',
-              background: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-              color: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'var(--text-info)' : 'var(--text-secondary)',
-              fontWeight: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 600 : 500
-            }}
-          >
-            💰 Design Fee Costings Matrix
-          </button>
-
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '12px 0 6px 0' }}>Document Types</div>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Document Types</div>
           {Object.values(DOCUMENT_TYPES).map(doc => (
             <button
               key={doc.id}
@@ -1021,193 +948,14 @@ export default function TemplateHub() {
           
           <div style={{ paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
             <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings size={16} /> {selectedDoc === 'DESIGN_FEE_COSTINGS' ? '💰 Global Design Fee Costings Matrix' : `Document Settings: ${activeDoc?.name}`}
+              <Settings size={16} /> Document Settings: {activeDoc?.name}
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              {selectedDoc === 'DESIGN_FEE_COSTINGS' 
-                ? 'Configure global base rates for Architectural Fittings, Concept Lighting, and phase multipliers used when creating new projects.' 
-                : 'Enter the exact worksheet tab name in your Master Excel file for this document.'}
+              Enter the exact worksheet tab name in your Master Excel file for this document.
             </p>
           </div>
 
-          {selectedDoc === 'DESIGN_FEE_COSTINGS' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Costings Matrix Grid */}
-              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', overflowX: 'auto' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-primary)' }}>📐 Meterage & Phase Costing Rates (Excl. VAT)</h4>
-                
-                <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'left' }}>
-                      <th style={{ padding: '8px' }}>Area Category</th>
-                      <th style={{ padding: '8px' }}>Architectural Fitting (R/m²)</th>
-                      <th style={{ padding: '8px' }}>Concept Lighting Design (R/m²)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      { key: 'experiential_living', label: 'Experiential Living' },
-                      { key: 'secondary_living', label: 'Secondary Living' },
-                      { key: 'non_experiential_living', label: 'Non-Experiential Living' },
-                      { key: 'experiential_landscape', label: 'Experiential Landscape' },
-                      { key: 'secondary_landscape', label: 'Secondary Landscape' }
-                    ].map(row => (
-                      <tr key={row.key} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '8px', fontWeight: 600 }}>{row.label}</td>
-                        <td style={{ padding: '8px' }}>
-                          <input 
-                            type="number"
-                            className="form-control"
-                            style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                            value={costingRates.area_rates[row.key]?.archFitting || 0}
-                            onChange={e => setCostingRates({
-                              ...costingRates,
-                              area_rates: {
-                                ...costingRates.area_rates,
-                                [row.key]: {
-                                  ...costingRates.area_rates[row.key],
-                                  archFitting: parseFloat(e.target.value) || 0
-                                }
-                              }
-                            })}
-                          />
-                        </td>
-                        <td style={{ padding: '8px' }}>
-                          <input 
-                            type="number"
-                            className="form-control"
-                            style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                            value={costingRates.area_rates[row.key]?.conceptLighting || 0}
-                            onChange={e => setCostingRates({
-                              ...costingRates,
-                              area_rates: {
-                                ...costingRates.area_rates,
-                                [row.key]: {
-                                  ...costingRates.area_rates[row.key],
-                                  conceptLighting: parseFloat(e.target.value) || 0
-                                }
-                              }
-                            })}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Multipliers & Flat Fees */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>📊 Phase Percentage Multipliers</h4>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Schematic Design (% of Concept)</label>
-                    <input 
-                      type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={(costingRates.phase_multipliers?.schematicPercent * 100) || 80}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        phase_multipliers: { ...costingRates.phase_multipliers, schematicPercent: (parseFloat(e.target.value) || 0) / 100 }
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Final Design (% of Concept)</label>
-                    <input 
-                      type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={(costingRates.phase_multipliers?.finalPercent * 100) || 65}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        phase_multipliers: { ...costingRates.phase_multipliers, finalPercent: (parseFloat(e.target.value) || 0) / 100 }
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Site Support (% of Design Subtotal)</label>
-                    <input 
-                      type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={(costingRates.phase_multipliers?.siteSupportPercent * 100) || 22.72}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        phase_multipliers: { ...costingRates.phase_multipliers, siteSupportPercent: (parseFloat(e.target.value) || 0) / 100 }
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Commissioning (% of Design Subtotal)</label>
-                    <input 
-                      type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={(costingRates.phase_multipliers?.commissioningPercent * 100) || 10.70}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        phase_multipliers: { ...costingRates.phase_multipliers, commissioningPercent: (parseFloat(e.target.value) || 0) / 100 }
-                      })}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>💱 Currency & Signature Consultant Fees</h4>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>USD Conversion Rate (ZAR / USD)</label>
-                    <input 
-                      type="number" step="0.1" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={costingRates.currency_rates?.usdConv || 20.00}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        currency_rates: { ...costingRates.currency_rates, usdConv: parseFloat(e.target.value) || 20.00 }
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Signature Consultant Site Support Flat (R)</label>
-                    <input 
-                      type="number" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={costingRates.signature_consultant_flat?.siteSupport || 4000}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        signature_consultant_flat: { ...costingRates.signature_consultant_flat, siteSupport: parseFloat(e.target.value) || 0 }
-                      })}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Signature Consultant Commissioning Flat (R)</label>
-                    <input 
-                      type="number" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-                      value={costingRates.signature_consultant_flat?.commissioning || 4000}
-                      onChange={e => setCostingRates({
-                        ...costingRates,
-                        signature_consultant_flat: { ...costingRates.signature_consultant_flat, commissioning: parseFloat(e.target.value) || 0 }
-                      })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={handleSaveGlobalCostings} 
-                  disabled={saving}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 600 }}
-                >
-                  <Save size={16} /> {saving ? 'Saving...' : 'Save Global Costings Matrix'}
-                </button>
-              </div>
-
-              {message && (
-                <div style={{ 
-                  padding: '10px 14px', borderRadius: '6px', 
-                  background: message.type === 'success' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-                  border: message.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)',
-                  color: message.type === 'success' ? 'var(--text-success)' : 'var(--text-danger)',
-                  fontSize: '12.5px', textAlign: 'center'
-                }}>
-                  {message.text}
-                </div>
-              )}
-            </div>
-          ) : loading ? (
+          {loading ? (
             <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Loading settings...</div>
           ) : (
             

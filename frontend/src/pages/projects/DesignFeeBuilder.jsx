@@ -91,70 +91,10 @@ function PreviewModal({ url, onClose }) {
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initialLandscapeArea = 0, projectId, initialRatesSnapshot }) {
+function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initialLandscapeArea = 0 }) {
   // --- Section 1: Scope & Meterage ---
   const [livingArea, setLivingArea] = useState(initialLivingArea);
   const [landscapeArea, setLandscapeArea] = useState(initialLandscapeArea);
-
-  const DEFAULT_RATES = {
-    currency_rates: { usdConv: 20.00 },
-    phase_multipliers: { schematicPercent: 0.80, finalPercent: 0.65, siteSupportPercent: 0.2272, commissioningPercent: 0.1070 },
-    area_rates: {
-      experiential_living: { archFitting: 1050.00, conceptLighting: 180.00 },
-      secondary_living: { archFitting: 750.00, conceptLighting: 105.00 },
-      non_experiential_living: { archFitting: 300.00, conceptLighting: 30.00 },
-      experiential_landscape: { archFitting: 825.00, conceptLighting: 140.00 },
-      secondary_landscape: { archFitting: 525.00, conceptLighting: 55.00 }
-    },
-    default_discounts: { designDiscountRate: 0.20, archDiscountRate: 0.04 },
-    signature_consultant_flat: { siteSupport: 4000.00, commissioning: 4000.00 }
-  };
-
-  const [activeRates, setActiveRates] = useState(initialRatesSnapshot || DEFAULT_RATES);
-  const [rateActionMessage, setRateActionMessage] = useState(null);
-  const [loadingRatesAction, setLoadingRatesAction] = useState(false);
-
-  useEffect(() => {
-    if (initialRatesSnapshot) {
-      setActiveRates(initialRatesSnapshot);
-    }
-  }, [initialRatesSnapshot]);
-
-  const handleResyncRates = async () => {
-    if (!projectId) return;
-    setLoadingRatesAction(true);
-    try {
-      const res = await fetch(`${API_BASE}/projects/${projectId}/resync-design-rates`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setActiveRates(data.rates);
-        setRateActionMessage("Resynced to latest global Settings rates!");
-        setTimeout(() => setRateActionMessage(null), 3000);
-      }
-    } catch (err) {
-      alert("Failed to resync rates");
-    } finally {
-      setLoadingRatesAction(false);
-    }
-  };
-
-  const handleRevertRates = async () => {
-    if (!projectId) return;
-    setLoadingRatesAction(true);
-    try {
-      const res = await fetch(`${API_BASE}/projects/${projectId}/revert-design-rates`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setActiveRates(data.rates);
-        setRateActionMessage("Reverted to project creation rates!");
-        setTimeout(() => setRateActionMessage(null), 3000);
-      }
-    } catch (err) {
-      alert("Failed to revert rates");
-    } finally {
-      setLoadingRatesAction(false);
-    }
-  };
   
   const [expLiving, setExpLiving] = useState(30);
   const [secLiving, setSecLiving] = useState(60);
@@ -174,9 +114,9 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
   const [commissioning, setCommissioning] = useState(true);
   const [commissioningQty, setCommissioningQty] = useState(1);
   
-  const usdConv = activeRates.currency_rates?.usdConv || 20.00;
-  const designDiscountRate = activeRates.default_discounts?.designDiscountRate || 0.20; 
-  const archDiscountRate = activeRates.default_discounts?.archDiscountRate || 0.04;
+  const usdConv = 20.00;
+  const designDiscountRate = 0.20; 
+  const archDiscountRate = 0.04;
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -195,54 +135,31 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
   const sqExpLand = landscapeArea * (expLand / 100);
   const sqSecLand = landscapeArea * (secLand / 100);
 
-  const areaRates = activeRates.area_rates || DEFAULT_RATES.area_rates;
-
-  // Note: concept lighting rates in sheet are Excl. VAT (e.g. 180). Multiply by 1.15 for ZAR Incl. VAT rate (207)
-  const rExpLiving = (areaRates.experiential_living?.conceptLighting || 180.00) * 1.15;
-  const rSecLiving = (areaRates.secondary_living?.conceptLighting || 105.00) * 1.15;
-  const rNonExpLiving = (areaRates.non_experiential_living?.conceptLighting || 30.00) * 1.15;
-  const rExpLand = (areaRates.experiential_landscape?.conceptLighting || 140.00) * 1.15;
-  const rSecLand = (areaRates.secondary_landscape?.conceptLighting || 55.00) * 1.15;
-
   const conceptTotalRaw = 
-      (sqExpLiving * rExpLiving) + (sqSecLiving * rSecLiving) +
-      (sqNonExpLiving * rNonExpLiving) + (sqExpLand * rExpLand) + (sqSecLand * rSecLand);
-
-  const schematicMult = activeRates.phase_multipliers?.schematicPercent || 0.80;
-  const finalMult = activeRates.phase_multipliers?.finalPercent || 0.65;
-  const siteSupportMult = activeRates.phase_multipliers?.siteSupportPercent || 0.2272;
-  const commissioningMult = activeRates.phase_multipliers?.commissioningPercent || 0.1070;
-
-  const sigSiteFlat = activeRates.signature_consultant_flat?.siteSupport || 4000;
-  const sigCommFlat = activeRates.signature_consultant_flat?.commissioning || 4000;
+      (sqExpLiving * 207.00) + (sqSecLiving * 120.75) +
+      (sqNonExpLiving * 34.50) + (sqExpLand * 161.00) + (sqSecLand * 63.25);
 
   let ConceptCost = 0, SchematicCost = 0, FinalCost = 0;
   if (sigConsult) {
       ConceptCost = conceptTotalRaw;
   } else {
       ConceptCost = conceptDesign ? conceptTotalRaw : 0;
-      SchematicCost = schematicDesign ? (conceptTotalRaw * schematicMult) : 0; 
-      FinalCost = finalDesign ? (conceptTotalRaw * finalMult) : 0;         
+      SchematicCost = schematicDesign ? (conceptTotalRaw * 0.80) : 0; 
+      FinalCost = finalDesign ? (conceptTotalRaw * 0.65) : 0;         
   }
 
   const rawDesignSubtotal = ConceptCost + SchematicCost + FinalCost;
 
   let siteSupportCost = siteSupport
-    ? (sigConsult ? sigSiteFlat * siteSupportQty : rawDesignSubtotal * siteSupportMult * siteSupportQty)
+    ? (sigConsult ? 4000 * siteSupportQty : rawDesignSubtotal * 0.2272 * siteSupportQty)
     : 0;
   let commissioningCost = commissioning
-    ? (sigConsult ? sigCommFlat * commissioningQty : rawDesignSubtotal * commissioningMult * commissioningQty)
+    ? (sigConsult ? 4000 * commissioningQty : rawDesignSubtotal * 0.1070 * commissioningQty)
     : 0;
 
-  const archExpLiving = areaRates.experiential_living?.archFitting || 1050;
-  const archSecLiving = areaRates.secondary_living?.archFitting || 750;
-  const archNonExpLiving = areaRates.non_experiential_living?.archFitting || 300;
-  const archExpLand = areaRates.experiential_landscape?.archFitting || 825;
-  const archSecLand = areaRates.secondary_landscape?.archFitting || 525;
-
   const archSubtotalRaw = archFittings ? (
-      (sqExpLiving * archExpLiving) + (sqSecLiving * archSecLiving) + (sqNonExpLiving * archNonExpLiving) +
-      (sqExpLand * archExpLand) + (sqSecLand * archSecLand)
+      (sqExpLiving * 1050) + (sqSecLiving * 750) + (sqNonExpLiving * 300) +
+      (sqExpLand * 825) + (sqSecLand * 525)
   ) : 0;
 
   let unifiedDiscountValue = 0;
@@ -324,43 +241,9 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
   return (
     <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h3 style={{ margin: 0 }}>💰 1. Master Design Fee Builder</h3>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--text-info)', fontWeight: 600 }}>
-                🔒 Rates locked to project snapshot
-              </span>
-              {rateActionMessage && (
-                <span style={{ color: '#10b981', fontWeight: 600, animation: 'fadeIn 0.3s' }}>
-                  {rateActionMessage}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {projectId && (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button 
-                onClick={handleResyncRates} 
-                disabled={loadingRatesAction}
-                className="btn btn-ghost" 
-                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }}
-                title="Update this project's rates to match the latest global Settings rates"
-              >
-                🔄 Re-apply Latest Rates
-              </button>
-              <button 
-                onClick={handleRevertRates} 
-                disabled={loadingRatesAction}
-                className="btn btn-ghost" 
-                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }}
-                title="Restore this project's rates back to its initial creation rates"
-              >
-                ⏪ Revert to Original Rates
-              </button>
-            </div>
-          )}
+      <div className="stat-card" style={{ marginBottom: '2rem', borderLeft: '4px solid var(--accent-purple)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h3>💰 1. Master Design Fee Builder</h3>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) minmax(350px, 1fr)', gap: '2rem', alignItems: 'start' }}>

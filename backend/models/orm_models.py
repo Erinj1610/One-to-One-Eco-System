@@ -89,10 +89,6 @@ class Project(Base):
     s5 = Column(String, nullable=True)
     days_left = Column(String, nullable=True)
 
-    # Design Fee Rate Snapshots
-    design_fee_rates_snapshot = Column(JSON, nullable=True)
-    design_fee_rates_original = Column(JSON, nullable=True)
-
     # 1-to-Many Relationships
     quotes = relationship("Quote", back_populates="project")
     field_values = relationship("ProjectFieldValue", back_populates="project")

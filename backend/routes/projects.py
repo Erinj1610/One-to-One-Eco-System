@@ -92,40 +92,6 @@ def bulk_delete_projects(payload: BulkDeleteProjectsSchema, db: Session = Depend
         
     return {"message": f"Successfully deleted {len(projects)} projects and their dependencies"}
 
-DEFAULT_DESIGN_FEE_RATES = {
-    "currency_rates": {
-        "usdConv": 20.00
-    },
-    "phase_multipliers": {
-        "schematicPercent": 0.80,
-        "finalPercent": 0.65,
-        "siteSupportPercent": 0.2272,
-        "commissioningPercent": 0.1070
-    },
-    "area_rates": {
-        "experiential_living": { "archFitting": 1050.00, "conceptLighting": 180.00 },
-        "secondary_living": { "archFitting": 750.00, "conceptLighting": 105.00 },
-        "non_experiential_living": { "archFitting": 300.00, "conceptLighting": 30.00 },
-        "experiential_landscape": { "archFitting": 825.00, "conceptLighting": 140.00 },
-        "secondary_landscape": { "archFitting": 525.00, "conceptLighting": 55.00 }
-    },
-    "default_discounts": {
-        "designDiscountRate": 0.20,
-        "archDiscountRate": 0.04
-    },
-    "signature_consultant_flat": {
-        "siteSupport": 4000.00,
-        "commissioning": 4000.00
-    }
-}
-
-def get_active_global_design_rates(db: Session) -> dict:
-    from models.orm_models import TemplateConfig
-    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "DESIGN_FEE_RATES").first()
-    if config and config.config_json:
-        return config.config_json
-    return DEFAULT_DESIGN_FEE_RATES
-
 @router.post("/")
 def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
     # Generate project key if not provided
@@ -137,8 +103,6 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
     existing = db.query(Project).filter(Project.project_key == p_key).first()
     if existing:
         raise HTTPException(status_code=400, detail="Project with this key already exists")
-
-    active_rates = get_active_global_design_rates(db)
 
     new_project = Project(
         name=project.name,
@@ -156,41 +120,12 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
         s2=project.s2,
         s3=project.s3,
         s4=project.s4,
-        s5=project.s5,
-        design_fee_rates_snapshot=active_rates,
-        design_fee_rates_original=active_rates
+        s5=project.s5
     )
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
     return new_project
-
-@router.post("/{project_id}/resync-design-rates")
-def resync_project_design_rates(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    active_rates = get_active_global_design_rates(db)
-    project.design_fee_rates_snapshot = active_rates
-    db.commit()
-    db.refresh(project)
-    return {"message": "Project design fee rates resynced to latest global settings", "rates": project.design_fee_rates_snapshot}
-
-@router.post("/{project_id}/revert-design-rates")
-def revert_project_design_rates(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    if project.design_fee_rates_original:
-        project.design_fee_rates_snapshot = project.design_fee_rates_original
-    else:
-        project.design_fee_rates_snapshot = get_active_global_design_rates(db)
-        
-    db.commit()
-    db.refresh(project)
-    return {"message": "Project design fee rates reverted to original creation snapshot", "rates": project.design_fee_rates_snapshot}
 
 class ReconcileProjectSchema(BaseModel):
     project_key: str
