@@ -548,7 +548,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text (control markers) and shrink Column A width to 0.001
+    # 3. Third Pass: Clear Column A text (control markers) and set print_area to B1:M<max_row>
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
@@ -557,6 +557,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 cell_a.value = None
 
     ws.column_dimensions['A'].width = 0.001
+    ws.print_area = f"B1:M{ws.max_row}"
 
     # 4. Fit-To-Page setup for PDF conversion
     ws.page_setup.fitToWidth = 1
