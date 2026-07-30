@@ -150,20 +150,27 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     
     # 1. Scan Column A (and cell values) for control tags
     for r in range(1, ws.max_row + 1):
-        cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
+        cell_a = ws.cell(row=r, column=1)
+        cell_a_val = str(cell_a.value or '').strip()
+        if not cell_a_val and type(cell_a).__name__ == 'MergedCell':
+            # Check merged cell range top-left value
+            for m in ws.merged_cells.ranges:
+                if m.min_col == 1 and m.min_row <= r <= m.max_row:
+                    cell_a_val = str(ws.cell(row=m.min_row, column=1).value or '').strip()
+                    break
         
-        if "[FLOOR_HEADER]" in cell_a_val or cell_a_val == "{{#floor}}":
+        if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
             floor_header_row = r
-        elif "[AREA_HEADER]" in cell_a_val or cell_a_val == "{{#area}}":
+        elif "[AREA_HEADER]" in cell_a_val or "{{#area}}" in cell_a_val:
             area_header_row = r
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
         elif "[ITEM]" in cell_a_val:
             if item_row is None:
                 item_row = r
-        elif "[AREA_FOOTER]" in cell_a_val or cell_a_val == "{{/area}}":
+        elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
             area_footer_row = r
-        elif "[FLOOR_FOOTER]" in cell_a_val or cell_a_val == "{{/floor}}":
+        elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
     has_tagged_loop = (item_row is not None)
