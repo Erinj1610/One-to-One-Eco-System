@@ -328,14 +328,23 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         repls["{{item." + k_lower + "}}"] = str_val
                         repls["{{" + k_lower + "}}"] = str_val
 
-                    # Ensure explicit mappings for oneOneCode variations
+                    # Ensure explicit mappings for oneOneCode and type/planCode variations
                     one_code = item.get("oneOneCode") or item.get("code") or ''
+                    item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
+                    
                     repls["{{item.oneOneCode}}"] = one_code
                     repls["{{item.oneonecode}}"] = one_code
                     repls["{{item.one_one_code}}"] = one_code
                     repls["{{oneOneCode}}"] = one_code
                     repls["{{oneonecode}}"] = one_code
                     repls["{{one_one_code}}"] = one_code
+
+                    repls["{{item.type}}"] = item_type
+                    repls["{{item.planCode}}"] = item_type
+                    repls["{{item.plan_code}}"] = item_type
+                    repls["{{type}}"] = item_type
+                    repls["{{planCode}}"] = item_type
+                    repls["{{plan_code}}"] = item_type
                         
                     apply_design(curr_row, item_design, repls, row_heights.get("item"))
                     for min_c, max_c in item_merges:
@@ -516,12 +525,21 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             item_repls["{{" + k_lower + "}}"] = str_val
 
                         one_code = item.get("oneOneCode") or item.get("code") or ''
+                        item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
+
                         item_repls["{{item.oneOneCode}}"] = one_code
                         item_repls["{{item.oneonecode}}"] = one_code
                         item_repls["{{item.one_one_code}}"] = one_code
                         item_repls["{{oneOneCode}}"] = one_code
                         item_repls["{{oneonecode}}"] = one_code
                         item_repls["{{one_one_code}}"] = one_code
+
+                        item_repls["{{item.type}}"] = item_type
+                        item_repls["{{item.planCode}}"] = item_type
+                        item_repls["{{item.plan_code}}"] = item_type
+                        item_repls["{{type}}"] = item_type
+                        item_repls["{{planCode}}"] = item_type
+                        item_repls["{{plan_code}}"] = item_type
 
                         sorted_item_repls = sorted(item_repls.items(), key=lambda x: len(x[0]), reverse=True)
                         for k, v in sorted_item_repls:
