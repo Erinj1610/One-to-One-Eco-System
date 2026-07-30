@@ -182,7 +182,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (item_row is not None)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None)
     
     if has_tagged_loop:
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
@@ -221,7 +221,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         floor_header_design = get_row_design(floor_header_row)
         area_header_design = get_row_design(area_header_row)
         table_header_designs = [get_row_design(r) for r in table_header_rows]
-        item_design = get_row_design(item_row)
+        item_design = get_row_design(item_row) if item_row else []
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
@@ -236,7 +236,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
-        item_merges = get_row_merges(item_row)
+        item_merges = get_row_merges(item_row) if item_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
@@ -304,12 +304,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         inserted_rows_count = 0
 
         for f in floors:
+            floor_name = str(f.get("name", "")).strip()
             valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
             if not valid_areas: continue
 
-            # 1. Insert Floor Header
-            if floor_header_design:
-                apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
+            # 1. Insert Floor Header (Only if floor_header_row exists and floor name is specified)
+            if floor_header_design and floor_name and floor_name.lower() != 'unspecified':
+                apply_design(curr_row, floor_header_design, {"{{floor.name}}": floor_name}, row_heights.get("floor_header"))
                 for min_c, max_c in floor_header_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                     except Exception: pass
@@ -317,9 +318,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 inserted_rows_count += 1
 
             for a in valid_areas:
+                area_name = str(a.get("name", "")).strip()
                 # 2. Insert Area Header
-                if area_header_design:
-                    apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
+                if area_header_design and area_name and area_name.lower() != 'unspecified':
+                    apply_design(curr_row, area_header_design, {"{{area.name}}": area_name}, row_heights.get("area_header"))
                     for min_c, max_c in area_header_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
@@ -333,43 +335,42 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     curr_row += 1
                     inserted_rows_count += 1
 
-                # 4. Insert Items
-                for idx, item in enumerate(a.get("items", [])):
-                    repls = {"{{index}}": str(idx + 1)}
-                    for k, v in item.items():
-                        str_val = str(v if v is not None else '')
-                        repls["{{item." + str(k) + "}}"] = str_val
-                        repls["{{" + str(k) + "}}"] = str_val
-                        
-                        # Add case-insensitive aliases for code/type properties
-                        k_lower = str(k).lower()
-                        repls["{{item." + k_lower + "}}"] = str_val
-                        repls["{{" + k_lower + "}}"] = str_val
+                # 4. Insert Items (Only if [ITEM] row tag exists in template)
+                if item_design:
+                    for idx, item in enumerate(a.get("items", [])):
+                        repls = {"{{index}}": str(idx + 1)}
+                        for k, v in item.items():
+                            str_val = str(v if v is not None else '')
+                            repls["{{item." + str(k) + "}}"] = str_val
+                            repls["{{" + str(k) + "}}"] = str_val
+                            
+                            k_lower = str(k).lower()
+                            repls["{{item." + k_lower + "}}"] = str_val
+                            repls["{{" + k_lower + "}}"] = str_val
 
-                    # Strictly set oneOneCode (never fall back to item.code)
-                    one_code = item.get("oneOneCode") or ''
-                    item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
-                    
-                    repls["{{item.oneOneCode}}"] = one_code
-                    repls["{{item.oneonecode}}"] = one_code
-                    repls["{{item.one_one_code}}"] = one_code
-                    repls["{{oneOneCode}}"] = one_code
-                    repls["{{oneonecode}}"] = one_code
-                    repls["{{one_one_code}}"] = one_code
-
-                    repls["{{item.type}}"] = item_type
-                    repls["{{item.planCode}}"] = item_type
-                    repls["{{item.plan_code}}"] = item_type
-                    repls["{{type}}"] = item_type
-                    repls["{{planCode}}"] = item_type
-                    repls["{{plan_code}}"] = item_type
+                        one_code = item.get("oneOneCode") or ''
+                        item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
                         
-                    apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                    for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                        except Exception: pass
-                    curr_row += 1
-                    inserted_rows_count += 1
+                        repls["{{item.oneOneCode}}"] = one_code
+                        repls["{{item.oneonecode}}"] = one_code
+                        repls["{{item.one_one_code}}"] = one_code
+                        repls["{{oneOneCode}}"] = one_code
+                        repls["{{oneonecode}}"] = one_code
+                        repls["{{one_one_code}}"] = one_code
+
+                        repls["{{item.type}}"] = item_type
+                        repls["{{item.planCode}}"] = item_type
+                        repls["{{item.plan_code}}"] = item_type
+                        repls["{{type}}"] = item_type
+                        repls["{{planCode}}"] = item_type
+                        repls["{{plan_code}}"] = item_type
+                            
+                        apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                        for min_c, max_c in item_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
 
                 # 5. Insert Area Footer / Subtotal
                 if area_footer_design:
