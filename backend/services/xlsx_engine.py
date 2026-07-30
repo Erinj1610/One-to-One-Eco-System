@@ -319,8 +319,23 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 for idx, item in enumerate(a.get("items", [])):
                     repls = {"{{index}}": str(idx + 1)}
                     for k, v in item.items():
-                        repls["{{item." + str(k) + "}}"] = v
-                        repls["{{" + str(k) + "}}"] = v
+                        str_val = str(v if v is not None else '')
+                        repls["{{item." + str(k) + "}}"] = str_val
+                        repls["{{" + str(k) + "}}"] = str_val
+                        
+                        # Add case-insensitive aliases for code/type properties
+                        k_lower = str(k).lower()
+                        repls["{{item." + k_lower + "}}"] = str_val
+                        repls["{{" + k_lower + "}}"] = str_val
+
+                    # Ensure explicit mappings for oneOneCode variations
+                    one_code = item.get("oneOneCode") or item.get("code") or ''
+                    repls["{{item.oneOneCode}}"] = one_code
+                    repls["{{item.oneonecode}}"] = one_code
+                    repls["{{item.one_one_code}}"] = one_code
+                    repls["{{oneOneCode}}"] = one_code
+                    repls["{{oneonecode}}"] = one_code
+                    repls["{{one_one_code}}"] = one_code
                         
                     apply_design(curr_row, item_design, repls, row_heights.get("item"))
                     for min_c, max_c in item_merges:
@@ -490,10 +505,27 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     val_str = str(cell_def["value"] or '')
                     if val_str:
-                        val_str = val_str.replace("{{index}}", str(idx + 1))
+                        item_repls = {"{{index}}": str(idx + 1)}
                         for k, v in item.items():
-                            val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
-                            val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                            str_val = str(v if v is not None else '')
+                            item_repls["{{item." + str(k) + "}}"] = str_val
+                            item_repls["{{" + str(k) + "}}"] = str_val
+                            
+                            k_lower = str(k).lower()
+                            item_repls["{{item." + k_lower + "}}"] = str_val
+                            item_repls["{{" + k_lower + "}}"] = str_val
+
+                        one_code = item.get("oneOneCode") or item.get("code") or ''
+                        item_repls["{{item.oneOneCode}}"] = one_code
+                        item_repls["{{item.oneonecode}}"] = one_code
+                        item_repls["{{item.one_one_code}}"] = one_code
+                        item_repls["{{oneOneCode}}"] = one_code
+                        item_repls["{{oneonecode}}"] = one_code
+                        item_repls["{{one_one_code}}"] = one_code
+
+                        sorted_item_repls = sorted(item_repls.items(), key=lambda x: len(x[0]), reverse=True)
+                        for k, v in sorted_item_repls:
+                            val_str = val_str.replace(k, v)
 
                         try:
                             stripped_val = val_str.strip()
