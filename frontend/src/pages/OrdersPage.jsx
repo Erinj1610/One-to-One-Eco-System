@@ -987,6 +987,8 @@ export default function OrdersPage() {
       docType = 'TAX_INVOICE';
     } else if (targetTab === 'statement') {
       docType = 'PROGRESS_STATEMENT';
+    } else if (targetTab) {
+      docType = targetTab.toUpperCase();
     } else {
       setLivePreviewUrl(null);
       return;
@@ -1191,8 +1193,10 @@ export default function OrdersPage() {
       docType = 'TAX_INVOICE';
     } else if (activeDocType === 'statement') {
       docType = 'PROGRESS_STATEMENT';
+    } else if (activeDocType) {
+      docType = activeDocType.toUpperCase();
     } else {
-      alert(`${activeDocType} is not supported via Word docx templates.`);
+      alert(`${activeDocType} is not supported.`);
       return;
     }
 
@@ -4397,38 +4401,55 @@ export default function OrdersPage() {
                   {/* DOCUMENT SELECTION */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Select Document</span>
-                    {[
-                      { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
-                      { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
-                      { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
-                      { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
-                      { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
-                      { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
-                      { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
-                    ].map(doc => {
-                      const isSelected = selectedDocType === doc.id;
-                      return (
-                        <button
-                          key={doc.id}
-                          type="button"
-                          className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            justifyContent: 'flex-start',
-                            width: '100%',
-                            padding: '8px 12px',
-                            textAlign: 'left',
-                            borderRadius: '6px'
-                          }}
-                          onClick={() => setSelectedDocType(doc.id)}
-                        >
-                          {doc.icon}
-                          <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
-                        </button>
-                      );
-                    })}
+                    {(() => {
+                      const baseDocs = [
+                        { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                        { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
+                        { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
+                        { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
+                        { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
+                        { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
+                        { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
+                      ];
+                      try {
+                        const saved = localStorage.getItem('CUSTOM_DOC_TYPES');
+                        if (saved) {
+                          const parsed = JSON.parse(saved);
+                          Object.values(parsed).forEach(cd => {
+                            baseDocs.push({
+                              id: cd.id.toLowerCase(),
+                              name: cd.name,
+                              icon: <FileText size={14} />
+                            });
+                          });
+                        }
+                      } catch (e) {}
+
+                      return baseDocs.map(doc => {
+                        const isSelected = selectedDocType === doc.id;
+                        return (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              justifyContent: 'flex-start',
+                              width: '100%',
+                              padding: '8px 12px',
+                              textAlign: 'left',
+                              borderRadius: '6px'
+                            }}
+                            onClick={() => setSelectedDocType(doc.id)}
+                          >
+                            {doc.icon}
+                            <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
 
                   {/* PRINT / EXPORT ACTIONS */}

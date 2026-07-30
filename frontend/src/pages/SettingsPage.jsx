@@ -101,13 +101,13 @@ function DesignFeeCostingsSettings() {
                     type="number"
                     className="form-control"
                     style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                    value={costingRates.area_rates[row.key]?.archFitting || 0}
+                    value={costingRates.area_rates?.[row.key]?.archFitting || 0}
                     onChange={e => setCostingRates({
                       ...costingRates,
                       area_rates: {
-                        ...costingRates.area_rates,
+                        ...(costingRates.area_rates || {}),
                         [row.key]: {
-                          ...costingRates.area_rates[row.key],
+                          ...(costingRates.area_rates?.[row.key] || {}),
                           archFitting: parseFloat(e.target.value) || 0
                         }
                       }
@@ -119,13 +119,13 @@ function DesignFeeCostingsSettings() {
                     type="number"
                     className="form-control"
                     style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                    value={costingRates.area_rates[row.key]?.conceptLighting || 0}
+                    value={costingRates.area_rates?.[row.key]?.conceptLighting || 0}
                     onChange={e => setCostingRates({
                       ...costingRates,
                       area_rates: {
-                        ...costingRates.area_rates,
+                        ...(costingRates.area_rates || {}),
                         [row.key]: {
-                          ...costingRates.area_rates[row.key],
+                          ...(costingRates.area_rates?.[row.key] || {}),
                           conceptLighting: parseFloat(e.target.value) || 0
                         }
                       }

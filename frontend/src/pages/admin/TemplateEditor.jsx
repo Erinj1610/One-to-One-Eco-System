@@ -412,7 +412,26 @@ export default function TemplateHub() {
   const dragItem = useRef(null);
   const dragOverItem = useRef(null);
 
-  const [docTypesList, setDocTypesList] = useState(DOCUMENT_TYPES);
+  const [docTypesList, setDocTypesList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('CUSTOM_DOC_TYPES');
+      if (saved) {
+        return { ...DOCUMENT_TYPES, ...JSON.parse(saved) };
+      }
+    } catch (e) {}
+    return DOCUMENT_TYPES;
+  });
+
+  useEffect(() => {
+    try {
+      const customOnly = {};
+      Object.keys(docTypesList).forEach(k => {
+        if (!DOCUMENT_TYPES[k]) customOnly[k] = docTypesList[k];
+      });
+      localStorage.setItem('CUSTOM_DOC_TYPES', JSON.stringify(customOnly));
+    } catch (e) {}
+  }, [docTypesList]);
+
   const activeDoc = docTypesList[selectedDoc] || { id: selectedDoc, name: selectedDoc, description: `Custom template mapping for ${selectedDoc}`, tokens: SHARED_ORDER_TOKENS };
 
   useEffect(() => {
@@ -1087,13 +1106,13 @@ export default function TemplateHub() {
                             type="number"
                             className="form-control"
                             style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                            value={costingRates.area_rates[row.key]?.archFitting || 0}
+                            value={costingRates.area_rates?.[row.key]?.archFitting || 0}
                             onChange={e => setCostingRates({
                               ...costingRates,
                               area_rates: {
-                                ...costingRates.area_rates,
+                                ...(costingRates.area_rates || {}),
                                 [row.key]: {
-                                  ...costingRates.area_rates[row.key],
+                                  ...(costingRates.area_rates?.[row.key] || {}),
                                   archFitting: parseFloat(e.target.value) || 0
                                 }
                               }
@@ -1105,13 +1124,13 @@ export default function TemplateHub() {
                             type="number"
                             className="form-control"
                             style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                            value={costingRates.area_rates[row.key]?.conceptLighting || 0}
+                            value={costingRates.area_rates?.[row.key]?.conceptLighting || 0}
                             onChange={e => setCostingRates({
                               ...costingRates,
                               area_rates: {
-                                ...costingRates.area_rates,
+                                ...(costingRates.area_rates || {}),
                                 [row.key]: {
-                                  ...costingRates.area_rates[row.key],
+                                  ...(costingRates.area_rates?.[row.key] || {}),
                                   conceptLighting: parseFloat(e.target.value) || 0
                                 }
                               }
