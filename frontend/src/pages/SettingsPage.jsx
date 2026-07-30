@@ -205,57 +205,9 @@ function DesignFeeCostingsSettings() {
         </table>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>📊 Phase Percentage Multipliers</h4>
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Schematic Design (% of Concept)</label>
-            <input 
-              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-              value={(costingRates.phase_multipliers?.schematicPercent * 100) || 80}
-              onChange={e => setCostingRates({
-                ...costingRates,
-                phase_multipliers: { ...costingRates.phase_multipliers, schematicPercent: (parseFloat(e.target.value) || 0) / 100 }
-              })}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Final Design (% of Concept)</label>
-            <input 
-              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-              value={(costingRates.phase_multipliers?.finalPercent * 100) || 65}
-              onChange={e => setCostingRates({
-                ...costingRates,
-                phase_multipliers: { ...costingRates.phase_multipliers, finalPercent: (parseFloat(e.target.value) || 0) / 100 }
-              })}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Site Support (% of Design Subtotal)</label>
-            <input 
-              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-              value={(costingRates.phase_multipliers?.siteSupportPercent * 100) || 22.72}
-              onChange={e => setCostingRates({
-                ...costingRates,
-                phase_multipliers: { ...costingRates.phase_multipliers, siteSupportPercent: (parseFloat(e.target.value) || 0) / 100 }
-              })}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Commissioning (% of Design Subtotal)</label>
-            <input 
-              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
-              value={(costingRates.phase_multipliers?.commissioningPercent * 100) || 10.70}
-              onChange={e => setCostingRates({
-                ...costingRates,
-                phase_multipliers: { ...costingRates.phase_multipliers, commissioningPercent: (parseFloat(e.target.value) || 0) / 100 }
-              })}
-            />
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>💱 Currency & Signature Consultant Fees</h4>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', marginBottom: '20px', maxWidth: '500px' }}>
+        <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: 'var(--text-primary)' }}>💱 Currency & Signature Consultant Fees</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div>
             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>USD Conversion Rate (ZAR / USD)</label>
             <input 

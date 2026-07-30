@@ -4424,13 +4424,16 @@ export default function OrdersPage() {
                         { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
                       ];
                       
-                      Object.values(liveCustomDocs).forEach(cd => {
-                        if (!baseDocs.some(b => b.id === cd.id.toLowerCase())) {
-                          baseDocs.push({
-                            id: cd.id.toLowerCase(),
-                            name: cd.name,
-                            icon: <FileText size={14} />
-                          });
+                      Object.values(liveCustomDocs || {}).forEach(cd => {
+                        if (cd && cd.id && typeof cd.id === 'string') {
+                          const lowerId = cd.id.toLowerCase();
+                          if (!baseDocs.some(b => b.id === lowerId)) {
+                            baseDocs.push({
+                              id: lowerId,
+                              name: cd.name || cd.id,
+                              icon: <FileText size={14} />
+                            });
+                          }
                         }
                       });
 
