@@ -182,6 +182,20 @@ def init_db():
                 except Exception as alter_err:
                     print(f"Database migration is_credit (info/critical): {alter_err}")
                 
+                # Migrate projects table to ensure design_fee_rates_snapshot and design_fee_rates_original exist safely
+                try:
+                    project_cols = [c['name'] for c in inspector.get_columns('projects')]
+                    if 'design_fee_rates_snapshot' not in project_cols:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN design_fee_rates_snapshot JSON;"))
+                        conn.commit()
+                        print("Database migration: ensured 'design_fee_rates_snapshot' column exists on 'projects' table.")
+                    if 'design_fee_rates_original' not in project_cols:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN design_fee_rates_original JSON;"))
+                        conn.commit()
+                        print("Database migration: ensured 'design_fee_rates_original' column exists on 'projects' table.")
+                except Exception as proj_alter_err:
+                    print(f"Database migration projects columns (info): {proj_alter_err}")
+                
                 # Migrate orders table to ensure pm_name exists
                 try:
                     order_cols = [c['name'] for c in inspector.get_columns('orders')]
