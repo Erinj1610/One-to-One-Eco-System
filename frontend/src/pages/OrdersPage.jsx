@@ -1176,15 +1176,7 @@ export default function OrdersPage() {
   }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length]);
 
   useEffect(() => {
-    if (workspaceSubTab === 'doc_gen' && (
-      selectedDocType === 'quote' || 
-      selectedDocType === 'boq_doc' || 
-      selectedDocType === 'schedule' || 
-      selectedDocType === 'deposit_invoice' || 
-      selectedDocType === 'balance_invoice' || 
-      selectedDocType === 'tax_invoice' || 
-      selectedDocType === 'statement'
-    )) {
+    if (workspaceSubTab === 'doc_gen' && selectedDocType) {
       triggerLivePreviewCompile(selectedDocType, previewPage);
     } else {
       setLivePreviewUrl(null);
@@ -4537,7 +4529,7 @@ export default function OrdersPage() {
                             marginBottom: '16px'
                           }}></div>
                           <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
-                          <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Word template</span>
+                          <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Master Excel template</span>
                         </div>
                       ) : (
                         <>
