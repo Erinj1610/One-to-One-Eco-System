@@ -950,9 +950,13 @@ export default function OrdersPage() {
     const grouped = {};
     items.forEach(item => {
       const code = (item.code || '').trim();
+      const oneOneCode = (item.oneOneCode || '').trim();
+      const itemType = (item.type || '').trim();
       const desc = (item.description || '').trim();
-      const key = code ? code : desc;
-      if (!key) return;
+      
+      // Group uniquely by itemCode + oneOneCode + PlanCode (type)
+      const key = `${code}_${oneOneCode}_${itemType}_${desc}`.toLowerCase();
+      if (!key || key === '___') return;
 
       if (!grouped[key]) {
         grouped[key] = {
@@ -1005,6 +1009,8 @@ export default function OrdersPage() {
         finalItems = summarized.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
@@ -1207,6 +1213,8 @@ export default function OrdersPage() {
         finalItems = summarized.map((item, idx) => ({
           index: (idx + 1).toString(),
           code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
           description: item.description || '',
           qty: (item.qty || 0).toString(),
           brand: item.brand || '',
