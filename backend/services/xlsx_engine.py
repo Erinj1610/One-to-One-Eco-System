@@ -400,6 +400,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                                 tc.number_format = cell_def["number_format"]
                             else:
                                 tc.number_format = '"R"#,##0.00'
+                        elif "{{" in cell_val_s:
+                            val_t = cell_val_s
+                            for k, v in subtotal_repls.items():
+                                val_t = val_t.replace(k, str(v))
+                            tc.value = val_t
                             
                     for min_c, max_c in area_footer_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
@@ -435,6 +440,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             tc.number_format = cell_def["number_format"]
                         else:
                             tc.number_format = '"R"#,##0.00'
+                    elif "{{" in cell_val_s:
+                        val_t = cell_val_s
+                        for k, v in floor_subtotal_repls.items():
+                            val_t = val_t.replace(k, str(v))
+                        tc.value = val_t
 
                 for min_c, max_c in floor_footer_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
