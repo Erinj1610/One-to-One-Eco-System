@@ -166,10 +166,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    # A template is a nested area/floor loop ONLY if floor or area headers are present alongside [ITEM]
-    has_nested_loop = (item_row is not None) and (floor_header_row is not None or area_header_row is not None)
+    has_tagged_loop = (item_row is not None)
     
-    if has_nested_loop:
+    if has_tagged_loop:
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
@@ -289,49 +288,72 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         curr_row = min_ctrl_row
         inserted_rows_count = 0
 
-        for f in floors:
-            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
-            if not valid_areas: continue
+        # If template has no floor or area headers, process flat items directly
+        if not floor_header_design and not area_header_design:
+            # 3. Insert Table Headers
+            for h_idx, h_design in enumerate(table_header_designs):
+                h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
+                apply_design(curr_row, h_design, None, h_height)
+                curr_row += 1
+                inserted_rows_count += 1
 
-            # 1. Insert Floor Header
-            if floor_header_design:
-                apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
-                for min_c, max_c in floor_header_merges:
+            flat_items = tokens.get("items", [])
+            for idx, item in enumerate(flat_items):
+                repls = {"{{index}}": str(idx + 1)}
+                for k, v in item.items():
+                    repls["{{item." + str(k) + "}}"] = v
+                    repls["{{" + str(k) + "}}"] = v
+                    
+                apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                for min_c, max_c in item_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                     except Exception: pass
                 curr_row += 1
                 inserted_rows_count += 1
+        else:
+            for f in floors:
+                valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+                if not valid_areas: continue
 
-            for a in valid_areas:
-                # 2. Insert Area Header
-                if area_header_design:
-                    apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
-                    for min_c, max_c in area_header_merges:
+                # 1. Insert Floor Header
+                if floor_header_design:
+                    apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
+                    for min_c, max_c in floor_header_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
 
-                # 3. Insert Table Headers
-                for h_idx, h_design in enumerate(table_header_designs):
-                    h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
-                    apply_design(curr_row, h_design, None, h_height)
-                    curr_row += 1
-                    inserted_rows_count += 1
+                for a in valid_areas:
+                    # 2. Insert Area Header
+                    if area_header_design:
+                        apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
+                        for min_c, max_c in area_header_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
 
-                # 4. Insert Items
-                for idx, item in enumerate(a.get("items", [])):
-                    repls = {"{{index}}": str(idx + 1)}
-                    for k, v in item.items():
-                        repls["{{item." + str(k) + "}}"] = v
-                        repls["{{" + str(k) + "}}"] = v
-                        
-                    apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                    for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                        except Exception: pass
-                    curr_row += 1
-                    inserted_rows_count += 1
+                    # 3. Insert Table Headers
+                    for h_idx, h_design in enumerate(table_header_designs):
+                        h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
+                        apply_design(curr_row, h_design, None, h_height)
+                        curr_row += 1
+                        inserted_rows_count += 1
+
+                    # 4. Insert Items
+                    for idx, item in enumerate(a.get("items", [])):
+                        repls = {"{{index}}": str(idx + 1)}
+                        for k, v in item.items():
+                            repls["{{item." + str(k) + "}}"] = v
+                            repls["{{" + str(k) + "}}"] = v
+                            
+                        apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                        for min_c, max_c in item_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
 
                 # 5. Insert Area Footer / Subtotal
                 if area_footer_design:
