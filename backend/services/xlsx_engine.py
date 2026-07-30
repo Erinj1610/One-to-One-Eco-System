@@ -605,7 +605,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 else:
                     pass
 
-    # 3. Third Pass: Clear Column A text (control markers) and set print_area to B1:M<max_row>
+    # 3. Third Pass: Clear Column A text (control markers) and calculate exact active column print boundary
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
@@ -614,7 +614,20 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 cell_a.value = None
 
     ws.column_dimensions['A'].width = 0.001
-    ws.print_area = f"B1:M{ws.max_row}"
+    
+    # Calculate exact max occupied column letter dynamically (skipping Column A)
+    max_col_idx = 2
+    for r in range(1, min(ws.max_row + 1, 100)):
+        for c in range(ws.max_column, 1, -1):
+            cell = ws.cell(row=r, column=c)
+            if cell.value is not None and str(cell.value).strip() != '':
+                if c > max_col_idx:
+                    max_col_idx = c
+                break
+
+    from openpyxl.utils import get_column_letter
+    max_col_letter = get_column_letter(max_col_idx)
+    ws.print_area = f"B1:{max_col_letter}{ws.max_row}"
 
     # 4. Fit-To-Page setup for PDF conversion
     ws.page_setup.fitToWidth = 1
