@@ -15,6 +15,236 @@ const RATES = [
   { zone: 'Secondary landscape (60%)',      concept: 55,  schematic: 44,  final: 35.75, budget: 525 },
 ];
 
+function DesignFeeCostingsSettings() {
+  const DEFAULT_COSTING_MATRIX = {
+    currency_rates: { usdConv: 20.00 },
+    phase_multipliers: { schematicPercent: 0.80, finalPercent: 0.65, siteSupportPercent: 0.2272, commissioningPercent: 0.1070 },
+    area_rates: {
+      experiential_living: { archFitting: 1050.00, conceptLighting: 180.00 },
+      secondary_living: { archFitting: 750.00, conceptLighting: 105.00 },
+      non_experiential_living: { archFitting: 300.00, conceptLighting: 30.00 },
+      experiential_landscape: { archFitting: 825.00, conceptLighting: 140.00 },
+      secondary_landscape: { archFitting: 525.00, conceptLighting: 55.00 }
+    },
+    default_discounts: { designDiscountRate: 0.20, archDiscountRate: 0.04 },
+    signature_consultant_flat: { siteSupport: 4000.00, commissioning: 4000.00 }
+  };
+
+  const [costingRates, setCostingRates] = useState(DEFAULT_COSTING_MATRIX);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/configs/DESIGN_FEE_RATES`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.config_json && Object.keys(data.config_json).length > 0) {
+          setCostingRates(data.config_json);
+        }
+      })
+      .catch(err => console.error("Error fetching rate card:", err));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/configs/DESIGN_FEE_RATES`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(costingRates)
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Design Fee Costings Rate Card saved successfully!' });
+        setTimeout(() => setMessage(null), 3000);
+      } else {
+        setMessage({ type: 'error', text: 'Failed to save rate card.' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Error saving rate card.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+      <div className="section-label">💰 Design Fee Costings Rate Card Matrix</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+        Configure backend base rates for Architectural Fittings, Concept Lighting, and phase multipliers used when creating new project fee proposals.
+      </div>
+
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', marginBottom: '20px', overflowX: 'auto' }}>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-primary)' }}>📐 Meterage & Phase Costing Rates (Excl. VAT)</h4>
+        
+        <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'left' }}>
+              <th style={{ padding: '8px' }}>Area Category</th>
+              <th style={{ padding: '8px' }}>Architectural Fitting (R/m²)</th>
+              <th style={{ padding: '8px' }}>Concept Lighting Design (R/m²)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { key: 'experiential_living', label: 'Experiential Living' },
+              { key: 'secondary_living', label: 'Secondary Living' },
+              { key: 'non_experiential_living', label: 'Non-Experiential Living' },
+              { key: 'experiential_landscape', label: 'Experiential Landscape' },
+              { key: 'secondary_landscape', label: 'Secondary Landscape' }
+            ].map(row => (
+              <tr key={row.key} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px', fontWeight: 600 }}>{row.label}</td>
+                <td style={{ padding: '8px' }}>
+                  <input 
+                    type="number"
+                    className="form-control"
+                    style={{ height: '30px', fontSize: '12px', width: '140px' }}
+                    value={costingRates.area_rates[row.key]?.archFitting || 0}
+                    onChange={e => setCostingRates({
+                      ...costingRates,
+                      area_rates: {
+                        ...costingRates.area_rates,
+                        [row.key]: {
+                          ...costingRates.area_rates[row.key],
+                          archFitting: parseFloat(e.target.value) || 0
+                        }
+                      }
+                    })}
+                  />
+                </td>
+                <td style={{ padding: '8px' }}>
+                  <input 
+                    type="number"
+                    className="form-control"
+                    style={{ height: '30px', fontSize: '12px', width: '140px' }}
+                    value={costingRates.area_rates[row.key]?.conceptLighting || 0}
+                    onChange={e => setCostingRates({
+                      ...costingRates,
+                      area_rates: {
+                        ...costingRates.area_rates,
+                        [row.key]: {
+                          ...costingRates.area_rates[row.key],
+                          conceptLighting: parseFloat(e.target.value) || 0
+                        }
+                      }
+                    })}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>📊 Phase Percentage Multipliers</h4>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Schematic Design (% of Concept)</label>
+            <input 
+              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={(costingRates.phase_multipliers?.schematicPercent * 100) || 80}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                phase_multipliers: { ...costingRates.phase_multipliers, schematicPercent: (parseFloat(e.target.value) || 0) / 100 }
+              })}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Final Design (% of Concept)</label>
+            <input 
+              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={(costingRates.phase_multipliers?.finalPercent * 100) || 65}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                phase_multipliers: { ...costingRates.phase_multipliers, finalPercent: (parseFloat(e.target.value) || 0) / 100 }
+              })}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Site Support (% of Design Subtotal)</label>
+            <input 
+              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={(costingRates.phase_multipliers?.siteSupportPercent * 100) || 22.72}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                phase_multipliers: { ...costingRates.phase_multipliers, siteSupportPercent: (parseFloat(e.target.value) || 0) / 100 }
+              })}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Commissioning (% of Design Subtotal)</label>
+            <input 
+              type="number" step="0.01" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={(costingRates.phase_multipliers?.commissioningPercent * 100) || 10.70}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                phase_multipliers: { ...costingRates.phase_multipliers, commissioningPercent: (parseFloat(e.target.value) || 0) / 100 }
+              })}
+            />
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)' }}>💱 Currency & Signature Consultant Fees</h4>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>USD Conversion Rate (ZAR / USD)</label>
+            <input 
+              type="number" step="0.1" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={costingRates.currency_rates?.usdConv || 20.00}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                currency_rates: { ...costingRates.currency_rates, usdConv: parseFloat(e.target.value) || 20.00 }
+              })}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Signature Consultant Site Support Flat (R)</label>
+            <input 
+              type="number" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={costingRates.signature_consultant_flat?.siteSupport || 4000}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                signature_consultant_flat: { ...costingRates.signature_consultant_flat, siteSupport: parseFloat(e.target.value) || 0 }
+              })}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Signature Consultant Commissioning Flat (R)</label>
+            <input 
+              type="number" className="form-control" style={{ height: '32px', fontSize: '12px' }}
+              value={costingRates.signature_consultant_flat?.commissioning || 4000}
+              onChange={e => setCostingRates({
+                ...costingRates,
+                signature_consultant_flat: { ...costingRates.signature_consultant_flat, commissioning: parseFloat(e.target.value) || 0 }
+              })}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Save Rate Card'}
+        </button>
+      </div>
+
+      {message && (
+        <div style={{ 
+          marginTop: '16px', padding: '10px 14px', borderRadius: '6px', 
+          background: message.type === 'success' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+          border: message.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)',
+          color: message.type === 'success' ? 'var(--text-success)' : 'var(--text-danger)',
+          fontSize: '12.5px', textAlign: 'center'
+        }}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -1004,31 +1234,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Rate card' && (
-        <div>
-          <div className="section-label">Per-m² design fee rates</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>
-            These rates feed the design fee calculator. Edit and save to update all future quotes.
-          </div>
-          <div className="card">
-            <table className="table">
-              <thead><tr><th>Zone</th><th>Concept</th><th>Schematic</th><th>Final design</th><th>Product budget</th></tr></thead>
-              <tbody>
-                {RATES.map(r => (
-                  <tr key={r.zone}>
-                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{r.zone}</td>
-                    <td>R {r.concept}</td>
-                    <td>R {r.schematic}</td>
-                    <td>R {r.final}</td>
-                    <td>R {r.budget}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-            <button className="btn btn-primary">Save rate card</button>
-          </div>
-        </div>
+        <DesignFeeCostingsSettings />
       )}
 
       {activeTab === 'Integrations' && (
