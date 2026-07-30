@@ -949,15 +949,7 @@ export default function OrdersPage() {
   const [livePreviewUrl, setLivePreviewUrl] = useState(null);
   const [loadingLivePreview, setLoadingLivePreview] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
-  const showIframe = (
-    activeDocType === 'quote' || 
-    activeDocType === 'boq_doc' || 
-    activeDocType === 'schedule' || 
-    activeDocType === 'deposit_invoice' || 
-    activeDocType === 'balance_invoice' || 
-    activeDocType === 'tax_invoice' || 
-    activeDocType === 'statement'
-  ) && !!livePreviewUrl;
+  const showIframe = !!livePreviewUrl;
 
   // Helper to roll up items for the summarized Quotation
   const groupItemsForQuotation = (items) => {
