@@ -152,18 +152,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     for r in range(1, ws.max_row + 1):
         cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
         
-        if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
+        if "[FLOOR_HEADER]" in cell_a_val or cell_a_val == "{{#floor}}":
             floor_header_row = r
-        elif "[AREA_HEADER]" in cell_a_val or "{{#area}}" in cell_a_val:
+        elif "[AREA_HEADER]" in cell_a_val or cell_a_val == "{{#area}}":
             area_header_row = r
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
-        elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
+        elif "[ITEM]" in cell_a_val:
             if item_row is None:
                 item_row = r
-        elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
+        elif "[AREA_FOOTER]" in cell_a_val or cell_a_val == "{{/area}}":
             area_footer_row = r
-        elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
+        elif "[FLOOR_FOOTER]" in cell_a_val or cell_a_val == "{{/floor}}":
             floor_footer_row = r
 
     has_tagged_loop = (item_row is not None)
