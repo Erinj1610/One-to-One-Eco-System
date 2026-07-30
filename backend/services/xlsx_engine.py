@@ -115,13 +115,12 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
         logger.error(f"LibreOffice Excel conversion crashed: {e}")
         return False
 
-def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None, sheet_name: str = None) -> bool:
+def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None) -> bool:
     """
     Generic, dynamic Excel template engine.
-    Supports multi-level loops (Floor/Area/Item), arbitrary template tags, preserves 100% of template merged cell ranges,
-    and targets specific worksheet tabs in master workbook files.
+    Supports multi-level loops (Floor/Area/Item), arbitrary template tags, and preserves 100% of template merged cell ranges.
     """
-    logger.info(f"Merging XLSX template: {template_path} (Sheet: {sheet_name})")
+    logger.info(f"Merging XLSX template: {template_path}")
     
     if not os.path.exists(template_path):
         print(f"Error: Excel template missing at {template_path}")
@@ -129,14 +128,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         
     try:
         wb = openpyxl.load_workbook(template_path)
-        if sheet_name and sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            # Prune all other sheets so output file contains only the target document tab
-            for sname in list(wb.sheetnames):
-                if sname != sheet_name:
-                    del wb[sname]
-        else:
-            ws = wb.active
+        ws = wb.active
     except Exception as e:
         print(f"Error loading Excel template: {e}")
         return False
@@ -150,14 +142,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     
     # 1. Scan Column A (and cell values) for control tags
     for r in range(1, ws.max_row + 1):
-        cell_a = ws.cell(row=r, column=1)
-        cell_a_val = str(cell_a.value or '').strip()
-        if not cell_a_val and type(cell_a).__name__ == 'MergedCell':
-            # Check merged cell range top-left value
-            for m in ws.merged_cells.ranges:
-                if m.min_col == 1 and m.min_row <= r <= m.max_row:
-                    cell_a_val = str(ws.cell(row=m.min_row, column=1).value or '').strip()
-                    break
+        cell_a_val = str(ws.cell(row=r, column=1).value or '').strip()
         
         if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
             floor_header_row = r
@@ -165,7 +150,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             area_header_row = r
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
-        elif "[ITEM]" in cell_a_val:
+        elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
             if item_row is None:
                 item_row = r
         elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
@@ -264,7 +249,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 val = cell_def["value"]
                 if value_replacements and val:
                     val_str = str(val)
-                    # Sort replacement keys by length descending to prevent shorter tokens (e.g. {{item.code}}) matching inside longer tokens (e.g. {{item.oneOneCode}})
                     sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
                     for k, v in sorted_repls:
                         val_str = val_str.replace(k, str(v if v is not None else ''))
@@ -295,72 +279,49 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         curr_row = min_ctrl_row
         inserted_rows_count = 0
 
-        # If template has no floor or area headers, process flat items directly
-        if not floor_header_design and not area_header_design:
-            # 3. Insert Table Headers
-            for h_idx, h_design in enumerate(table_header_designs):
-                h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
-                apply_design(curr_row, h_design, None, h_height)
-                curr_row += 1
-                inserted_rows_count += 1
+        for f in floors:
+            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+            if not valid_areas: continue
 
-            flat_items = tokens.get("items", [])
-            for idx, item in enumerate(flat_items):
-                repls = {"{{index}}": str(idx + 1)}
-                for k, v in item.items():
-                    repls["{{item." + str(k) + "}}"] = v
-                    repls["{{" + str(k) + "}}"] = v
-                    
-                apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                for min_c, max_c in item_merges:
+            # 1. Insert Floor Header
+            if floor_header_design:
+                apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
+                for min_c, max_c in floor_header_merges:
                     try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                     except Exception: pass
                 curr_row += 1
                 inserted_rows_count += 1
-        else:
-            for f in floors:
-                valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
-                if not valid_areas: continue
 
-                # 1. Insert Floor Header
-                if floor_header_design:
-                    apply_design(curr_row, floor_header_design, {"{{floor.name}}": f.get("name", "")}, row_heights.get("floor_header"))
-                    for min_c, max_c in floor_header_merges:
+            for a in valid_areas:
+                # 2. Insert Area Header
+                if area_header_design:
+                    apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
+                    for min_c, max_c in area_header_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
 
-                for a in valid_areas:
-                    # 2. Insert Area Header
-                    if area_header_design:
-                        apply_design(curr_row, area_header_design, {"{{area.name}}": a.get("name", "")}, row_heights.get("area_header"))
-                        for min_c, max_c in area_header_merges:
-                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                            except Exception: pass
-                        curr_row += 1
-                        inserted_rows_count += 1
+                # 3. Insert Table Headers
+                for h_idx, h_design in enumerate(table_header_designs):
+                    h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
+                    apply_design(curr_row, h_design, None, h_height)
+                    curr_row += 1
+                    inserted_rows_count += 1
 
-                    # 3. Insert Table Headers
-                    for h_idx, h_design in enumerate(table_header_designs):
-                        h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
-                        apply_design(curr_row, h_design, None, h_height)
-                        curr_row += 1
-                        inserted_rows_count += 1
-
-                    # 4. Insert Items
-                    for idx, item in enumerate(a.get("items", [])):
-                        repls = {"{{index}}": str(idx + 1)}
-                        for k, v in item.items():
-                            repls["{{item." + str(k) + "}}"] = v
-                            repls["{{" + str(k) + "}}"] = v
-                            
-                        apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                        for min_c, max_c in item_merges:
-                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                            except Exception: pass
-                        curr_row += 1
-                        inserted_rows_count += 1
+                # 4. Insert Items
+                for idx, item in enumerate(a.get("items", [])):
+                    repls = {"{{index}}": str(idx + 1)}
+                    for k, v in item.items():
+                        repls["{{item." + str(k) + "}}"] = v
+                        repls["{{" + str(k) + "}}"] = v
+                        
+                    apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                    for min_c, max_c in item_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
+                    curr_row += 1
+                    inserted_rows_count += 1
 
                 # 5. Insert Area Footer / Subtotal
                 if area_footer_design:
@@ -523,14 +484,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     val_str = str(cell_def["value"] or '')
                     if val_str:
-                        item_repls = {"{{index}}": str(idx + 1)}
+                        val_str = val_str.replace("{{index}}", str(idx + 1))
                         for k, v in item.items():
-                            item_repls["{{item." + str(k) + "}}"] = str(v if v is not None else '')
-                            item_repls["{{" + str(k) + "}}"] = str(v if v is not None else '')
-                        
-                        sorted_item_repls = sorted(item_repls.items(), key=lambda x: len(x[0]), reverse=True)
-                        for k, v in sorted_item_repls:
-                            val_str = val_str.replace(k, v)
+                            val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
+                            val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
 
                         try:
                             stripped_val = val_str.strip()
@@ -562,10 +519,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if val and ("{?" in val or "{{" in val):
                 val = val.replace("{{#floor}}", "").replace("{{#area}}", "").replace("{{/area}}", "").replace("{{/floor}}", "")
                 
-                sorted_tokens = sorted([item for item in tokens.items() if not isinstance(item[1], (list, dict))], key=lambda x: len(str(x[0])), reverse=True)
-                for k, v in sorted_tokens:
-                    val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                    val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
+                for k, v in tokens.items():
+                    if not isinstance(v, (list, dict)):
+                        val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                        val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
+                
+                val = re.sub(r'\{\{[^}]+\}\}', '', val)
                 
                 if val != "":
                     try:
