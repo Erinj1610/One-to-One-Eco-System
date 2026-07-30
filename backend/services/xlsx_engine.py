@@ -328,8 +328,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         repls["{{item." + k_lower + "}}"] = str_val
                         repls["{{" + k_lower + "}}"] = str_val
 
-                    # Ensure explicit mappings for oneOneCode and type/planCode variations
-                    one_code = item.get("oneOneCode") or item.get("code") or ''
+                    # Strictly set oneOneCode (never fall back to item.code)
+                    one_code = item.get("oneOneCode") or ''
                     item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
                     
                     repls["{{item.oneOneCode}}"] = one_code
@@ -524,7 +524,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             item_repls["{{item." + k_lower + "}}"] = str_val
                             item_repls["{{" + k_lower + "}}"] = str_val
 
-                        one_code = item.get("oneOneCode") or item.get("code") or ''
+                        one_code = item.get("oneOneCode") or ''
                         item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
 
                         item_repls["{{item.oneOneCode}}"] = one_code

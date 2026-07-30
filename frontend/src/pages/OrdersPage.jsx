@@ -954,9 +954,9 @@ export default function OrdersPage() {
       const itemType = (item.type || '').trim();
       const desc = (item.description || '').trim();
       
-      // Group uniquely by itemCode + oneOneCode + PlanCode (type)
-      const key = `${code}_${oneOneCode}_${itemType}_${desc}`.toLowerCase();
-      if (!key || key === '___') return;
+      // Group uniquely by item.code + item.type (Plan Code)
+      const key = `${code}_${itemType}`.toLowerCase();
+      if (!key || key === '_') return;
 
       if (!grouped[key]) {
         grouped[key] = {
