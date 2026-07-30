@@ -78,12 +78,61 @@ function DesignFeeCostingsSettings() {
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', marginBottom: '20px', overflowX: 'auto' }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-primary)' }}>📐 Meterage & Phase Costing Rates (Excl. VAT)</h4>
         
-        <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+        <table className="table" style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'left' }}>
-              <th style={{ padding: '8px' }}>Area Category</th>
-              <th style={{ padding: '8px' }}>Architectural Fitting (R/m²)</th>
-              <th style={{ padding: '8px' }}>Concept Lighting Design (R/m²)</th>
+            <tr style={{ background: '#fef08a', color: '#854d0e', textAlign: 'center', fontWeight: 700 }}>
+              <th style={{ padding: '6px', border: '1px solid #fde047', background: 'transparent' }}></th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>0.00%</th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>0.00%</th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>
+                <input 
+                  type="number" step="1" style={{ width: '60px', textAlign: 'center', background: 'white', border: '1px solid #ca8a04', borderRadius: '3px', fontWeight: 700 }}
+                  value={Math.round((costingRates.phase_multipliers?.schematicPercent * 100) || 80)}
+                  onChange={e => setCostingRates({
+                    ...costingRates,
+                    phase_multipliers: { ...costingRates.phase_multipliers, schematicPercent: (parseFloat(e.target.value) || 0) / 100 }
+                  })}
+                /> %
+              </th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>
+                <input 
+                  type="number" step="1" style={{ width: '60px', textAlign: 'center', background: 'white', border: '1px solid #ca8a04', borderRadius: '3px', fontWeight: 700 }}
+                  value={Math.round((costingRates.phase_multipliers?.finalPercent * 100) || 65)}
+                  onChange={e => setCostingRates({
+                    ...costingRates,
+                    phase_multipliers: { ...costingRates.phase_multipliers, finalPercent: (parseFloat(e.target.value) || 0) / 100 }
+                  })}
+                /> %
+              </th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>
+                <input 
+                  type="number" step="0.01" style={{ width: '65px', textAlign: 'center', background: 'white', border: '1px solid #ca8a04', borderRadius: '3px', fontWeight: 700 }}
+                  value={(costingRates.phase_multipliers?.siteSupportPercent * 100) || 22.72}
+                  onChange={e => setCostingRates({
+                    ...costingRates,
+                    phase_multipliers: { ...costingRates.phase_multipliers, siteSupportPercent: (parseFloat(e.target.value) || 0) / 100 }
+                  })}
+                /> %
+              </th>
+              <th style={{ padding: '6px', border: '1px solid #fde047' }}>
+                <input 
+                  type="number" step="0.01" style={{ width: '65px', textAlign: 'center', background: 'white', border: '1px solid #ca8a04', borderRadius: '3px', fontWeight: 700 }}
+                  value={(costingRates.phase_multipliers?.commissioningPercent * 100) || 10.70}
+                  onChange={e => setCostingRates({
+                    ...costingRates,
+                    phase_multipliers: { ...costingRates.phase_multipliers, commissioningPercent: (parseFloat(e.target.value) || 0) / 100 }
+                  })}
+                /> %
+              </th>
+            </tr>
+            <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'left', fontWeight: 700 }}>
+              <th style={{ padding: '10px 8px' }}>Areas</th>
+              <th style={{ padding: '10px 8px' }}>Architectural Fitting (R/m²)</th>
+              <th style={{ padding: '10px 8px' }}>Concept Lighting Design (R/m²)</th>
+              <th style={{ padding: '10px 8px' }}>Schematic Design Development</th>
+              <th style={{ padding: '10px 8px' }}>Final Design</th>
+              <th style={{ padding: '10px 8px' }}>Site Support</th>
+              <th style={{ padding: '10px 8px' }}>Commissioning</th>
             </tr>
           </thead>
           <tbody>
@@ -93,47 +142,65 @@ function DesignFeeCostingsSettings() {
               { key: 'non_experiential_living', label: 'Non-Experiential Living' },
               { key: 'experiential_landscape', label: 'Experiential Landscape' },
               { key: 'secondary_landscape', label: 'Secondary Landscape' }
-            ].map(row => (
-              <tr key={row.key} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '8px', fontWeight: 600 }}>{row.label}</td>
-                <td style={{ padding: '8px' }}>
-                  <input 
-                    type="number"
-                    className="form-control"
-                    style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                    value={costingRates.area_rates?.[row.key]?.archFitting || 0}
-                    onChange={e => setCostingRates({
-                      ...costingRates,
-                      area_rates: {
-                        ...(costingRates.area_rates || {}),
-                        [row.key]: {
-                          ...(costingRates.area_rates?.[row.key] || {}),
-                          archFitting: parseFloat(e.target.value) || 0
+            ].map(row => {
+              const concept = costingRates.area_rates?.[row.key]?.conceptLighting || 0;
+              const schematic = concept * (costingRates.phase_multipliers?.schematicPercent || 0.8);
+              const finalD = concept * (costingRates.phase_multipliers?.finalPercent || 0.65);
+
+              return (
+                <tr key={row.key} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px', fontWeight: 700 }}>{row.label}</td>
+                  <td style={{ padding: '8px' }}>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px', width: '130px' }}
+                      value={costingRates.area_rates?.[row.key]?.archFitting || 0}
+                      onChange={e => setCostingRates({
+                        ...costingRates,
+                        area_rates: {
+                          ...(costingRates.area_rates || {}),
+                          [row.key]: {
+                            ...(costingRates.area_rates?.[row.key] || {}),
+                            archFitting: parseFloat(e.target.value) || 0
+                          }
                         }
-                      }
-                    })}
-                  />
-                </td>
-                <td style={{ padding: '8px' }}>
-                  <input 
-                    type="number"
-                    className="form-control"
-                    style={{ height: '30px', fontSize: '12px', width: '140px' }}
-                    value={costingRates.area_rates?.[row.key]?.conceptLighting || 0}
-                    onChange={e => setCostingRates({
-                      ...costingRates,
-                      area_rates: {
-                        ...(costingRates.area_rates || {}),
-                        [row.key]: {
-                          ...(costingRates.area_rates?.[row.key] || {}),
-                          conceptLighting: parseFloat(e.target.value) || 0
+                      })}
+                    />
+                  </td>
+                  <td style={{ padding: '8px' }}>
+                    <input 
+                      type="number"
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px', width: '130px' }}
+                      value={costingRates.area_rates?.[row.key]?.conceptLighting || 0}
+                      onChange={e => setCostingRates({
+                        ...costingRates,
+                        area_rates: {
+                          ...(costingRates.area_rates || {}),
+                          [row.key]: {
+                            ...(costingRates.area_rates?.[row.key] || {}),
+                            conceptLighting: parseFloat(e.target.value) || 0
+                          }
                         }
-                      }
-                    })}
-                  />
-                </td>
-              </tr>
-            ))}
+                      })}
+                    />
+                  </td>
+                  <td style={{ padding: '8px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    R {schematic.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '8px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    R {finalD.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '8px', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                    {((costingRates.phase_multipliers?.siteSupportPercent || 0.2272) * 100).toFixed(2)}% of Subtotal
+                  </td>
+                  <td style={{ padding: '8px', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                    {((costingRates.phase_multipliers?.commissioningPercent || 0.1070) * 100).toFixed(2)}% of Subtotal
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

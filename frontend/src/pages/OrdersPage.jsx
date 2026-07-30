@@ -5146,6 +5146,61 @@ export default function OrdersPage() {
                           </div>
                         )}
 
+                        {/* CUSTOM DYNAMIC DOCUMENT OUTFLOW FALLBACK */}
+                        {!['quote', 'boq_doc', 'schedule', 'deposit_invoice', 'balance_invoice', 'tax_invoice', 'statement'].includes(activeDocType) && (
+                          <div>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '12.5px', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px', textTransform: 'capitalize' }}>
+                              {activeDocType.replace(/_/g, ' ')} Document Preview
+                            </h4>
+
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginTop: '6px' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '2px solid #0f172a', color: '#0f172a', textAlign: 'left', fontWeight: 700 }}>
+                                  <th style={{ padding: '6px', width: '40px', textAlign: 'center' }}>#</th>
+                                  <th style={{ padding: '6px', width: '120px' }}>Location</th>
+                                  <th style={{ padding: '6px', width: '90px' }}>Code</th>
+                                  <th style={{ padding: '6px' }}>Description</th>
+                                  <th style={{ padding: '6px', width: '40px', textAlign: 'center' }}>Qty</th>
+                                  <th style={{ padding: '6px', width: '90px', textAlign: 'right' }}>Unit Retail</th>
+                                  <th style={{ padding: '6px', width: '90px', textAlign: 'right' }}>Total Retail</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {activeOrderItems.map((item, idx) => (
+                                  <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '6px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                                    <td style={{ padding: '6px', fontWeight: 500 }}>{item.area || 'General'}</td>
+                                    <td style={{ padding: '6px', fontFamily: 'monospace', color: '#0284c7' }}>{item.code || '—'}</td>
+                                    <td style={{ padding: '6px' }}>{item.description}</td>
+                                    <td style={{ padding: '6px', textAlign: 'center', fontWeight: 600 }}>{item.qty}</td>
+                                    <td style={{ padding: '6px', textAlign: 'right' }}>R {Math.round(Number(item.unitRetail) || 0).toLocaleString()}</td>
+                                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>
+                                      R {Math.round((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+                              <div style={{ width: '280px', fontSize: '11.5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 600, borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                                  <span>Subtotal Excl VAT:</span>
+                                  <span>R {Math.round(discountedRetail).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                                  <span>VAT (15%):</span>
+                                  <span>R {Math.round(vatAmount).toLocaleString()}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13.5px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                  <span>Total Billed Incl VAT:</span>
+                                  <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* CUSTOM TERMS AND NOTES BLOCK */}
                         <div style={{ marginTop: '36px', borderTop: '1px solid #cbd5e1', paddingTop: '16px', fontSize: '10.5px', color: '#475569', lineHeight: '1.5' }}>
                           <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', display: 'block', marginBottom: '4px' }}>Notes & Contractual Terms</span>
