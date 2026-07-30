@@ -538,7 +538,7 @@ export default function TemplateHub() {
           ...config,
           layout_blocks: blocks,
           global_settings: globalSettings,
-          engine_mode: config.engine_mode || 'word'
+          engine_mode: 'excel'
         })
       });
       if (res.ok) {
