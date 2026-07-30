@@ -522,7 +522,7 @@ export default function TemplateHub() {
     }
   };
 
-  const handleUploadXlsxTemplate = async (e) => {
+  const handleUploadMasterExcel = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
@@ -531,110 +531,42 @@ export default function TemplateHub() {
     formData.append('file', file);
 
     try {
-      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/upload`, {
+      const res = await fetch(`${API_BASE}/admin/templates/master_excel/upload`, {
         method: 'POST',
         body: formData
       });
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Spreadsheet template file uploaded!' });
+        setMessage({ type: 'success', text: 'Master Excel Workbook (.xlsx) saved to live database!' });
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). Server details: ${errorData.detail || JSON.stringify(errorData) || 'None'}` });
+        setMessage({ type: 'error', text: `Upload failed (Status ${res.status}: ${res.statusText}). ${errorData.detail || ''}` });
       }
     } catch (err) {
-      console.error("XLSX Upload Error Detail Logged:", err);
-      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
-      setMessage({ type: 'error', text: `Error uploading template file: ${errStr}` });
+      setMessage({ type: 'error', text: `Error uploading master template file: ${err?.message || err}` });
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDownloadXlsxTemplate = async (e) => {
-    e.preventDefault();
-    setMessage(null);
-    try {
-      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/xlsx/download`);
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(`Status ${res.status} (${res.statusText}). Details: ${errorData.detail || JSON.stringify(errorData) || 'None'}`);
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${selectedDoc.toLowerCase()}_template.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-    } catch (err) {
-      console.error("XLSX Download Error Detail Logged:", err);
-      let errStr = err?.stack || err?.toString() || JSON.stringify(err);
-      setMessage({ type: 'error', text: `Error downloading Excel template: ${errStr}` });
-    }
-  };
-
-
-  const handleSaveVisualTemplate = async () => {
+  const handleSaveDocTabConfig = async () => {
     setSaving(true);
     setMessage(null);
-    const compiledHtml = compileBlocksToHtml(blocks, globalSettings);
-
     try {
-      const resHtml = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/html`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: compiledHtml })
-      });
-      
-      const resConfig = await fetch(`${API_BASE}/admin/configs/${selectedDoc}`, {
+      const res = await fetch(`${API_BASE}/admin/configs/${selectedDoc}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...config,
-          layout_blocks: blocks,
-          global_settings: globalSettings
+          engine_mode: 'excel',
+          excel_tab_name: config.excel_tab_name || selectedDoc
         })
       });
-
-      if (resHtml.ok && resConfig.ok) {
-        setMessage({ type: 'success', text: 'Visual builder template published live!' });
-        setTimeout(() => setMessage(null), 3000);
-      } else {
-        throw new Error();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to compile and publish template.' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleLoadStarter = () => {
-    const starter = DEFAULT_BLOCKS[selectedDoc] || DEFAULT_BLOCKS.QUOTATION;
-    const clonedStarter = JSON.parse(JSON.stringify(starter));
-    updateBlocksState(clonedStarter);
-    setSelectedBlockId(clonedStarter[0]?.id || null);
-    setMessage({ type: 'success', text: 'Loaded starter template!' });
-  };
-
-  const handleClearVisualTemplate = async () => {
-    if (!window.confirm("Bypass visual template and revert back to Microsoft Word engine?")) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/admin/templates/${selectedDoc}/html`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: "" })
-      });
       if (res.ok) {
-        updateBlocksState([]);
-        setSelectedBlockId(null);
-        setMessage({ type: 'success', text: 'Reverted template engine to MS Word.' });
+        setMessage({ type: 'success', text: `Tab name mapping saved for ${selectedDoc}!` });
+        setTimeout(() => setMessage(null), 3000);
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to clear layout.' });
+      setMessage({ type: 'error', text: 'Failed to save tab mapping.' });
     } finally {
       setSaving(false);
     }
@@ -971,33 +903,18 @@ export default function TemplateHub() {
         <div>
           <button onClick={() => navigate('/')} className="btn btn-ghost btn-sm" style={{ marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>← Back to Dashboard</button>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'white', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            🎨 Layout Studio <span style={{ fontSize: '12px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px' }}>V2 Editor</span>
+            📊 Master Excel Template Hub
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
-            Design visual template sheets with inline drag-reordering, Notion-style cursor variables, and custom column selectors.
+            Upload your single Master Excel Workbook (.xlsx) to the live server and map document types to worksheet tabs.
           </p>
         </div>
 
-        {/* Global actions */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {activeTab === 'visual' && (
-            <>
-              {/* Undo / Redo controls */}
-              <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)', marginRight: '10px' }}>
-                <button disabled={historyIndex === 0} onClick={handleUndo} className="btn btn-sm btn-ghost" style={{ padding: '4px 8px', minWidth: '32px' }} title="Undo (Ctrl+Z)"><RotateCcw size={14} /></button>
-                <button disabled={historyIndex === history.length - 1} onClick={handleRedo} className="btn btn-sm btn-ghost" style={{ padding: '4px 8px', minWidth: '32px' }} title="Redo (Ctrl+Y)"><RotateCw size={14} /></button>
-              </div>
-
-              <button 
-                className="btn btn-primary" 
-                onClick={handleSaveVisualTemplate} 
-                disabled={saving || blocks.length === 0}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontWeight: 600 }}
-              >
-                <Save size={15} /> {saving ? 'Publishing...' : 'Save & Publish Live'}
-              </button>
-            </>
-          )}
+          <label className="btn btn-success" style={{ padding: '10px 18px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}>
+            <Upload size={16} /> {uploading ? 'Saving Master File...' : 'Upload Master Excel Workbook (.xlsx)'}
+            <input type="file" accept=".xlsx" onChange={handleUploadMasterExcel} style={{ display: 'none' }} disabled={uploading} />
+          </label>
         </div>
       </div>
 
@@ -1005,7 +922,7 @@ export default function TemplateHub() {
         
         {/* Document Left Selector */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '16px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Templates</div>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Document Types</div>
           {Object.values(DOCUMENT_TYPES).map(doc => (
             <button
               key={doc.id}
@@ -1029,128 +946,62 @@ export default function TemplateHub() {
         {/* Builder Workbench Frame */}
         <div className="card" style={{ padding: '20px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '20px', background: 'var(--bg-card)' }}>
           
-          {/* Main Top Header Instruction */}
           <div style={{ paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
             <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Settings size={16} /> {(config?.engine_mode || 'word') === 'excel' ? 'Microsoft Excel (.xlsx) Engine Settings' : 'Microsoft Word (.docx) Engine Settings'}
+              <Settings size={16} /> Document Settings: {activeDoc?.name}
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Configure variables, upload new template files, and establish naming conventions.
+              Enter the exact worksheet tab name in your Master Excel file for this document.
             </p>
           </div>
 
           {loading ? (
-            <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Loading template details...</div>
+            <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Loading settings...</div>
           ) : (
             
-            /* WORD ENGINE CONFIG */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
               {config && (
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Select Active Template Engine Mode</label>
-                  <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)' }}>Choose which template engine will compile output PDFs for this module. You can switch between Microsoft Word (.docx) templates and Microsoft Excel (.xlsx) templates instantly.</p>
-                  <select 
-                    className="form-control"
-                    style={{ height: '36px', fontSize: '13px', maxWidth: '300px', marginTop: '4px' }}
-                    value={config.engine_mode || 'word'}
-                    onChange={e => setConfig({ ...config, engine_mode: e.target.value })}
-                  >
-                    <option value="word">Microsoft Word (.docx) Template Engine</option>
-                    <option value="excel">Microsoft Excel (.xlsx) Template Engine</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Conditional Card depending on engine_mode choice */}
-              {(config?.engine_mode || 'word') === 'word' ? (
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ 
-                      width: '36px', height: '36px', borderRadius: '50%', 
-                      background: metadata?.exists ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: metadata?.exists ? 'var(--text-success)' : 'var(--text-danger)'
-                    }}>
-                      <FileText size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                        {metadata?.exists ? 'MS Word Template File Active' : 'No Word File Uploaded'}
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        {metadata?.exists 
-                          ? `${(metadata.size / 1024).toFixed(1)} KB — Last Modified: ${metadata.last_modified ? new Date(metadata.last_modified * 1000).toLocaleString() : 'Just Now'}`
-                          : 'Upload a Microsoft Word (.docx) file to get started.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button 
-                      onClick={handleDownload}
-                      className="btn"
-                      style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
-                    >
-                      <Download size={13} /> Download File
-                    </button>
-
-                    <label className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
-                      <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Word Template'}
-                      <input type="file" accept=".docx" onChange={handleFileUpload} style={{ display: 'none' }} disabled={uploading} />
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
+                      Excel Worksheet Tab Name
                     </label>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ 
-                      width: '36px', height: '36px', borderRadius: '50%', 
-                      background: 'rgba(31, 154, 85, 0.1)', 
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#1f9a55'
-                    }}>
-                      <Layers size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                        Spreadsheet Template Hub (.xlsx)
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        Upload custom spreadsheet templates with placeholders.
-                      </div>
-                    </div>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      Specify the exact sheet tab name inside your uploaded Master Excel file that contains the template for <strong>{activeDoc?.name}</strong>.
+                    </p>
+                    <input 
+                      type="text" 
+                      className="form-control"
+                      value={config.excel_tab_name || selectedDoc} 
+                      onChange={e => setConfig({ ...config, excel_tab_name: e.target.value })} 
+                      placeholder={`e.g. ${selectedDoc}`}
+                      style={{ width: '100%', maxWidth: '400px', height: '36px', fontSize: '13px' }}
+                    />
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>File Naming Convention</label>
+                    <input 
+                      type="text" 
+                      className="form-control"
+                      value={config.naming_convention || ''} 
+                      onChange={e => setConfig({ ...config, naming_convention: e.target.value })} 
+                      placeholder="e.g. {{PROJECT_NAME}}_BOQ"
+                      style={{ width: '100%', maxWidth: '400px', height: '36px', fontSize: '13px' }}
+                    />
+                  </div>
+
+                  <div>
                     <button 
-                      onClick={handleDownloadXlsxTemplate}
-                      className="btn"
-                      style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-primary)' }}
+                      className="btn btn-primary" 
+                      onClick={handleSaveDocTabConfig} 
+                      disabled={saving}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontWeight: 600, marginTop: '6px' }}
                     >
-                      <Download size={13} /> Download File
+                      <Save size={15} /> {saving ? 'Saving...' : 'Save Settings Live'}
                     </button>
-
-                    <label className="btn btn-success" style={{ padding: '6px 14px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}>
-                      <Upload size={13} /> {uploading ? 'Uploading...' : 'Upload Excel Template'}
-                      <input type="file" accept=".xlsx" onChange={handleUploadXlsxTemplate} style={{ display: 'none' }} disabled={uploading} />
-                    </label>
                   </div>
-                </div>
-              )}
-
-
-              {config && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>File Naming Convention</label>
-                  <input 
-                    type="text" 
-                    className="form-control"
-                    value={config.naming_convention || ''} 
-                    onChange={e => setConfig({ ...config, naming_convention: e.target.value })} 
-                    placeholder="e.g. {{PROJECT_NAME}}_Fee_Proposal"
-                    style={{ width: '100%', height: '36px', fontSize: '13px' }}
-                  />
                 </div>
               )}
 

@@ -115,12 +115,13 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
         logger.error(f"LibreOffice Excel conversion crashed: {e}")
         return False
 
-def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None) -> bool:
+def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None, sheet_name: str = None) -> bool:
     """
     Generic, dynamic Excel template engine.
-    Supports multi-level loops (Floor/Area/Item), arbitrary template tags, and preserves 100% of template merged cell ranges.
+    Supports multi-level loops (Floor/Area/Item), arbitrary template tags, preserves 100% of template merged cell ranges,
+    and targets specific worksheet tabs in master workbook files.
     """
-    logger.info(f"Merging XLSX template: {template_path}")
+    logger.info(f"Merging XLSX template: {template_path} (Sheet: {sheet_name})")
     
     if not os.path.exists(template_path):
         print(f"Error: Excel template missing at {template_path}")
@@ -128,7 +129,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         
     try:
         wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            # Prune all other sheets so output file contains only the target document tab
+            for sname in list(wb.sheetnames):
+                if sname != sheet_name:
+                    del wb[sname]
+        else:
+            ws = wb.active
     except Exception as e:
         print(f"Error loading Excel template: {e}")
         return False

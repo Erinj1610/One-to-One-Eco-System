@@ -120,6 +120,27 @@ async def download_xlsx_template(doc_type: str, db: Session = Depends(get_db)):
         filename=f"{doc_type.lower()}_template.xlsx"
     )
 
+@router.post("/templates/master_excel/upload")
+async def upload_master_excel_template(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Uploads the single Master Excel Workbook (.xlsx) containing all document tabs.
+    Stores directly in PostgreSQL DB so live deployment always uses the uploaded master template.
+    """
+    if not file.filename.lower().endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are allowed for Master Workbook")
+    
+    contents = await file.read()
+    
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
+    if config:
+        config.xlsx_binary = contents
+    else:
+        config = TemplateConfig(template_key="MASTER_EXCEL", xlsx_binary=contents, config_json={})
+        db.add(config)
+    
+    db.commit()
+    return {"message": "Master Excel Workbook uploaded successfully to database"}
+
 @router.post("/templates/{doc_type}/xlsx/upload")
 async def upload_xlsx_template(doc_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
@@ -341,13 +362,29 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             print(f"Error generating visual HTML PDF: {html_err}")
             raise HTTPException(status_code=500, detail=f"Visual HTML Template Conversion Error: {html_err}")
 
-    # 1b. Check if an Excel (.xlsx) template exists (in DB or on disk)
+    # 1b. Check if Master Excel (.xlsx) template or specific doc_type template exists (in DB or on disk)
     from services.xlsx_engine import merge_xlsx_template
     xlsx_template_path = None
     xlsx_temp_dir = None
     custom_xlsx_temp_path = None
+    
+    # Check for master workbook config first
+    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
+    target_sheet_name = config.config_json.get("excel_tab_name") if (config and config.config_json) else doc_type
 
-    if config and config.xlsx_binary:
+    if master_config and master_config.xlsx_binary:
+        print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
+        xlsx_temp_dir = tempfile.mkdtemp()
+        custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
+        binary_data = bytes(master_config.xlsx_binary)
+        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+            import base64
+            try: binary_data = base64.b64decode(binary_data)
+            except Exception: pass
+        with open(custom_xlsx_temp_path, "wb") as f:
+            f.write(binary_data)
+        xlsx_template_path = custom_xlsx_temp_path
+    elif config and config.xlsx_binary:
         print(f"DEBUG: Using custom Excel template from database for {doc_type}")
         xlsx_temp_dir = tempfile.mkdtemp()
         custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "db_template.xlsx")
@@ -366,15 +403,18 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
         xlsx_template_path = custom_xlsx_temp_path
     else:
         disk_xlsx_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.xlsx'))
-        if os.path.exists(disk_xlsx_path):
+        master_disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', 'master_templates.xlsx'))
+        if os.path.exists(master_disk_path):
+            xlsx_template_path = master_disk_path
+        elif os.path.exists(disk_xlsx_path):
             xlsx_template_path = disk_xlsx_path
 
     if xlsx_template_path:
-        print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format}...")
+        print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format} sheet={target_sheet_name}...")
         try:
             if format in ['xlsx', 'excel']:
                 xlsx_out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-                success = merge_xlsx_template(xlsx_template_path, data, output_xlsx_path=xlsx_out_path)
+                success = merge_xlsx_template(xlsx_template_path, data, output_xlsx_path=xlsx_out_path, sheet_name=target_sheet_name)
                 if not success:
                     raise HTTPException(status_code=500, detail="Failed to compile Excel spreadsheet")
                 
@@ -398,7 +438,7 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
                 )
 
             pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-            success = merge_xlsx_template(xlsx_template_path, data, output_pdf_path=pdf_path)
+            success = merge_xlsx_template(xlsx_template_path, data, output_pdf_path=pdf_path, sheet_name=target_sheet_name)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to compile PDF from Excel template")
             
