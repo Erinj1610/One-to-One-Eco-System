@@ -532,12 +532,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if val and ("{?" in val or "{{" in val):
                 val = val.replace("{{#floor}}", "").replace("{{#area}}", "").replace("{{/area}}", "").replace("{{/floor}}", "")
                 
-                for k, v in tokens.items():
-                    if not isinstance(v, (list, dict)):
-                        val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                        val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
-                
-                val = re.sub(r'\{\{[^}]+\}\}', '', val)
+                sorted_tokens = sorted([item for item in tokens.items() if not isinstance(item[1], (list, dict))], key=lambda x: len(str(x[0])), reverse=True)
+                for k, v in sorted_tokens:
+                    val = val.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                    val = val.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
                 
                 if val != "":
                     try:
