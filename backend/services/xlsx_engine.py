@@ -257,7 +257,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 val = cell_def["value"]
                 if value_replacements and val:
                     val_str = str(val)
-                    for k, v in value_replacements.items():
+                    # Sort replacement keys by length descending to prevent shorter tokens (e.g. {{item.code}}) matching inside longer tokens (e.g. {{item.oneOneCode}})
+                    sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
+                    for k, v in sorted_repls:
                         val_str = val_str.replace(k, str(v if v is not None else ''))
                     
                     try:
@@ -491,10 +493,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     val_str = str(cell_def["value"] or '')
                     if val_str:
-                        val_str = val_str.replace("{{index}}", str(idx + 1))
+                        item_repls = {"{{index}}": str(idx + 1)}
                         for k, v in item.items():
-                            val_str = val_str.replace("{{item." + str(k) + "}}", str(v if v is not None else ''))
-                            val_str = val_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                            item_repls["{{item." + str(k) + "}}"] = str(v if v is not None else '')
+                            item_repls["{{" + str(k) + "}}"] = str(v if v is not None else '')
+                        
+                        sorted_item_repls = sorted(item_repls.items(), key=lambda x: len(x[0]), reverse=True)
+                        for k, v in sorted_item_repls:
+                            val_str = val_str.replace(k, v)
 
                         try:
                             stripped_val = val_str.strip()
