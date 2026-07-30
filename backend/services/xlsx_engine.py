@@ -115,7 +115,7 @@ def convert_xlsx_to_pdf_libreoffice(xlsx_path, pdf_path):
         logger.error(f"LibreOffice Excel conversion crashed: {e}")
         return False
 
-def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None) -> bool:
+def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str = None, output_xlsx_path: str = None, sheet_name: str = None) -> bool:
     """
     Generic, dynamic Excel template engine.
     Supports multi-level loops (Floor/Area/Item), arbitrary template tags, and preserves 100% of template merged cell ranges.
@@ -128,7 +128,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         
     try:
         wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
+        if sheet_name and sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            for s in list(wb.sheetnames):
+                if s != sheet_name:
+                    del wb[s]
+        else:
+            ws = wb.active
     except Exception as e:
         print(f"Error loading Excel template: {e}")
         return False
