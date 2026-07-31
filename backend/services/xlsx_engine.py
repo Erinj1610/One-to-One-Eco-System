@@ -168,12 +168,30 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     cell_a_val = str(top_left.value or '').strip()
                     break
         
+    item_summary_row = None
+    
+    # 1. Scan Column A (and cell values) for control tags
+    for r in range(1, ws.max_row + 1):
+        cell_a = ws.cell(row=r, column=1)
+        cell_a_val = str(cell_a.value or '').strip()
+        
+        # Check merged cell top-left value if current cell value is empty
+        if not cell_a_val and type(cell_a).__name__ == 'MergedCell':
+            for m in ws.merged_cells.ranges:
+                if m.min_row <= r <= m.max_row and m.min_col <= 1 <= m.max_col:
+                    top_left = ws.cell(row=m.min_row, column=m.min_col)
+                    cell_a_val = str(top_left.value or '').strip()
+                    break
+        
         if "[FLOOR_HEADER]" in cell_a_val or "{{#floor}}" in cell_a_val:
             floor_header_row = r
         elif "[AREA_HEADER]" in cell_a_val or "{{#area}}" in cell_a_val:
             area_header_row = r
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
+        elif "[ITEM_SUMMARY]" in cell_a_val:
+            if item_summary_row is None:
+                item_summary_row = r
         elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
             if item_row is None:
                 item_row = r
@@ -182,10 +200,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or area_footer_row is not None or floor_footer_row is not None)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None)
     
     if has_tagged_loop:
-        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, area_footer_row, floor_footer_row] + table_header_rows))
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row] + table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
@@ -222,6 +240,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_header_design = get_row_design(area_header_row)
         table_header_designs = [get_row_design(r) for r in table_header_rows]
         item_design = get_row_design(item_row) if item_row else []
+        item_summary_design = get_row_design(item_summary_row) if item_summary_row else []
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
@@ -237,6 +256,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
         item_merges = get_row_merges(item_row) if item_row else []
+        item_summary_merges = get_row_merges(item_summary_row) if item_summary_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
@@ -246,7 +266,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             except Exception: pass
 
         row_heights = {}
-        for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("item", item_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
+        for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("item", item_row), ("item_summary", item_summary_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
             if r_num and original_row_heights.get(r_num):
                 row_heights[r_idx] = original_row_heights.get(r_num)
                 
@@ -299,158 +319,231 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     
             return target_row
 
-        floors = tokens.get("floors", [])
+        def clean_price(val_in):
+            if not val_in: return 0.0
+            if isinstance(val_in, (int, float)): return float(val_in)
+            val_s = str(val_in).replace("R", "").replace(",", "").strip()
+            try: return float(val_s)
+            except ValueError: return 0.0
+
+        def summarize_item_list(raw_items):
+            grouped = {}
+            for it in raw_items:
+                one_code = str(it.get("oneOneCode") or it.get("oneonecode") or it.get("one_one_code") or '').strip()
+                item_type = str(it.get("type") or it.get("planCode") or it.get("plan_code") or '').strip()
+                key = (one_code.lower(), item_type.lower())
+                qty = float(it.get("qty") or 0)
+                unit_cost = clean_price(it.get("unitCost"))
+                unit_retail = clean_price(it.get("unitRetail"))
+                
+                if key not in grouped:
+                    grouped[key] = {
+                        **copy.deepcopy(it),
+                        "qty": qty,
+                        "unitCost": unit_cost,
+                        "unitRetail": unit_retail,
+                        "totalRetail": clean_price(it.get("totalRetail"))
+                    }
+                else:
+                    grouped[key]["qty"] += qty
+                    grouped[key]["totalRetail"] += clean_price(it.get("totalRetail"))
+            
+            # Format summarized items for output
+            result = []
+            for g_item in grouped.values():
+                result.append({
+                    **g_item,
+                    "qty": int(g_item["qty"]) if g_item["qty"].is_integer() else round(g_item["qty"], 2),
+                    "totalRetail": f"R {g_item['totalRetail']:,.2f}"
+                })
+            return result
+
         curr_row = min_ctrl_row
         inserted_rows_count = 0
 
-        for f in floors:
-            floor_name = str(f.get("name", "")).strip()
-            valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
-            if not valid_areas: continue
+        # Helper to render items or item summary
+        def render_item_rows(items_to_render):
+            nonlocal curr_row, inserted_rows_count
+            if item_design:
+                for idx, item in enumerate(items_to_render):
+                    repls = {"{{index}}": str(idx + 1)}
+                    for k, v in item.items():
+                        str_val = str(v if v is not None else '')
+                        repls["{{item." + str(k) + "}}"] = str_val
+                        repls["{{" + str(k) + "}}"] = str_val
+                        k_lower = str(k).lower()
+                        repls["{{item." + k_lower + "}}"] = str_val
+                        repls["{{" + k_lower + "}}"] = str_val
 
-            # 1. Insert Floor Header (Only if floor_header_row exists)
-            if floor_header_design:
-                apply_design(curr_row, floor_header_design, {"{{floor.name}}": floor_name}, row_heights.get("floor_header"))
-                for min_c, max_c in floor_header_merges:
-                    try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                    except Exception: pass
-                curr_row += 1
-                inserted_rows_count += 1
+                    one_code = item.get("oneOneCode") or ''
+                    item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
+                    repls["{{item.oneOneCode}}"] = one_code
+                    repls["{{item.oneonecode}}"] = one_code
+                    repls["{{item.one_one_code}}"] = one_code
+                    repls["{{oneOneCode}}"] = one_code
+                    repls["{{oneonecode}}"] = one_code
+                    repls["{{one_one_code}}"] = one_code
+                    repls["{{item.type}}"] = item_type
+                    repls["{{item.planCode}}"] = item_type
+                    repls["{{item.plan_code}}"] = item_type
+                    repls["{{type}}"] = item_type
+                    repls["{{planCode}}"] = item_type
+                    repls["{{plan_code}}"] = item_type
+                        
+                    apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                    for min_c, max_c in item_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
+                    curr_row += 1
+                    inserted_rows_count += 1
+            elif item_summary_design:
+                summed_items = summarize_item_list(items_to_render)
+                for idx, item in enumerate(summed_items):
+                    repls = {"{{index}}": str(idx + 1)}
+                    for k, v in item.items():
+                        str_val = str(v if v is not None else '')
+                        repls["{{item." + str(k) + "}}"] = str_val
+                        repls["{{" + str(k) + "}}"] = str_val
+                        k_lower = str(k).lower()
+                        repls["{{item." + k_lower + "}}"] = str_val
+                        repls["{{" + k_lower + "}}"] = str_val
 
-            for a in valid_areas:
-                area_name = str(a.get("name", "")).strip()
-                # 2. Insert Area Header
-                if area_header_design:
-                    apply_design(curr_row, area_header_design, {"{{area.name}}": area_name}, row_heights.get("area_header"))
-                    for min_c, max_c in area_header_merges:
+                    one_code = item.get("oneOneCode") or ''
+                    item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
+                    repls["{{item.oneOneCode}}"] = one_code
+                    repls["{{item.oneonecode}}"] = one_code
+                    repls["{{item.one_one_code}}"] = one_code
+                    repls["{{oneOneCode}}"] = one_code
+                    repls["{{oneonecode}}"] = one_code
+                    repls["{{one_one_code}}"] = one_code
+                    repls["{{item.type}}"] = item_type
+                    repls["{{item.planCode}}"] = item_type
+                    repls["{{item.plan_code}}"] = item_type
+                    repls["{{type}}"] = item_type
+                    repls["{{planCode}}"] = item_type
+                    repls["{{plan_code}}"] = item_type
+                        
+                    apply_design(curr_row, item_summary_design, repls, row_heights.get("item_summary"))
+                    for min_c, max_c in item_summary_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
 
-                # 3. Insert Table Headers
-                for h_idx, h_design in enumerate(table_header_designs):
-                    h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
-                    apply_design(curr_row, h_design, None, h_height)
+        # Check if sheet uses Section Headers ([FLOOR_HEADER] or [AREA_HEADER])
+        has_section_headers = (floor_header_design or area_header_design)
+
+        if has_section_headers:
+            floors = tokens.get("floors", [])
+            for f in floors:
+                floor_name = str(f.get("name", "")).strip()
+                valid_areas = [a for a in f.get("areas", []) if len(a.get("items", [])) > 0]
+                if not valid_areas: continue
+
+                # 1. Insert Floor Header
+                if floor_header_design:
+                    apply_design(curr_row, floor_header_design, {"{{floor.name}}": floor_name}, row_heights.get("floor_header"))
+                    for min_c, max_c in floor_header_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
 
-                # 4. Insert Items (Only if [ITEM] row tag exists in template)
-                if item_design:
-                    for idx, item in enumerate(a.get("items", [])):
-                        repls = {"{{index}}": str(idx + 1)}
-                        for k, v in item.items():
-                            str_val = str(v if v is not None else '')
-                            repls["{{item." + str(k) + "}}"] = str_val
-                            repls["{{" + str(k) + "}}"] = str_val
-                            
-                            k_lower = str(k).lower()
-                            repls["{{item." + k_lower + "}}"] = str_val
-                            repls["{{" + k_lower + "}}"] = str_val
-
-                        one_code = item.get("oneOneCode") or ''
-                        item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
-                        
-                        repls["{{item.oneOneCode}}"] = one_code
-                        repls["{{item.oneonecode}}"] = one_code
-                        repls["{{item.one_one_code}}"] = one_code
-                        repls["{{oneOneCode}}"] = one_code
-                        repls["{{oneonecode}}"] = one_code
-                        repls["{{one_one_code}}"] = one_code
-
-                        repls["{{item.type}}"] = item_type
-                        repls["{{item.planCode}}"] = item_type
-                        repls["{{item.plan_code}}"] = item_type
-                        repls["{{type}}"] = item_type
-                        repls["{{planCode}}"] = item_type
-                        repls["{{plan_code}}"] = item_type
-                            
-                        apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                        for min_c, max_c in item_merges:
+                for a in valid_areas:
+                    area_name = str(a.get("name", "")).strip()
+                    # 2. Insert Area Header
+                    if area_header_design:
+                        apply_design(curr_row, area_header_design, {"{{area.name}}": area_name}, row_heights.get("area_header"))
+                        for min_c, max_c in area_header_merges:
                             try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                             except Exception: pass
                         curr_row += 1
                         inserted_rows_count += 1
 
-                # 5. Insert Area Footer / Subtotal
-                if area_footer_design:
-                    def clean_price(val_in):
-                        if not val_in: return 0.0
-                        if isinstance(val_in, (int, float)): return float(val_in)
-                        val_s = str(val_in).replace("R", "").replace(",", "").strip()
-                        try: return float(val_s)
-                        except ValueError: return 0.0
+                    # 3. Insert Table Headers (repeated per section)
+                    for h_idx, h_design in enumerate(table_header_designs):
+                        h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
+                        apply_design(curr_row, h_design, None, h_height)
+                        curr_row += 1
+                        inserted_rows_count += 1
 
-                    area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
-                    area_name = a.get("name", "")
-                    
-                    subtotal_repls = {
-                        "{{SUBTOTAL}}": f"R {area_subtotal:,.2f}",
-                        "{{area.name}}": area_name,
-                        "{{floor.name}}": f.get("name", "")
+                    # 4. Insert Items / Item Summary inside Area
+                    render_item_rows(a.get("items", []))
+
+                    # 5. Insert Area Footer / Subtotal
+                    if area_footer_design:
+                        area_subtotal = sum(clean_price(item.get("totalRetail")) for item in a.get("items", []))
+                        subtotal_repls = {
+                            "{{SUBTOTAL}}": f"R {area_subtotal:,.2f}",
+                            "{{area.name}}": area_name,
+                            "{{floor.name}}": floor_name
+                        }
+                        apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
+                        
+                        for cell_def in area_footer_design:
+                            cell_val_s = str(cell_def["value"] or '')
+                            tc = ws.cell(row=curr_row, column=cell_def["col"])
+                            if cell_val_s.strip() == "{{SUBTOTAL}}":
+                                tc.value = area_subtotal
+                                if cell_def["number_format"] and cell_def["number_format"] != 'General':
+                                    tc.number_format = cell_def["number_format"]
+                                else:
+                                    tc.number_format = '"R"#,##0.00'
+                            elif "{{" in cell_val_s:
+                                val_t = cell_val_s
+                                for k, v in subtotal_repls.items():
+                                    val_t = val_t.replace(k, str(v))
+                                tc.value = val_t
+                                
+                        for min_c, max_c in area_footer_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+
+                        curr_row += 1
+                        inserted_rows_count += 1
+
+                # 6. Insert Floor Footer
+                if floor_footer_design:
+                    floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
+                    floor_subtotal_repls = {
+                        "{{SUBTOTAL}}": f"R {floor_subtotal:,.2f}",
+                        "{{floor.name}}": floor_name
                     }
-                    apply_design(curr_row, area_footer_design, subtotal_repls, row_heights.get("area_footer"))
+                    apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
                     
-                    for cell_def in area_footer_design:
+                    for cell_def in floor_footer_design:
                         cell_val_s = str(cell_def["value"] or '')
                         tc = ws.cell(row=curr_row, column=cell_def["col"])
                         if cell_val_s.strip() == "{{SUBTOTAL}}":
-                            tc.value = area_subtotal
+                            tc.value = floor_subtotal
                             if cell_def["number_format"] and cell_def["number_format"] != 'General':
                                 tc.number_format = cell_def["number_format"]
                             else:
                                 tc.number_format = '"R"#,##0.00'
                         elif "{{" in cell_val_s:
                             val_t = cell_val_s
-                            for k, v in subtotal_repls.items():
+                            for k, v in floor_subtotal_repls.items():
                                 val_t = val_t.replace(k, str(v))
                             tc.value = val_t
-                            
-                    for min_c, max_c in area_footer_merges:
+
+                    for min_c, max_c in floor_footer_merges:
                         try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                         except Exception: pass
-
                     curr_row += 1
                     inserted_rows_count += 1
 
-            # 6. Insert Floor Footer
-            if floor_footer_design:
-                def clean_price(val_in):
-                    if not val_in: return 0.0
-                    if isinstance(val_in, (int, float)): return float(val_in)
-                    val_s = str(val_in).replace("R", "").replace(",", "").strip()
-                    try: return float(val_s)
-                    except ValueError: return 0.0
-
-                floor_subtotal = sum(clean_price(item.get("totalRetail")) for area in valid_areas for item in area.get("items", []))
-                floor_name = f.get("name", "")
-
-                floor_subtotal_repls = {
-                    "{{SUBTOTAL}}": f"R {floor_subtotal:,.2f}",
-                    "{{floor.name}}": floor_name
-                }
-                apply_design(curr_row, floor_footer_design, floor_subtotal_repls, row_heights.get("floor_footer"))
-                
-                for cell_def in floor_footer_design:
-                    cell_val_s = str(cell_def["value"] or '')
-                    tc = ws.cell(row=curr_row, column=cell_def["col"])
-                    if cell_val_s.strip() == "{{SUBTOTAL}}":
-                        tc.value = floor_subtotal
-                        if cell_def["number_format"] and cell_def["number_format"] != 'General':
-                            tc.number_format = cell_def["number_format"]
-                        else:
-                            tc.number_format = '"R"#,##0.00'
-                    elif "{{" in cell_val_s:
-                        val_t = cell_val_s
-                        for k, v in floor_subtotal_repls.items():
-                            val_t = val_t.replace(k, str(v))
-                        tc.value = val_t
-
-                for min_c, max_c in floor_footer_merges:
-                    try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                    except Exception: pass
+        else:
+            # Flat Table Loop (No [FLOOR_HEADER] or [AREA_HEADER])
+            # 1. Render Table Header ONCE (Not repeated)
+            for h_idx, h_design in enumerate(table_header_designs):
+                h_height = table_header_heights[h_idx] if h_idx < len(table_header_heights) else None
+                apply_design(curr_row, h_design, None, h_height)
                 curr_row += 1
                 inserted_rows_count += 1
+
+            # 2. Render all items across the entire order
+            all_order_items = tokens.get("items", [])
+            render_item_rows(all_order_items)
 
         delta_rows = inserted_rows_count - original_ctrl_height
 
