@@ -278,7 +278,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         # Delete placeholder block rows (min_ctrl_row to max_ctrl_row)
         ws.delete_rows(min_ctrl_row, original_ctrl_height)
 
-        def apply_design(target_row, design_list, value_replacements=None, row_height=None):
+        def apply_design(target_row, design_list, value_replacements=None, row_height=None, is_spacer=False):
             ws.insert_rows(target_row, 1)
             if row_height:
                 ws.row_dimensions[target_row].height = row_height
@@ -293,39 +293,42 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                 if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
                 
-                val = cell_def["value"]
-                if value_replacements and val:
-                    val_str = str(val)
-                    # Strip block tags if present inside cell text
-                    val_str = val_str.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
-                    sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
-                    for k, v in sorted_repls:
-                        val_str = val_str.replace(k, str(v if v is not None else ''))
-                    
-                    try:
-                        stripped_val = val_str.strip()
-                        if stripped_val.startswith('R '):
-                            clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
-                            if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
-                                target_cell.value = float(clean_val)
+                if is_spacer:
+                    target_cell.value = None
+                else:
+                    val = cell_def["value"]
+                    if value_replacements and val:
+                        val_str = str(val)
+                        # Strip block tags if present inside cell text
+                        val_str = val_str.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
+                        sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
+                        for k, v in sorted_repls:
+                            val_str = val_str.replace(k, str(v if v is not None else ''))
+                        
+                        try:
+                            stripped_val = val_str.strip()
+                            if stripped_val.startswith('R '):
+                                clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                                if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                    target_cell.value = float(clean_val)
+                                else:
+                                    target_cell.value = val_str
+                            elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                                if '.' in stripped_val:
+                                    target_cell.value = float(stripped_val)
+                                else:
+                                    target_cell.value = int(stripped_val)
                             else:
                                 target_cell.value = val_str
-                        elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
-                            if '.' in stripped_val:
-                                target_cell.value = float(stripped_val)
-                            else:
-                                target_cell.value = int(stripped_val)
-                        else:
+                        except Exception:
                             target_cell.value = val_str
-                    except Exception:
-                        target_cell.value = val_str
-                else:
-                    if val and isinstance(val, str):
-                        val_cleaned = val.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
-                        target_cell.value = val_cleaned
                     else:
-                        target_cell.value = val
-                    
+                        if val and isinstance(val, str):
+                            val_cleaned = val.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
+                            target_cell.value = val_cleaned
+                        else:
+                            target_cell.value = val
+                        
             return target_row
 
         def clean_price(val_in):
@@ -378,20 +381,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 for idx, item in enumerate(items_to_render):
                     if item.get("isSpacer") or item.get("type") == "SPACER":
                         if spacer_design:
-                            apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0)
+                            apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0, is_spacer=True)
                             for min_c, max_c in spacer_merges:
                                 try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                                 except Exception: pass
                         elif item_design:
                             # Apply thin space row using item_design styling across all table columns
-                            ws.insert_rows(curr_row, 1)
-                            ws.row_dimensions[curr_row].height = 9.0
-                            for cell_def in item_design:
-                                col_idx = cell_def["col"]
-                                target_cell = ws.cell(row=curr_row, column=col_idx)
-                                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
-                                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
-                                target_cell.value = ""
+                            apply_design(curr_row, item_design, {}, 9.0, is_spacer=True)
                         else:
                             ws.insert_rows(curr_row, 1)
                             ws.row_dimensions[curr_row].height = 9.0
