@@ -207,15 +207,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         # Snapshot original row heights across the whole sheet before doing any operations
         original_row_heights = {r: dim.height for r, dim in ws.row_dimensions.items() if dim.height is not None}
 
-        # Snapshot all template merged cell ranges before doing any row operations
-        fixed_merges_above = []
-        fixed_merges_below = []
-        for m in list(ws.merged_cells.ranges):
-            if m.max_row < min_ctrl_row:
-                fixed_merges_above.append((m.min_row, m.max_row, m.min_col, m.max_col))
-            elif m.min_row > max_ctrl_row:
-                fixed_merges_below.append((m.min_row, m.max_row, m.min_col, m.max_col))
-
         def get_row_design(row_num):
             if row_num is None: return []
             cells = []
@@ -587,7 +578,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         delta_rows = inserted_rows_count - original_ctrl_height
 
-        # Clear and shift row heights for fixed rows below min_ctrl_row
+        # Shift row heights for fixed rows below min_ctrl_row
         for r in list(ws.row_dimensions.keys()):
             if r >= min_ctrl_row:
                 ws.row_dimensions[r].height = None
@@ -597,16 +588,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 ws.row_dimensions[r].height = h
             elif r > max_ctrl_row:
                 ws.row_dimensions[r + delta_rows].height = h
-
-        # Re-apply all fixed merged cell ranges above the loop
-        for min_r, max_r, min_c, max_c in fixed_merges_above:
-            try: ws.merge_cells(start_row=min_r, start_column=min_c, end_row=max_r, end_column=max_c)
-            except Exception: pass
-
-        # Re-apply all fixed merged cell ranges below the loop with exact delta_rows offset
-        for min_r, max_r, min_c, max_c in fixed_merges_below:
-            try: ws.merge_cells(start_row=min_r + delta_rows, start_column=min_c, end_row=max_r + delta_rows, end_column=max_c)
-            except Exception: pass
             
     else:
         # Standard Flat Loop Fallback Logic
