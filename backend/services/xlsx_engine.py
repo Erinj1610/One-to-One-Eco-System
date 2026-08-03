@@ -382,6 +382,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             for min_c, max_c in spacer_merges:
                                 try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                                 except Exception: pass
+                        elif item_design:
+                            # Apply thin space row using item_design styling across all table columns
+                            ws.insert_rows(curr_row, 1)
+                            ws.row_dimensions[curr_row].height = 9.0
+                            for cell_def in item_design:
+                                col_idx = cell_def["col"]
+                                target_cell = ws.cell(row=curr_row, column=col_idx)
+                                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                                target_cell.value = ""
                         else:
                             ws.insert_rows(curr_row, 1)
                             ws.row_dimensions[curr_row].height = 9.0
