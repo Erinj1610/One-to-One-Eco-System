@@ -1501,6 +1501,7 @@ export default function OrdersPage() {
       }
       return item;
     });
+    loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
     setSupplier(order.supplier);
@@ -2033,6 +2034,12 @@ export default function OrdersPage() {
     const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
 
+    // Attach explicit sequential sortOrder index to preserve exact drag-and-drop sequence in DB
+    const orderedItemsWithIndex = activeOrderItems.map((item, idx) => ({
+      ...item,
+      sortOrder: idx
+    }));
+
     const updatedOrders = (proj.orders || []).map(o => {
       if (o.id === selectedOrderId) {
         return {
@@ -2047,7 +2054,7 @@ export default function OrdersPage() {
           paid: paidSum,
           payments: orderPayments,
           outstanding: Math.round(balanceOutstanding),
-          itemsList: activeOrderItems,
+          itemsList: orderedItemsWithIndex,
           // Save order-specific adjusted metadata fields
           quote_name: quoteName,
           clientCompany,

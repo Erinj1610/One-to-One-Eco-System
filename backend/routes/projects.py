@@ -530,6 +530,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "selection": item.selection,
                 "is_credit": bool(item.is_credit),
                 "itemType": item.item_type or "Hardware",
+                "sortOrder": item.sort_order if item.sort_order is not None else 0,
                 "stockStatus": item.stock_status,
                 "eta": item.eta,
                 "poRef": item.po_ref,
@@ -563,6 +564,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 orders_by_project[order.project_key] = []
             
             order_items_list = items_by_order.get(order.po_number, [])
+            order_items_list.sort(key=lambda x: x.get("sortOrder", 0))
             
             def safe_num(v, default=0.0):
                 try:

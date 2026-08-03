@@ -1428,7 +1428,8 @@ export function StoreProvider({ children }) {
       invoice_history: item.invoiceHistory || item.invoice_history || [],
       stock_on_hand: Number(item.stockOnHand || item.stock_on_hand) || 0,
       is_credit: !!(item.isCredit || item.is_credit),
-      item_type: item.itemType || item.item_type || "Hardware"
+      item_type: item.itemType || item.item_type || "Hardware",
+      sort_order: item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)
     };
   };
 

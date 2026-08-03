@@ -280,6 +280,7 @@ class OrderItem(Base):
     stock_on_hand = Column(Integer, default=0)
     is_credit = Column(Boolean, default=False, nullable=True)
     item_type = Column(String, default="Hardware", nullable=True)
+    sort_order = Column(Integer, default=0, nullable=True)
 
 
 
