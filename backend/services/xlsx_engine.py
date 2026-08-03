@@ -207,7 +207,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         # Snapshot original row heights across the whole sheet before doing any operations
         original_row_heights = {r: dim.height for r, dim in ws.row_dimensions.items() if dim.height is not None}
 
-        # Snapshot all template merged cell ranges before doing any row operations
+        # Snapshot all template merged cell ranges strictly outside control rows before doing any row operations
         fixed_merges_above = []
         fixed_merges_below = []
         for m in list(ws.merged_cells.ranges):
