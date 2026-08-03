@@ -152,7 +152,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     table_header_rows = []
     floor_table_header_rows = []
     area_table_header_rows = []
-    item_row = None
+    item_rows = []
     item_summary_row = None
     area_footer_row = None
     floor_footer_row = None
@@ -193,17 +193,17 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if item_summary_row is None:
                 item_summary_row = r
         elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
-            if item_row is None:
-                item_row = r
+            item_rows.append(r)
         elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
             area_footer_row = r
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None or credit_item_row is not None)
+    item_row = item_rows[0] if item_rows else None
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or len(item_rows) > 0 or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None or credit_item_row is not None)
     
     if has_tagged_loop:
-        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row, credit_header_row, credit_item_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row, credit_header_row, credit_item_row] + item_rows + table_header_rows + floor_table_header_rows + area_table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
@@ -261,7 +261,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         floor_table_header_designs = [get_row_design(r) for r in floor_table_header_rows]
         area_table_header_designs = [get_row_design(r) for r in area_table_header_rows]
         spacer_design = get_row_design(spacer_row) if spacer_row else []
-        item_design = get_row_design(item_row) if item_row else []
+        item_designs = [get_row_design(r) for r in item_rows]
+        item_design = item_designs[0] if item_designs else []
         item_summary_design = get_row_design(item_summary_row) if item_summary_row else []
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
@@ -278,10 +279,22 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     merges.append((m.min_col, m.max_col))
             return merges
 
+        def get_block_merges(row_list):
+            if not row_list: return []
+            r_min = min(row_list)
+            merges = []
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row >= r_min and m.max_row <= max(row_list):
+                    r_offset_min = m.min_row - r_min
+                    r_offset_max = m.max_row - r_min
+                    merges.append((r_offset_min, r_offset_max, m.min_col, m.max_col))
+            return merges
+
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
         spacer_merges = get_row_merges(spacer_row) if spacer_row else []
         item_merges = get_row_merges(item_row) if item_row else []
+        item_block_merges = get_block_merges(item_rows)
         item_summary_merges = get_row_merges(item_summary_row) if item_summary_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
@@ -466,12 +479,24 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     repls["{{planCode}}"] = item_type
                     repls["{{plan_code}}"] = item_type
                         
-                    apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                    for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                        except Exception: pass
-                    curr_row += 1
-                    inserted_rows_count += 1
+                    if len(item_designs) > 1:
+                        card_start_row = curr_row
+                        for sub_idx, sub_design in enumerate(item_designs):
+                            sub_h = original_row_heights.get(item_rows[sub_idx]) if sub_idx < len(item_rows) else None
+                            apply_design(curr_row, sub_design, repls, sub_h)
+                            curr_row += 1
+                            inserted_rows_count += 1
+                        
+                        for r_off_min, r_off_max, min_c, max_c in item_block_merges:
+                            try: ws.merge_cells(start_row=card_start_row + r_off_min, start_column=min_c, end_row=card_start_row + r_off_max, end_column=max_c)
+                            except Exception: pass
+                    else:
+                        apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                        for min_c, max_c in item_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
 
                 # Render Credited Items section if present
                 if credit_items:
