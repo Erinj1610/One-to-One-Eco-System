@@ -221,14 +221,33 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             cells = []
             for c in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row_num, column=c)
+                val = cell.value
+                font = copy.copy(cell.font) if cell.font else None
+                fill = copy.copy(cell.fill) if cell.fill else None
+                border = copy.copy(cell.border) if cell.border else None
+                alignment = copy.copy(cell.alignment) if cell.alignment else None
+                num_fmt = cell.number_format
+
+                if type(cell).__name__ == 'MergedCell':
+                    for m in ws.merged_cells.ranges:
+                        if m.min_row <= row_num <= m.max_row and m.min_col <= c <= m.max_col:
+                            tl = ws.cell(row=m.min_row, column=m.min_col)
+                            if not val: val = tl.value
+                            if not font and tl.font: font = copy.copy(tl.font)
+                            if not fill and tl.fill: fill = copy.copy(tl.fill)
+                            if not border and tl.border: border = copy.copy(tl.border)
+                            if not alignment and tl.alignment: alignment = copy.copy(tl.alignment)
+                            if not num_fmt: num_fmt = tl.number_format
+                            break
+
                 cells.append({
                     "col": c,
-                    "value": cell.value,
-                    "number_format": cell.number_format,
-                    "font": copy.copy(cell.font) if cell.font else None,
-                    "fill": copy.copy(cell.fill) if cell.fill else None,
-                    "border": copy.copy(cell.border) if cell.border else None,
-                    "alignment": copy.copy(cell.alignment) if cell.alignment else None
+                    "value": val,
+                    "number_format": num_fmt,
+                    "font": font,
+                    "fill": fill,
+                    "border": border,
+                    "alignment": alignment
                 })
             return cells
 
