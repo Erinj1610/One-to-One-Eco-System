@@ -119,6 +119,7 @@ class OrderItemSchema(BaseModel):
     stock_on_hand: int = 0
     is_credit: Optional[bool] = False
     item_type: Optional[str] = "Hardware"
+    sort_order: Optional[int] = 0
 
 
 class OrderSchema(BaseModel):
@@ -329,7 +330,8 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         invoice_history=json.dumps(item_data.invoice_history),
         stock_on_hand=item_data.stock_on_hand,
         is_credit=item_data.is_credit,
-        item_type=item_data.item_type
+        item_type=item_data.item_type,
+        sort_order=item_data.sort_order
     )
     db.add(new_item)
     db.commit()
@@ -379,6 +381,7 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
     item.stock_on_hand = item_data.stock_on_hand
     item.is_credit = item_data.is_credit
     item.item_type = item_data.item_type
+    item.sort_order = item_data.sort_order
 
     
     db.commit()
