@@ -606,6 +606,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         for min_r, max_r, min_c, max_c in fixed_merges_above:
             try: ws.merge_cells(start_row=min_r, start_column=min_c, end_row=max_r, end_column=max_c)
             except Exception: pass
+
+        # Re-apply all fixed merged cell ranges below the loop with exact delta_rows offset
+        for min_r, max_r, min_c, max_c in fixed_merges_below:
+            try: ws.merge_cells(start_row=min_r + delta_rows, start_column=min_c, end_row=max_r + delta_rows, end_column=max_c)
+            except Exception: pass
             
     else:
         # Standard Flat Loop Fallback Logic
