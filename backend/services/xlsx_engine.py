@@ -293,6 +293,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 val = cell_def["value"]
                 if value_replacements and val:
                     val_str = str(val)
+                    # Strip block tags if present inside cell text
+                    val_str = val_str.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
                     sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
                     for k, v in sorted_repls:
                         val_str = val_str.replace(k, str(v if v is not None else ''))
@@ -315,7 +317,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     except Exception:
                         target_cell.value = val_str
                 else:
-                    target_cell.value = val
+                    if val and isinstance(val, str):
+                        val_cleaned = val.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
+                        target_cell.value = val_cleaned
+                    else:
+                        target_cell.value = val
                     
             return target_row
 
@@ -430,8 +436,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     curr_row += 1
                     inserted_rows_count += 1
 
-        # Check if sheet uses Section Headers ([FLOOR_HEADER] or [AREA_HEADER])
-        has_section_headers = (floor_header_design or area_header_design)
+        # Check if sheet uses Section Headers or Section Footers ([FLOOR_HEADER], [AREA_HEADER], [AREA_FOOTER], [FLOOR_FOOTER])
+        has_section_headers = (floor_header_design or area_header_design or area_footer_design or floor_footer_design)
 
         if has_section_headers:
             floors = tokens.get("floors", [])
