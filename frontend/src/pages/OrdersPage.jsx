@@ -35,7 +35,8 @@ import {
   TrendingDown,
   Calendar,
   Download,
-  Settings
+  Settings,
+  GripVertical
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
