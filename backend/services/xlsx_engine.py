@@ -151,25 +151,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     floor_header_row = None
     area_header_row = None
     table_header_rows = []
-    item_row = None
-    area_footer_row = None
-    floor_footer_row = None
-    
-    # 1. Scan Column A (and cell values) for control tags
-    for r in range(1, ws.max_row + 1):
-        cell_a = ws.cell(row=r, column=1)
-        cell_a_val = str(cell_a.value or '').strip()
-        
-        # Check merged cell top-left value if current cell value is empty
-        if not cell_a_val and type(cell_a).__name__ == 'MergedCell':
-            for m in ws.merged_cells.ranges:
-                if m.min_row <= r <= m.max_row and m.min_col <= 1 <= m.max_col:
-                    top_left = ws.cell(row=m.min_row, column=m.min_col)
-                    cell_a_val = str(top_left.value or '').strip()
-                    break
-        
     floor_table_header_rows = []
     area_table_header_rows = []
+    item_row = None
+    item_summary_row = None
+    area_footer_row = None
+    floor_footer_row = None
     
     # 1. Scan Column A (and cell values) for control tags
     for r in range(1, ws.max_row + 1):
