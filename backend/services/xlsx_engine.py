@@ -147,7 +147,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     except Exception as e:
         print(f"Error loading Excel template: {e}")
         return False
-    
     floor_header_row = None
     area_header_row = None
     table_header_rows = []
@@ -157,8 +156,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     item_summary_row = None
     area_footer_row = None
     floor_footer_row = None
-    
     spacer_row = None
+    credit_header_row = None
+    credit_item_row = None
     
     # 1. Scan Column A (and cell values) for control tags
     for r in range(1, ws.max_row + 1):
@@ -183,6 +183,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             area_table_header_rows.append(r)
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
+        elif "[CREDIT_HEADER]" in cell_a_val:
+            credit_header_row = r
+        elif "[CREDIT_ITEM]" in cell_a_val or "[CREDIT]" in cell_a_val:
+            credit_item_row = r
         elif "[SPACER]" in cell_a_val or "[SPACE]" in cell_a_val:
             spacer_row = r
         elif "[ITEM_SUMMARY]" in cell_a_val:
@@ -196,10 +200,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None or credit_item_row is not None)
     
     if has_tagged_loop:
-        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row, credit_header_row, credit_item_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
@@ -262,6 +266,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
+        credit_header_design = get_row_design(credit_header_row) if credit_header_row else []
+        credit_item_design = get_row_design(credit_item_row) if credit_item_row else []
+
         # Capture control row merges from original template before unmerging
         def get_row_merges(row_num):
             if row_num is None: return []
@@ -278,6 +285,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         item_summary_merges = get_row_merges(item_summary_row) if item_summary_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
+        credit_header_merges = get_row_merges(credit_header_row)
+        credit_item_merges = get_row_merges(credit_item_row)
 
         # Unmerge all control block ranges and specifically unmerge item_row to prevent insert_rows from inheriting merges
         for m in list(ws.merged_cells.ranges):
@@ -396,11 +405,21 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         curr_row = min_ctrl_row
         inserted_rows_count = 0
 
-        # Helper to render items or item summary
+        # Helper to render items or item summary (with optional credit section handling)
         def render_item_rows(items_to_render):
             nonlocal curr_row, inserted_rows_count
             if item_design:
-                for idx, item in enumerate(items_to_render):
+                # Separate normal items from credited items if template has credit row design
+                if credit_item_design:
+                    normal_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and clean_price(it.get("qty")) >= 0]
+                    credit_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and clean_price(it.get("qty")) < 0]
+                    spacer_items = [it for it in items_to_render if (it.get("isSpacer") or it.get("type") == "SPACER")]
+                else:
+                    normal_items = items_to_render
+                    credit_items = []
+                    spacer_items = []
+
+                for idx, item in enumerate(normal_items):
                     if item.get("isSpacer") or item.get("type") == "SPACER":
                         if spacer_design:
                             apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0)
@@ -408,7 +427,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                                 try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                                 except Exception: pass
                         elif item_design:
-                            # Apply thin space row using item_design styling across all table columns
                             ws.insert_rows(curr_row, 1)
                             ws.row_dimensions[curr_row].height = 9.0
                             for cell_def in item_design:
@@ -454,6 +472,30 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
+
+                # Render Credited Items section if present
+                if credit_items:
+                    if credit_header_design:
+                        apply_design(curr_row, credit_header_design, {}, row_heights.get("credit_header"))
+                        for min_c, max_c in credit_header_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
+
+                    for idx, item in enumerate(credit_items):
+                        repls = {"{{index}}": str(idx + 1)}
+                        for k, v in item.items():
+                            str_val = str(v if v is not None else '')
+                            repls["{{item." + str(k) + "}}"] = str_val
+                            repls["{{" + str(k) + "}}"] = str_val
+
+                        apply_design(curr_row, credit_item_design, repls, row_heights.get("credit_item"))
+                        for min_c, max_c in credit_item_merges:
+                            try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                            except Exception: pass
+                        curr_row += 1
+                        inserted_rows_count += 1
             elif item_summary_design:
                 summed_items = summarize_item_list(items_to_render)
                 for idx, item in enumerate(summed_items):
