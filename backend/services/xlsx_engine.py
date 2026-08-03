@@ -255,14 +255,14 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
         spacer_merges = get_row_merges(spacer_row) if spacer_row else []
-        item_merges = get_row_merges(item_row) if item_row else []
+        item_merges = []
         item_summary_merges = get_row_merges(item_summary_row) if item_summary_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
-        # Only unmerge control block rows (min_ctrl_row to max_ctrl_row) during row insertions so header merges remain untouched
+        # Unmerge all control block ranges and specifically unmerge item_row to prevent insert_rows from inheriting merges
         for m in list(ws.merged_cells.ranges):
-            if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
+            if (item_row and m.min_row <= item_row <= m.max_row) or (m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row):
                 try: ws.unmerge_cells(str(m))
                 except Exception: pass
 
@@ -424,9 +424,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     repls["{{plan_code}}"] = item_type
                         
                     apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                    for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                        except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
             elif item_summary_design:
