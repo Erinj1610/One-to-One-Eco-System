@@ -192,7 +192,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0)
     
     if has_tagged_loop:
         control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
