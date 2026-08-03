@@ -564,7 +564,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 orders_by_project[order.project_key] = []
             
             order_items_list = items_by_order.get(order.po_number, [])
-            order_items_list.sort(key=lambda x: x.get("sortOrder", 0))
+            order_items_list.sort(key=lambda x: x.get("sortOrder") if isinstance(x.get("sortOrder"), (int, float)) else 0)
             
             def safe_num(v, default=0.0):
                 try:
