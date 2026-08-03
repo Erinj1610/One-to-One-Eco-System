@@ -661,7 +661,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             curr_row = loop_start_row
             for idx, item in enumerate(items):
                 ws.insert_rows(curr_row, 1)
-                if item_row_height:
+                is_spacer = bool(item.get("isSpacer") or item.get("type") == "SPACER")
+                if is_spacer:
+                    ws.row_dimensions[curr_row].height = 9.0
+                elif item_row_height:
                     ws.row_dimensions[curr_row].height = item_row_height
 
                 for cell_def in item_design:
@@ -673,6 +676,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
                     if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                     if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
+
+                    if is_spacer:
+                        target_cell.value = None
+                        continue
 
                     val_str = str(cell_def["value"] or '')
                     if val_str:
