@@ -1014,18 +1014,19 @@ export default function OrdersPage() {
       
       const finalItems = activeOrderItems.map((item, idx) => ({
         index: (idx + 1).toString(),
+        isSpacer: !!(item.isSpacer || item.type === 'SPACER'),
         code: item.code || '',
         oneOneCode: item.oneOneCode || '',
         type: item.type || '',
-        description: item.description || '',
-        qty: (item.qty || 0).toString(),
+        description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || ''),
+        qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
         brand: item.brand || '',
-        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         floor: item.floor || '',
         area: item.area || '',
         dimming: item.dimming || 'Non-dim',
-        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        unitCost: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         stockStatus: item.stockStatus || 'In Stock',
         eta: item.eta || '4 weeks'
       }));
@@ -1076,6 +1077,7 @@ export default function OrdersPage() {
         floors: (() => {
           const floorMap = {};
           finalItems.forEach(item => {
+            if (item.isSpacer || item.type === 'SPACER') return;
             const fName = item.floor || 'Unspecified';
             const aName = item.area || 'Unspecified';
             if (!floorMap[fName]) {
@@ -1226,6 +1228,7 @@ export default function OrdersPage() {
         floors: (() => {
           const floorMap = {};
           finalItems.forEach(item => {
+            if (item.isSpacer || item.type === 'SPACER') return;
             const fName = item.floor || 'Unspecified';
             const aName = item.area || 'Unspecified';
             if (!floorMap[fName]) {
