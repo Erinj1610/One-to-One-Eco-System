@@ -1862,6 +1862,32 @@ export default function OrdersPage() {
     alert(`Added "${product.sku || product.name}" to the order!`);
   };
 
+  // Add a blank spacer row to the active spreadsheet
+  const handleAddBlankSpacerRow = () => {
+    const newId = 'SPACER-' + Date.now();
+    const newRow = {
+      id: newId,
+      isSpacer: true,
+      qty: 0,
+      type: 'SPACER',
+      oneOneCode: '',
+      code: '',
+      description: '— Space Row —',
+      floor: '',
+      area: '',
+      dimming: '',
+      brand: '',
+      supplier: '',
+      unitCost: 0,
+      unitTrade: 0,
+      unitRetail: 0,
+      selection: '',
+      stockStatus: '',
+      eta: ''
+    };
+    setActiveOrderItems(prev => [...prev, newRow]);
+  };
+
   // Add a new row to the active spreadsheet
   const handleAddSpreadsheetRow = () => {
     const newId = 'I-' + Date.now();
@@ -4320,6 +4346,16 @@ export default function OrdersPage() {
                             onClick={handleAddSpreadsheetRow}
                           >
                              <Plus size={14} /> Add new fixture row
+                          </button>
+                          
+                          <button 
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ border: '1px dashed var(--border-tertiary)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'rgba(0,0,0,0.02)' }}
+                            onClick={handleAddBlankSpacerRow}
+                            title="Insert a thin blank space row to group fixtures"
+                          >
+                             <Plus size={14} /> Add blank space row
                           </button>
                           
                           {!showAreaBreakdown && (
