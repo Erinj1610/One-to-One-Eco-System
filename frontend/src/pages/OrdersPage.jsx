@@ -3576,15 +3576,15 @@ export default function OrdersPage() {
                                           return [...updated, ...creditItems];
                                         });
                                       }}
-                                      style={{ background: 'rgba(0, 0, 0, 0.05)', height: '18px' }}
+                                      style={{ background: 'rgba(0, 0, 0, 0.05)', height: '9px' }}
                                     >
                                       <td 
                                         style={{ textAlign: 'center', cursor: 'grab', userSelect: 'none', color: 'var(--text-tertiary)', padding: 0 }}
                                         title="Click & Drag to reorder space row"
                                       >
-                                        <GripVertical size={12} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
+                                        <GripVertical size={9} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
                                       </td>
-                                      <td colSpan={17} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '18px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                      <td colSpan={17} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                                         <div style={{ height: '100%', width: '100%' }} />
                                       </td>
                                       <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>

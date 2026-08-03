@@ -158,6 +158,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     area_footer_row = None
     floor_footer_row = None
     
+    spacer_row = None
+    
     # 1. Scan Column A (and cell values) for control tags
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
@@ -181,6 +183,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             area_table_header_rows.append(r)
         elif "[TABLE_HEADER]" in cell_a_val:
             table_header_rows.append(r)
+        elif "[SPACER]" in cell_a_val or "[SPACE]" in cell_a_val:
+            spacer_row = r
         elif "[ITEM_SUMMARY]" in cell_a_val:
             if item_summary_row is None:
                 item_summary_row = r
@@ -192,10 +196,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
             floor_footer_row = r
 
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0)
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or item_row is not None or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None)
     
     if has_tagged_loop:
-        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row] + table_header_rows + floor_table_header_rows + area_table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
@@ -233,6 +237,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         table_header_designs = [get_row_design(r) for r in table_header_rows]
         floor_table_header_designs = [get_row_design(r) for r in floor_table_header_rows]
         area_table_header_designs = [get_row_design(r) for r in area_table_header_rows]
+        spacer_design = get_row_design(spacer_row) if spacer_row else []
         item_design = get_row_design(item_row) if item_row else []
         item_summary_design = get_row_design(item_summary_row) if item_summary_row else []
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
@@ -249,18 +254,20 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         floor_header_merges = get_row_merges(floor_header_row)
         area_header_merges = get_row_merges(area_header_row)
+        spacer_merges = get_row_merges(spacer_row) if spacer_row else []
         item_merges = get_row_merges(item_row) if item_row else []
         item_summary_merges = get_row_merges(item_summary_row) if item_summary_row else []
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
-        # Completely unmerge the sheet during row insertions so openpyxl merged_cells range logic is 100% clean
+        # Only unmerge control block rows (min_ctrl_row to max_ctrl_row) during row insertions so header merges remain untouched
         for m in list(ws.merged_cells.ranges):
-            try: ws.unmerge_cells(str(m))
-            except Exception: pass
+            if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
+                try: ws.unmerge_cells(str(m))
+                except Exception: pass
 
         row_heights = {}
-        for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("item", item_row), ("item_summary", item_summary_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
+        for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("spacer", spacer_row), ("item", item_row), ("item_summary", item_summary_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
             if r_num and original_row_heights.get(r_num):
                 row_heights[r_idx] = original_row_heights.get(r_num)
                 
@@ -331,6 +338,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         def summarize_item_list(raw_items):
             grouped = {}
             for it in raw_items:
+                if it.get("isSpacer") or it.get("type") == "SPACER": continue
                 one_code = str(it.get("oneOneCode") or it.get("oneonecode") or it.get("one_one_code") or '').strip()
                 item_type = str(it.get("type") or it.get("planCode") or it.get("plan_code") or '').strip()
                 key = (one_code.lower(), item_type.lower())
@@ -368,6 +376,19 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             nonlocal curr_row, inserted_rows_count
             if item_design:
                 for idx, item in enumerate(items_to_render):
+                    if item.get("isSpacer") or item.get("type") == "SPACER":
+                        if spacer_design:
+                            apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0)
+                            for min_c, max_c in spacer_merges:
+                                try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                                except Exception: pass
+                        else:
+                            ws.insert_rows(curr_row, 1)
+                            ws.row_dimensions[curr_row].height = 9.0
+                        curr_row += 1
+                        inserted_rows_count += 1
+                        continue
+
                     repls = {"{{index}}": str(idx + 1)}
                     for k, v in item.items():
                         str_val = str(v if v is not None else '')
