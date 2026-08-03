@@ -275,9 +275,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         floor_table_header_heights = [original_row_heights.get(r) for r in floor_table_header_rows if original_row_heights.get(r)]
         area_table_header_heights = [original_row_heights.get(r) for r in area_table_header_rows if original_row_heights.get(r)]
 
-        # Start inserting rows right at min_ctrl_row before deleting the placeholder template rows
-        curr_row = min_ctrl_row
-        inserted_rows_count = 0
+        # Delete placeholder block rows (min_ctrl_row to max_ctrl_row)
+        ws.delete_rows(min_ctrl_row, original_ctrl_height)
 
         def apply_design(target_row, design_list, value_replacements=None, row_height=None):
             ws.insert_rows(target_row, 1)
@@ -586,9 +585,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             # 2. Render all items across the entire order
             all_order_items = tokens.get("items", [])
             render_item_rows(all_order_items)
-
-        # Delete the original placeholder control rows that are now pushed down to curr_row
-        ws.delete_rows(curr_row, original_ctrl_height)
 
         delta_rows = inserted_rows_count - original_ctrl_height
 
