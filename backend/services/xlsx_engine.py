@@ -771,7 +771,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     for r in range(1, ws.max_row + 1):
         cell_a = ws.cell(row=r, column=1)
         if type(cell_a).__name__ != 'MergedCell':
-            val_a = str(cell_a.value or '')
+            val_a = str(cell_a.value or '').strip()
             if "[" in val_a and "]" in val_a:
                 has_column_a_control_tags = True
                 cell_a.value = None
