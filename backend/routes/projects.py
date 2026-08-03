@@ -530,7 +530,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "selection": item.selection,
                 "is_credit": bool(item.is_credit),
                 "itemType": item.item_type or "Hardware",
-                "sortOrder": item.sort_order if item.sort_order is not None else 0,
+                "sortOrder": getattr(item, 'sort_order', 0) if getattr(item, 'sort_order', None) is not None else 0,
                 "stockStatus": item.stock_status,
                 "eta": item.eta,
                 "poRef": item.po_ref,
