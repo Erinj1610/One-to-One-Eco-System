@@ -1011,69 +1011,23 @@ export default function OrdersPage() {
       const vatAmount = discountedRetail * 0.15;
       const finalTotalInclVat = discountedRetail * 1.15;
       
-      let finalItems = [];
-      if (docType === 'QUOTATION') {
-        const summarized = groupItemsForQuotation(activeOrderItems);
-        finalItems = summarized.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      } else if (docType === 'BOQ' || docType === 'SCHEDULE') {
-        const sortedItems = [...activeOrderItems].sort((a, b) => {
-          const floorA = (a.floor || '').toLowerCase();
-          const floorB = (b.floor || '').toLowerCase();
-          if (floorA !== floorB) return floorA.localeCompare(floorB);
-          return (a.area || '').toLowerCase().localeCompare((b.area || '').toLowerCase());
-        });
-        finalItems = sortedItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      } else {
-        finalItems = activeOrderItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      }
+      const finalItems = activeOrderItems.map((item, idx) => ({
+        index: (idx + 1).toString(),
+        code: item.code || '',
+        oneOneCode: item.oneOneCode || '',
+        type: item.type || '',
+        description: item.description || '',
+        qty: (item.qty || 0).toString(),
+        brand: item.brand || '',
+        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: item.dimming || 'Non-dim',
+        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        stockStatus: item.stockStatus || 'In Stock',
+        eta: item.eta || '4 weeks'
+      }));
 
       const tokens = {
         PROJECT_NAME: projectFullName || 'Private Client Project',
@@ -1209,69 +1163,23 @@ export default function OrdersPage() {
       const vatAmount = discountedRetail * 0.15;
       const finalTotalInclVat = discountedRetail * 1.15;
       
-      let finalItems = [];
-      if (docType === 'QUOTATION') {
-        const summarized = groupItemsForQuotation(activeOrderItems);
-        finalItems = summarized.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      } else if (docType === 'BOQ' || docType === 'SCHEDULE') {
-        const sortedItems = [...activeOrderItems].sort((a, b) => {
-          const floorA = (a.floor || '').toLowerCase();
-          const floorB = (b.floor || '').toLowerCase();
-          if (floorA !== floorB) return floorA.localeCompare(floorB);
-          return (a.area || '').toLowerCase().localeCompare((b.area || '').toLowerCase());
-        });
-        finalItems = sortedItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      } else {
-        finalItems = activeOrderItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
-      }
+      const finalItems = activeOrderItems.map((item, idx) => ({
+        index: (idx + 1).toString(),
+        code: item.code || '',
+        oneOneCode: item.oneOneCode || '',
+        type: item.type || '',
+        description: item.description || '',
+        qty: (item.qty || 0).toString(),
+        brand: item.brand || '',
+        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: item.dimming || 'Non-dim',
+        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        stockStatus: item.stockStatus || 'In Stock',
+        eta: item.eta || '4 weeks'
+      }));
 
       const tokens = {
         PROJECT_NAME: projectFullName || 'Private Client Project',
