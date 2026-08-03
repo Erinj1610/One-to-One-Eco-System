@@ -423,9 +423,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     repls["{{plan_code}}"] = item_type
                         
                     apply_design(curr_row, item_design, repls, row_heights.get("item"))
-                    for min_c, max_c in item_merges:
-                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                        except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
             elif item_summary_design:
