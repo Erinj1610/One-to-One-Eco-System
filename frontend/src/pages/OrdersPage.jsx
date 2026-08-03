@@ -3418,7 +3418,7 @@ export default function OrdersPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 340px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
                         {/* LEFT COLUMN: INTERACTIVE HIGH-DENSITY SPREADSHEET */}
-                        <div 
+<div 
                           style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
                           onKeyDown={handleGridKeyDown}
                           onPaste={handleGridPaste}
@@ -3426,6 +3426,9 @@ export default function OrdersPage() {
                           <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
                             <thead>
                               <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
+                                <th style={{ width: '32px', textAlign: 'center', color: 'var(--text-tertiary)', userSelect: 'none' }}>
+                                  ⋮⋮
+                                </th>
                                 <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
                                   Qty
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
@@ -3517,7 +3520,51 @@ export default function OrdersPage() {
                                 }
 
                                 return (
-                                  <tr key={item.id} style={rowStyle}>
+                                  <tr 
+                                    key={item.id} 
+                                    style={rowStyle}
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData('text/plain', index.toString());
+                                      e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.dataTransfer.dropEffect = 'move';
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      const dragIndexStr = e.dataTransfer.getData('text/plain');
+                                      if (dragIndexStr === '') return;
+                                      const fromIndex = parseInt(dragIndexStr, 10);
+                                      const toIndex = index;
+                                      if (fromIndex === toIndex || isNaN(fromIndex)) return;
+
+                                      setActiveOrderItems(prev => {
+                                        const nonCreditItems = prev.filter(it => !(it.is_credit || it.isCredit));
+                                        const creditItems = prev.filter(it => (it.is_credit || it.isCredit));
+                                        const updated = [...nonCreditItems];
+                                        const [movedItem] = updated.splice(fromIndex, 1);
+                                        updated.splice(toIndex, 0, movedItem);
+                                        return [...updated, ...creditItems];
+                                      });
+                                    }}
+                                  >
+                                    {/* ROW DRAG HANDLE */}
+                                    <td 
+                                      style={{ 
+                                        textAlign: 'center', 
+                                        cursor: 'grab', 
+                                        userSelect: 'none', 
+                                        color: 'var(--text-tertiary)',
+                                        fontWeight: 'bold',
+                                        fontSize: '14px'
+                                      }}
+                                      title="Click & Drag to reorder row"
+                                    >
+                                      <GripVertical size={14} style={{ verticalAlign: 'middle', opacity: 0.6 }} />
+                                    </td>
+
                                     {/* QUANTITY */}
                                     <td>
                                       <input 
