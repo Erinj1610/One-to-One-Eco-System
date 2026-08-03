@@ -172,15 +172,19 @@ def init_db():
                 except Exception as alter_err:
                     print(f"Database migration xlsx_binary (non-critical info): {alter_err}")
                 
-                # Migrate order_items table to ensure is_credit exists
+                # Migrate order_items table to ensure is_credit and sort_order exist
                 try:
                     order_item_cols = [c['name'] for c in inspector.get_columns('order_items')]
                     if 'is_credit' not in order_item_cols:
                         conn.execute(text("ALTER TABLE order_items ADD COLUMN is_credit BOOLEAN DEFAULT FALSE;"))
                         conn.commit()
                         print("Database migration: ensured 'is_credit' column exists on 'order_items' table.")
+                    if 'sort_order' not in order_item_cols:
+                        conn.execute(text("ALTER TABLE order_items ADD COLUMN sort_order INTEGER DEFAULT 0;"))
+                        conn.commit()
+                        print("Database migration: ensured 'sort_order' column exists on 'order_items' table.")
                 except Exception as alter_err:
-                    print(f"Database migration is_credit (info/critical): {alter_err}")
+                    print(f"Database migration order_items columns (info/critical): {alter_err}")
                 
                 # Migrate projects table to ensure design_fee_rates_snapshot and design_fee_rates_original exist safely
                 try:
