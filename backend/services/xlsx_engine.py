@@ -302,6 +302,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if row_height:
                 ws.row_dimensions[target_row].height = row_height
 
+            # Actively unmerge any merged cell range touching target_row that openpyxl cloned from adjacent rows
+            for m in list(ws.merged_cells.ranges):
+                if m.min_row <= target_row <= m.max_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
+
             for cell_def in design_list:
                 col_idx = cell_def["col"]
                 target_cell = ws.cell(row=target_row, column=col_idx)
