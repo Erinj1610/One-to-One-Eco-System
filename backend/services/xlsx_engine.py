@@ -260,11 +260,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
-        # Only unmerge control block rows (min_ctrl_row to max_ctrl_row) during row insertions so header merges remain untouched
+        # Only unmerge multi-row control block merges (min_ctrl_row to max_ctrl_row) during row insertions so single-row cell merges remain intact
         for m in list(ws.merged_cells.ranges):
             if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
-                try: ws.unmerge_cells(str(m))
-                except Exception: pass
+                if m.min_row < m.max_row:
+                    try: ws.unmerge_cells(str(m))
+                    except Exception: pass
 
         row_heights = {}
         for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("spacer", spacer_row), ("item", item_row), ("item_summary", item_summary_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
