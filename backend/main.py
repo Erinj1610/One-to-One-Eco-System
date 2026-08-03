@@ -176,13 +176,15 @@ def init_db():
                 try:
                     order_item_cols = [c['name'] for c in inspector.get_columns('order_items')]
                     if 'is_credit' not in order_item_cols:
-                        conn.execute(text("ALTER TABLE order_items ADD COLUMN is_credit BOOLEAN DEFAULT FALSE;"))
-                        conn.commit()
-                        print("Database migration: ensured 'is_credit' column exists on 'order_items' table.")
+                        try:
+                            conn.execute(text("ALTER TABLE order_items ADD COLUMN is_credit BOOLEAN DEFAULT FALSE;"))
+                            conn.commit()
+                        except Exception: pass
                     if 'sort_order' not in order_item_cols:
-                        conn.execute(text("ALTER TABLE order_items ADD COLUMN sort_order INTEGER DEFAULT 0;"))
-                        conn.commit()
-                        print("Database migration: ensured 'sort_order' column exists on 'order_items' table.")
+                        try:
+                            conn.execute(text("ALTER TABLE order_items ADD COLUMN sort_order INTEGER DEFAULT 0;"))
+                            conn.commit()
+                        except Exception: pass
                 except Exception as alter_err:
                     print(f"Database migration order_items columns (info/critical): {alter_err}")
                 
