@@ -207,6 +207,15 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         # Snapshot original row heights across the whole sheet before doing any operations
         original_row_heights = {r: dim.height for r, dim in ws.row_dimensions.items() if dim.height is not None}
 
+        # Snapshot all template merged cell ranges before doing any row operations
+        fixed_merges_above = []
+        fixed_merges_below = []
+        for m in list(ws.merged_cells.ranges):
+            if m.max_row < min_ctrl_row:
+                fixed_merges_above.append((m.min_row, m.max_row, m.min_col, m.max_col))
+            elif m.min_row > max_ctrl_row:
+                fixed_merges_below.append((m.min_row, m.max_row, m.min_col, m.max_col))
+
         def get_row_design(row_num):
             if row_num is None: return []
             cells = []
@@ -234,11 +243,12 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
+        # Capture control row merges from original template before unmerging
         def get_row_merges(row_num):
             if row_num is None: return []
             merges = []
             for m in list(ws.merged_cells.ranges):
-                if m.min_row <= row_num <= m.max_row:
+                if m.min_row == row_num:
                     merges.append((m.min_col, m.max_col))
             return merges
 
@@ -250,12 +260,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_merges = get_row_merges(area_footer_row)
         floor_footer_merges = get_row_merges(floor_footer_row)
 
-        # Only unmerge control block rows (min_ctrl_row to max_ctrl_row) if multi-row merge
+        # Only unmerge control block rows (min_ctrl_row to max_ctrl_row) during row insertions so header merges remain untouched
         for m in list(ws.merged_cells.ranges):
             if m.min_row >= min_ctrl_row and m.max_row <= max_ctrl_row:
-                if m.min_row < m.max_row:
-                    try: ws.unmerge_cells(str(m))
-                    except Exception: pass
+                try: ws.unmerge_cells(str(m))
+                except Exception: pass
 
         row_heights = {}
         for r_idx, r_num in [("floor_header", floor_header_row), ("area_header", area_header_row), ("spacer", spacer_row), ("item", item_row), ("item_summary", item_summary_row), ("area_footer", area_footer_row), ("floor_footer", floor_footer_row)]:
@@ -269,7 +278,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         # Delete placeholder block rows (min_ctrl_row to max_ctrl_row)
         ws.delete_rows(min_ctrl_row, original_ctrl_height)
 
-        def apply_design(target_row, design_list, value_replacements=None, row_height=None, is_spacer=False):
+        def apply_design(target_row, design_list, value_replacements=None, row_height=None):
             ws.insert_rows(target_row, 1)
             if row_height:
                 ws.row_dimensions[target_row].height = row_height
@@ -284,42 +293,39 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                 if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
                 
-                if is_spacer:
-                    target_cell.value = None
-                else:
-                    val = cell_def["value"]
-                    if value_replacements and val:
-                        val_str = str(val)
-                        # Strip block tags if present inside cell text
-                        val_str = val_str.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
-                        sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
-                        for k, v in sorted_repls:
-                            val_str = val_str.replace(k, str(v if v is not None else ''))
-                        
-                        try:
-                            stripped_val = val_str.strip()
-                            if stripped_val.startswith('R '):
-                                clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
-                                if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
-                                    target_cell.value = float(clean_val)
-                                else:
-                                    target_cell.value = val_str
-                            elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
-                                if '.' in stripped_val:
-                                    target_cell.value = float(stripped_val)
-                                else:
-                                    target_cell.value = int(stripped_val)
+                val = cell_def["value"]
+                if value_replacements and val:
+                    val_str = str(val)
+                    # Strip block tags if present inside cell text
+                    val_str = val_str.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
+                    sorted_repls = sorted(value_replacements.items(), key=lambda x: len(x[0]), reverse=True)
+                    for k, v in sorted_repls:
+                        val_str = val_str.replace(k, str(v if v is not None else ''))
+                    
+                    try:
+                        stripped_val = val_str.strip()
+                        if stripped_val.startswith('R '):
+                            clean_val = stripped_val.replace('R ', '').replace(',', '').strip()
+                            if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
+                                target_cell.value = float(clean_val)
                             else:
                                 target_cell.value = val_str
-                        except Exception:
-                            target_cell.value = val_str
-                    else:
-                        if val and isinstance(val, str):
-                            val_cleaned = val.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
-                            target_cell.value = val_cleaned
+                        elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
+                            if '.' in stripped_val:
+                                target_cell.value = float(stripped_val)
+                            else:
+                                target_cell.value = int(stripped_val)
                         else:
-                            target_cell.value = val
-                        
+                            target_cell.value = val_str
+                    except Exception:
+                        target_cell.value = val_str
+                else:
+                    if val and isinstance(val, str):
+                        val_cleaned = val.replace("{{#area}}", "").replace("{{/area}}", "").replace("{{#floor}}", "").replace("{{/floor}}", "")
+                        target_cell.value = val_cleaned
+                    else:
+                        target_cell.value = val
+                    
             return target_row
 
         def clean_price(val_in):
@@ -372,16 +378,20 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 for idx, item in enumerate(items_to_render):
                     if item.get("isSpacer") or item.get("type") == "SPACER":
                         if spacer_design:
-                            apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0, is_spacer=True)
+                            apply_design(curr_row, spacer_design, {}, row_heights.get("spacer") or 9.0)
                             for min_c, max_c in spacer_merges:
                                 try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                                 except Exception: pass
                         elif item_design:
-                            # Apply thin space row using item_design styling (borders & column grid) across table columns
-                            apply_design(curr_row, item_design, {}, 9.0, is_spacer=True)
-                            for min_c, max_c in item_merges:
-                                try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
-                                except Exception: pass
+                            # Apply thin space row using item_design styling across all table columns
+                            ws.insert_rows(curr_row, 1)
+                            ws.row_dimensions[curr_row].height = 9.0
+                            for cell_def in item_design:
+                                col_idx = cell_def["col"]
+                                target_cell = ws.cell(row=curr_row, column=col_idx)
+                                if cell_def["fill"]: target_cell.fill = copy.copy(cell_def["fill"])
+                                if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
+                                target_cell.value = ""
                         else:
                             ws.insert_rows(curr_row, 1)
                             ws.row_dimensions[curr_row].height = 9.0
@@ -414,6 +424,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     repls["{{plan_code}}"] = item_type
                         
                     apply_design(curr_row, item_design, repls, row_heights.get("item"))
+                    for min_c, max_c in item_merges:
+                        try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                        except Exception: pass
                     curr_row += 1
                     inserted_rows_count += 1
             elif item_summary_design:
@@ -578,7 +591,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         delta_rows = inserted_rows_count - original_ctrl_height
 
-        # Shift row heights for fixed rows below min_ctrl_row
+        # Clear and shift row heights for fixed rows below min_ctrl_row
         for r in list(ws.row_dimensions.keys()):
             if r >= min_ctrl_row:
                 ws.row_dimensions[r].height = None
@@ -588,6 +601,16 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 ws.row_dimensions[r].height = h
             elif r > max_ctrl_row:
                 ws.row_dimensions[r + delta_rows].height = h
+
+        # Re-apply all fixed merged cell ranges above the loop
+        for min_r, max_r, min_c, max_c in fixed_merges_above:
+            try: ws.merge_cells(start_row=min_r, start_column=min_c, end_row=max_r, end_column=max_c)
+            except Exception: pass
+
+        # Re-apply all fixed merged cell ranges below the loop with exact delta_rows offset
+        for min_r, max_r, min_c, max_c in fixed_merges_below:
+            try: ws.merge_cells(start_row=min_r + delta_rows, start_column=min_c, end_row=max_r + delta_rows, end_column=max_c)
+            except Exception: pass
             
     else:
         # Standard Flat Loop Fallback Logic
@@ -642,10 +665,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             curr_row = loop_start_row
             for idx, item in enumerate(items):
                 ws.insert_rows(curr_row, 1)
-                is_spacer = bool(item.get("isSpacer") or item.get("type") == "SPACER")
-                if is_spacer:
-                    ws.row_dimensions[curr_row].height = 9.0
-                elif item_row_height:
+                if item_row_height:
                     ws.row_dimensions[curr_row].height = item_row_height
 
                 for cell_def in item_design:
@@ -657,10 +677,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     if cell_def["border"]: target_cell.border = copy.copy(cell_def["border"])
                     if cell_def["alignment"]: target_cell.alignment = copy.copy(cell_def["alignment"])
                     if cell_def["number_format"]: target_cell.number_format = cell_def["number_format"]
-
-                    if is_spacer:
-                        target_cell.value = None
-                        continue
 
                     val_str = str(cell_def["value"] or '')
                     if val_str:
