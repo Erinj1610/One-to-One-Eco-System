@@ -243,13 +243,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         area_footer_design = get_row_design(area_footer_row) if area_footer_row else []
         floor_footer_design = get_row_design(floor_footer_row) if floor_footer_row else []
 
-        # Capture control row merges from original template before unmerging
         def get_row_merges(row_num):
             if row_num is None: return []
             merges = []
             for m in list(ws.merged_cells.ranges):
-                if m.min_row == row_num:
-                    merges.append((m.min_col, m.max_col))
+                if m.min_row == row_num and m.max_row == row_num:
+                    if m.min_col < m.max_col:
+                        merges.append((m.min_col, m.max_col))
             return merges
 
         floor_header_merges = get_row_merges(floor_header_row)
