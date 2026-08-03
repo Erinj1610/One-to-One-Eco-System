@@ -387,8 +387,11 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                                 try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
                                 except Exception: pass
                         elif item_design:
-                            # Apply thin space row using item_design styling across all table columns
+                            # Apply thin space row using item_design styling (borders & column grid) across table columns
                             apply_design(curr_row, item_design, {}, 9.0, is_spacer=True)
+                            for min_c, max_c in item_merges:
+                                try: ws.merge_cells(start_row=curr_row, start_column=min_c, end_row=curr_row, end_column=max_c)
+                                except Exception: pass
                         else:
                             ws.insert_rows(curr_row, 1)
                             ws.row_dimensions[curr_row].height = 9.0
