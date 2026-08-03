@@ -436,19 +436,7 @@ export default function OrdersPage() {
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
   const [orderPayments, setOrderPayments] = useState([]);
 
-  // Sync active order items with the store context when order is loaded or store updates
-  useEffect(() => {
-    if (!selectedOrderId || !selectedProjectKey || !projects[selectedProjectKey]) return;
-    const proj = projects[selectedProjectKey];
-    const foundOrder = (proj.orders || []).find(o => o.id === selectedOrderId);
-    if (foundOrder && foundOrder.itemsList && foundOrder.itemsList.length > 0) {
-      // Only set if itemsList changed length or order to prevent overwriting active edits
-      setActiveOrderItems(prev => {
-        if (prev.length === 0) return foundOrder.itemsList;
-        return prev;
-      });
-    }
-  }, [selectedOrderId, selectedProjectKey, projects]);
+
 
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
   
