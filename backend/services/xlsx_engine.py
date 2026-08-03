@@ -764,7 +764,8 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 cell_a.value = None
 
     if has_column_a_control_tags:
-        ws.column_dimensions['A'].hidden = True
+        if not getattr(ws, '_images', None):
+            ws.column_dimensions['A'].hidden = True
         start_col = "B"
     else:
         start_col = "A"

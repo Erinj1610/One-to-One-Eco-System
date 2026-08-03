@@ -3546,6 +3546,62 @@ export default function OrdersPage() {
                                   rowStyle = { background: 'rgba(16, 185, 129, 0.06)' };
                                 }
 
+                                if (item.isSpacer || item.type === 'SPACER') {
+                                  return (
+                                    <tr 
+                                      key={item.id}
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData('text/plain', index.toString());
+                                        e.dataTransfer.effectAllowed = 'move';
+                                      }}
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'move';
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        const dragIndexStr = e.dataTransfer.getData('text/plain');
+                                        if (dragIndexStr === '') return;
+                                        const fromIndex = parseInt(dragIndexStr, 10);
+                                        const toIndex = index;
+                                        if (fromIndex === toIndex || isNaN(fromIndex)) return;
+
+                                        setActiveOrderItems(prev => {
+                                          const nonCreditItems = prev.filter(it => !(it.is_credit || it.isCredit));
+                                          const creditItems = prev.filter(it => (it.is_credit || it.isCredit));
+                                          const updated = [...nonCreditItems];
+                                          const [movedItem] = updated.splice(fromIndex, 1);
+                                          updated.splice(toIndex, 0, movedItem);
+                                          return [...updated, ...creditItems];
+                                        });
+                                      }}
+                                      style={{ background: 'rgba(0, 0, 0, 0.05)', height: '18px' }}
+                                    >
+                                      <td 
+                                        style={{ textAlign: 'center', cursor: 'grab', userSelect: 'none', color: 'var(--text-tertiary)', padding: 0 }}
+                                        title="Click & Drag to reorder space row"
+                                      >
+                                        <GripVertical size={12} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
+                                      </td>
+                                      <td colSpan={17} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '18px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                        <div style={{ height: '100%', width: '100%' }} />
+                                      </td>
+                                      <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>
+                                        <button 
+                                          type="button"
+                                          className="btn btn-ghost"
+                                          style={{ padding: '0', height: 'auto', color: 'var(--text-danger)', opacity: 0.6 }}
+                                          title="Delete Space Row"
+                                          onClick={() => handleDeleteSpreadsheetRow(item.id)}
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+
                                 return (
                                   <tr 
                                     key={item.id} 
