@@ -202,27 +202,6 @@ def init_db():
                 except Exception as proj_alter_err:
                     print(f"Database migration projects columns (info): {proj_alter_err}")
                 
-                # Auto-sync BOQ template binaries in DB with latest backend/templates/BOQ/template.xlsx
-                try:
-                    boq_template_file = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates', 'BOQ', 'template.xlsx'))
-                    if os.path.exists(boq_template_file):
-                        with open(boq_template_file, 'rb') as f:
-                            latest_boq_bytes = f.read()
-                        
-                        from database.cloud_sql import SessionLocal
-                        from models.orm_models import TemplateConfig
-                        db = SessionLocal()
-                        try:
-                            boq_configs = db.query(TemplateConfig).filter(TemplateConfig.template_key.in_(['BOQ', 'boq_doc', 'boq'])).all()
-                            for cfg in boq_configs:
-                                cfg.xlsx_binary = latest_boq_bytes
-                            db.commit()
-                            print("Database migration: synced BOQ template_configs with latest BOQ template binary.")
-                        finally:
-                            db.close()
-                except Exception as sync_err:
-                    print(f"Database migration BOQ template sync info: {sync_err}")
-
                 # Migrate orders table to ensure pm_name exists
                 try:
                     order_cols = [c['name'] for c in inspector.get_columns('orders')]
