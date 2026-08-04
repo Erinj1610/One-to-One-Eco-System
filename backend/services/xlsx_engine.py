@@ -193,7 +193,19 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if item_summary_row is None:
                 item_summary_row = r
         elif "[ITEM]" in cell_a_val:
-            item_rows.append(r)
+            # Check if this [ITEM] tag cell is vertically merged across multiple rows (e.g. A10:A14)
+            merged_item_range = None
+            for m in ws.merged_cells.ranges:
+                if m.min_row <= r <= m.max_row and m.min_col <= 1 <= m.max_col:
+                    merged_item_range = m
+                    break
+            if merged_item_range and merged_item_range.min_row < merged_item_range.max_row:
+                for card_r in range(merged_item_range.min_row, merged_item_range.max_row + 1):
+                    if card_r not in item_rows:
+                        item_rows.append(card_r)
+            else:
+                if r not in item_rows:
+                    item_rows.append(r)
         elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
             area_footer_row = r
         elif "[FLOOR_FOOTER]" in cell_a_val or "{{/floor}}" in cell_a_val:
