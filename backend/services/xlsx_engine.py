@@ -131,9 +131,27 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         matched_sheet = None
         if sheet_name:
             clean_target = str(sheet_name).strip().lower().replace('_', ' ')
+            targets = [clean_target]
+            
+            sn_lower = str(sheet_name).strip().lower()
+            if "boq" in sn_lower:
+                targets.extend(["boq", "boq doc", "bill of quantity", "bill of quantities"])
+            if "sched" in sn_lower or "light" in sn_lower:
+                targets.extend(["schedule", "lighting schedule", "lighting_schedule", "lighting"])
+            if "quote" in sn_lower or "quotation" in sn_lower:
+                targets.extend(["quotation", "quote", "summarized quote"])
+            if "deposit" in sn_lower:
+                targets.extend(["deposit invoice", "deposit_invoice", "deposit"])
+            if "balance" in sn_lower:
+                targets.extend(["balance invoice", "balance_invoice", "balance"])
+            if "tax" in sn_lower or "invoice" in sn_lower:
+                targets.extend(["tax invoice", "tax_invoice", "invoice"])
+            if "statement" in sn_lower or "progress" in sn_lower:
+                targets.extend(["progress statement", "progress_statement", "statement"])
+
             for s_name in wb.sheetnames:
                 clean_s = str(s_name).strip().lower().replace('_', ' ')
-                if clean_s == clean_target:
+                if clean_s in targets:
                     matched_sheet = s_name
                     break
         

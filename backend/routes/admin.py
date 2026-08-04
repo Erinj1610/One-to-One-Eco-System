@@ -406,12 +406,23 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             f.write(binary_data)
         xlsx_template_path = custom_xlsx_temp_path
     else:
-        disk_xlsx_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', doc_type, 'template.xlsx'))
+        folder_candidates = [doc_type, doc_type.upper(), doc_type.lower()]
+        if doc_type == 'boq_doc': folder_candidates.extend(['BOQ', 'boq'])
+        elif doc_type == 'schedule': folder_candidates.extend(['SCHEDULE', 'schedule', 'LIGHTING_SCHEDULE'])
+        elif doc_type == 'quote': folder_candidates.extend(['QUOTATION', 'quotation', 'QUOTE'])
+        
+        disk_xlsx_path = None
+        for cand in folder_candidates:
+            cand_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', cand, 'template.xlsx'))
+            if os.path.exists(cand_path):
+                disk_xlsx_path = cand_path
+                break
+                
         master_disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', 'master_templates.xlsx'))
-        if os.path.exists(master_disk_path):
-            xlsx_template_path = master_disk_path
-        elif os.path.exists(disk_xlsx_path):
+        if disk_xlsx_path:
             xlsx_template_path = disk_xlsx_path
+        elif os.path.exists(master_disk_path):
+            xlsx_template_path = master_disk_path
 
     if xlsx_template_path:
         print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format} sheet={target_sheet_name}...")
