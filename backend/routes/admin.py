@@ -302,9 +302,23 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
     """
     print(f"DEBUG: Generating {doc_type} format={format} with tokens: {list(data.keys())} for page: {page}")
     
-    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    keys_to_try = [doc_type, doc_type.upper(), doc_type.lower()]
+    if doc_type == 'boq_doc': keys_to_try.extend(['BOQ', 'boq', 'BOQ_DOC'])
+    elif doc_type == 'schedule': keys_to_try.extend(['SCHEDULE', 'schedule', 'LIGHTING_SCHEDULE', 'LIGHTING'])
+    elif doc_type == 'quote': keys_to_try.extend(['QUOTATION', 'quotation', 'QUOTE'])
+
+    config = None
+    for k in keys_to_try:
+        cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
+        if cfg and (cfg.xlsx_binary or cfg.html_content or cfg.config_json):
+            config = cfg
+            break
+
+    if not config:
+        config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+
     master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
-    target_sheet_name = config.config_json.get("excel_tab_name") if (config and config.config_json) else doc_type
+    target_sheet_name = (config.config_json.get("excel_tab_name") if (config and config.config_json) else None) or doc_type
     
     is_excel_active = (master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)) or True
     
