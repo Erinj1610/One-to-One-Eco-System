@@ -144,19 +144,29 @@ async def upload_master_excel_template(file: UploadFile = File(...), db: Session
 @router.post("/templates/{doc_type}/xlsx/upload")
 async def upload_xlsx_template(doc_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
-    Uploads a new .xlsx template for a specific document type and stores it in the database.
+    Uploads a new .xlsx template for a specific document type and stores it in the database across all alias keys.
     """
     if not file.filename.lower().endswith('.xlsx'):
         raise HTTPException(status_code=400, detail="Only .xlsx files are allowed")
     
     contents = await file.read()
     
-    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
-    if config:
-        config.xlsx_binary = contents
-    else:
-        config = TemplateConfig(template_key=doc_type, xlsx_binary=contents, config_json={})
-        db.add(config)
+    alias_keys = [doc_type, doc_type.upper(), doc_type.lower()]
+    if doc_type.lower() in ['boq_doc', 'boq']:
+        alias_keys.extend(['boq_doc', 'BOQ', 'boq'])
+    elif doc_type.lower() in ['schedule', 'lighting_schedule', 'lighting schedule']:
+        alias_keys.extend(['schedule', 'SCHEDULE', 'LIGHTING_SCHEDULE'])
+    elif doc_type.lower() in ['quote', 'quotation']:
+        alias_keys.extend(['quote', 'QUOTATION', 'QUOTE'])
+    alias_keys = list(dict.fromkeys(alias_keys))
+
+    for k in alias_keys:
+        config = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
+        if config:
+            config.xlsx_binary = contents
+        else:
+            config = TemplateConfig(template_key=k, xlsx_binary=contents, config_json={})
+            db.add(config)
     
     db.commit()
     return {"message": f"Excel Template for {doc_type} uploaded successfully to database"}
@@ -302,17 +312,28 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
     """
     print(f"DEBUG: Generating {doc_type} format={format} with tokens: {list(data.keys())} for page: {page}")
     
-    keys_to_try = [doc_type, doc_type.upper(), doc_type.lower()]
-    if doc_type == 'boq_doc': keys_to_try.extend(['BOQ', 'boq', 'BOQ_DOC'])
-    elif doc_type == 'schedule': keys_to_try.extend(['SCHEDULE', 'schedule', 'LIGHTING_SCHEDULE', 'LIGHTING'])
-    elif doc_type == 'quote': keys_to_try.extend(['QUOTATION', 'quotation', 'QUOTE'])
+    if doc_type == 'boq_doc':
+        keys_to_try = ['boq_doc', 'BOQ', 'boq']
+    elif doc_type == 'schedule':
+        keys_to_try = ['schedule', 'SCHEDULE', 'LIGHTING_SCHEDULE', 'LIGHTING']
+    elif doc_type == 'quote':
+        keys_to_try = ['quote', 'QUOTATION', 'QUOTE']
+    else:
+        keys_to_try = [doc_type, doc_type.upper(), doc_type.lower()]
 
     config = None
     for k in keys_to_try:
         cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
-        if cfg and (cfg.xlsx_binary or cfg.html_content or cfg.config_json):
+        if cfg and cfg.xlsx_binary:
             config = cfg
             break
+
+    if not config:
+        for k in keys_to_try:
+            cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
+            if cfg and (cfg.html_content or cfg.config_json):
+                config = cfg
+                break
 
     if not config:
         config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
