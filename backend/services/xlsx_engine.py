@@ -472,7 +472,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                         return False
 
                 if credit_item_design:
-                    normal_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and not is_item_credit(it)]
+                    normal_items = [it for it in items_to_render if not is_item_credit(it)]
                     credit_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and is_item_credit(it)]
                 else:
                     normal_items = items_to_render
