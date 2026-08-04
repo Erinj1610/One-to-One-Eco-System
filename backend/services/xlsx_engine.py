@@ -212,10 +212,17 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             floor_footer_row = r
 
     item_row = item_rows[0] if item_rows else None
-    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or len(item_rows) > 0 or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None or credit_item_row is not None)
+    
+    # Filter table_header_rows to main table headers preceding item_rows
+    if item_rows:
+        main_table_header_rows = [r for r in table_header_rows if r < min(item_rows)]
+    else:
+        main_table_header_rows = table_header_rows
+
+    has_tagged_loop = (floor_header_row is not None or area_header_row is not None or len(item_rows) > 0 or item_summary_row is not None or area_footer_row is not None or floor_footer_row is not None or len(main_table_header_rows) > 0 or len(floor_table_header_rows) > 0 or len(area_table_header_rows) > 0 or spacer_row is not None or credit_item_row is not None)
     
     if has_tagged_loop:
-        control_rows = list(filter(None, [floor_header_row, area_header_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row, credit_header_row, credit_item_row] + item_rows + table_header_rows + floor_table_header_rows + area_table_header_rows))
+        control_rows = list(filter(None, [floor_header_row, area_header_row, item_summary_row, area_footer_row, floor_footer_row, spacer_row, credit_header_row, credit_item_row] + item_rows + main_table_header_rows + floor_table_header_rows + area_table_header_rows))
         min_ctrl_row = min(control_rows)
         max_ctrl_row = max(control_rows)
         original_ctrl_height = max_ctrl_row - min_ctrl_row + 1
@@ -269,7 +276,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
         floor_header_design = get_row_design(floor_header_row)
         area_header_design = get_row_design(area_header_row)
-        table_header_designs = [get_row_design(r) for r in table_header_rows]
+        table_header_designs = [get_row_design(r) for r in main_table_header_rows]
         floor_table_header_designs = [get_row_design(r) for r in floor_table_header_rows]
         area_table_header_designs = [get_row_design(r) for r in area_table_header_rows]
         spacer_design = get_row_design(spacer_row) if spacer_row else []
@@ -324,7 +331,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             if r_num and original_row_heights.get(r_num):
                 row_heights[r_idx] = original_row_heights.get(r_num)
                 
-        table_header_heights = [original_row_heights.get(r) for r in table_header_rows if original_row_heights.get(r)]
+        table_header_heights = [original_row_heights.get(r) for r in main_table_header_rows if original_row_heights.get(r)]
         floor_table_header_heights = [original_row_heights.get(r) for r in floor_table_header_rows if original_row_heights.get(r)]
         area_table_header_heights = [original_row_heights.get(r) for r in area_table_header_rows if original_row_heights.get(r)]
 
