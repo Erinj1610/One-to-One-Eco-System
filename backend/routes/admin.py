@@ -407,19 +407,9 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
         with open(custom_xlsx_temp_path, "wb") as f:
             f.write(binary_data)
         xlsx_template_path = custom_xlsx_temp_path
-    elif master_config and master_config.xlsx_binary:
-        print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
-        xlsx_temp_dir = tempfile.mkdtemp()
-        custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
-        binary_data = bytes(master_config.xlsx_binary)
-        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
-            import base64
-            try: binary_data = base64.b64decode(binary_data)
-            except Exception: pass
-        with open(custom_xlsx_temp_path, "wb") as f:
-            f.write(binary_data)
-        xlsx_template_path = custom_xlsx_temp_path
+
     else:
+        # Check individual template files on disk FIRST (BOQ, SCHEDULE, QUOTATION)
         folder_candidates = [doc_type, doc_type.upper(), doc_type.lower()]
         if doc_type == 'boq_doc': folder_candidates.extend(['BOQ', 'boq'])
         elif doc_type == 'schedule': folder_candidates.extend(['SCHEDULE', 'schedule', 'LIGHTING_SCHEDULE'])
@@ -431,12 +421,26 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             if os.path.exists(cand_path):
                 disk_xlsx_path = cand_path
                 break
-                
-        master_disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', 'master_templates.xlsx'))
+
         if disk_xlsx_path:
+            print(f"DEBUG: Using individual disk template for {doc_type} at {disk_xlsx_path}")
             xlsx_template_path = disk_xlsx_path
-        elif os.path.exists(master_disk_path):
-            xlsx_template_path = master_disk_path
+        elif master_config and master_config.xlsx_binary:
+            print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
+            xlsx_temp_dir = tempfile.mkdtemp()
+            custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
+            binary_data = bytes(master_config.xlsx_binary)
+            if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+                import base64
+                try: binary_data = base64.b64decode(binary_data)
+                except Exception: pass
+            with open(custom_xlsx_temp_path, "wb") as f:
+                f.write(binary_data)
+            xlsx_template_path = custom_xlsx_temp_path
+        else:
+            master_disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', 'master_templates.xlsx'))
+            if os.path.exists(master_disk_path):
+                xlsx_template_path = master_disk_path
 
     if xlsx_template_path:
         print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format} sheet={target_sheet_name}...")
