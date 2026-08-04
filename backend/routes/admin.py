@@ -376,19 +376,7 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
     master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
     target_sheet_name = config.config_json.get("excel_tab_name") if (config and config.config_json) else doc_type
 
-    if master_config and master_config.xlsx_binary:
-        print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
-        xlsx_temp_dir = tempfile.mkdtemp()
-        custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
-        binary_data = bytes(master_config.xlsx_binary)
-        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
-            import base64
-            try: binary_data = base64.b64decode(binary_data)
-            except Exception: pass
-        with open(custom_xlsx_temp_path, "wb") as f:
-            f.write(binary_data)
-        xlsx_template_path = custom_xlsx_temp_path
-    elif config and config.xlsx_binary:
+    if config and config.xlsx_binary:
         print(f"DEBUG: Using custom Excel template from database for {doc_type}")
         xlsx_temp_dir = tempfile.mkdtemp()
         custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "db_template.xlsx")
@@ -402,6 +390,18 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             except Exception as b64_err:
                 print(f"DEBUG: Failed to base64 decode custom Excel template: {b64_err}")
                 
+        with open(custom_xlsx_temp_path, "wb") as f:
+            f.write(binary_data)
+        xlsx_template_path = custom_xlsx_temp_path
+    elif master_config and master_config.xlsx_binary:
+        print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
+        xlsx_temp_dir = tempfile.mkdtemp()
+        custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
+        binary_data = bytes(master_config.xlsx_binary)
+        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
+            import base64
+            try: binary_data = base64.b64decode(binary_data)
+            except Exception: pass
         with open(custom_xlsx_temp_path, "wb") as f:
             f.write(binary_data)
         xlsx_template_path = custom_xlsx_temp_path
