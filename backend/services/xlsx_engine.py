@@ -255,7 +255,10 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     for m in ws.merged_cells.ranges:
                         if m.min_row <= row_num <= m.max_row and m.min_col <= c <= m.max_col:
                             tl = ws.cell(row=m.min_row, column=m.min_col)
-                            if not val: val = tl.value
+                            if c == m.min_col and row_num == m.min_row:
+                                if not val: val = tl.value
+                            else:
+                                val = None
                             if not font and tl.font: font = copy.copy(tl.font)
                             if not fill and tl.fill: fill = copy.copy(tl.fill)
                             if not border and tl.border: border = copy.copy(tl.border)
@@ -904,15 +907,18 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 cell_a.value = None
 
     if has_column_a_control_tags:
-        if not getattr(ws, '_images', None):
-            ws.column_dimensions['A'].hidden = True
+        ws.column_dimensions['A'].width = 0.0001
+        ws.column_dimensions['A'].hidden = True
         start_col = "B"
     else:
         start_col = "A"
 
     ws.print_area = f"{start_col}1:{max_col_letter}{ws.max_row}"
 
-    # 4. Fit-To-Page setup for PDF conversion
+    # 4. Clean Page Margins & Fit-To-Page setup for PDF conversion
+    from openpyxl.worksheet.page import PageMargins
+    ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.1, footer=0.1)
+
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     if ws.sheet_properties and ws.sheet_properties.pageSetUpPr:
