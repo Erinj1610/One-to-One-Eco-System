@@ -504,6 +504,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
                     one_code = item.get("oneOneCode") or ''
                     item_type = item.get("type") or item.get("planCode") or item.get("plan_code") or ''
+                    mat_col = item.get("material/colour") or item.get("material_colour") or item.get("material") or item.get("colour") or item.get("brand") or ''
+                    class_val = item.get("class") or item.get("itemClass") or item.get("item_class") or ''
+
                     repls["{{item.oneOneCode}}"] = one_code
                     repls["{{item.oneonecode}}"] = one_code
                     repls["{{item.one_one_code}}"] = one_code
@@ -516,6 +519,20 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                     repls["{{type}}"] = item_type
                     repls["{{planCode}}"] = item_type
                     repls["{{plan_code}}"] = item_type
+
+                    repls["{{item.material/colour}}"] = mat_col
+                    repls["{{item.material_colour}}"] = mat_col
+                    repls["{{item.material}}"] = mat_col
+                    repls["{{item.colour}}"] = mat_col
+                    repls["{{item.brand}}"] = mat_col
+                    repls["{{material/colour}}"] = mat_col
+                    repls["{{material_colour}}"] = mat_col
+
+                    repls["{{item.class}}"] = class_val
+                    repls["{{item.itemClass}}"] = class_val
+                    repls["{{item.item_class}}"] = class_val
+                    repls["{{class}}"] = class_val
+                    repls["{{itemClass}}"] = class_val
                         
                     if len(item_designs) > 1:
                         card_start_row = curr_row
