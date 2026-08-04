@@ -981,6 +981,35 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 has_column_a_control_tags = True
                 cell_a.value = None
 
+    # Ensure all non-top-left cells inside every merged range inherit fill, font, border, and alignment from top-left cell
+    for m in list(ws.merged_cells.ranges):
+        tl = ws.cell(row=m.min_row, column=m.min_col)
+        for r in range(m.min_row, m.max_row + 1):
+            for c in range(m.min_col, m.max_col + 1):
+                if r == m.min_row and c == m.min_col: continue
+                cell = ws.cell(row=r, column=c)
+                if tl.fill: cell.fill = copy.copy(tl.fill)
+                if tl.border: cell.border = copy.copy(tl.border)
+                if tl.font: cell.font = copy.copy(tl.font)
+                if tl.alignment: cell.alignment = copy.copy(tl.alignment)
+
+    # Ensure column widths for columns B-L auto-expand to fit long product codes without overlapping
+    from openpyxl.utils import get_column_letter
+    for c in range(2, max_col_idx + 1):
+        col_letter = get_column_letter(c)
+        max_len = 0
+        for r in range(1, ws.max_row + 1):
+            cell = ws.cell(row=r, column=c)
+            if type(cell).__name__ == 'MergedCell': continue
+            val_str = str(cell.value or '')
+            if val_str and not any(k in val_str for k in ['TOTAL VALUE', 'Please see', 'Approval', 'Delivery Fee', 'This quote']):
+                max_len = max(max_len, len(val_str))
+        
+        current_w = ws.column_dimensions[col_letter].width or 10.0
+        if max_len > 0:
+            suggested_w = max(current_w, max_len + 3)
+            ws.column_dimensions[col_letter].width = suggested_w
+
     if has_column_a_control_tags:
         ws.column_dimensions['A'].width = 0.0001
         ws.column_dimensions['A'].hidden = True
