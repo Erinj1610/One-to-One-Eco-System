@@ -789,17 +789,15 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
             elif r > max_ctrl_row:
                 ws.row_dimensions[r + delta_rows].height = h
 
-        # Ensure all cells inside every merged range inherit fill, font, border, and alignment from top-left cell
-        for m in list(ws.merged_cells.ranges):
-            tl = ws.cell(row=m.min_row, column=m.min_col)
-            for r in range(m.min_row, m.max_row + 1):
-                for c in range(m.min_col, m.max_col + 1):
-                    if r == m.min_row and c == m.min_col: continue
-                    cell = ws.cell(row=r, column=c)
-                    if tl.fill: cell.fill = copy.copy(tl.fill)
-                    if tl.border: cell.border = copy.copy(tl.border)
-                    if tl.font: cell.font = copy.copy(tl.font)
-                    if tl.alignment: cell.alignment = copy.copy(tl.alignment)
+        # Re-apply all fixed merged cell ranges above the loop
+        for min_r, max_r, min_c, max_c in fixed_merges_above:
+            try: ws.merge_cells(start_row=min_r, start_column=min_c, end_row=max_r, end_column=max_c)
+            except Exception: pass
+
+        # Re-apply all fixed merged cell ranges below the loop with exact delta_rows offset
+        for min_r, max_r, min_c, max_c in fixed_merges_below:
+            try: ws.merge_cells(start_row=min_r + delta_rows, start_column=min_c, end_row=max_r + delta_rows, end_column=max_c)
+            except Exception: pass
             
     else:
         # Standard Flat Loop Fallback Logic
