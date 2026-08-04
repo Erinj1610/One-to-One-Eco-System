@@ -192,7 +192,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         elif "[ITEM_SUMMARY]" in cell_a_val:
             if item_summary_row is None:
                 item_summary_row = r
-        elif "[ITEM]" in cell_a_val or "{{item." in cell_a_val:
+        elif "[ITEM]" in cell_a_val:
             item_rows.append(r)
         elif "[AREA_FOOTER]" in cell_a_val or "{{/area}}" in cell_a_val:
             area_footer_row = r
@@ -422,15 +422,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
         def render_item_rows(items_to_render):
             nonlocal curr_row, inserted_rows_count
             if item_design:
-                # Separate normal items from credited items if template has credit row design
+                # Filter items
                 if credit_item_design:
                     normal_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and clean_price(it.get("qty")) >= 0]
                     credit_items = [it for it in items_to_render if not (it.get("isSpacer") or it.get("type") == "SPACER") and clean_price(it.get("qty")) < 0]
-                    spacer_items = [it for it in items_to_render if (it.get("isSpacer") or it.get("type") == "SPACER")]
                 else:
                     normal_items = items_to_render
                     credit_items = []
-                    spacer_items = []
 
                 for idx, item in enumerate(normal_items):
                     if item.get("isSpacer") or item.get("type") == "SPACER":
