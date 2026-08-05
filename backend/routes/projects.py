@@ -669,6 +669,33 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             orders_by_project[order.project_key].append(order_dict)
 
 
+        # Pre-fetch all design fees grouped by project_key and project_id
+        from models.orm_models import DesignFee
+        design_fees_raw = db.query(DesignFee).all()
+        fees_by_project = {}
+        for df in design_fees_raw:
+            p_ref = df.project_key
+            if not p_ref and df.project_id:
+                p_ref = str(df.project_id)
+            if p_ref:
+                if p_ref not in fees_by_project:
+                    fees_by_project[p_ref] = []
+                # Construct fee object from DB row
+                fee_dict = df.fee_json if isinstance(df.fee_json, dict) else {}
+                if not fee_dict:
+                    fee_dict = {
+                        "id": df.fee_ref,
+                        "name": df.name,
+                        "sqm": df.sqm,
+                        "feeValue": df.fee_value,
+                        "paid": df.paid,
+                        "outstanding": df.outstanding,
+                        "margin": df.margin,
+                        "status": df.status,
+                        "date": df.creation_date
+                    }
+                fees_by_project[p_ref].append(fee_dict)
+
         # Build projects dictionary
         projects_dict = {}
         import re
@@ -698,6 +725,17 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 elif all_draft:
                     computed_status = 'Draft'
 
+            # Fetch relational design fees or fallback to s1..s5 columns
+            relational_fees = fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), [])
+            if not relational_fees:
+                relational_fees = []
+                for col in [p.s1, p.s2, p.s3, p.s4, p.s5]:
+                    if col and isinstance(col, str) and col.strip() and col != "null":
+                        try:
+                            relational_fees.append(json.loads(col))
+                        except Exception:
+                            pass
+
             projects_dict[p_key] = {
                 "key": p_key,
                 "name": p.name,
@@ -716,6 +754,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "s3": p.s3 or "",
                 "s4": p.s4 or "",
                 "s5": p.s5 or "",
+                "designFees": relational_fees,
                 "orders": proj_orders
             }
         return projects_dict
