@@ -1432,6 +1432,8 @@ export function StoreProvider({ children }) {
       item_type: item.itemType || item.item_type || "Hardware",
       sort_order: item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)
     };
+  };
+
   const updateProject = async (key, field, value) => {
     // 2. Perform granular database write under the hood
     let updatedProj = null;
