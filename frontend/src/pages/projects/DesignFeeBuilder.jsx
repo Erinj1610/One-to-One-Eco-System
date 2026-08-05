@@ -388,63 +388,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
             </div>
           )}
         </div>
-
-        {/* Project Header Info */}
-        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Project Name</label>
-              <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} style={inputModernStyle} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Quote by</label>
-              <input type="text" value={quoteBy} onChange={e => setQuoteBy(e.target.value)} style={inputModernStyle} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Company Name</label>
-              <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Client Company..." style={inputModernStyle} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Contact Person</label>
-              <input type="text" value={contactPerson} onChange={e => setContactPerson(e.target.value)} placeholder="Client Contact..." style={inputModernStyle} />
-            </div>
-          </div>
-        </div>
-
-        {/* Rate Adjustments & Modifiers Bar */}
-        <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '1rem 1.25rem', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', alignItems: 'center' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Proposal Type</label>
-              <select value={proposalType} onChange={e => setProposalType(e.target.value)} style={{ ...inputModernStyle, height: '34px', padding: '0.2rem 0.5rem' }}>
-                <option value="Signature">Signature</option>
-                <option value="Standard">Standard</option>
-                <option value="Custom">Custom</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Sig Deposit %</label>
-              <input type="number" value={sigDepositPercent} onChange={e => setSigDepositPercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Design Inc. %</label>
-              <input type="number" value={designIncreasePercent} onChange={e => setDesignIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Product Inc. %</label>
-              <input type="number" value={productIncreasePercent} onChange={e => setProductIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Consult Disc. %</label>
-              <input type="number" value={sigConsultDiscount} onChange={e => setSigConsultDiscount(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>USD Conv. Rate</label>
-              <div style={{ ...inputModernStyle, textAlign: 'center', background: 'rgba(0,0,0,0.5)', color: 'var(--accent-blue)' }}>R{(1 / usdConv).toFixed(3)}</div>
-            </div>
-          </div>
-        </div>
-
+        
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) minmax(350px, 1fr)', gap: '2rem', alignItems: 'start' }}>
           
           {/* LEFT COLUMN: 4 Step-by-Step Modern Input Sections */}
