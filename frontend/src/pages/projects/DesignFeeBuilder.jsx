@@ -447,12 +447,15 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) minmax(350px, 1fr)', gap: '2rem', alignItems: 'start' }}>
           
-          {/* LEFT COLUMN: Modern Dark Input Controls */}
+          {/* LEFT COLUMN: 4 Step-by-Step Modern Input Sections */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
-            {/* 1. Project & Client Metadata */}
+            {/* STEP 1: Project & Client Details (Image 1) */}
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <h4 style={{ marginBottom: '1rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.4rem', fontSize: '0.9rem' }}>📌 1. Project & Client Metadata</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
+                <span style={{ background: 'var(--accent-blue)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
+                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Project & Client Details</h4>
+              </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
                 <div>
@@ -482,11 +485,14 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
               </div>
             </div>
 
-            {/* 2. Site Meterage & Area Split Parameters */}
+            {/* STEP 2: Meterage & Scope (Image 2) */}
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <h4 style={{ marginBottom: '1rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.4rem', fontSize: '0.9rem' }}>📐 2. Site Meterage & Area Splits</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
+                <span style={{ background: 'var(--accent-purple)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
+                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Site Meterage (m²) & Proposal Type</h4>
+              </div>
               
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Living Area (m²)</label>
                   <input type="number" value={livingArea} onChange={e => setLivingArea(Number(e.target.value))} style={{ ...inputModernStyle, fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent-blue)', borderColor: 'rgba(59, 130, 246, 0.4)' }} />
@@ -497,6 +503,29 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                 </div>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Proposal Type</label>
+                  <select value={proposalType} onChange={e => setProposalType(e.target.value)} style={{ ...inputModernStyle, height: '34px', padding: '0.2rem 0.5rem' }}>
+                    <option value="Signature">Signature</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>USD Conv. Rate</label>
+                  <div style={{ ...inputModernStyle, textAlign: 'center', background: 'rgba(0,0,0,0.5)', color: 'var(--accent-blue)', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>R{(1 / usdConv).toFixed(3)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* STEP 3: Area Split Percentages & Rate Adjustments (Image 3) */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#38bdf8', color: 'black', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>3</span>
+                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Area Split % & Rate Adjustments</h4>
+              </div>
+              
               <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Living Area Splits (%)</h5>
               
               <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
@@ -525,16 +554,36 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', width: '65px', textAlign: 'right' }}>{sqExpLand.toFixed(0)} m²</span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.1)', padding: '0.4rem 0.6rem', borderRadius: '6px', opacity: 0.8 }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.1)', padding: '0.4rem 0.6rem', borderRadius: '6px', opacity: 0.8 }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', flex: 1 }}>Secondary Landscape (Bal.)</span>
                 <input type="number" value={secLand} readOnly style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--panel-border)', color: 'var(--text-tertiary)', textAlign: 'center' }} />
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', width: '65px', textAlign: 'right' }}>{sqSecLand.toFixed(0)} m²</span>
               </div>
+
+              <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Rate Modifiers (%)</h5>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Sig Deposit %</label>
+                  <input type="number" value={sigDepositPercent} onChange={e => setSigDepositPercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Design Inc. %</label>
+                  <input type="number" value={designIncreasePercent} onChange={e => setDesignIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Product Inc. %</label>
+                  <input type="number" value={productIncreasePercent} onChange={e => setProductIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
+                </div>
+              </div>
             </div>
 
-            {/* 3. Scope & Extras Selection */}
+            {/* STEP 4: Extras & Optional Services (Image 4) */}
             <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <h4 style={{ marginBottom: '1rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.4rem', fontSize: '0.9rem' }}>⚙️ 3. Scope & Service Options</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#10b981', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
+                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Extras & Optional Services</h4>
+              </div>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem', background: sigConsult ? 'rgba(59, 130, 246, 0.15)' : 'rgba(0,0,0,0.2)', border: sigConsult ? '1px solid var(--accent-blue)' : '1px solid var(--panel-border)', borderRadius: '8px' }}>
