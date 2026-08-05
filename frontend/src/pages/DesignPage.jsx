@@ -10,6 +10,7 @@ import {
   Calendar, Clock, Play, TrendingDown, Calculator
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
+import DesignFeeBuilder from './projects/DesignFeeBuilder';
 
 const PHI_ADVISORIES = {
   design: {
