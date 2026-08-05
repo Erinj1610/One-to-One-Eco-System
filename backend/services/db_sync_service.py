@@ -363,8 +363,45 @@ def sync_projects(projects_dict, db: Session):
 
     db.commit()
 
-    # Re-query projects map to get IDs for nested orders
+    # Re-query projects map to get IDs for nested orders & design fees
     proj_db_map = {row[1]: row[0] for row in db.execute(text("SELECT id, project_key FROM projects WHERE project_key IN :keys"), {"keys": tuple(project_keys)}).fetchall()}
+
+    # Sync design fees to relational design_fees table
+    for p_key, p in projects_dict.items():
+        proj_id = proj_db_map.get(p_key)
+        design_fees_list = p.get("designFees", [])
+        if not design_fees_list:
+            # Fall back to parsing s1..s5 columns
+            for col in ['s1', 's2', 's3', 's4', 's5']:
+                raw = p.get(col)
+                if raw and isinstance(raw, str) and raw.strip() and raw != "null":
+                    try:
+                        design_fees_list.append(json.loads(raw))
+                    except Exception:
+                        pass
+
+        if design_fees_list:
+            db.execute(text("DELETE FROM design_fees WHERE project_key = :pk"), {"pk": p_key})
+            for df in design_fees_list:
+                if isinstance(df, dict) and df.get("id"):
+                    db.execute(text("""
+                        INSERT INTO design_fees (fee_ref, project_id, project_key, name, sqm, fee_value, paid, outstanding, margin, status, creation_date, fee_json)
+                        VALUES (:fee_ref, :project_id, :project_key, :name, :sqm, :fee_value, :paid, :outstanding, :margin, :status, :creation_date, :fee_json)
+                    """), {
+                        "fee_ref": df.get("id", "DF-101"),
+                        "project_id": proj_id,
+                        "project_key": p_key,
+                        "name": df.get("name", "Design Fee"),
+                        "sqm": float(df.get("sqm", 1000) or 1000),
+                        "fee_value": float(df.get("feeValue", 0) or 0),
+                        "paid": float(df.get("paid", 0) or 0),
+                        "outstanding": float(df.get("outstanding", 0) or 0),
+                        "margin": float(df.get("margin", 18) or 18),
+                        "status": df.get("status", "Draft"),
+                        "creation_date": df.get("date"),
+                        "fee_json": json.dumps(df)
+                    })
+    db.commit()
 
     orders_to_insert = []
     order_items_to_insert = []
