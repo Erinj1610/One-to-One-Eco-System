@@ -382,6 +382,37 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.s4 = project_data.s4
     project.s5 = project_data.s5
 
+    # Relational sync to dedicated design_fees table
+    import json
+    from models.orm_models import DesignFee
+    
+    # Clean existing design fees for this project key
+    db.query(DesignFee).filter(DesignFee.project_key == project_key).delete(synchronize_session=False)
+
+    cols = [project_data.s1, project_data.s2, project_data.s3, project_data.s4, project_data.s5]
+    for col_val in cols:
+        if col_val and col_val.strip() and col_val != "null":
+            try:
+                fee_obj = json.loads(col_val) if isinstance(col_val, str) else col_val
+                if isinstance(fee_obj, dict) and fee_obj.get("id"):
+                    df_row = DesignFee(
+                        fee_ref=fee_obj.get("id", "DF-101"),
+                        project_id=project.id,
+                        project_key=project_key,
+                        name=fee_obj.get("name", "Design Fee"),
+                        sqm=float(fee_obj.get("sqm", 1000)),
+                        fee_value=float(fee_obj.get("feeValue", 0)),
+                        paid=float(fee_obj.get("paid", 0)),
+                        outstanding=float(fee_obj.get("outstanding", 0)),
+                        margin=float(fee_obj.get("margin", 18)),
+                        status=fee_obj.get("status", "Draft"),
+                        creation_date=fee_obj.get("date"),
+                        fee_json=fee_obj
+                    )
+                    db.add(df_row)
+            except Exception as parse_err:
+                print(f"Error syncing design fee row: {parse_err}")
+
     db.commit()
     db.refresh(project)
     return project

@@ -1369,6 +1369,7 @@ export function StoreProvider({ children }) {
     }).catch(err => console.error(`Error saving ${key}:`, err));
   };
 
+  React.useEffect(() => { saveState('projects', projects); }, [projects]);
   React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
   React.useEffect(() => { saveState('leads', leads); }, [leads]);
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
@@ -1434,26 +1435,24 @@ export function StoreProvider({ children }) {
   };
 
 
-  const updateProject = async (key, field, value) => {
-    // 1. Update local React state instantly
+    // 2. Perform granular database write under the hood
+    let updatedProj = null;
     setProjects(prev => {
-      if (typeof field === 'object' && field !== null) {
-        return {
-          ...prev,
-          [key]: { ...prev[key], ...field }
-        };
-      }
+      const existing = prev[key] || {};
+      const nextProj = typeof field === 'object' && field !== null
+        ? { ...existing, ...field }
+        : { ...existing, [field]: value };
+      updatedProj = nextProj;
       return {
         ...prev,
-        [key]: { ...prev[key], [field]: value }
+        [key]: nextProj
       };
     });
 
-    // 2. Perform granular database write under the hood
-    const currentProj = projects[key];
-    if (!currentProj) return;
+    if (!updatedProj) return;
 
     if (field === 'orders') {
+      const currentProj = projects[key] || {};
       const newOrders = value || [];
       const oldOrders = currentProj.orders || [];
 
@@ -1606,10 +1605,13 @@ export function StoreProvider({ children }) {
       }
     } else {
       // Update project row properties
-      const updatedProj = {
-        ...currentProj,
-        ...(typeof field === 'object' ? field : { [field]: value })
-      };
+      const feesToSave = updatedProj.designFees || [];
+      const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : (updatedProj.s1 || "");
+      const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : (updatedProj.s2 || "");
+      const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : (updatedProj.s3 || "");
+      const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : (updatedProj.s4 || "");
+      const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : (updatedProj.s5 || "");
+
       try {
         await fetch(`${API_BASE}/api/projects/${key}`, {
           method: 'PUT',
@@ -1626,11 +1628,11 @@ export function StoreProvider({ children }) {
             complete_status: updatedProj.complete,
             target_margin: updatedProj.targetMargin,
             actual_margin: updatedProj.actualMargin,
-            s1: updatedProj.s1,
-            s2: updatedProj.s2,
-            s3: updatedProj.s3,
-            s4: updatedProj.s4,
-            s5: updatedProj.s5
+            s1: s1Val,
+            s2: s2Val,
+            s3: s3Val,
+            s4: s4Val,
+            s5: s5Val
           })
         });
       } catch (err) {

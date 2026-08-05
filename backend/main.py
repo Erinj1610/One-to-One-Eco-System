@@ -125,6 +125,16 @@ def init_db():
                             conn.commit()
                         print("Database migration: created 'quote_name' column and migrated metadata.")
                     
+                    # Ensure design_fees table exists
+                    try:
+                        tables = inspector.get_table_names()
+                        if 'design_fees' not in tables:
+                            from models.orm_models import DesignFee
+                            DesignFee.__table__.create(bind=engine, checkfirst=True)
+                            print("Database migration: created 'design_fees' table.")
+                    except Exception as df_err:
+                        print(f"Design fee table migration notice: {df_err}")
+                    
                     # Drop order_metadata column if it exists
                     order_cols_refresh = [c['name'] for c in inspector.get_columns('orders')]
                     if 'order_metadata' in order_cols_refresh:

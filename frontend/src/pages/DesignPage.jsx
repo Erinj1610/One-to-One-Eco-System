@@ -106,6 +106,7 @@ export default function DesignPage() {
       adjustmentPercent: 0,
       procurementDiscountActive: false,
       status: 'Draft',
+      date: new Date().toISOString().split('T')[0],
       paid: 0,
       outstanding: 0,
       margin: 18,
@@ -179,9 +180,9 @@ export default function DesignPage() {
   // Date range checking logic
   const isDateInRange = (dateStr) => {
     if (!startDate && !endDate) return true;
-    if (!dateStr) return false;
+    if (!dateStr) return true; // Default to visible if no date string present
     const pDate = parseProjectDate(dateStr);
-    if (!pDate) return false;
+    if (!pDate) return true;
     
     if (startDate) {
       const start = new Date(startDate);

@@ -97,6 +97,29 @@ class Project(Base):
     quotes = relationship("Quote", back_populates="project")
     field_values = relationship("ProjectFieldValue", back_populates="project")
     phases = relationship("ProjectPhase", back_populates="project")
+    design_fees = relationship("DesignFee", back_populates="project", cascade="all, delete-orphan")
+
+class DesignFee(Base):
+    __tablename__ = "design_fees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fee_ref = Column(String, index=True, nullable=False) # e.g. DF-101
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    project_key = Column(String, index=True, nullable=True)
+    name = Column(String, nullable=False)
+    sqm = Column(Float, default=1000.0)
+    landscape_sqm = Column(Float, default=500.0)
+    fee_type = Column(String, default="Signature")
+    flat_base_fee = Column(Float, default=50000.0)
+    fee_value = Column(Float, default=0.0)
+    paid = Column(Float, default=0.0)
+    outstanding = Column(Float, default=0.0)
+    margin = Column(Float, default=18.0)
+    status = Column(String, default="Draft") # Draft, Approved, In Review, Cancelled
+    creation_date = Column(String, nullable=True)
+    fee_json = Column(JSON, nullable=True) # Full configuration payload including milestones & adjustments
+
+    project = relationship("Project", back_populates="design_fees")
 
 class ProjectFieldValue(Base):
     __tablename__ = "project_field_values"
