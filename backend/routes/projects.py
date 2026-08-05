@@ -382,40 +382,43 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.s4 = project_data.s4
     project.s5 = project_data.s5
 
-    # Relational sync to dedicated design_fees table
+@router.post("/{project_key}/design-fee")
+def create_project_design_fee(project_key: str, fee_data: dict, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.project_key == project_key).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     import json
     from models.orm_models import DesignFee
-    
-    # Clean existing design fees for this project key
-    db.query(DesignFee).filter(DesignFee.project_key == project_key).delete(synchronize_session=False)
 
-    cols = [project_data.s1, project_data.s2, project_data.s3, project_data.s4, project_data.s5]
-    for col_val in cols:
-        if col_val and col_val.strip() and col_val != "null":
-            try:
-                fee_obj = json.loads(col_val) if isinstance(col_val, str) else col_val
-                if isinstance(fee_obj, dict) and fee_obj.get("id"):
-                    df_row = DesignFee(
-                        fee_ref=fee_obj.get("id", "DF-101"),
-                        project_id=project.id,
-                        project_key=project_key,
-                        name=fee_obj.get("name", "Design Fee"),
-                        sqm=float(fee_obj.get("sqm", 1000)),
-                        fee_value=float(fee_obj.get("feeValue", 0)),
-                        paid=float(fee_obj.get("paid", 0)),
-                        outstanding=float(fee_obj.get("outstanding", 0)),
-                        margin=float(fee_obj.get("margin", 18)),
-                        status=fee_obj.get("status", "Draft"),
-                        creation_date=fee_obj.get("date"),
-                        fee_json=fee_obj
-                    )
-                    db.add(df_row)
-            except Exception as parse_err:
-                print(f"Error syncing design fee row: {parse_err}")
+    fee_ref = fee_data.get("id", "DF-101")
+    new_fee = DesignFee(
+        fee_ref=fee_ref,
+        project_id=project.id,
+        project_key=project_key,
+        name=fee_data.get("name", "Design Fee"),
+        sqm=float(fee_data.get("sqm", 1000)),
+        fee_value=float(fee_data.get("feeValue", 0)),
+        paid=float(fee_data.get("paid", 0)),
+        outstanding=float(fee_data.get("outstanding", 0)),
+        margin=float(fee_data.get("margin", 18)),
+        status=fee_data.get("status", "Draft"),
+        creation_date=fee_data.get("date"),
+        fee_json=fee_data
+    )
+    db.add(new_fee)
+    
+    # Also update s1..s5 columns on project for backwards compatibility
+    cols = [project.s1, project.s2, project.s3, project.s4, project.s5]
+    for idx in range(5):
+        if not cols[idx] or cols[idx] == "null" or cols[idx] == "":
+            col_name = f"s{idx+1}"
+            setattr(project, col_name, json.dumps(fee_data))
+            break
 
     db.commit()
-    db.refresh(project)
-    return project
+    db.refresh(new_fee)
+    return {"status": "ok", "message": f"Design fee '{fee_ref}' created in database", "id": new_fee.id}
 
 @router.delete("/{project_key}")
 def delete_project_relational(project_key: str, db: Session = Depends(get_db)):

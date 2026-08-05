@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { API_BASE } from '../api_config';
 import { 
   Save, TrendingUp, AlertCircle, Plus, Search, ArrowLeft, 
   Edit3, Filter, CheckCircle, FileSpreadsheet, AlertTriangle, 
@@ -121,6 +122,13 @@ export default function DesignPage() {
 
     const updatedFees = [...(proj.designFees || []), newFee];
     updateProject(newFeeProjectKey, 'designFees', updatedFees);
+
+    // Explicit direct write to SQL endpoint to ensure immediate insertion into Cloud SQL design_fees table
+    fetch(`${API_BASE}/api/projects/${newFeeProjectKey}/design-fee`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newFee)
+    }).catch(err => console.error("Error writing design fee to SQL table:", err));
 
     // Reset create fields
     setNewFeeName('');
