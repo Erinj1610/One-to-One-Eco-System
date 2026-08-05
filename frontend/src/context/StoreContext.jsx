@@ -1371,7 +1371,8 @@ export function StoreProvider({ children }) {
     }).catch(err => console.error(`Error saving ${key}:`, err));
   };
 
-  React.useEffect(() => { saveState('projects', projects); }, [projects]);
+  // Dedicated relational API endpoints handle projects & orders updates directly
+  // React.useEffect(() => { saveState('projects', projects); }, [projects]);
   React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
   React.useEffect(() => { saveState('leads', leads); }, [leads]);
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
