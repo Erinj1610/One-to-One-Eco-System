@@ -639,6 +639,11 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             except Exception:
                 client_invoices_parsed = []
 
+            try:
+                payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
+            except Exception:
+                payments_parsed = []
+
             order_dict = {
                 "id": order.po_number,
                 "supplier": order.supplier_name,
@@ -659,7 +664,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,
-                "payments": json.loads(order.payments) if isinstance(order.payments, str) else (order.payments or []),
+                "payments": payments_parsed,
                 "depositValue": order.deposit_value,
                 "depositInvoiceSent": order.deposit_invoice_sent,
                 "depositPaymentDate": order.deposit_payment_date,
