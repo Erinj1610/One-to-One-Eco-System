@@ -511,15 +511,28 @@ def sync_invoices(invoices_list, db: Session):
         except Exception:
             pass
 
-        db.execute(text("""
-            INSERT INTO invoices (id, project_id, invoice_type, status, amount)
-            VALUES (:id, :project_id, 'Product Supply', :status, :amount)
-        """), {
-            "id": inv.get("id"),
-            "project_id": proj_id,
-            "status": inv.get("status", "Draft"),
-            "amount": amount_val
-        })
+        inv_id_raw = inv.get("id")
+        inv_id = None
+        if inv_id_raw is not None:
+            try:
+                inv_id = int(inv_id_raw)
+            except Exception:
+                pass
+
+        if inv_id is not None:
+            db.execute(text("""
+                INSERT INTO invoices (id, project_id, invoice_type, status, amount)
+                VALUES (:id, :project_id, 'Product Supply', :status, :amount)
+                ON CONFLICT (id) DO UPDATE SET
+                    project_id = EXCLUDED.project_id,
+                    status = EXCLUDED.status,
+                    amount = EXCLUDED.amount
+            """), {
+                "id": inv_id,
+                "project_id": proj_id,
+                "status": inv.get("status", "Draft"),
+                "amount": amount_val
+            })
     db.commit()
 
 def sync_key_to_relational(key: str, value, db: Session):
