@@ -336,15 +336,17 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
   const [sigConsultExtra, setSigConsultExtra] = useState(0);
 
   const inputModernStyle = {
-    background: 'rgba(0,0,0,0.3)',
-    color: 'var(--text-primary)',
+    background: 'var(--panel-bg, rgba(20, 24, 33, 0.75))',
+    color: 'var(--text-primary, #f3f4f6)',
     fontWeight: '600',
-    border: '1px solid var(--panel-border)',
-    borderRadius: '6px',
-    padding: '0.45rem 0.75rem',
+    border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+    borderRadius: '8px',
+    padding: '0.55rem 0.85rem',
     fontSize: '0.85rem',
     width: '100%',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    outline: 'none',
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
   };
 
   return (
@@ -395,7 +397,13 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
             {/* STEP 1: Project & Client Details (Image 1) */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ 
+              background: 'var(--panel-bg, #111827)', 
+              padding: '1.5rem', 
+              borderRadius: '16px', 
+              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
                 <span style={{ background: 'var(--accent-blue)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
                 <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Project & Client Details</h4>
@@ -430,7 +438,13 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
             </div>
 
             {/* STEP 2: Meterage & Scope (Image 2) */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ 
+              background: 'var(--panel-bg, #111827)', 
+              padding: '1.5rem', 
+              borderRadius: '16px', 
+              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
                 <span style={{ background: 'var(--accent-purple)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
                 <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Site Meterage (m²) & Proposal Type</h4>
@@ -464,7 +478,13 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
             </div>
 
             {/* STEP 3: Area Split Percentages & Rate Adjustments (Image 3) */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ 
+              background: 'var(--panel-bg, #111827)', 
+              padding: '1.5rem', 
+              borderRadius: '16px', 
+              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
                 <span style={{ background: '#38bdf8', color: 'black', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>3</span>
                 <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Area Split % & Rate Adjustments</h4>
@@ -523,7 +543,13 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
             </div>
 
             {/* STEP 4: Extras & Optional Services (Image 4) */}
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ 
+              background: 'var(--panel-bg, #111827)', 
+              padding: '1.5rem', 
+              borderRadius: '16px', 
+              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
                 <span style={{ background: '#10b981', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
                 <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Extras & Optional Services</h4>
@@ -598,8 +624,18 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
 
           {/* RIGHT COLUMN: Official Output */}
-          <div style={{ position: 'sticky', top: '2rem', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1))', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--accent-blue)', display: 'flex', flexDirection: 'column' }}>
-            <h4 style={{ marginBottom: '1.5rem', color: 'white', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Official Proposal Output</h4>
+          <div style={{ 
+            position: 'sticky', 
+            top: '2rem', 
+            background: 'var(--panel-bg, #111827)', 
+            padding: '1.75rem', 
+            borderRadius: '16px', 
+            border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))', 
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+            display: 'flex', 
+            flexDirection: 'column' 
+          }}>
+            <h4 style={{ marginBottom: '1.5rem', color: 'var(--text-primary, #ffffff)', borderBottom: '1px solid var(--panel-border, rgba(255,255,255,0.1))', paddingBottom: '0.75rem', fontSize: '1rem', fontWeight: '700', letterSpacing: '0.5px' }}>Official Proposal Output</h4>
             
             {sigConsult
               ? <OutputRow label="Signature Consult (Concept Value)" value={ConceptCost} />
