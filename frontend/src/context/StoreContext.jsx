@@ -1610,11 +1610,11 @@ export function StoreProvider({ children }) {
     } else {
       // Update project row properties
       const feesToSave = updatedProj.designFees || [];
-      const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : (updatedProj.s1 || "");
-      const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : (updatedProj.s2 || "");
-      const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : (updatedProj.s3 || "");
-      const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : (updatedProj.s4 || "");
-      const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : (updatedProj.s5 || "");
+      const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : "";
+      const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : "";
+      const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : "";
+      const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : "";
+      const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
       try {
         await fetch(`${API_BASE}/api/projects/${key}`, {

@@ -232,8 +232,8 @@ export default function DesignPage() {
             ...f,
             projectKey: p.key,
             projectName: p.name,
-            projectClient: p.client,
-            pmName: p.pm,
+            projectClient: f.companyName || f.contactPerson || p.client,
+            pmName: f.quoteBy || p.pm,
             projectStart: p.start
           });
         });
@@ -716,8 +716,6 @@ export default function DesignPage() {
 
     // Update in-memory and trigger backend SQL PUT /api/projects/{key}
     updateProject(targetProjectKey, {
-      client: feeData.companyName || feeData.contactPerson || proj.client,
-      pm: feeData.quoteBy || proj.pm,
       designFees: updatedFees
     });
 
@@ -971,8 +969,8 @@ export default function DesignPage() {
                         <td style={{ fontWeight: 600 }}>{f.name}</td>
                         <td style={{ fontWeight: 500, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${f.projectKey}`); }}>{f.projectName}</td>
                         <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: f.projectClient } }); }}>{f.projectClient}</td>
-                        <td style={{ fontWeight: 600, color: 'white' }}>
-                          R {f.feeValue?.toLocaleString()}
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          R {(f.feeValue || 0).toLocaleString()}
                         </td>
                         <td style={{ fontWeight: 600, color: 'var(--text-success)' }}>
                           R {(f.paid || 0).toLocaleString()}
