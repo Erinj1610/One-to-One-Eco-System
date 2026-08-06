@@ -382,6 +382,45 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.s4 = project_data.s4
     project.s5 = project_data.s5
 
+    # Also update or insert matching records in the design_fees table
+    import json
+    from models.orm_models import DesignFee
+
+    for s_val in [project_data.s1, project_data.s2, project_data.s3, project_data.s4, project_data.s5]:
+        if s_val and isinstance(s_val, str) and s_val.strip() and s_val != "null":
+            try:
+                f_data = json.loads(s_val)
+                fee_ref = f_data.get("id")
+                if fee_ref:
+                    existing_fee = db.query(DesignFee).filter(DesignFee.fee_ref == fee_ref).first()
+                    if existing_fee:
+                        existing_fee.name = f_data.get("name", existing_fee.name)
+                        existing_fee.sqm = float(f_data.get("sqm", existing_fee.sqm or 1000))
+                        existing_fee.fee_value = float(f_data.get("feeValue", existing_fee.fee_value or 0))
+                        existing_fee.paid = float(f_data.get("paid", existing_fee.paid or 0))
+                        existing_fee.outstanding = float(f_data.get("outstanding", existing_fee.outstanding or 0))
+                        existing_fee.margin = float(f_data.get("margin", existing_fee.margin or 18))
+                        existing_fee.status = f_data.get("status", existing_fee.status or "Draft")
+                        existing_fee.fee_json = f_data
+                    else:
+                        new_fee = DesignFee(
+                            fee_ref=fee_ref,
+                            project_id=project.id,
+                            project_key=project_key,
+                            name=f_data.get("name", "Design Fee"),
+                            sqm=float(f_data.get("sqm", 1000)),
+                            fee_value=float(f_data.get("feeValue", 0)),
+                            paid=float(f_data.get("paid", 0)),
+                            outstanding=float(f_data.get("outstanding", 0)),
+                            margin=float(f_data.get("margin", 18)),
+                            status=f_data.get("status", "Draft"),
+                            creation_date=f_data.get("dateCreated"),
+                            fee_json=f_data
+                        )
+                        db.add(new_fee)
+            except Exception as e:
+                print(f"Error syncing DesignFee row: {e}")
+
     db.commit()
     db.refresh(project)
     return {"status": "ok", "message": f"Project '{project_key}' updated successfully"}
