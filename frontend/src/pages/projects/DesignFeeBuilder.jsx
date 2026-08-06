@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useStore } from '../../context/StoreContext';
 import { API_BASE } from '../../api_config';
 
 function buildTokens({
@@ -322,11 +323,83 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
     </div>
   );
 
+  const { projects = {}, contacts = [], projectManagers = [] } = useStore ? (useStore() || {}) : {};
+  const defaultPMs = [
+    { id: 'pm-1', name: 'Dani' },
+    { id: 'pm-2', name: 'Martin' },
+    { id: 'pm-3', name: 'Alex' },
+    { id: 'pm-4', name: 'Merlyn' }
+  ];
+
+  const projectList = Object.entries(projects).map(([key, p]) => ({ key, name: p.name || key, client: p.client, pm: p.pm || p.projectManager }));
+  const contactList = Array.isArray(contacts) ? contacts : [];
+
+  const [feeName, setFeeName] = useState('Master Design Fee Proposal');
+  const [selectedProjKey, setSelectedProjKey] = useState(projectId || '');
+  const [selectedContactId, setSelectedContactId] = useState('');
+
   const [projectName, setProjectName] = useState('Waterfall Estate');
-  const [quoteBy, setQuoteBy] = useState('Thando Khumalo');
+  const [quoteBy, setQuoteBy] = useState('Dani');
   const [companyName, setCompanyName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [billingDetails, setBillingDetails] = useState('');
+
+  // Pre-fill when projectId prop changes or on mount
+  useEffect(() => {
+    if (projectId && projects[projectId]) {
+      const proj = projects[projectId];
+      setSelectedProjKey(projectId);
+      setProjectName(proj.name || projectId);
+      if (proj.pm || proj.projectManager) setQuoteBy(proj.pm || proj.projectManager);
+
+      // Attempt matching client contact
+      if (proj.client) {
+        setContactPerson(proj.client);
+        const matchedContact = contactList.find(c => c.name?.toLowerCase() === proj.client.toLowerCase() || c.company?.toLowerCase() === proj.client.toLowerCase());
+        if (matchedContact) {
+          setSelectedContactId(matchedContact.id);
+          if (matchedContact.company) setCompanyName(matchedContact.company);
+          if (matchedContact.billingAddress || matchedContact.address) {
+            setBillingDetails(matchedContact.billingAddress || matchedContact.address);
+          }
+        }
+      }
+    }
+  }, [projectId, projects]);
+
+  const handleSelectProject = (projKey) => {
+    setSelectedProjKey(projKey);
+    if (!projKey) return;
+    const proj = projects[projKey];
+    if (proj) {
+      setProjectName(proj.name || projKey);
+      if (proj.pm || proj.projectManager) setQuoteBy(proj.pm || proj.projectManager);
+      if (proj.client) {
+        setContactPerson(proj.client);
+        const matchedContact = contactList.find(c => c.name?.toLowerCase() === proj.client.toLowerCase() || c.company?.toLowerCase() === proj.client.toLowerCase());
+        if (matchedContact) {
+          setSelectedContactId(matchedContact.id);
+          if (matchedContact.company) setCompanyName(matchedContact.company);
+          if (matchedContact.billingAddress || matchedContact.address) {
+            setBillingDetails(matchedContact.billingAddress || matchedContact.address);
+          }
+        }
+      }
+    }
+  };
+
+  const handleSelectContact = (contactId) => {
+    setSelectedContactId(contactId);
+    if (!contactId) return;
+    const contact = contactList.find(c => String(c.id) === String(contactId));
+    if (contact) {
+      setContactPerson(contact.name || '');
+      if (contact.company) setCompanyName(contact.company);
+      if (contact.billingAddress || contact.address) {
+        setBillingDetails(contact.billingAddress || contact.address);
+      }
+    }
+  };
 
   const [proposalType, setProposalType] = useState('Signature');
   const [sigDepositPercent, setSigDepositPercent] = useState(50);
@@ -395,7 +468,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
           {/* LEFT COLUMN: 4 Step-by-Step Clean Light Input Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
-            {/* STEP 1: Project & Client Details */}
+            {/* STEP 1: Fee & Project Linkage Details */}
             <div style={{ 
               background: '#ffffff', 
               padding: '1.5rem', 
@@ -405,34 +478,62 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
                 <span style={{ background: '#2563eb', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
-                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Project & Client Details</h4>
+                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Fee & Project Linkage Details</h4>
               </div>
               
+              <div style={{ marginBottom: '0.8rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Design Fee Name / Title</label>
+                <input type="text" value={feeName} onChange={e => setFeeName(e.target.value)} placeholder="e.g. Master Design Fee Proposal - Upper Primrose" style={inputModernStyle} />
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Project Name</label>
-                  <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} style={inputModernStyle} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>1-to-1 Rep / Project Manager</label>
+                  <select value={quoteBy} onChange={e => setQuoteBy(e.target.value)} style={{ ...inputModernStyle, height: '38px' }}>
+                    <option value="">Select Project Manager / Rep...</option>
+                    {(projectManagers && projectManagers.length > 0 ? projectManagers : defaultPMs).map(pm => (
+                      <option key={pm.id || pm.name} value={pm.name}>{pm.name} ({pm.email || '1-to-1'})</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Quote By</label>
-                  <input type="text" value={quoteBy} onChange={e => setQuoteBy(e.target.value)} style={inputModernStyle} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Linked Project</label>
+                  <select 
+                    value={selectedProjKey} 
+                    onChange={e => handleSelectProject(e.target.value)} 
+                    style={{ ...inputModernStyle, height: '38px', fontWeight: 700, color: '#1d4ed8' }}
+                  >
+                    <option value="">Select Project...</option>
+                    {projectList.map(p => (
+                      <option key={p.key} value={p.key}>{p.name} ({p.client || 'No Client'})</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Company Name</label>
-                  <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Client Company..." style={inputModernStyle} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Linked Client Contact</label>
+                  <select 
+                    value={selectedContactId} 
+                    onChange={e => handleSelectContact(e.target.value)} 
+                    style={{ ...inputModernStyle, height: '38px' }}
+                  >
+                    <option value="">Select Client Contact...</option>
+                    {contactList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} {c.company ? `(${c.company})` : ''}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Contact Person</label>
-                  <input type="text" value={contactPerson} onChange={e => setContactPerson(e.target.value)} placeholder="Client Contact..." style={inputModernStyle} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Company Name</label>
+                  <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Client Company Name..." style={inputModernStyle} />
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Billing Details</label>
-                <input type="text" value={billingDetails} onChange={e => setBillingDetails(e.target.value)} placeholder="Billing Address / Reg No..." style={inputModernStyle} />
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Billing & Tax Details</label>
+                <input type="text" value={billingDetails} onChange={e => setBillingDetails(e.target.value)} placeholder="Billing Address / VAT Reg No..." style={inputModernStyle} />
               </div>
             </div>
 
@@ -699,6 +800,13 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                 onClick={() => {
                   if (updateFee) {
                     updateFee({
+                      feeName,
+                      quoteBy,
+                      projectKey: selectedProjKey,
+                      projectName,
+                      contactPerson,
+                      companyName,
+                      billingDetails,
                       feeValue: absoluteProjectBudget,
                       deposit: depositValue,
                       fittings: archSubtotalRaw,
