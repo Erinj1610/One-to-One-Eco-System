@@ -382,6 +382,10 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.s4 = project_data.s4
     project.s5 = project_data.s5
 
+    db.commit()
+    db.refresh(project)
+    return {"status": "ok", "message": f"Project '{project_key}' updated successfully"}
+
 @router.post("/{project_key}/design-fee")
 def create_project_design_fee(project_key: str, fee_data: dict, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.project_key == project_key).first()
