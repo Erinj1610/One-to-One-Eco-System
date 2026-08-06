@@ -336,31 +336,30 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
   const [sigConsultExtra, setSigConsultExtra] = useState(0);
 
   const inputModernStyle = {
-    background: 'var(--panel-bg, rgba(20, 24, 33, 0.75))',
-    color: 'var(--text-primary, #f3f4f6)',
+    background: '#FAF9F6',
+    color: '#1a1a1a',
     fontWeight: '600',
-    border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
+    border: '1.5px solid #d1d5db',
     borderRadius: '8px',
     padding: '0.55rem 0.85rem',
     fontSize: '0.85rem',
     width: '100%',
     boxSizing: 'border-box',
-    outline: 'none',
-    transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+    outline: 'none'
   };
 
   return (
     <>
-      <div className="stat-card" style={{ marginBottom: '2rem', borderLeft: '4px solid var(--accent-purple)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ background: '#FAF9F6', borderRadius: '16px', border: '1px solid #e0ddd5', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid #e0ddd5', paddingBottom: '1rem' }}>
           <div>
-            <h3 style={{ margin: 0 }}>💰 Master Design Fee Calculator</h3>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--text-info)', fontWeight: 600 }}>
-                🔒 Scope & Rates locked to project snapshot
+            <h3 style={{ margin: 0, color: '#111827', fontSize: '1.1rem', fontWeight: 800 }}>Master Design Fee Calculator</h3>
+            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontWeight: 600 }}>
+                Scope & Rates locked to project snapshot
               </span>
               {rateActionMessage && (
-                <span style={{ color: '#10b981', fontWeight: 600, animation: 'fadeIn 0.3s' }}>
+                <span style={{ color: '#059669', fontWeight: 600 }}>
                   {rateActionMessage}
                 </span>
               )}
@@ -373,19 +372,19 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                 onClick={handleResyncRates} 
                 disabled={loadingRatesAction}
                 className="btn btn-ghost" 
-                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }}
+                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid #d1d5db', background: '#ffffff', color: '#374151' }}
                 title="Update this project's rates to match the latest global Settings rates"
               >
-                🔄 Re-apply Latest Rates
+                Re-apply Latest Rates
               </button>
               <button 
                 onClick={handleRevertRates} 
                 disabled={loadingRatesAction}
                 className="btn btn-ghost" 
-                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }}
+                style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', border: '1px solid #d1d5db', background: '#ffffff', color: '#374151' }}
                 title="Restore this project's rates back to its initial creation rates"
               >
-                ⏪ Revert to Original Rates
+                Revert to Original Rates
               </button>
             </div>
           )}
@@ -393,228 +392,228 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
         
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1.2fr) minmax(350px, 1fr)', gap: '2rem', alignItems: 'start' }}>
           
-          {/* LEFT COLUMN: 4 Step-by-Step Modern Input Sections */}
+          {/* LEFT COLUMN: 4 Step-by-Step Clean Light Input Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
-            {/* STEP 1: Project & Client Details (Image 1) */}
+            {/* STEP 1: Project & Client Details */}
             <div style={{ 
-              background: 'var(--panel-bg, #111827)', 
+              background: '#ffffff', 
               padding: '1.5rem', 
-              borderRadius: '16px', 
-              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
-              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+              borderRadius: '12px', 
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' 
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
-                <span style={{ background: 'var(--accent-blue)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
-                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Project & Client Details</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#2563eb', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>1</span>
+                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Project & Client Details</h4>
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Project Name</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Project Name</label>
                   <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} style={inputModernStyle} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Quote By</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Quote By</label>
                   <input type="text" value={quoteBy} onChange={e => setQuoteBy(e.target.value)} style={inputModernStyle} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Company Name</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Company Name</label>
                   <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Client Company..." style={inputModernStyle} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Contact Person</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Contact Person</label>
                   <input type="text" value={contactPerson} onChange={e => setContactPerson(e.target.value)} placeholder="Client Contact..." style={inputModernStyle} />
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Billing Details</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.25rem', fontWeight: 600 }}>Billing Details</label>
                 <input type="text" value={billingDetails} onChange={e => setBillingDetails(e.target.value)} placeholder="Billing Address / Reg No..." style={inputModernStyle} />
               </div>
             </div>
 
-            {/* STEP 2: Meterage & Scope (Image 2) */}
+            {/* STEP 2: Meterage & Scope */}
             <div style={{ 
-              background: 'var(--panel-bg, #111827)', 
+              background: '#ffffff', 
               padding: '1.5rem', 
-              borderRadius: '16px', 
-              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
-              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+              borderRadius: '12px', 
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' 
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
-                <span style={{ background: 'var(--accent-purple)', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
-                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Site Meterage (m²) & Proposal Type</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#7c3aed', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>2</span>
+                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Site Meterage (m²) & Proposal Type</h4>
               </div>
               
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Living Area (m²)</label>
-                  <input type="number" value={livingArea} onChange={e => setLivingArea(Number(e.target.value))} style={{ ...inputModernStyle, fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent-blue)', borderColor: 'rgba(59, 130, 246, 0.4)' }} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.3rem', fontWeight: 600 }}>Living Area (m²)</label>
+                  <input type="number" value={livingArea} onChange={e => setLivingArea(Number(e.target.value))} style={{ ...inputModernStyle, fontSize: '1rem', fontWeight: 'bold', color: '#1d4ed8', borderColor: '#93c5fd' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>Landscape Area (m²)</label>
-                  <input type="number" value={landscapeArea} onChange={e => setLandscapeArea(Number(e.target.value))} style={{ ...inputModernStyle, fontSize: '1rem', fontWeight: 'bold', color: 'var(--accent-purple)', borderColor: 'rgba(139, 92, 246, 0.4)' }} />
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#4b5563', marginBottom: '0.3rem', fontWeight: 600 }}>Landscape Area (m²)</label>
+                  <input type="number" value={landscapeArea} onChange={e => setLandscapeArea(Number(e.target.value))} style={{ ...inputModernStyle, fontSize: '1rem', fontWeight: 'bold', color: '#6d28d9', borderColor: '#c4b5fd' }} />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>Proposal Type</label>
-                  <select value={proposalType} onChange={e => setProposalType(e.target.value)} style={{ ...inputModernStyle, height: '34px', padding: '0.2rem 0.5rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#4b5563', marginBottom: '0.2rem', fontWeight: 600 }}>Proposal Type</label>
+                  <select value={proposalType} onChange={e => setProposalType(e.target.value)} style={{ ...inputModernStyle, height: '38px', padding: '0.2rem 0.5rem' }}>
                     <option value="Signature">Signature</option>
                     <option value="Standard">Standard</option>
                     <option value="Custom">Custom</option>
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>USD Conv. Rate</label>
-                  <div style={{ ...inputModernStyle, textAlign: 'center', background: 'rgba(0,0,0,0.5)', color: 'var(--accent-blue)', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>R{(1 / usdConv).toFixed(3)}</div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#4b5563', marginBottom: '0.2rem', fontWeight: 600 }}>USD Conv. Rate</label>
+                  <div style={{ ...inputModernStyle, textAlign: 'center', background: '#f3f4f6', color: '#1d4ed8', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>R{(1 / usdConv).toFixed(3)}</div>
                 </div>
               </div>
             </div>
 
-            {/* STEP 3: Area Split Percentages & Rate Adjustments (Image 3) */}
+            {/* STEP 3: Area Split Percentages & Rate Adjustments */}
             <div style={{ 
-              background: 'var(--panel-bg, #111827)', 
+              background: '#ffffff', 
               padding: '1.5rem', 
-              borderRadius: '16px', 
-              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
-              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+              borderRadius: '12px', 
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' 
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
-                <span style={{ background: '#38bdf8', color: 'black', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>3</span>
-                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Area Split % & Rate Adjustments</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#0284c7', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>3</span>
+                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Area Split % & Rate Adjustments</h4>
               </div>
               
-              <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Living Area Splits (%)</h5>
+              <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>Living Area Splits (%)</h5>
               
-              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', flex: 1 }}>Experiential Living</span>
-                <input type="number" min="0" max="100" value={expLiving} onChange={e => setExpLiving(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--panel-border)', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', width: '65px', textAlign: 'right' }}>{sqExpLiving.toFixed(0)} m²</span>
+              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f9fafb', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #f3f4f6' }}>
+                <span style={{ fontSize: '0.8rem', color: '#1f2937', flex: 1, fontWeight: 600 }}>Experiential Living</span>
+                <input type="number" min="0" max="100" value={expLiving} onChange={e => setExpLiving(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: '#ffffff', border: '1.5px solid #0284c7', color: '#0284c7', textAlign: 'center', fontWeight: 'bold' }} />
+                <span style={{ fontSize: '0.75rem', color: '#4b5563', width: '65px', textAlign: 'right', fontWeight: 600 }}>{sqExpLiving.toFixed(0)} m²</span>
               </div>
 
-              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', flex: 1 }}>Secondary Living</span>
-                <input type="number" min="0" max="100" value={secLiving} onChange={e => setSecLiving(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--panel-border)', color: '#c084fc', textAlign: 'center', fontWeight: 'bold' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', width: '65px', textAlign: 'right' }}>{sqSecLiving.toFixed(0)} m²</span>
+              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f9fafb', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #f3f4f6' }}>
+                <span style={{ fontSize: '0.8rem', color: '#1f2937', flex: 1, fontWeight: 600 }}>Secondary Living</span>
+                <input type="number" min="0" max="100" value={secLiving} onChange={e => setSecLiving(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: '#ffffff', border: '1.5px solid #9333ea', color: '#9333ea', textAlign: 'center', fontWeight: 'bold' }} />
+                <span style={{ fontSize: '0.75rem', color: '#4b5563', width: '65px', textAlign: 'right', fontWeight: 600 }}>{sqSecLiving.toFixed(0)} m²</span>
               </div>
 
-              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.1)', padding: '0.4rem 0.6rem', borderRadius: '6px', opacity: 0.8 }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', flex: 1 }}>Non-Experiential Living (Bal.)</span>
-                <input type="number" value={nonExpLiving} readOnly style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--panel-border)', color: 'var(--text-tertiary)', textAlign: 'center' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', width: '65px', textAlign: 'right' }}>{sqNonExpLiving.toFixed(0)} m²</span>
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f3f4f6', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#6b7280', flex: 1, fontWeight: 500 }}>Non-Experiential Living (Bal.)</span>
+                <input type="number" value={nonExpLiving} readOnly style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: '#e5e7eb', border: '1px solid #d1d5db', color: '#4b5563', textAlign: 'center' }} />
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', width: '65px', textAlign: 'right' }}>{sqNonExpLiving.toFixed(0)} m²</span>
               </div>
 
-              <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Landscape Area Splits (%)</h5>
+              <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>Landscape Area Splits (%)</h5>
               
-              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', flex: 1 }}>Experiential Landscape</span>
-                <input type="number" min="0" max="100" value={expLand} onChange={e => setExpLand(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--panel-border)', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', width: '65px', textAlign: 'right' }}>{sqExpLand.toFixed(0)} m²</span>
+              <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f9fafb', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #f3f4f6' }}>
+                <span style={{ fontSize: '0.8rem', color: '#1f2937', flex: 1, fontWeight: 600 }}>Experiential Landscape</span>
+                <input type="number" min="0" max="100" value={expLand} onChange={e => setExpLand(Number(e.target.value))} style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: '#ffffff', border: '1.5px solid #0284c7', color: '#0284c7', textAlign: 'center', fontWeight: 'bold' }} />
+                <span style={{ fontSize: '0.75rem', color: '#4b5563', width: '65px', textAlign: 'right', fontWeight: 600 }}>{sqExpLand.toFixed(0)} m²</span>
               </div>
 
-              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(0,0,0,0.1)', padding: '0.4rem 0.6rem', borderRadius: '6px', opacity: 0.8 }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', flex: 1 }}>Secondary Landscape (Bal.)</span>
-                <input type="number" value={secLand} readOnly style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--panel-border)', color: 'var(--text-tertiary)', textAlign: 'center' }} />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', width: '65px', textAlign: 'right' }}>{sqSecLand.toFixed(0)} m²</span>
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f3f4f6', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#6b7280', flex: 1, fontWeight: 500 }}>Secondary Landscape (Bal.)</span>
+                <input type="number" value={secLand} readOnly style={{ width: '55px', padding: '0.2rem 0.4rem', borderRadius: '4px', background: '#e5e7eb', border: '1px solid #d1d5db', color: '#4b5563', textAlign: 'center' }} />
+                <span style={{ fontSize: '0.75rem', color: '#6b7280', width: '65px', textAlign: 'right' }}>{sqSecLand.toFixed(0)} m²</span>
               </div>
 
-              <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Rate Modifiers (%)</h5>
+              <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>Rate Modifiers (%)</h5>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Sig Deposit %</label>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: '#4b5563', marginBottom: '0.2rem', textAlign: 'center', fontWeight: 600 }}>Sig Deposit %</label>
                   <input type="number" value={sigDepositPercent} onChange={e => setSigDepositPercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Design Inc. %</label>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: '#4b5563', marginBottom: '0.2rem', textAlign: 'center', fontWeight: 600 }}>Design Inc. %</label>
                   <input type="number" value={designIncreasePercent} onChange={e => setDesignIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.2rem', textAlign: 'center' }}>Product Inc. %</label>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: '#4b5563', marginBottom: '0.2rem', textAlign: 'center', fontWeight: 600 }}>Product Inc. %</label>
                   <input type="number" value={productIncreasePercent} onChange={e => setProductIncreasePercent(Number(e.target.value))} style={{ ...inputModernStyle, textAlign: 'center', padding: '0.2rem' }} />
                 </div>
               </div>
             </div>
 
-            {/* STEP 4: Extras & Optional Services (Image 4) */}
+            {/* STEP 4: Extras & Optional Services */}
             <div style={{ 
-              background: 'var(--panel-bg, #111827)', 
+              background: '#ffffff', 
               padding: '1.5rem', 
-              borderRadius: '16px', 
-              border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))',
-              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3)' 
+              borderRadius: '12px', 
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' 
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem' }}>
-                <span style={{ background: '#10b981', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
-                <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Extras & Optional Services</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
+                <span style={{ background: '#059669', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
+                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Extras & Optional Services</h4>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem', background: sigConsult ? 'rgba(59, 130, 246, 0.15)' : 'rgba(0,0,0,0.2)', border: sigConsult ? '1px solid var(--accent-blue)' : '1px solid var(--panel-border)', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem', background: sigConsult ? '#eff6ff' : '#f9fafb', border: sigConsult ? '1.5px solid #2563eb' : '1px solid #e5e7eb', borderRadius: '8px' }}>
                   <input type="checkbox" checked={sigConsult} onChange={e => handleSigConsultChange(e.target.checked)} />
                   <div style={{ flex: 1 }}>
-                    <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: sigConsult ? 'var(--accent-blue)' : 'var(--text-primary)' }}>Signature Consult</span>
-                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Standalone concept design consult with flat service fee structure.</span>
+                    <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: sigConsult ? '#2563eb' : '#111827' }}>Signature Consult</span>
+                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280' }}>Standalone concept design consult with flat service fee structure.</span>
                   </div>
                 </label>
               </div>
 
               {!sigConsult && (
-                <div style={{ marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                  <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase' }}>Standard Design Phases Included</h5>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                <div style={{ marginBottom: '1.25rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Standard Design Phases Included</h5>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
                     <input type="checkbox" checked={conceptDesign} onChange={e => { setConceptDesign(e.target.checked); handleStandardToggle(); }} />
                     <span style={{ fontSize: '0.82rem' }}>Concept Lighting Design</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
                     <input type="checkbox" checked={schematicDesign} onChange={e => { setSchematicDesign(e.target.checked); handleStandardToggle(); }} />
                     <span style={{ fontSize: '0.82rem' }}>Schematic Design Development</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
                     <input type="checkbox" checked={finalDesign} onChange={e => { setFinalDesign(e.target.checked); handleStandardToggle(); }} />
                     <span style={{ fontSize: '0.82rem' }}>Final Design Deliverables</span>
                   </label>
                 </div>
               )}
 
-              <div style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                <h5 style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.6rem', textTransform: 'uppercase' }}>Extras & On-Site Support</h5>
+              <div style={{ padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Extras & On-Site Support</h5>
 
                 {!sigConsult && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', cursor: 'pointer' }}>
                     <input type="checkbox" checked={archFittings} onChange={e => { setArchFittings(e.target.checked); handleStandardToggle(); }} />
-                    <span style={{ fontSize: '0.82rem', color: archFittings ? '#10b981' : 'var(--text-primary)', fontWeight: archFittings ? '600' : 'normal' }}>Architectural Fittings (15% Supply Incentive)</span>
+                    <span style={{ fontSize: '0.82rem', color: archFittings ? '#059669' : '#374151', fontWeight: archFittings ? '600' : 'normal' }}>Architectural Fittings (15% Supply Incentive)</span>
                   </label>
                 )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1, color: '#374151', fontWeight: 500 }}>
                     <input type="checkbox" checked={siteSupport} onChange={e => setSiteSupport(e.target.checked)} />
                     <span style={{ fontSize: '0.82rem' }}>Site Support Visits</span>
                   </label>
                   {siteSupport && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(0,0,0,0.4)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Qty:</span>
-                      <input type="number" min="1" value={siteSupportQty} onChange={e => setSiteSupportQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: '1px solid var(--panel-border)', color: 'white', fontSize: '0.8rem', textAlign: 'center' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#ffffff', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #d1d5db' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Qty:</span>
+                      <input type="number" min="1" value={siteSupportQty} onChange={e => setSiteSupportQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: 'none', color: '#111827', fontSize: '0.8rem', textAlign: 'center', fontWeight: 'bold' }} />
                     </div>
                   )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1, color: '#374151', fontWeight: 500 }}>
                     <input type="checkbox" checked={commissioning} onChange={e => setCommissioning(e.target.checked)} />
                     <span style={{ fontSize: '0.82rem' }}>Commissioning Cap</span>
                   </label>
                   {commissioning && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(0,0,0,0.4)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Qty:</span>
-                      <input type="number" min="1" value={commissioningQty} onChange={e => setCommissioningQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: '1px solid var(--panel-border)', color: 'white', fontSize: '0.8rem', textAlign: 'center' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#ffffff', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #d1d5db' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Qty:</span>
+                      <input type="number" min="1" value={commissioningQty} onChange={e => setCommissioningQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: 'none', color: '#111827', fontSize: '0.8rem', textAlign: 'center', fontWeight: 'bold' }} />
                     </div>
                   )}
                 </div>
@@ -623,79 +622,80 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
           </div>
 
 
-          {/* RIGHT COLUMN: Official Output */}
+          {/* RIGHT COLUMN: Official Output (Clean Paper Proposal Sheet) */}
           <div style={{ 
             position: 'sticky', 
             top: '2rem', 
-            background: 'var(--panel-bg, #111827)', 
-            padding: '1.75rem', 
+            background: '#ffffff', 
+            padding: '2rem', 
             borderRadius: '16px', 
-            border: '1px solid var(--panel-border, rgba(255, 255, 255, 0.12))', 
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+            border: '1px solid #e0ddd5', 
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.08)',
             display: 'flex', 
-            flexDirection: 'column' 
+            flexDirection: 'column',
+            fontFamily: '"Outfit", "Inter", sans-serif'
           }}>
-            <h4 style={{ marginBottom: '1.5rem', color: 'var(--text-primary, #ffffff)', borderBottom: '1px solid var(--panel-border, rgba(255,255,255,0.1))', paddingBottom: '0.75rem', fontSize: '1rem', fontWeight: '700', letterSpacing: '0.5px' }}>Official Proposal Output</h4>
+            <h4 style={{ marginBottom: '1.5rem', color: '#111827', borderBottom: '2px solid #111827', paddingBottom: '0.75rem', fontSize: '1.1rem', fontWeight: 800, letterSpacing: '0.5px' }}>Official Proposal Output</h4>
             
             {sigConsult
-              ? <OutputRow label="Signature Consult (Concept Value)" value={ConceptCost} />
+              ? <OutputRow label="Signature Consult (Concept Value)" value={ConceptCost} color="#111827" />
               : <>
-                  <OutputRow label="Concept Lighting Design" value={ConceptCost} />
-                  {schematicDesign && <OutputRow label="Schematic Design" value={SchematicCost} />}
-                  {finalDesign && <OutputRow label="Final Design" value={FinalCost} />}
+                  <OutputRow label="Concept Lighting Design" value={ConceptCost} color="#111827" />
+                  {schematicDesign && <OutputRow label="Schematic Design" value={SchematicCost} color="#111827" />}
+                  {finalDesign && <OutputRow label="Final Design" value={FinalCost} color="#111827" />}
                 </>
             }
 
-            <div style={{ margin: '1rem 0', borderBottom: '1px dashed rgba(255,255,255,0.1)' }} />
+            <div style={{ margin: '1rem 0', borderBottom: '1px dashed #d1d5db' }} />
 
-            <OutputRow label="Design Total" value={rawDesignSubtotal} isHeader color="white" />
+            <OutputRow label="Design Total" value={rawDesignSubtotal} isHeader color="#111827" />
 
             {unifiedDiscountValue > 0 && !sigConsult && (
-              <OutputRow label="Combined Supply Discount" value={unifiedDiscountValue} isNegative smallLabel="Applied to design phases & fittings only" />
+              <OutputRow label="Combined Supply Discount" value={unifiedDiscountValue} isNegative color="#dc2626" smallLabel="Applied to design phases & fittings only" />
             )}
 
-            <div style={{ margin: '1rem 0', borderBottom: '1px solid rgba(16, 185, 129, 0.3)' }} />
+            <div style={{ margin: '1rem 0', borderBottom: '2px solid #059669' }} />
 
-            <OutputRow label="Total For Design" value={designNet} isTotal />
+            <OutputRow label="Total For Design" value={designNet} isTotal color="#059669" />
 
-            <div style={{ marginTop: '0.8rem', padding: '0.5rem', background: 'rgba(59, 130, 246, 0.15)', borderRadius: '6px', border: '1px dashed var(--accent-blue)' }}>
-              <OutputRow label="Deposit Required" value={depositValue} color="var(--accent-blue)" smallLabel="Equivalent to Concept Lighting base value" />
+            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '8px', border: '1px dashed #2563eb' }}>
+              <OutputRow label="Deposit Required" value={depositValue} color="#1d4ed8" smallLabel="Equivalent to Concept Lighting base value" />
             </div>
 
             {!sigConsult && archSubtotalRaw > 0 && (
-              <div style={{ marginTop: '2rem' }}>
-                <span style={{ display: 'block', fontSize: '0.85rem', color: '#e5e7eb', marginBottom: '0.8rem' }}>Architectural Fittings Estimate</span>
-                <OutputRow label="Total Fittings Budget" value={archSubtotalRaw} isHeader color="#e5e7eb" />
+              <div style={{ marginTop: '1.5rem' }}>
+                <span style={{ display: 'block', fontSize: '0.85rem', color: '#4b5563', marginBottom: '0.5rem', fontWeight: 700 }}>Architectural Fittings Estimate</span>
+                <OutputRow label="Total Fittings Budget" value={archSubtotalRaw} isHeader color="#111827" />
               </div>
             )}
 
             {(siteSupportCost > 0 || commissioningCost > 0) && (
-              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
-                {siteSupportCost > 0 && <OutputRow label="Site Support" value={siteSupportCost} />}
-                {commissioningCost > 0 && <OutputRow label="Commissioning Cap" value={commissioningCost} />}
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #d1d5db' }}>
+                {siteSupportCost > 0 && <OutputRow label="Site Support" value={siteSupportCost} color="#374151" />}
+                {commissioningCost > 0 && <OutputRow label="Commissioning Cap" value={commissioningCost} color="#374151" />}
               </div>
             )}
 
-            <div style={{ marginTop: '2rem', background: 'rgba(0,0,0,0.4)', padding: '1rem', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--accent-blue)' }}>
-              <span style={{ fontWeight: 'bold', color: 'white', fontSize: '0.9rem' }}>GRAND TOTAL</span>
+            <div style={{ marginTop: '1.5rem', background: '#111827', color: '#ffffff', padding: '1.25rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '0.95rem' }}>GRAND TOTAL</span>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontWeight: 'bold', color: 'white', fontSize: '1.2rem', display: 'block' }}>{formatZAR(absoluteProjectBudget)}</span>
-                <span style={{ color: 'var(--accent-blue)', fontSize: '0.8rem' }}>{formatUSD(absoluteProjectBudget)} USD</span>
+                <span style={{ fontWeight: 900, color: '#ffffff', fontSize: '1.3rem', display: 'block' }}>{formatZAR(absoluteProjectBudget)}</span>
+                <span style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600 }}>{formatUSD(absoluteProjectBudget)} USD</span>
               </div>
             </div>
 
             {/* Action Buttons */}
             <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button
-                className="glow-btn"
-                style={{ width: '100%', margin: 0, opacity: loadingPreview ? 0.7 : 1 }}
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '0.75rem', fontSize: '0.9rem', fontWeight: 700, borderRadius: '8px', background: '#2563eb', border: 'none', color: '#ffffff', cursor: 'pointer' }}
                 onClick={handlePreview}
                 disabled={loadingPreview}
               >
                 {loadingPreview ? '⏳ Generating PDF...' : '📄 Preview & Print Proposal'}
               </button>
               <button
-                style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#10b981', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, transition: 'all 0.2s ease' }}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#ecfdf5', border: '1.5px solid #059669', color: '#059669', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}
                 onClick={() => {
                   if (updateFee) {
                     updateFee({
