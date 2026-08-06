@@ -92,10 +92,10 @@ function PreviewModal({ url, onClose }) {
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initialLandscapeArea = 0, projectId, initialRatesSnapshot }) {
+function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initialLandscapeArea = 0, projectId, initialRatesSnapshot, initialFeeSnapshot }) {
   // --- Section 1: Scope & Meterage ---
-  const [livingArea, setLivingArea] = useState(initialLivingArea);
-  const [landscapeArea, setLandscapeArea] = useState(initialLandscapeArea);
+  const [livingArea, setLivingArea] = useState(initialFeeSnapshot?.sqm || initialLivingArea);
+  const [landscapeArea, setLandscapeArea] = useState(initialFeeSnapshot?.landscapeSqm || initialLandscapeArea);
 
   const DEFAULT_RATES = {
     currency_rates: { usdConv: 20.00 },
@@ -157,23 +157,23 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
     }
   };
   
-  const [expLiving, setExpLiving] = useState(30);
-  const [secLiving, setSecLiving] = useState(60);
+  const [expLiving, setExpLiving] = useState(initialFeeSnapshot?.expLiving ?? 30);
+  const [secLiving, setSecLiving] = useState(initialFeeSnapshot?.secLiving ?? 60);
   const nonExpLiving = Math.max(0, 100 - expLiving - secLiving);
 
-  const [expLand, setExpLand] = useState(0); 
+  const [expLand, setExpLand] = useState(initialFeeSnapshot?.expLand ?? 0); 
   const secLand = Math.max(0, 100 - expLand);
 
   // --- Proposal Toggles ---
-  const [sigConsult, setSigConsult] = useState(false);
-  const [conceptDesign, setConceptDesign] = useState(true);
-  const [schematicDesign, setSchematicDesign] = useState(true);
-  const [finalDesign, setFinalDesign] = useState(true); 
-  const [archFittings, setArchFittings] = useState(true);
-  const [siteSupport, setSiteSupport] = useState(true);
-  const [siteSupportQty, setSiteSupportQty] = useState(1);
-  const [commissioning, setCommissioning] = useState(true);
-  const [commissioningQty, setCommissioningQty] = useState(1);
+  const [sigConsult, setSigConsult] = useState(initialFeeSnapshot?.sigConsult ?? false);
+  const [conceptDesign, setConceptDesign] = useState(initialFeeSnapshot?.conceptDesign ?? true);
+  const [schematicDesign, setSchematicDesign] = useState(initialFeeSnapshot?.schematicDesign ?? true);
+  const [finalDesign, setFinalDesign] = useState(initialFeeSnapshot?.finalDesign ?? true); 
+  const [archFittings, setArchFittings] = useState(initialFeeSnapshot?.archFittings ?? true);
+  const [siteSupport, setSiteSupport] = useState(initialFeeSnapshot?.siteSupport ?? true);
+  const [siteSupportQty, setSiteSupportQty] = useState(initialFeeSnapshot?.siteSupportQty ?? 1);
+  const [commissioning, setCommissioning] = useState(initialFeeSnapshot?.commissioning ?? true);
+  const [commissioningQty, setCommissioningQty] = useState(initialFeeSnapshot?.commissioningQty ?? 1);
   
   const usdConv = activeRates.currency_rates?.usdConv || 20.00;
   const designDiscountRate = activeRates.default_discounts?.designDiscountRate || 0.20; 
@@ -765,85 +765,6 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                 </div>
               </div>
             </div>
-
-            {/* STEP 4: Extras & Optional Services */}
-            <div style={{ 
-              background: '#ffffff', 
-              padding: '1.5rem', 
-              borderRadius: '12px', 
-              border: '1px solid #e5e7eb',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' 
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '0.5rem' }}>
-                <span style={{ background: '#059669', color: 'white', fontWeight: 'bold', borderRadius: '50%', width: '22px', height: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>4</span>
-                <h4 style={{ margin: 0, color: '#111827', fontSize: '0.95rem', fontWeight: 700 }}>Extras & Optional Services</h4>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem', background: sigConsult ? '#eff6ff' : '#f9fafb', border: sigConsult ? '1.5px solid #2563eb' : '1px solid #e5e7eb', borderRadius: '8px' }}>
-                  <input type="checkbox" checked={sigConsult} onChange={e => handleSigConsultChange(e.target.checked)} />
-                  <div style={{ flex: 1 }}>
-                    <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: sigConsult ? '#2563eb' : '#111827' }}>Signature Consult</span>
-                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280' }}>Standalone concept design consult with flat service fee structure.</span>
-                  </div>
-                </label>
-              </div>
-
-              {!sigConsult && (
-                <div style={{ marginBottom: '1.25rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                  <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Standard Design Phases Included</h5>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
-                    <input type="checkbox" checked={conceptDesign} onChange={e => { setConceptDesign(e.target.checked); handleStandardToggle(); }} />
-                    <span style={{ fontSize: '0.82rem' }}>Concept Lighting Design</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
-                    <input type="checkbox" checked={schematicDesign} onChange={e => { setSchematicDesign(e.target.checked); handleStandardToggle(); }} />
-                    <span style={{ fontSize: '0.82rem' }}>Schematic Design Development</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
-                    <input type="checkbox" checked={finalDesign} onChange={e => { setFinalDesign(e.target.checked); handleStandardToggle(); }} />
-                    <span style={{ fontSize: '0.82rem' }}>Final Design Deliverables</span>
-                  </label>
-                </div>
-              )}
-
-              <div style={{ padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                <h5 style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>Extras & On-Site Support</h5>
-
-                {!sigConsult && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={archFittings} onChange={e => { setArchFittings(e.target.checked); handleStandardToggle(); }} />
-                    <span style={{ fontSize: '0.82rem', color: archFittings ? '#059669' : '#374151', fontWeight: archFittings ? '600' : 'normal' }}>Architectural Fittings (15% Supply Incentive)</span>
-                  </label>
-                )}
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1, color: '#374151', fontWeight: 500 }}>
-                    <input type="checkbox" checked={siteSupport} onChange={e => setSiteSupport(e.target.checked)} />
-                    <span style={{ fontSize: '0.82rem' }}>Site Support Visits</span>
-                  </label>
-                  {siteSupport && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#ffffff', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #d1d5db' }}>
-                      <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Qty:</span>
-                      <input type="number" min="1" value={siteSupportQty} onChange={e => setSiteSupportQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: 'none', color: '#111827', fontSize: '0.8rem', textAlign: 'center', fontWeight: 'bold' }} />
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1, color: '#374151', fontWeight: 500 }}>
-                    <input type="checkbox" checked={commissioning} onChange={e => setCommissioning(e.target.checked)} />
-                    <span style={{ fontSize: '0.82rem' }}>Commissioning Cap</span>
-                  </label>
-                  {commissioning && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#ffffff', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #d1d5db' }}>
-                      <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Qty:</span>
-                      <input type="number" min="1" value={commissioningQty} onChange={e => setCommissioningQty(Number(e.target.value))} style={{ width: '40px', padding: '0.1rem', borderRadius: '4px', background: 'transparent', border: 'none', color: '#111827', fontSize: '0.8rem', textAlign: 'center', fontWeight: 'bold' }} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
 
 
@@ -946,12 +867,29 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       contactPerson,
                       companyName,
                       billingDetails,
-                      feeValue: absoluteProjectBudget,
-                      deposit: depositValue,
-                      fittings: archSubtotalRaw,
+                      proposalType,
                       livingArea,
                       landscapeArea,
-                      sigConsult
+                      expLiving,
+                      secLiving,
+                      nonExpLiving,
+                      expLand,
+                      secLand,
+                      sigConsult,
+                      conceptDesign,
+                      schematicDesign,
+                      finalDesign,
+                      archFittings,
+                      siteSupport,
+                      siteSupportQty,
+                      commissioning,
+                      commissioningQty,
+                      sigDepositPercent,
+                      designIncreasePercent,
+                      productIncreasePercent,
+                      feeValue: absoluteProjectBudget,
+                      deposit: depositValue,
+                      fittings: archSubtotalRaw
                     });
                   }
                 }}
