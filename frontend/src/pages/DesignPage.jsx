@@ -721,7 +721,8 @@ export default function DesignPage() {
     });
 
     alert(`Design Fee "${feeData.feeName || 'Proposal'}" successfully saved & synced to ${proj.name || targetProjectKey}!`);
-    setSelectedFeeId(null);
+    // Keep user in the workspace with saved fee ID selected
+    setSelectedFeeId(feeObj.id);
   };
 
   const activeFeeObject = useMemo(() => {

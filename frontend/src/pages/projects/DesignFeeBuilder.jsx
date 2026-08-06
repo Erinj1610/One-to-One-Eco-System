@@ -347,15 +347,44 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
     return Array.from(map.values());
   }, [contacts, projects]);
 
-  const [feeName, setFeeName] = useState('Master Design Fee Proposal');
+  const [feeName, setFeeName] = useState(initialFeeSnapshot?.name || 'Master Design Fee Proposal');
   const [selectedProjKey, setSelectedProjKey] = useState(projectId || '');
   const [selectedContactId, setSelectedContactId] = useState('');
 
   const [projectName, setProjectName] = useState('Waterfall Estate');
-  const [quoteBy, setQuoteBy] = useState('Dani');
-  const [companyName, setCompanyName] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [billingDetails, setBillingDetails] = useState('');
+  const [quoteBy, setQuoteBy] = useState(initialFeeSnapshot?.quoteBy || 'Dani');
+  const [companyName, setCompanyName] = useState(initialFeeSnapshot?.companyName || '');
+  const [contactPerson, setContactPerson] = useState(initialFeeSnapshot?.contactPerson || '');
+  const [billingDetails, setBillingDetails] = useState(initialFeeSnapshot?.billingDetails || '');
+
+  // Hydrate fee state whenever initialFeeSnapshot changes
+  useEffect(() => {
+    if (initialFeeSnapshot) {
+      if (initialFeeSnapshot.name) setFeeName(initialFeeSnapshot.name);
+      if (initialFeeSnapshot.quoteBy) setQuoteBy(initialFeeSnapshot.quoteBy);
+      if (initialFeeSnapshot.contactPerson) setContactPerson(initialFeeSnapshot.contactPerson);
+      if (initialFeeSnapshot.companyName) setCompanyName(initialFeeSnapshot.companyName);
+      if (initialFeeSnapshot.billingDetails) setBillingDetails(initialFeeSnapshot.billingDetails);
+      if (initialFeeSnapshot.sqm) setLivingArea(initialFeeSnapshot.sqm);
+      if (initialFeeSnapshot.landscapeSqm) setLandscapeArea(initialFeeSnapshot.landscapeSqm);
+      if (initialFeeSnapshot.proposalType) setProposalType(initialFeeSnapshot.proposalType);
+      if (initialFeeSnapshot.expLiving !== undefined) setExpLiving(initialFeeSnapshot.expLiving);
+      if (initialFeeSnapshot.secLiving !== undefined) setSecLiving(initialFeeSnapshot.secLiving);
+      if (initialFeeSnapshot.expLand !== undefined) setExpLand(initialFeeSnapshot.expLand);
+      if (initialFeeSnapshot.sigConsult !== undefined) setSigConsult(initialFeeSnapshot.sigConsult);
+      if (initialFeeSnapshot.conceptDesign !== undefined) setConceptDesign(initialFeeSnapshot.conceptDesign);
+      if (initialFeeSnapshot.schematicDesign !== undefined) setSchematicDesign(initialFeeSnapshot.schematicDesign);
+      if (initialFeeSnapshot.finalDesign !== undefined) setFinalDesign(initialFeeSnapshot.finalDesign);
+      if (initialFeeSnapshot.archFittings !== undefined) setArchFittings(initialFeeSnapshot.archFittings);
+      if (initialFeeSnapshot.siteSupport !== undefined) setSiteSupport(initialFeeSnapshot.siteSupport);
+      if (initialFeeSnapshot.siteSupportQty !== undefined) setSiteSupportQty(initialFeeSnapshot.siteSupportQty);
+      if (initialFeeSnapshot.commissioning !== undefined) setCommissioning(initialFeeSnapshot.commissioning);
+      if (initialFeeSnapshot.commissioningQty !== undefined) setCommissioningQty(initialFeeSnapshot.commissioningQty);
+      if (initialFeeSnapshot.sigDepositPercent !== undefined) setSigDepositPercent(initialFeeSnapshot.sigDepositPercent);
+      if (initialFeeSnapshot.designIncreasePercent !== undefined) setDesignIncreasePercent(initialFeeSnapshot.designIncreasePercent);
+      if (initialFeeSnapshot.productIncreasePercent !== undefined) setProductIncreasePercent(initialFeeSnapshot.productIncreasePercent);
+    }
+  }, [initialFeeSnapshot]);
 
   // Pre-fill when projectId prop changes or on mount
   useEffect(() => {
@@ -363,10 +392,12 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
       const proj = projects[projectId];
       setSelectedProjKey(projectId);
       setProjectName(proj.name || projectId);
-      if (proj.pm || proj.projectManager) setQuoteBy(proj.pm || proj.projectManager);
+      if (!initialFeeSnapshot?.quoteBy && (proj.pm || proj.projectManager)) {
+        setQuoteBy(proj.pm || proj.projectManager);
+      }
 
       // Attempt matching client contact
-      if (proj.client) {
+      if (proj.client && !initialFeeSnapshot?.contactPerson) {
         setContactPerson(proj.client);
         const matchedContact = contactList.find(c => c.name?.toLowerCase() === proj.client.toLowerCase() || c.company?.toLowerCase() === proj.client.toLowerCase());
         if (matchedContact) {
@@ -378,7 +409,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
         }
       }
     }
-  }, [projectId, projects]);
+  }, [projectId, projects, initialFeeSnapshot]);
 
   const handleSelectProject = (projKey) => {
     setSelectedProjKey(projKey);
