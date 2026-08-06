@@ -396,6 +396,9 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
                     if existing_fee:
                         existing_fee.name = f_data.get("name", existing_fee.name)
                         existing_fee.sqm = float(f_data.get("sqm", existing_fee.sqm or 1000))
+                        existing_fee.landscape_sqm = float(f_data.get("landscapeSqm", existing_fee.landscape_sqm or 500))
+                        existing_fee.fee_type = f_data.get("proposalType", existing_fee.fee_type or "Signature")
+                        existing_fee.flat_base_fee = float(f_data.get("flatBaseFee", existing_fee.flat_base_fee or 50000))
                         existing_fee.fee_value = float(f_data.get("feeValue", existing_fee.fee_value or 0))
                         existing_fee.paid = float(f_data.get("paid", existing_fee.paid or 0))
                         existing_fee.outstanding = float(f_data.get("outstanding", existing_fee.outstanding or 0))
@@ -409,6 +412,9 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
                             project_key=project_key,
                             name=f_data.get("name", "Design Fee"),
                             sqm=float(f_data.get("sqm", 1000)),
+                            landscape_sqm=float(f_data.get("landscapeSqm", 500)),
+                            fee_type=f_data.get("proposalType", "Signature"),
+                            flat_base_fee=float(f_data.get("flatBaseFee", 50000)),
                             fee_value=float(f_data.get("feeValue", 0)),
                             paid=float(f_data.get("paid", 0)),
                             outstanding=float(f_data.get("outstanding", 0)),
