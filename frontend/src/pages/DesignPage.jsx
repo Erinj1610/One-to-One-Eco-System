@@ -671,85 +671,55 @@ export default function DesignPage() {
     const existingFees = proj.designFees || [];
     let updatedFees = [];
 
+    const feeObj = {
+      id: selectedFeeId || `df-${Date.now()}`,
+      name: feeData.feeName || 'Design Fee Proposal',
+      quoteBy: feeData.quoteBy || '1-to-1 Rep',
+      contactPerson: feeData.contactPerson || proj.client,
+      companyName: feeData.companyName || proj.client,
+      billingDetails: feeData.billingDetails || '',
+      proposalType: feeData.proposalType || 'Signature',
+      sqm: feeData.livingArea || 1000,
+      landscapeSqm: feeData.landscapeArea || 500,
+      expLiving: feeData.expLiving,
+      secLiving: feeData.secLiving,
+      nonExpLiving: feeData.nonExpLiving,
+      expLand: feeData.expLand,
+      secLand: feeData.secLand,
+      sigConsult: feeData.sigConsult,
+      conceptDesign: feeData.conceptDesign,
+      schematicDesign: feeData.schematicDesign,
+      finalDesign: feeData.finalDesign,
+      archFittings: feeData.archFittings,
+      siteSupport: feeData.siteSupport,
+      siteSupportQty: feeData.siteSupportQty,
+      commissioning: feeData.commissioning,
+      commissioningQty: feeData.commissioningQty,
+      sigDepositPercent: feeData.sigDepositPercent,
+      designIncreasePercent: feeData.designIncreasePercent,
+      productIncreasePercent: feeData.productIncreasePercent,
+      feeValue: newCalculatedValue,
+      deposit: feeData.deposit || 0,
+      fittings: feeData.fittings || 0,
+      paid: totalPaidAmount,
+      outstanding: balanceOutstanding,
+      status: 'Active',
+      dateCreated: new Date().toISOString().split('T')[0]
+    };
+
     if (selectedFeeId && existingFees.some(f => f.id === selectedFeeId)) {
-      updatedFees = existingFees.map(f => {
-        if (f.id === selectedFeeId) {
-          return {
-            ...f,
-            name: feeData.feeName || f.name || 'Design Fee Proposal',
-            quoteBy: feeData.quoteBy || f.quoteBy,
-            contactPerson: feeData.contactPerson || f.contactPerson,
-            companyName: feeData.companyName || f.companyName,
-            billingDetails: feeData.billingDetails || f.billingDetails,
-            proposalType: feeData.proposalType || f.proposalType,
-            sqm: feeData.livingArea || f.sqm,
-            landscapeSqm: feeData.landscapeArea || f.landscapeSqm,
-            expLiving: feeData.expLiving,
-            secLiving: feeData.secLiving,
-            nonExpLiving: feeData.nonExpLiving,
-            expLand: feeData.expLand,
-            secLand: feeData.secLand,
-            sigConsult: feeData.sigConsult,
-            conceptDesign: feeData.conceptDesign,
-            schematicDesign: feeData.schematicDesign,
-            finalDesign: feeData.finalDesign,
-            archFittings: feeData.archFittings,
-            siteSupport: feeData.siteSupport,
-            siteSupportQty: feeData.siteSupportQty,
-            commissioning: feeData.commissioning,
-            commissioningQty: feeData.commissioningQty,
-            sigDepositPercent: feeData.sigDepositPercent,
-            designIncreasePercent: feeData.designIncreasePercent,
-            productIncreasePercent: feeData.productIncreasePercent,
-            feeValue: newCalculatedValue,
-            deposit: feeData.deposit || f.deposit,
-            fittings: feeData.fittings || f.fittings,
-            outstanding: balanceOutstanding,
-            status: f.status || 'Active'
-          };
-        }
-        return f;
-      });
+      updatedFees = existingFees.map(f => f.id === selectedFeeId ? { ...f, ...feeObj } : f);
     } else {
-      const newFeeRecord = {
-        id: `df-${Date.now()}`,
-        name: feeData.feeName || 'Design Fee Proposal',
-        quoteBy: feeData.quoteBy || '1-to-1 Rep',
-        contactPerson: feeData.contactPerson,
-        companyName: feeData.companyName,
-        billingDetails: feeData.billingDetails,
-        proposalType: feeData.proposalType,
-        sqm: feeData.livingArea || 1000,
-        landscapeSqm: feeData.landscapeArea || 500,
-        expLiving: feeData.expLiving,
-        secLiving: feeData.secLiving,
-        nonExpLiving: feeData.nonExpLiving,
-        expLand: feeData.expLand,
-        secLand: feeData.secLand,
-        sigConsult: feeData.sigConsult,
-        conceptDesign: feeData.conceptDesign,
-        schematicDesign: feeData.schematicDesign,
-        finalDesign: feeData.finalDesign,
-        archFittings: feeData.archFittings,
-        siteSupport: feeData.siteSupport,
-        siteSupportQty: feeData.siteSupportQty,
-        commissioning: feeData.commissioning,
-        commissioningQty: feeData.commissioningQty,
-        sigDepositPercent: feeData.sigDepositPercent,
-        designIncreasePercent: feeData.designIncreasePercent,
-        productIncreasePercent: feeData.productIncreasePercent,
-        feeValue: newCalculatedValue,
-        deposit: feeData.deposit || 0,
-        fittings: feeData.fittings || 0,
-        paid: 0,
-        outstanding: newCalculatedValue,
-        status: 'Active',
-        dateCreated: new Date().toISOString().split('T')[0]
-      };
-      updatedFees = [...existingFees, newFeeRecord];
+      updatedFees = [...existingFees, feeObj];
     }
 
-    updateProject(targetProjectKey, 'designFees', updatedFees);
+    // Update in-memory and trigger backend SQL PUT /api/projects/{key}
+    updateProject(targetProjectKey, {
+      client: feeData.companyName || feeData.contactPerson || proj.client,
+      pm: feeData.quoteBy || proj.pm,
+      designFees: updatedFees
+    });
+
     alert(`Design Fee "${feeData.feeName || 'Proposal'}" successfully saved & synced to ${proj.name || targetProjectKey}!`);
     setSelectedFeeId(null);
   };

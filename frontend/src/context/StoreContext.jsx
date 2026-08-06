@@ -1298,24 +1298,25 @@ export function StoreProvider({ children }) {
               if (val && typeof val === 'object') {
                 Object.entries(val).forEach(([pKey, p]) => {
                   if (p && typeof p === 'object') {
-                    const fees = p.designFees && Array.isArray(p.designFees) && p.designFees.length > 0 ? p.designFees : [];
-                    if (fees.length === 0) {
-                      ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
-                        const rawVal = p[col];
-                        if (rawVal) {
-                          if (typeof rawVal === 'string') {
-                            if (rawVal.trim() && rawVal !== 'null') {
-                              try {
-                                fees.push(JSON.parse(rawVal));
-                              } catch(e) {
-                                console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
-                              }
+                    const fees = [];
+                    ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
+                      const rawVal = p[col];
+                      if (rawVal) {
+                        if (typeof rawVal === 'string') {
+                          if (rawVal.trim() && rawVal !== 'null') {
+                            try {
+                              fees.push(JSON.parse(rawVal));
+                            } catch(e) {
+                              console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
                             }
-                          } else if (typeof rawVal === 'object') {
-                            fees.push(rawVal);
                           }
+                        } else if (typeof rawVal === 'object') {
+                          fees.push(rawVal);
                         }
-                      });
+                      }
+                    });
+                    if (fees.length === 0 && p.designFees && Array.isArray(p.designFees)) {
+                      fees.push(...p.designFees);
                     }
                     parsedProjects[pKey] = {
                       ...p,
