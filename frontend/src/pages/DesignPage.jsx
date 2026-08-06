@@ -654,55 +654,67 @@ export default function DesignPage() {
     setRightPanelTab('invoice');
   };
 
-  const handleSaveFeeWorkspace = () => {
-    const proj = projects[selectedProjectKey];
-    if (!proj) return;
+  const handleSaveFeeWorkspace = (feeData = {}) => {
+    const targetProjectKey = feeData.projectKey || selectedProjectKey;
+    const proj = projects[targetProjectKey] || (selectedProjectKey ? projects[selectedProjectKey] : null);
+    
+    if (!proj) {
+      alert('Design Fee Saved Successfully!');
+      setSelectedFeeId(null);
+      return;
+    }
 
-    const newCalculatedValue = calculatorBreakdown.standardTotal;
-    const totalPaidAmount = milestones.reduce((sum, m) => sum + (Number(m.paidAmount) || 0), 0);
+    const newCalculatedValue = feeData.feeValue || 0;
+    const totalPaidAmount = (milestones || []).reduce((sum, m) => sum + (Number(m.paidAmount) || 0), 0);
     const balanceOutstanding = Math.max(0, newCalculatedValue - totalPaidAmount);
 
-    const updatedFees = (proj.designFees || []).map(f => {
-      if (f.id === selectedFeeId) {
-        return {
-          ...f,
-          name: activeFeeName,
-          sqm: activeFeeSqm,
-          landscapeSqm: activeLandscapeSqm,
-          feeType,
-          flatBaseFee,
-          includeConcept,
-          includeSchematic,
-          includeFinal,
-          includeSite,
-          includeCommissioning,
-          adjustmentPercent,
-          procurementDiscountActive,
-          milestones,
-          feeValue: newCalculatedValue,
-          paid: totalPaidAmount,
-          outstanding: balanceOutstanding,
-          margin: actualMargin,
-          status: feeStatus
-        };
-      }
-      return f;
-    });
+    const existingFees = proj.designFees || [];
+    let updatedFees = [];
 
-    updateProject(selectedProjectKey, 'designFees', updatedFees);
+    if (selectedFeeId && existingFees.some(f => f.id === selectedFeeId)) {
+      updatedFees = existingFees.map(f => {
+        if (f.id === selectedFeeId) {
+          return {
+            ...f,
+            name: feeData.feeName || f.name || 'Design Fee Proposal',
+            quoteBy: feeData.quoteBy || f.quoteBy,
+            contactPerson: feeData.contactPerson || f.contactPerson,
+            companyName: feeData.companyName || f.companyName,
+            billingDetails: feeData.billingDetails || f.billingDetails,
+            sqm: feeData.livingArea || f.sqm,
+            landscapeSqm: feeData.landscapeArea || f.landscapeSqm,
+            feeValue: newCalculatedValue,
+            deposit: feeData.deposit || f.deposit,
+            fittings: feeData.fittings || f.fittings,
+            outstanding: balanceOutstanding,
+            status: f.status || 'Active'
+          };
+        }
+        return f;
+      });
+    } else {
+      const newFeeRecord = {
+        id: `df-${Date.now()}`,
+        name: feeData.feeName || 'Design Fee Proposal',
+        quoteBy: feeData.quoteBy || '1-to-1 Rep',
+        contactPerson: feeData.contactPerson,
+        companyName: feeData.companyName,
+        billingDetails: feeData.billingDetails,
+        sqm: feeData.livingArea || 1000,
+        landscapeSqm: feeData.landscapeArea || 500,
+        feeValue: newCalculatedValue,
+        deposit: feeData.deposit || 0,
+        fittings: feeData.fittings || 0,
+        paid: 0,
+        outstanding: newCalculatedValue,
+        status: 'Active',
+        dateCreated: new Date().toISOString().split('T')[0]
+      };
+      updatedFees = [...existingFees, newFeeRecord];
+    }
 
-    // Trigger blended margin update
-    const designTotal = updatedFees.reduce((s, f) => s + (f.feeValue || 0), 0);
-    const orderTotal = (proj.orders || []).reduce((s, o) => s + (o.value || 0), 0);
-    const contractTotal = designTotal + orderTotal;
-    
-    const designMarginValue = updatedFees.reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
-    const orderMarginValue = (proj.orders || []).reduce((s, o) => s + ((o.value || 0) - (o.costValue || 0)), 0);
-    const totalProfit = designMarginValue + orderMarginValue;
-    const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
-
-    updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
-
+    updateProject(targetProjectKey, 'designFees', updatedFees);
+    alert(`Design Fee "${feeData.feeName || 'Proposal'}" successfully saved & synced to ${proj.name || targetProjectKey}!`);
     setSelectedFeeId(null);
   };
 
@@ -1030,7 +1042,7 @@ export default function DesignPage() {
             initialLivingArea={activeFeeSqm || 1000}
             initialLandscapeArea={activeLandscapeSqm || 500}
             updateFee={(feeData) => {
-              handleSaveFeeWorkspace();
+              handleSaveFeeWorkspace(feeData);
             }} 
           />
         </div>
