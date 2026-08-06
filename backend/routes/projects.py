@@ -734,16 +734,16 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 elif all_draft:
                     computed_status = 'Draft'
 
-            # Fetch relational design fees or fallback to s1..s5 columns
-            relational_fees = fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), [])
-            if not relational_fees:
-                relational_fees = []
-                for col in [p.s1, p.s2, p.s3, p.s4, p.s5]:
-                    if col and isinstance(col, str) and col.strip() and col != "null":
-                        try:
-                            relational_fees.append(json.loads(col))
-                        except Exception:
-                            pass
+            # Fetch design fees from s1..s5 columns or fallback to relational_fees table
+            s_fees = []
+            for col in [p.s1, p.s2, p.s3, p.s4, p.s5]:
+                if col and isinstance(col, str) and col.strip() and col != "null":
+                    try:
+                        s_fees.append(json.loads(col))
+                    except Exception:
+                        pass
+
+            relational_fees = s_fees if s_fees else (fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), []))
 
             projects_dict[p_key] = {
                 "key": p_key,
