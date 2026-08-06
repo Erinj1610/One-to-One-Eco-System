@@ -675,6 +675,7 @@ export default function DesignPage() {
       id: selectedFeeId || `df-${Date.now()}`,
       name: feeData.feeName || 'Design Fee Proposal',
       quoteBy: feeData.quoteBy || '1-to-1 Rep',
+      selectedContactId: feeData.selectedContactId || '',
       contactPerson: feeData.contactPerson || proj.client,
       companyName: feeData.companyName || proj.client,
       billingDetails: feeData.billingDetails || '',

@@ -349,7 +349,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
   const [feeName, setFeeName] = useState(initialFeeSnapshot?.name || 'Master Design Fee Proposal');
   const [selectedProjKey, setSelectedProjKey] = useState(projectId || '');
-  const [selectedContactId, setSelectedContactId] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState(initialFeeSnapshot?.selectedContactId || '');
 
   const [projectName, setProjectName] = useState('Waterfall Estate');
   const [quoteBy, setQuoteBy] = useState(initialFeeSnapshot?.quoteBy || 'Dani');
@@ -365,6 +365,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
       if (initialFeeSnapshot.contactPerson) setContactPerson(initialFeeSnapshot.contactPerson);
       if (initialFeeSnapshot.companyName) setCompanyName(initialFeeSnapshot.companyName);
       if (initialFeeSnapshot.billingDetails) setBillingDetails(initialFeeSnapshot.billingDetails);
+      if (initialFeeSnapshot.selectedContactId) setSelectedContactId(initialFeeSnapshot.selectedContactId);
       if (initialFeeSnapshot.sqm) setLivingArea(initialFeeSnapshot.sqm);
       if (initialFeeSnapshot.landscapeSqm) setLandscapeArea(initialFeeSnapshot.landscapeSqm);
       if (initialFeeSnapshot.proposalType) setProposalType(initialFeeSnapshot.proposalType);
@@ -895,6 +896,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       quoteBy,
                       projectKey: selectedProjKey,
                       projectName,
+                      selectedContactId,
                       contactPerson,
                       companyName,
                       billingDetails,
