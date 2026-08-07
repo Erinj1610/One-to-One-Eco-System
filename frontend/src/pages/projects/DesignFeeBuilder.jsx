@@ -198,12 +198,12 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
   const areaRates = activeRates.area_rates || DEFAULT_RATES.area_rates;
 
-  // Note: concept lighting rates in sheet are Excl. VAT (e.g. 180). Multiply by 1.15 for ZAR Incl. VAT rate (207)
-  const rExpLiving = (areaRates.experiential_living?.conceptLighting || 180.00) * 1.15;
-  const rSecLiving = (areaRates.secondary_living?.conceptLighting || 105.00) * 1.15;
-  const rNonExpLiving = (areaRates.non_experiential_living?.conceptLighting || 30.00) * 1.15;
-  const rExpLand = (areaRates.experiential_landscape?.conceptLighting || 140.00) * 1.15;
-  const rSecLand = (areaRates.secondary_landscape?.conceptLighting || 55.00) * 1.15;
+  // Concept lighting rates in sheet are Excl. VAT (e.g. 180, 105, 30, 140, 55)
+  const rExpLiving = areaRates.experiential_living?.conceptLighting || 180.00;
+  const rSecLiving = areaRates.secondary_living?.conceptLighting || 105.00;
+  const rNonExpLiving = areaRates.non_experiential_living?.conceptLighting || 30.00;
+  const rExpLand = areaRates.experiential_landscape?.conceptLighting || 140.00;
+  const rSecLand = areaRates.secondary_landscape?.conceptLighting || 55.00;
 
   const conceptTotalRaw = 
       (sqExpLiving * rExpLiving) + (sqSecLiving * rSecLiving) +
