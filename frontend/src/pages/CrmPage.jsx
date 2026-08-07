@@ -1714,16 +1714,19 @@ export default function CrmPage() {
                 </button>
               </div>
             </div>
-             <table className="table" style={{ margin: 0 }}>
+            <table className="table" style={{ margin: 0 }}>
                <colgroup>
-                 <col style={{ width: '15%' }} />
-                 <col style={{ width: '15%' }} />
+                 <col style={{ width: '13%' }} />
                  <col style={{ width: '12%' }} />
-                 <col style={{ width: '8%' }} />
-                 <col style={{ width: '8%' }} />
-                 <col style={{ width: '14%' }} />
-                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '11%' }} />
                  <col style={{ width: '10%' }} />
+                 <col style={{ width: '7%' }} />
+                 <col style={{ width: '6%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '8%' }} />
+                 <col style={{ width: '9%' }} />
+                 <col style={{ width: '8%' }} />
                  <col style={{ width: '10%' }} />
                </colgroup>
                <thead>
@@ -1734,6 +1737,9 @@ export default function CrmPage() {
                    <th onClick={() => handleProjSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderProjSortIcon('client')}</div>
                    </th>
+                   <th onClick={() => handleProjSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderProjSortIcon('pm')}</div>
+                   </th>
                    <th onClick={() => handleProjSort('projectType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Type {renderProjSortIcon('projectType')}</div>
                    </th>
@@ -1743,17 +1749,23 @@ export default function CrmPage() {
                    <th onClick={() => handleProjSort('orders')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderProjSortIcon('orders')}</div>
                    </th>
-                   <th onClick={() => handleProjSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage & Progress {renderProjSortIcon('stage')}</div>
-                   </th>
                    <th onClick={() => handleProjSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderProjSortIcon('margin')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Value {renderProjSortIcon('value')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderProjSortIcon('paid')}</div>
+                   </th>
+                   <th onClick={() => handleProjSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderProjSortIcon('outstanding')}</div>
                    </th>
                    <th onClick={() => handleProjSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderProjSortIcon('status')}</div>
                    </th>
-                   <th onClick={() => handleProjSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderProjSortIcon('outstanding')}</div>
+                   <th onClick={() => handleProjSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage {renderProjSortIcon('stage')}</div>
                    </th>
                  </tr>
                </thead>
@@ -1763,8 +1775,9 @@ export default function CrmPage() {
                    const currentStageIdx = stagesList.indexOf(p.stage);
                    const progressPct = currentStageIdx === -1 ? 0 : Math.round(((currentStageIdx + 1) / stagesList.length) * 100);
                    
-                   let totalValue = p.feeValue || 0;
-                   let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
+                   let totalValue = 0;
+                   let totalPaid = 0;
+                   let totalOutstanding = 0;
                    let actualMargin = p.actualMargin || 18;
 
                    if (p.scopedOrders && p.scopedOrders.length > 0) {
@@ -1780,25 +1793,26 @@ export default function CrmPage() {
                     } else {
                       actualMargin = p.targetMargin || 18;
                     }
- 
-                   if (p.scopedDesignFees && p.scopedOrders) {
-                     const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-                     const dfPaid = p.scopedDesignFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-                     const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-                     const poPaid = p.scopedOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
- 
+
+                   if (p.scopedDesignFees || p.scopedOrders) {
+                     const dfVal = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.feeValue || 0), 0);
+                     const dfPaid = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.paid || 0), 0);
+                     const poVal = (p.scopedOrders || []).reduce((sum, o) => sum + (o.value || 0), 0);
+                     const poPaid = (p.scopedOrders || []).reduce((sum, o) => sum + (o.paid || 0), 0);
+
                      totalValue = dfVal + poVal;
-                     totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+                     totalPaid = dfPaid + poPaid;
+                     totalOutstanding = Math.max(0, totalValue - totalPaid);
                    }
 
                    const isUnderTarget = actualMargin < (p.targetMargin || 18);
- 
+
                    const typeColors = {
                      'Design & Orders': 'b-info',
                      'Design-Only': 'b-warning',
                      'Orders-Only': 'b-success'
                    };
- 
+
                    return (
                      <tr 
                        key={p.key || p.id || p.name} 
@@ -1813,6 +1827,9 @@ export default function CrmPage() {
                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</div>
                        </td>
                        <td>
+                         <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || p.projectManager || '—'}</div>
+                       </td>
+                       <td>
                          <span className={`badge ${typeColors[p.projectType || 'Design & Orders']}`} style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                            {p.projectType === 'Orders-Only' ? <ShoppingBag size={10} /> : p.projectType === 'Design-Only' ? <FolderGit size={10} /> : <Briefcase size={10} />}
                            {p.projectType || 'Design & Orders'}
@@ -1823,6 +1840,28 @@ export default function CrmPage() {
                        </td>
                        <td style={{ fontWeight: 500 }}>
                          {p.scopedOrders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
+                       </td>
+                       <td>
+                         <div style={{ display: 'flex', flexDirection: 'column' }}>
+                           <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                             {actualMargin}%
+                           </span>
+                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
+                         </div>
+                       </td>
+                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                         R {totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                       </td>
+                       <td style={{ fontWeight: 600, color: 'var(--text-success)' }}>
+                         R {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                       </td>
+                       <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                         R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                       </td>
+                       <td>
+                         <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                           {p.status || 'Draft'}
+                         </span>
                        </td>
                        <td>
                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1843,28 +1882,12 @@ export default function CrmPage() {
                            </div>
                          </div>
                        </td>
-                       <td>
-                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                           <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                             {actualMargin}%
-                           </span>
-                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
-                         </div>
-                       </td>
-                       <td>
-                         <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
-                           {p.status || 'Draft'}
-                         </span>
-                       </td>
-                       <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                         R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                       </td>
                      </tr>
                    );
                  })}
                  {clientProjects.length === 0 && (
                    <tr>
-                     <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '20px' }}>
+                     <td colSpan={12} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '20px' }}>
                        No projects linked to this client.
                      </td>
                    </tr>
@@ -1873,7 +1896,6 @@ export default function CrmPage() {
              </table>
           </div>
         )}
-
 
 
         {/* TAB 4: ACTIVITY LOG */}
