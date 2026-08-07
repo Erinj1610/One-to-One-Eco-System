@@ -517,7 +517,35 @@ export default function CrmPage() {
 
   const clientProjects = useMemo(() => {
     if (!selectedClient) return [];
-    let rawList = Object.values(projects).filter(p => p.client === selectedClient?.name);
+    const clientNameLower = (selectedClient.name || '').toLowerCase();
+    const clientCompanyLower = (selectedClient.company || '').toLowerCase();
+
+    const matchesClient = (cName) => {
+      if (!cName) return false;
+      const lower = String(cName).toLowerCase();
+      return lower === clientNameLower || (clientCompanyLower && lower === clientCompanyLower);
+    };
+
+    let rawList = Object.values(projects).filter(p => {
+      if (matchesClient(p.client)) return true;
+      const hasLinkedFee = (p.designFees || []).some(df => matchesClient(df.companyName) || matchesClient(df.contactPerson) || matchesClient(df.client));
+      const hasLinkedOrder = (p.orders || []).some(o => matchesClient(o.supplier) || matchesClient(o.client) || matchesClient(o.companyName));
+      return hasLinkedFee || hasLinkedOrder;
+    }).map(p => {
+      // Scope design fees and orders strictly for this client
+      const scopedFees = (p.designFees || []).filter(df => 
+        matchesClient(p.client) || matchesClient(df.companyName) || matchesClient(df.contactPerson) || matchesClient(df.client)
+      );
+      const scopedOrders = (p.orders || []).filter(o => 
+        matchesClient(p.client) || matchesClient(o.supplier) || matchesClient(o.client) || matchesClient(o.companyName)
+      );
+
+      return {
+        ...p,
+        scopedDesignFees: scopedFees,
+        scopedOrders: scopedOrders
+      };
+    });
 
     // Apply date range filters based on start date
     if (projDatePreset === 'week') {
@@ -559,9 +587,9 @@ export default function CrmPage() {
         case 'projectType':
           return (p.projectType || '').toLowerCase();
         case 'designFees':
-          return p.designFees?.length || 0;
+          return p.scopedDesignFees?.length || 0;
         case 'orders':
-          return p.orders?.length || 0;
+          return p.scopedOrders?.length || 0;
         case 'stage': {
           const idx = stagesList.indexOf(p.stage);
           return idx === -1 ? 0 : idx;
@@ -569,12 +597,12 @@ export default function CrmPage() {
         case 'margin': {
           let totalValue = p.feeValue || 0;
           let actualMargin = p.actualMargin || 18;
-          if (p.designFees && p.orders) {
-            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+          if (p.scopedDesignFees && p.scopedOrders) {
+            const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
             totalValue = dfVal + poVal;
-            const totalCost = p.designFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                              p.orders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+            const totalCost = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
+                              p.scopedOrders.reduce((sum, o) => sum + (o.value * 0.8), 0);
             actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
           }
           return actualMargin;
@@ -582,13 +610,13 @@ export default function CrmPage() {
         case 'status':
           return (p.status || '').toLowerCase();
         case 'outstanding': {
-          let totalValue = p.feeValue || 0;
-          let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
-          if (p.designFees && p.orders) {
-            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
-            const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+          let totalValue = 0;
+          let totalOutstanding = 0;
+          if (p.scopedDesignFees && p.scopedOrders) {
+            const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+            const dfPaid = p.scopedDesignFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const poPaid = p.scopedOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
             totalValue = dfVal + poVal;
             totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
           }
@@ -607,7 +635,7 @@ export default function CrmPage() {
       if (valA > valB) return projSortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [projects, selectedClient?.name, projSortField, projSortDirection, projDatePreset, projStartDate, projEndDate]);
+  }, [projects, selectedClient, projSortField, projSortDirection, projDatePreset, projStartDate, projEndDate]);
 
   const velocityRhythm = useMemo(() => {
     if (!clientProjects || clientProjects.length <= 1) {
@@ -1739,10 +1767,10 @@ export default function CrmPage() {
                    let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
                    let actualMargin = p.actualMargin || 18;
 
-                   if (p.orders && p.orders.length > 0) {
-                      const totalOrderVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
+                   if (p.scopedOrders && p.scopedOrders.length > 0) {
+                      const totalOrderVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
                       if (totalOrderVal > 0) {
-                        const orderCost = p.orders.reduce((sum, o) => {
+                        const orderCost = p.scopedOrders.reduce((sum, o) => {
                           return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
                         }, 0);
                         actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
@@ -1753,11 +1781,11 @@ export default function CrmPage() {
                       actualMargin = p.targetMargin || 18;
                     }
  
-                   if (p.designFees && p.orders) {
-                     const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-                     const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-                     const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
-                     const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
+                   if (p.scopedDesignFees && p.scopedOrders) {
+                     const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
+                     const dfPaid = p.scopedDesignFees.reduce((sum, d) => sum + (d.paid || 0), 0);
+                     const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+                     const poPaid = p.scopedOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
  
                      totalValue = dfVal + poVal;
                      totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
@@ -1791,10 +1819,10 @@ export default function CrmPage() {
                          </span>
                        </td>
                        <td style={{ fontWeight: 500 }}>
-                         {p.designFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
+                         {p.scopedDesignFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
                        </td>
                        <td style={{ fontWeight: 500 }}>
-                         {p.orders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
+                         {p.scopedOrders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
                        </td>
                        <td>
                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
