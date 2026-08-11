@@ -942,13 +942,13 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                             clean_val = stripped_val.replace('R ', '').replace('R', '').replace(',', '').strip()
                             if re.match(r'^-?\d+(?:\.\d+)?$', clean_val):
                                 cell.value = float(clean_val)
-                                cell.number_format = '"R"#,##0.00'
+                                if not cell.number_format or cell.number_format == 'General':
+                                    cell.number_format = '"R"#,##0.00'
                             else:
                                 cell.value = val
                         elif re.match(r'^-?\d+(?:\.\d+)?$', stripped_val):
                             if '.' in stripped_val:
                                 cell.value = float(stripped_val)
-                                cell.number_format = '"R"#,##0.00'
                             else:
                                 cell.value = int(stripped_val)
                         else:
