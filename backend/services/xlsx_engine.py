@@ -993,23 +993,6 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 if tl.font: cell.font = copy.copy(tl.font)
                 if tl.alignment: cell.alignment = copy.copy(tl.alignment)
 
-    # Ensure column widths for columns B-L auto-expand to fit long product codes without overlapping
-    from openpyxl.utils import get_column_letter
-    for c in range(2, max_col_idx + 1):
-        col_letter = get_column_letter(c)
-        max_len = 0
-        for r in range(1, ws.max_row + 1):
-            cell = ws.cell(row=r, column=c)
-            if type(cell).__name__ == 'MergedCell': continue
-            val_str = str(cell.value or '')
-            if val_str and not any(k in val_str for k in ['TOTAL VALUE', 'Please see', 'Approval', 'Delivery Fee', 'This quote']):
-                max_len = max(max_len, len(val_str))
-        
-        current_w = ws.column_dimensions[col_letter].width or 10.0
-        if max_len > 0:
-            suggested_w = max(current_w, max_len + 3)
-            ws.column_dimensions[col_letter].width = suggested_w
-
     if has_column_a_control_tags:
         ws.column_dimensions['A'].width = 0.0001
         ws.column_dimensions['A'].hidden = True
@@ -1017,16 +1000,9 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     else:
         start_col = "A"
 
-    ws.print_area = f"{start_col}1:{max_col_letter}{ws.max_row}"
-
-    # 4. Clean Page Margins & Fit-To-Page setup for PDF conversion
-    from openpyxl.worksheet.page import PageMargins
-    ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.1, footer=0.1)
-
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    if ws.sheet_properties and ws.sheet_properties.pageSetUpPr:
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
+    # Respect template print_area if already defined; otherwise set to occupied bounds
+    if not ws.print_area:
+        ws.print_area = f"{start_col}1:{max_col_letter}{ws.max_row}"
 
     if output_xlsx_path:
         wb.save(output_xlsx_path)
