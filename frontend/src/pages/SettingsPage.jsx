@@ -2431,6 +2431,8 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      )}
+
       {activeTab === 'Templates' && isAdmin && (
         <MasterGoogleSheetSettings />
       )}
