@@ -3,6 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import { API_BASE } from '../../api_config';
 
 function buildTokens({
+  feeName, projectName, companyName, contactPerson, proposalType, quoteBy,
   sigConsult, conceptDesign, schematicDesign, finalDesign,
   archFittings, siteSupport, commissioning,
   livingArea, landscapeArea,
@@ -12,33 +13,89 @@ function buildTokens({
   depositValue, archSubtotalRaw, siteSupportCost, commissioningCost,
   absoluteProjectBudget, usdConv,
 }) {
-  const fmt = (v) => v > 0 ? `R ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-  const fmtUSD = (v) => `$ ${(v / usdConv).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (v) => (v !== undefined && v !== null && !isNaN(v)) ? `R ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+  const fmtUSD = (v) => (v !== undefined && v !== null && !isNaN(v)) ? `$ ${(Number(v) / usdConv).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
   const today = new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
   const proposalNum = `DFP-${Date.now().toString().slice(-6)}`;
 
+  const totalSqm = (Number(livingArea) || 0) + (Number(landscapeArea) || 0);
+
+  // Subtotal (Signature / Standard Design Fees before VAT)
+  const designExclVat = rawDesignSubtotal;
+  const vatAmount = designExclVat * 0.15;
+  const designInclVat = designExclVat * 1.15;
+
+  // Activation / Deposit (Concept Cost + 15% VAT)
+  const activationFeeInclVat = ConceptCost * 1.15;
+
+  // Option 2 Discount & Payable
+  const discountExclVat = unifiedDiscountValue;
+  const discountInclVat = discountExclVat * 1.15;
+  const netPayableInclVat = (designExclVat - discountExclVat) * 1.15;
+
   return {
-    PROJECT_NAME: 'Project Name',
-    CLIENT_NAME: 'Client Name',
+    // Header & Meta
+    FEE_NAME: feeName || 'Design Fee Proposal',
+    PROJECT_NAME: projectName || 'Project',
+    PROJECT_NAME_LOCATION: projectName || 'Project',
+    CLIENT_NAME: companyName || contactPerson || 'Client',
+    COMPANY_NAME: companyName || '',
+    CONTACT_PERSON: contactPerson || '',
+    QUOTE_BY: quoteBy || '',
     DATE: today,
     PROPOSAL_NUMBER: proposalNum,
+    Proposal_Type: proposalType || 'Signature',
+    PROPOSAL_TYPE: proposalType || 'Signature',
+
+    // Meterages
     LIVING_AREA: livingArea.toString(),
+    LIVING_SQM: livingArea.toString(),
     LANDSCAPE_AREA: landscapeArea.toString(),
+    LANDSCAPE_SQM: landscapeArea.toString(),
+    TOTAL_SQM: totalSqm.toString(),
     EXP_LIVING_SQM: sqExpLiving.toFixed(1),
     SEC_LIVING_SQM: sqSecLiving.toFixed(1),
     NONEXP_LIVING_SQM: sqNonExpLiving.toFixed(1),
     EXP_LAND_SQM: sqExpLand.toFixed(1),
     SEC_LAND_SQM: sqSecLand.toFixed(1),
+
+    // Option 1 Design Fees
     CONCEPT_COST: fmt(ConceptCost),
+    CONCEPT_LIGHTING_FEE: fmt(ConceptCost),
     SCHEMATIC_COST: fmt(SchematicCost),
+    SCHEMATIC_DESIGN_FEE: fmt(SchematicCost),
     FINAL_COST: fmt(FinalCost),
+    FINAL_DESIGN_FEE: fmt(FinalCost),
+
+    SIGNATURE_LIGHTING_DESIGN_EXCL_VAT: fmt(designExclVat),
+    DESIGN_RAW_SUBTOTAL: fmt(designExclVat),
+    VAT_AMOUNT: fmt(vatAmount),
+    TOTAL_DESIGN_FEE_INCL_VAT: fmt(designInclVat),
+    DESIGN_FEE_TOTAL_INCL_VAT: fmt(designInclVat),
+    ACTIVATION_FEE_INCL_VAT: fmt(activationFeeInclVat),
+    DEPOSIT_REQUIRED: fmt(activationFeeInclVat),
+
+    // Option 2 Design & Supply
     DISCOUNT_AMOUNT: fmt(unifiedDiscountValue),
+    SUPPLY_DISCOUNT_EXCL_VAT: fmt(discountExclVat),
+    SUPPLY_DISCOUNT_INCL_VAT: fmt(discountInclVat),
     DESIGN_NET: fmt(designNet),
-    DEPOSIT_REQUIRED: fmt(depositValue),
+    NET_TOTAL_PAYABLE_INCL_VAT: fmt(netPayableInclVat),
+
+    // Page 2 Services Support & Rates
     ARCH_COST: fmt(archSubtotalRaw),
     SITE_SUPPORT_COST: fmt(siteSupportCost),
+    SITE_SUPPORT_CAP: fmt(siteSupportCost),
     COMMISSIONING_COST: fmt(commissioningCost),
+    COMMISSIONING_CAP: fmt(commissioningCost),
+    HOURLY_DESIGN_DIRECTOR: "R 4,000.00/hr",
+    HOURLY_PROJECT_DESIGNER: "R 3,200.00/hr",
+    HOURLY_ASSISTANT_DESIGNER: "R 2,400.00/hr",
+    HOURLY_TECHNICIAN: "R 1,600.00/hr",
+
+    // Overall Totals
     GRAND_TOTAL: fmt(absoluteProjectBudget),
+    GRAND_TOTAL_ZAR: fmt(absoluteProjectBudget),
     GRAND_TOTAL_USD: fmtUSD(absoluteProjectBudget),
     USD_RATE: usdConv.toFixed(2),
   };
@@ -266,6 +323,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
     try {
       const tokens = buildTokens({
+        feeName, projectName, companyName, contactPerson, proposalType, quoteBy,
         sigConsult, conceptDesign, schematicDesign, finalDesign,
         archFittings, siteSupport, commissioning,
         livingArea, landscapeArea,
