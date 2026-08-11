@@ -265,6 +265,90 @@ function DesignFeeCostingsSettings() {
   );
 }
 
+function MasterGoogleSheetSettings() {
+  const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/templates/master_google_sheet/url`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.url) setUrl(data.url);
+      })
+      .catch(err => console.error("Error fetching Master Google Sheet URL:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (res.ok) {
+        setMsg({ type: 'success', text: 'Master Google Sheet URL saved successfully! Live document previews will generate directly from this workbook.' });
+      } else {
+        setMsg({ type: 'error', text: 'Failed to save Google Sheet URL.' });
+      }
+    } catch (e) {
+      setMsg({ type: 'error', text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+      <div className="section-label">Master Google Sheet Template Workbook</div>
+      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+        Link your single Master Google Sheet workbook containing all document template tabs (Design Fee Proposal, BOQ, Lighting Schedule, Quotations, Invoices). The system will read your live layout, fonts, and formulas dynamically without touching your master file.
+      </div>
+
+      <div className="card" style={{ maxWidth: '650px', padding: '20px' }}>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+            Master Google Sheet Spreadsheet Link / URL
+          </label>
+          <input 
+            type="text" 
+            className="form-control" 
+            placeholder="https://docs.google.com/spreadsheets/d/1.../edit"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            style={{ fontSize: '12.5px' }}
+          />
+          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '6px', display: 'block' }}>
+            Ensure your Google Sheet link is set to "Anyone with the link can view" or shared with your Google Service Account.
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || loading}>
+            {saving ? 'Saving Link...' : 'Save Master Template Link'}
+          </button>
+        </div>
+
+        {msg && (
+          <div style={{ 
+            marginTop: '16px', padding: '10px 14px', borderRadius: '6px', 
+            background: msg.type === 'success' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+            border: msg.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)',
+            color: msg.type === 'success' ? 'var(--text-success)' : 'var(--text-danger)',
+            fontSize: '12.5px'
+          }}>
+            {msg.text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -2347,6 +2431,8 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      {activeTab === 'Templates' && isAdmin && (
+        <MasterGoogleSheetSettings />
       )}
 
 

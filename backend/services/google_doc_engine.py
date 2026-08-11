@@ -134,3 +134,142 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             try: drive_service.files().delete(fileId=cloned_id).execute()
             except: pass
         raise e
+
+def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None):
+    """
+    1. Clones a Master Google Sheet Workbook template.
+    2. Opens cloned spreadsheet and replaces {{TOKENS}} in the target sheet tab using Google Sheets API.
+    3. Exports the target sheet tab as PDF via native Google Drive export URL (preserving 100% Google fonts, colors, and margins).
+    4. Deletes the temporary Cloned Sheet.
+    """
+    SCOPES_SHEETS = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+    
+    try:
+        if credentials_json:
+            creds = service_account.Credentials.from_service_account_info(credentials_json, scopes=SCOPES_SHEETS)
+        else:
+            creds, project = default(scopes=SCOPES_SHEETS)
+            
+        drive_service = build('drive', 'v3', credentials=creds)
+        sheets_service = build('sheets', 'v4', credentials=creds)
+    except Exception as e:
+        logger.error(f"Failed to initialize Google Services for Sheets: {e}")
+        raise e
+
+    template_id = extract_file_id(template_source)
+    if not template_id:
+        raise ValueError("Invalid Master Google Sheet URL or ID")
+
+    try:
+        # Get parent folder to inherit quota
+        parents = []
+        try:
+            file_info = drive_service.files().get(fileId=template_id, fields="parents").execute()
+            parents = file_info.get("parents", [])
+        except Exception:
+            pass
+
+        # 1. Clone the Master Sheet Template
+        logger.info(f"Cloning Master Google Sheet template {template_id}...")
+        copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
+        if parents:
+            copy_metadata['parents'] = parents
+
+        cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
+        cloned_id = cloned_file.get('id')
+
+        # 2. Get spreadsheet metadata & find target sheet (tab) GID
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=cloned_id).execute()
+        sheets = spreadsheet.get('sheets', [])
+        
+        target_sheet = None
+        target_gid = 0
+        if sheet_name:
+            clean_name = str(sheet_name).strip().lower().replace('_', ' ')
+            for s in sheets:
+                s_title = s['properties']['title'].strip().lower().replace('_', ' ')
+                if clean_name in s_title or s_title in clean_name:
+                    target_sheet = s
+                    target_gid = s['properties']['sheetId']
+                    break
+        
+        if not target_sheet and sheets:
+            target_sheet = sheets[0]
+            target_gid = target_sheet['properties']['sheetId']
+
+        # 3. Read values from target sheet and replace tokens
+        tab_title = target_sheet['properties']['title']
+        range_name = f"'{tab_title}'!A1:Z200"
+        
+        val_result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=cloned_id, range=range_name
+        ).execute()
+        
+        rows = val_result.get('values', [])
+        updated_rows = []
+        has_changes = False
+
+        for row in rows:
+            new_row = []
+            for cell in row:
+                cell_str = str(cell)
+                if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
+                    has_changes = True
+                    for k, v in tokens.items():
+                        if not isinstance(v, (list, dict)):
+                            cell_str = cell_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                            cell_str = cell_str.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
+                    cell_str = re.sub(r'\{\{[^}]+\}\}', '', cell_str)
+                new_row.append(cell_str)
+            updated_rows.append(new_row)
+
+        if has_changes and updated_rows:
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=cloned_id,
+                range=range_name,
+                valueInputOption='USER_ENTERED',
+                body={'values': updated_rows}
+            ).execute()
+
+        # 4. Export specific sheet tab as PDF via Google Drive Export Media URL
+        export_url = (
+            f"https://docs.google.com/spreadsheets/d/{cloned_id}/export?"
+            f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
+            f"&fitw=true&scale=4"
+        )
+        
+        # Download PDF using authorized request session
+        import requests
+        authed_session = google.auth.transport.requests.AuthorizedSession(creds)
+        res = authed_session.get(export_url)
+        
+        if res.status_code != 200:
+            # Fallback to standard export media if export URL fails
+            logger.warn(f"Native tab export returned {res.status_code}, falling back to export_media...")
+            export_request = drive_service.files().export_media(fileId=cloned_id, mimeType='application/pdf')
+            pdf_bytes = export_request.execute()
+        else:
+            pdf_bytes = res.content
+
+        # Save to temp file
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        with open(tmp.name, 'wb') as f:
+            f.write(pdf_bytes)
+
+        # 5. Clean up temporary Google Sheet copy
+        try:
+            drive_service.files().delete(fileId=cloned_id).execute()
+        except Exception:
+            pass
+
+        return tmp.name
+
+    except Exception as e:
+        logger.error(f"Google Sheet Merge Error: {e}")
+        if 'cloned_id' in locals():
+            try: drive_service.files().delete(fileId=cloned_id).execute()
+            except: pass
+        raise e

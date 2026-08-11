@@ -141,6 +141,33 @@ async def upload_master_excel_template(file: UploadFile = File(...), db: Session
     db.commit()
     return {"message": "Master Excel Workbook uploaded successfully to database"}
 
+@router.post("/templates/master_google_sheet/url")
+async def save_master_google_sheet_url(request: Request, db: Session = Depends(get_db)):
+    """
+    Saves the live Master Google Sheet Spreadsheet URL.
+    """
+    data = await request.json()
+    url = data.get("url", "").strip()
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+    if config:
+        cfg = config.config_json or {}
+        cfg["url"] = url
+        config.config_json = cfg
+    else:
+        config = TemplateConfig(template_key="MASTER_GOOGLE_SHEET", config_json={"url": url})
+        db.add(config)
+    db.commit()
+    return {"message": "Master Google Sheet URL saved successfully", "url": url}
+
+@router.get("/templates/master_google_sheet/url")
+async def get_master_google_sheet_url(db: Session = Depends(get_db)):
+    """
+    Gets the saved Master Google Sheet Spreadsheet URL.
+    """
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+    url = (config.config_json or {}).get("url", "") if config else ""
+    return {"url": url}
+
 @router.post("/templates/{doc_type}/xlsx/upload")
 async def upload_xlsx_template(doc_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
@@ -338,11 +365,27 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
     if not config:
         config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
 
-    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
-    target_sheet_name = (config.config_json.get("excel_tab_name") if (config and config.config_json) else None) or doc_type
-    
-    is_excel_active = (master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)) or True
-    
+    master_gsheet_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+    master_gsheet_url = (master_gsheet_config.config_json or {}).get("url", "").strip() if master_gsheet_config else ""
+
+    if master_gsheet_url:
+        print(f"DEBUG: Found Master Google Sheet URL ({master_gsheet_url}). Rendering tab '{doc_type}' using merge_google_sheet...")
+        try:
+            from services.google_doc_engine import merge_google_sheet
+            pdf_path = merge_google_sheet(
+                template_source=master_gsheet_url,
+                tokens=data,
+                sheet_name=doc_type,
+                output_pdf_name=f"{doc_type.lower()}.pdf"
+            )
+            return FileResponse(
+                pdf_path,
+                media_type='application/pdf',
+                filename=f"Proposal_{doc_type.lower()}.pdf"
+            )
+        except Exception as gsheet_err:
+            print(f"Master Google Sheet Merge Error: {gsheet_err}")
+
     # 1b. Check if custom visual HTML template exists ONLY if excel is not active
     if not is_excel_active and config and config.html_content and format not in ['xlsx', 'excel']:
         print(f"DEBUG: Found custom visual HTML template in DB. Rendering using html_engine...")
