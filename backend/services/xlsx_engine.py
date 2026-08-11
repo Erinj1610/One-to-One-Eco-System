@@ -981,17 +981,7 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
                 has_column_a_control_tags = True
                 cell_a.value = None
 
-    # Ensure all non-top-left cells inside every merged range inherit fill, font, border, and alignment from top-left cell
-    for m in list(ws.merged_cells.ranges):
-        tl = ws.cell(row=m.min_row, column=m.min_col)
-        for r in range(m.min_row, m.max_row + 1):
-            for c in range(m.min_col, m.max_col + 1):
-                if r == m.min_row and c == m.min_col: continue
-                cell = ws.cell(row=r, column=c)
-                if tl.fill: cell.fill = copy.copy(tl.fill)
-                if tl.border: cell.border = copy.copy(tl.border)
-                if tl.font: cell.font = copy.copy(tl.font)
-                if tl.alignment: cell.alignment = copy.copy(tl.alignment)
+
 
     if has_column_a_control_tags:
         ws.column_dimensions['A'].width = 0.0001
