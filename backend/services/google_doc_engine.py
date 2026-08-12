@@ -178,7 +178,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         if parents:
             copy_metadata['parents'] = parents
 
-        cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
+        try:
+            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
+        except Exception as copy_err:
+            err_msg = str(copy_err)
+            if "404" in err_msg or "File not found" in err_msg:
+                raise ValueError(
+                    f"Master Google Sheet (ID: {template_id}) could not be accessed. "
+                    "Please ensure the Google Sheet access is set to 'Anyone with the link can view' or shared with your Google Cloud Service Account."
+                )
+            raise copy_err
+
         cloned_id = cloned_file.get('id')
 
         # 2. Get spreadsheet metadata & find target sheet (tab) GID
