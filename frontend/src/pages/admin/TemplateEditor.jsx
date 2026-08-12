@@ -949,6 +949,37 @@ export default function TemplateHub() {
     ? allTokensList.filter(t => t.toLowerCase().includes(suggestMenu.query.toLowerCase()))
     : [];
 
+  const [gsheetUrl, setGsheetUrl] = useState('');
+  const [savingGsheet, setSavingGsheet] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/templates/master_google_sheet/url`)
+      .then(res => res.json())
+      .then(data => { if (data && data.url) setGsheetUrl(data.url); })
+      .catch(err => console.error("Error fetching Master Google Sheet URL:", err));
+  }, []);
+
+  const handleSaveGsheetUrl = async () => {
+    setSavingGsheet(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: gsheetUrl })
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Master Google Sheet URL saved to database! Live documents will generate directly from this workbook.' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to save Google Sheet URL.' });
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: e.message });
+    } finally {
+      setSavingGsheet(false);
+    }
+  };
+
   if (!isAdmin) return null;
 
   return (
@@ -959,7 +990,7 @@ export default function TemplateHub() {
         <div 
           ref={suggestMenuRef}
           style={{
-            position: 'absolute', left: `${suggestMenu.x}px', top: '${suggestMenu.y}px`,
+            position: 'absolute', left: `${suggestMenu.x}px`, top: `${suggestMenu.y}px`,
             background: 'var(--bg-card)', border: '1px solid var(--border)',
             borderRadius: '6px', boxShadow: '0 8px 16px -2px rgba(0,0,0,0.5)',
             maxHeight: '180px', overflowY: 'auto', zIndex: 1000,
@@ -988,10 +1019,10 @@ export default function TemplateHub() {
         <div>
           <button onClick={() => navigate('/')} className="btn btn-ghost btn-sm" style={{ marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>← Back to Dashboard</button>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'white', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            📊 Master Excel Template Hub
+            📊 Master Template Hub (Google Sheets & Excel)
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
-            Upload your single Master Excel Workbook (.xlsx) to the live server and map document types to worksheet tabs.
+            Connect your live Master Google Sheet workbook URL or upload a Master Excel file (.xlsx). Document types map dynamically to worksheet tabs.
           </p>
         </div>
 
@@ -1000,6 +1031,41 @@ export default function TemplateHub() {
             <Upload size={16} /> {uploading ? 'Saving Master File...' : 'Upload Master Excel Workbook (.xlsx)'}
             <input type="file" accept=".xlsx" onChange={handleUploadMasterExcel} style={{ display: 'none' }} disabled={uploading} />
           </label>
+        </div>
+      </div>
+
+      {/* MASTER GOOGLE SHEET URL INPUT CARD */}
+      <div className="card" style={{ marginBottom: '20px', padding: '16px 20px', border: '1px solid var(--border-info)', background: 'rgba(59, 130, 246, 0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🔗 Live Master Google Sheet Link</span>
+              <span className="badge b-success" style={{ fontSize: '10px' }}>Recommended 1:1 Fonts & Formatting</span>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Paste your single Master Google Sheet URL containing your template tabs. The portal reads your live fonts, colors, and bold weights without modifying your master sheet.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flex: 1, maxWidth: '600px', alignItems: 'center' }}>
+            <input 
+              type="text" 
+              className="form-control" 
+              placeholder="https://docs.google.com/spreadsheets/d/1.../edit"
+              value={gsheetUrl}
+              onChange={e => setGsheetUrl(e.target.value)}
+              style={{ fontSize: '12.5px', height: '38px', flex: 1 }}
+            />
+            <button 
+              className="btn btn-primary" 
+              onClick={handleSaveGsheetUrl} 
+              disabled={savingGsheet}
+              style={{ height: '38px', padding: '0 16px', fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              {savingGsheet ? 'Saving...' : 'Save Google Sheet Link'}
+            </button>
+          </div>
+        </div>
+      </div>abel>
         </div>
       </div>
 
