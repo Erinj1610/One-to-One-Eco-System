@@ -386,6 +386,9 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
         except Exception as gsheet_err:
             print(f"Master Google Sheet Merge Error: {gsheet_err}")
 
+    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
+    is_excel_active = bool((master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)))
+
     # 1b. Check if custom visual HTML template exists ONLY if excel is not active
     if not is_excel_active and config and config.html_content and format not in ['xlsx', 'excel']:
         print(f"DEBUG: Found custom visual HTML template in DB. Rendering using html_engine...")
