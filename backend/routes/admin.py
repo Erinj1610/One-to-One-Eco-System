@@ -362,8 +362,8 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
                 config = cfg
                 break
 
-    if not config:
-        config = db.query(TemplateConfig).filter(TemplateConfig.template_key == doc_type).first()
+    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
+    is_excel_active = bool((master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)))
 
     master_gsheet_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
     master_gsheet_url = (master_gsheet_config.config_json or {}).get("url", "").strip() if master_gsheet_config else ""
