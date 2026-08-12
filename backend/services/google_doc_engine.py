@@ -172,27 +172,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception:
             pass
 
-        # 1. Clone the Master Sheet Template
-        logger.info(f"Cloning Master Google Sheet template {template_id}...")
-        copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
-        if parents:
-            copy_metadata['parents'] = parents
-
-        try:
-            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
-        except Exception as copy_err:
-            err_msg = str(copy_err)
-            if "404" in err_msg or "File not found" in err_msg:
-                raise ValueError(
-                    f"Master Google Sheet (ID: {template_id}) could not be accessed. "
-                    "Please ensure the Google Sheet access is set to 'Anyone with the link can view' or shared with your Google Cloud Service Account."
-                )
-            raise copy_err
-
-        cloned_id = cloned_file.get('id')
-
-        # 2. Get spreadsheet metadata & find target sheet (tab) GID
-        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=cloned_id).execute()
+        # 1. Access Master Sheet directly or clone without inheriting quota parents
+        logger.info(f"Accessing Master Google Sheet template {template_id}...")
+        
+        # Get spreadsheet metadata directly to find target sheet tab GID
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=template_id).execute()
         sheets = spreadsheet.get('sheets', [])
         
         target_sheet = None
@@ -209,6 +193,31 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         if not target_sheet and sheets:
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
+
+        # Clone without inheriting parents (creates in root of Service Account / User Drive)
+        copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
+        try:
+            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
+            cloned_id = cloned_file.get('id')
+        except Exception as copy_err:
+            err_msg = str(copy_err)
+            if "storageQuotaExceeded" in err_msg or "storage quota" in err_msg.lower():
+                # Direct PDF Export fallback if Google Drive quota is exceeded
+                logger.warn("Drive storage quota exceeded on copy. Exporting target tab directly from Master Sheet...")
+                export_url = (
+                    f"https://docs.google.com/spreadsheets/d/{template_id}/export?"
+                    f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
+                    f"&fitw=true&scale=4"
+                )
+                import requests
+                authed_session = google.auth.transport.requests.AuthorizedSession(creds)
+                res = authed_session.get(export_url)
+                if res.status_code == 200:
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    with open(tmp.name, 'wb') as f:
+                        f.write(res.content)
+                    return tmp.name
+            raise copy_err
 
         # 3. Read values from target sheet and replace tokens
         tab_title = target_sheet['properties']['title']
