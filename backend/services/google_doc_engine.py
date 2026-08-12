@@ -2,6 +2,7 @@ import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from google.auth import default
+import google.auth.transport.requests
 import tempfile
 import logging
 
