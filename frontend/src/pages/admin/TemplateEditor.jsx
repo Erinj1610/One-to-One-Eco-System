@@ -1019,18 +1019,11 @@ export default function TemplateHub() {
         <div>
           <button onClick={() => navigate('/')} className="btn btn-ghost btn-sm" style={{ marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>← Back to Dashboard</button>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, color: 'white', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            📊 Master Template Hub (Google Sheets & Excel)
+            📊 Master Google Sheets Template Hub
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
-            Connect your live Master Google Sheet workbook URL or upload a Master Excel file (.xlsx). Document types map dynamically to worksheet tabs.
+            Connect your live Master Google Sheet workbook URL. Document types map dynamically to worksheet tabs.
           </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <label className="btn btn-success" style={{ padding: '10px 18px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff' }}>
-            <Upload size={16} /> {uploading ? 'Saving Master File...' : 'Upload Master Excel Workbook (.xlsx)'}
-            <input type="file" accept=".xlsx" onChange={handleUploadMasterExcel} style={{ display: 'none' }} disabled={uploading} />
-          </label>
         </div>
       </div>
 
@@ -1339,10 +1332,10 @@ export default function TemplateHub() {
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
-                      Excel Worksheet Tab Name
+                      Google Sheet Tab Name
                     </label>
                     <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      Specify the exact sheet tab name inside your uploaded Master Excel file that contains the template for <strong>{activeDoc?.name}</strong>.
+                      Specify the exact sheet tab name inside your Master Google Sheet that contains the template for <strong>{activeDoc?.name}</strong>.
                     </p>
                     <input 
                       type="text" 

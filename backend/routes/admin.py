@@ -335,268 +335,36 @@ from fastapi import Body
 @router.post("/generate/{doc_type}")
 def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data: dict = Body(...), db: Session = Depends(get_db)):
     """
-    High-Fidelity Document Generator (HTML, Word, and Excel Spreadsheet Engines).
+    100% Google Sheets Document Generator Engine.
+    Uses Master Google Sheet Workbook URL exclusively to render documents as native PDFs.
     """
-    print(f"DEBUG: Generating {doc_type} format={format} with tokens: {list(data.keys())} for page: {page}")
+    print(f"DEBUG: Generating {doc_type} via Master Google Sheets Engine with tokens: {list(data.keys())}")
     
-    if doc_type == 'boq_doc':
-        keys_to_try = ['boq_doc', 'BOQ', 'boq']
-    elif doc_type == 'schedule':
-        keys_to_try = ['schedule', 'SCHEDULE', 'LIGHTING_SCHEDULE', 'LIGHTING']
-    elif doc_type == 'quote':
-        keys_to_try = ['quote', 'QUOTATION', 'QUOTE']
-    else:
-        keys_to_try = [doc_type, doc_type.upper(), doc_type.lower()]
-
-    config = None
-    for k in keys_to_try:
-        cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
-        if cfg and cfg.xlsx_binary:
-            config = cfg
-            break
-
-    if not config:
-        for k in keys_to_try:
-            cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == k).first()
-            if cfg and (cfg.html_content or cfg.config_json):
-                config = cfg
-                break
-
-    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
-    is_excel_active = bool((master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)))
-
     master_gsheet_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
     master_gsheet_url = (master_gsheet_config.config_json or {}).get("url", "").strip() if master_gsheet_config else ""
 
-    if master_gsheet_url:
-        print(f"DEBUG: Found Master Google Sheet URL ({master_gsheet_url}). Rendering tab '{doc_type}' using merge_google_sheet...")
-        try:
-            from services.google_doc_engine import merge_google_sheet
-            pdf_path = merge_google_sheet(
-                template_source=master_gsheet_url,
-                tokens=data,
-                sheet_name=doc_type,
-                output_pdf_name=f"{doc_type.lower()}.pdf"
-            )
-            return FileResponse(
-                pdf_path,
-                media_type='application/pdf',
-                filename=f"Proposal_{doc_type.lower()}.pdf"
-            )
-        except Exception as gsheet_err:
-            print(f"Master Google Sheet Merge Error: {gsheet_err}")
+    if not master_gsheet_url:
+        raise HTTPException(
+            status_code=400, 
+            detail="Master Google Sheet URL is missing. Please set your live Google Sheet link under Settings > Templates."
+        )
 
-    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
-    is_excel_active = bool((master_config and master_config.xlsx_binary) or (config and (config.engine_mode == 'excel' or config.xlsx_binary)))
-
-    # 1b. Check if custom visual HTML template exists ONLY if excel is not active
-    if not is_excel_active and config and config.html_content and format not in ['xlsx', 'excel']:
-        print(f"DEBUG: Found custom visual HTML template in DB. Rendering using html_engine...")
-        from services.html_engine import render_html_template_to_pdf
-        pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-        try:
-            success = render_html_template_to_pdf(config.html_content, data, pdf_path)
-            if not success:
-                raise HTTPException(status_code=500, detail="Failed to compile PDF from visual HTML template")
-            
-            # Handle page extraction if page is specified
-            if page is not None:
-                import pypdf
-                try:
-                    reader = pypdf.PdfReader(pdf_path)
-                    total_pages = len(reader.pages)
-                    idx = max(0, min(page - 1, total_pages - 1))
-                    
-                    writer = pypdf.PdfWriter()
-                    writer.add_page(reader.pages[idx])
-                    
-                    single_page_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                    single_page_pdf_path = single_page_pdf.name
-                    single_page_pdf.close()
-                    
-                    with open(single_page_pdf_path, "wb") as f:
-                        writer.write(f)
-                    
-                    try:
-                        os.remove(pdf_path)
-                    except Exception:
-                        pass
-                    pdf_path = single_page_pdf_path
-                    print(f"DEBUG: Successfully extracted page {page} to {pdf_path}")
-                except Exception as pypdf_err:
-                    print(f"Error extracting page {page} with pypdf: {pypdf_err}")
-
-            # Naming convention
-            filename = f"Document_{doc_type.lower()}.pdf"
-            naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
-            if naming_conv:
-                temp_name = naming_conv
-                for k, v in data.items():
-                    temp_name = temp_name.replace("{{" + k + "}}", str(v))
-                import re
-                filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
-                if not filename.lower().endswith(".pdf"):
-                    filename += ".pdf"
-                    
-            return FileResponse(
-                pdf_path,
-                media_type='application/pdf',
-                filename=filename
-            )
-        except Exception as html_err:
-            print(f"Error generating visual HTML PDF: {html_err}")
-            raise HTTPException(status_code=500, detail=f"Visual HTML Template Conversion Error: {html_err}")
-
-    # 1b. Check if Master Excel (.xlsx) template or specific doc_type template exists (in DB or on disk)
-    from services.xlsx_engine import merge_xlsx_template
-    xlsx_template_path = None
-    xlsx_temp_dir = None
-    custom_xlsx_temp_path = None
-    
-    # Check for master workbook config first
-    master_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_EXCEL").first()
-    target_sheet_name = config.config_json.get("excel_tab_name") if (config and config.config_json) else doc_type
-
-    if config and config.xlsx_binary:
-        print(f"DEBUG: Using custom Excel template from database for {doc_type}")
-        xlsx_temp_dir = tempfile.mkdtemp()
-        custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "db_template.xlsx")
-        
-        binary_data = bytes(config.xlsx_binary)
-        if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
-            import base64
-            try:
-                binary_data = base64.b64decode(binary_data)
-                print("DEBUG: Successfully base64 decoded custom Excel template from DB")
-            except Exception as b64_err:
-                print(f"DEBUG: Failed to base64 decode custom Excel template: {b64_err}")
-                
-        with open(custom_xlsx_temp_path, "wb") as f:
-            f.write(binary_data)
-        xlsx_template_path = custom_xlsx_temp_path
-
-    else:
-        # Check individual template files on disk FIRST (BOQ, SCHEDULE, QUOTATION)
-        folder_candidates = [doc_type, doc_type.upper(), doc_type.lower()]
-        if doc_type == 'boq_doc': folder_candidates.extend(['BOQ', 'boq'])
-        elif doc_type == 'schedule': folder_candidates.extend(['SCHEDULE', 'schedule', 'LIGHTING_SCHEDULE'])
-        elif doc_type == 'quote': folder_candidates.extend(['QUOTATION', 'quotation', 'QUOTE'])
-        
-        disk_xlsx_path = None
-        for cand in folder_candidates:
-            cand_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', cand, 'template.xlsx'))
-            if os.path.exists(cand_path):
-                disk_xlsx_path = cand_path
-                break
-
-        if disk_xlsx_path:
-            print(f"DEBUG: Using individual disk template for {doc_type} at {disk_xlsx_path}")
-            xlsx_template_path = disk_xlsx_path
-        elif master_config and master_config.xlsx_binary:
-            print(f"DEBUG: Using Master Excel template from database for {doc_type} (Tab: {target_sheet_name})")
-            xlsx_temp_dir = tempfile.mkdtemp()
-            custom_xlsx_temp_path = os.path.join(xlsx_temp_dir, "master_template.xlsx")
-            binary_data = bytes(master_config.xlsx_binary)
-            if binary_data.startswith(b"UEsDBB") or binary_data.startswith(b"UEsDBQ"):
-                import base64
-                try: binary_data = base64.b64decode(binary_data)
-                except Exception: pass
-            with open(custom_xlsx_temp_path, "wb") as f:
-                f.write(binary_data)
-            xlsx_template_path = custom_xlsx_temp_path
-        else:
-            master_disk_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates', 'master_templates.xlsx'))
-            if os.path.exists(master_disk_path):
-                xlsx_template_path = master_disk_path
-
-    if xlsx_template_path:
-        print(f"DEBUG: Found Excel template at {xlsx_template_path}. Rendering using xlsx_engine format={format} sheet={target_sheet_name}...")
-        try:
-            if format in ['xlsx', 'excel']:
-                xlsx_out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-                success = merge_xlsx_template(xlsx_template_path, data, output_xlsx_path=xlsx_out_path, sheet_name=target_sheet_name)
-                if not success:
-                    raise HTTPException(status_code=500, detail="Failed to compile Excel spreadsheet")
-                
-                filename = f"Document_{doc_type.lower()}.xlsx"
-                naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
-                if naming_conv:
-                    temp_name = naming_conv
-                    for k, v in data.items():
-                        temp_name = temp_name.replace("{{" + k + "}}", str(v))
-                    import re
-                    filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
-                    if filename.lower().endswith(".pdf"):
-                        filename = filename[:-4] + ".xlsx"
-                    elif not filename.lower().endswith(".xlsx"):
-                        filename += ".xlsx"
-
-                return FileResponse(
-                    xlsx_out_path,
-                    media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    filename=filename
-                )
-
-            pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-            success = merge_xlsx_template(xlsx_template_path, data, output_pdf_path=pdf_path, sheet_name=target_sheet_name)
-            if not success:
-                raise HTTPException(status_code=500, detail="Failed to compile PDF from Excel template")
-            
-            if page is not None:
-                import pypdf
-                try:
-                    reader = pypdf.PdfReader(pdf_path)
-                    total_pages = len(reader.pages)
-                    idx = max(0, min(page - 1, total_pages - 1))
-                    
-                    writer = pypdf.PdfWriter()
-                    writer.add_page(reader.pages[idx])
-                    
-                    single_page_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                    single_page_pdf_path = single_page_pdf.name
-                    single_page_pdf.close()
-                    
-                    with open(single_page_pdf_path, "wb") as f:
-                        writer.write(f)
-                    
-                    try:
-                        os.remove(pdf_path)
-                    except Exception:
-                        pass
-                    pdf_path = single_page_pdf_path
-                except Exception as pypdf_err:
-                    print(f"Error extracting page {page} with pypdf: {pypdf_err}")
-
-            filename = f"Document_{doc_type.lower()}.pdf"
-            naming_conv = config.config_json.get("naming_convention") if (config and config.config_json) else None
-            if naming_conv:
-                temp_name = naming_conv
-                for k, v in data.items():
-                    temp_name = temp_name.replace("{{" + k + "}}", str(v))
-                import re
-                filename = re.sub(r'[\\/*?:"<>|]', "", temp_name)
-                if not filename.lower().endswith(".pdf"):
-                    filename += ".pdf"
-                    
-            return FileResponse(
-                pdf_path,
-                media_type='application/pdf',
-                filename=filename
-            )
-        except Exception as xlsx_err:
-            print(f"Error generating visual Excel PDF: {xlsx_err}")
-            raise HTTPException(status_code=500, detail=f"Excel Template Conversion Error: {xlsx_err}")
-        finally:
-            if custom_xlsx_temp_path and os.path.exists(custom_xlsx_temp_path):
-                try:
-                    os.remove(custom_xlsx_temp_path)
-                except Exception:
-                    pass
-            if xlsx_temp_dir and os.path.exists(xlsx_temp_dir):
-                try:
-                    os.rmdir(xlsx_temp_dir)
-                except Exception:
-                    pass
+    try:
+        from services.google_doc_engine import merge_google_sheet
+        pdf_path = merge_google_sheet(
+            template_source=master_gsheet_url,
+            tokens=data,
+            sheet_name=doc_type,
+            output_pdf_name=f"{doc_type.lower()}.pdf"
+        )
+        return FileResponse(
+            pdf_path,
+            media_type='application/pdf',
+            filename=f"Proposal_{doc_type.lower()}.pdf"
+        )
+    except Exception as gsheet_err:
+        print(f"Master Google Sheet Merge Error: {gsheet_err}")
+        raise HTTPException(status_code=500, detail=f"Google Sheets PDF Generation Error: {gsheet_err}")
 
     # 2. Check if a direct docx template exists (either in DB or on disk)
     from services.docx_engine import merge_docx_template
