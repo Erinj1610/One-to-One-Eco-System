@@ -1065,8 +1065,6 @@ export default function TemplateHub() {
             </button>
           </div>
         </div>
-      </div>abel>
-        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: '20px', alignItems: 'start' }}>
