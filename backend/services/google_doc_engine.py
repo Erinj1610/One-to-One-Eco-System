@@ -384,31 +384,30 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         # 4. Export target tab as full-width PDF starting from Column B (c1=1, excluding Column A)
         export_url = (
             f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?"
-            f"format=pdf&gid={working_gid}&portrait=true&size=A4&gridlines=false"
-            f"&fitw=true&fctr=false&attachment=false&c1=1&c2=25"
+            f"exportFormat=pdf&format=pdf&gid={working_gid}&portrait=true&size=a4&gridlines=false"
+            f"&fitw=true&c1=1&c2=25"
         )
         
         # Download PDF using authorized request session
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         res = authed_session.get(export_url)
         
-        if res.status_code != 200:
-            logger.warn(f"Native tab export returned {res.status_code} ({res.text[:200]}), trying standard export format URL...")
-            fallback_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={working_gid}"
+        pdf_bytes = None
+        if res.status_code == 200:
+            pdf_bytes = res.content
+        else:
+            logger.warn(f"Native tab export returned {res.status_code}, trying standard export format URL...")
+            fallback_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?exportFormat=pdf&gid={working_gid}"
             res_fb = authed_session.get(fallback_url)
             if res_fb.status_code == 200:
                 pdf_bytes = res_fb.content
             else:
-                # Direct unauthenticated request attempt if link is shared
-                import requests as req
-                raw_res = req.get(fallback_url)
-                if raw_res.status_code == 200:
-                    pdf_bytes = raw_res.content
-                else:
-                    logger.error(f"Export failed: authed_status={res.status_code}, fallback_status={res_fb.status_code}, raw_status={raw_res.status_code}")
-                    raise RuntimeError(f"Google Sheet PDF export failed with status code {res.status_code} (authed: {res_fb.status_code}, raw: {raw_res.status_code})")
-        else:
-            pdf_bytes = res.content
+                logger.warn(f"Authorized fallback export returned {res_fb.status_code}. Using drive_service get_media fallback...")
+                try:
+                    pdf_bytes = drive_service.files().get_media(fileId=working_spreadsheet_id).execute()
+                except Exception as drive_err:
+                    logger.error(f"Export failed: authed_status={res.status_code}, fallback_status={res_fb.status_code}, drive_err={drive_err}")
+                    raise RuntimeError(f"Google Sheet PDF export failed with status code {res.status_code} (authed: {res_fb.status_code})")
 
         # Save to temp file
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
