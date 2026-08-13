@@ -351,7 +351,7 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
 
     try:
         from services.google_doc_engine import merge_google_sheet
-        pdf_path = merge_google_sheet(
+        pdf_path, sheet_id, sheet_url = merge_google_sheet(
             template_source=master_gsheet_url,
             tokens=data,
             sheet_name=doc_type,
@@ -360,7 +360,8 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
         return FileResponse(
             pdf_path,
             media_type='application/pdf',
-            filename=f"Proposal_{doc_type.lower()}.pdf"
+            filename=f"Proposal_{doc_type.lower()}.pdf",
+            headers={"X-Google-Sheet-Url": sheet_url or ""}
         )
     except Exception as gsheet_err:
         print(f"Master Google Sheet Merge Error: {gsheet_err}")

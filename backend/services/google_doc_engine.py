@@ -136,12 +136,43 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             except: pass
         raise e
 
+ROOT_DRIVE_FOLDER_ID = "1Y3R2fnGWYRBESuNlfoek4jvaV1XiqRIf"
+
+def get_or_create_folder(drive_service, folder_name, parent_id):
+    """
+    Finds a folder by name inside parent_id or creates a new one.
+    """
+    clean_name = str(folder_name).strip() if folder_name else "General"
+    safe_name = clean_name.replace("'", "\\'")
+    query = f"mimeType='application/vnd.google-apps.folder' and name='{safe_name}' and '{parent_id}' in parents and trashed=false"
+    try:
+        res = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+        files = res.get('files', [])
+        if files:
+            return files[0]['id']
+    except Exception as e:
+        logger.warn(f"Folder search error for {clean_name}: {e}")
+
+    # Create folder
+    folder_metadata = {
+        'name': clean_name,
+        'mimeType': 'application/vnd.google-apps.folder',
+        'parents': [parent_id]
+    }
+    try:
+        created = drive_service.files().create(body=folder_metadata, fields='id', supportsAllDrives=True).execute()
+        return created.get('id')
+    except Exception as e:
+        logger.error(f"Failed to create folder '{clean_name}': {e}")
+        return parent_id
+
 def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None):
     """
-    1. Clones a Master Google Sheet Workbook template.
-    2. Opens cloned spreadsheet and replaces {{TOKENS}} in the target sheet tab using Google Sheets API.
-    3. Exports the target sheet tab as PDF via native Google Drive export URL (preserving 100% Google fonts, colors, and margins).
-    4. Deletes the temporary Cloned Sheet.
+    1. Locates/Creates Client Folder > Project Folder under Root Drive Folder.
+    2. Copies Master Google Sheet Workbook into the Project Folder.
+    3. Replaces {{TOKENS}} in the target sheet tab using Google Sheets API.
+    4. Hides Column A ([FIXED]).
+    5. Exports the target sheet tab as PDF and retains the permanent live Google Sheet.
     """
     SCOPES_SHEETS = [
         'https://www.googleapis.com/auth/spreadsheets',
@@ -165,17 +196,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise ValueError("Invalid Master Google Sheet URL or ID")
 
     try:
-        # Get parent folder to inherit quota
-        parents = []
-        try:
-            file_info = drive_service.files().get(fileId=template_id, fields="parents").execute()
-            parents = file_info.get("parents", [])
-        except Exception:
-            pass
+        # Extract Client & Project details for folder structure
+        client_name = str(tokens.get('COMPANY_NAME') or tokens.get('CLIENT_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
+        project_name = str(tokens.get('PROJECT_NAME') or tokens.get('FEE_NAME') or 'Projects').strip()
+        doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
-        # 1. Access Master Sheet directly or clone without inheriting quota parents
-        logger.info(f"Accessing Master Google Sheet template {template_id}...")
-        
+        # Build folder path: Root > Client Folder > Project Folder
+        client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
+        project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+
+        logger.info(f"Target Google Drive Folder: Client='{client_name}', Project='{project_name}' (ID: {project_folder_id})")
+
         # Get spreadsheet metadata directly to find target sheet tab GID
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=template_id).execute()
         sheets = spreadsheet.get('sheets', [])
@@ -195,42 +226,25 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Attempt cloning workbook or duplicate sheet tab directly inside Master Sheet (Zero Drive Quota required)
-        cloned_id = None
-        temp_tab_gid = None
-
-        copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
-        if parents:
-            copy_metadata['parents'] = parents
+        # Copy Master Sheet directly into Project folder
+        import time
+        file_title = f"{doc_label} - {project_name} - {time.strftime('%Y-%m-%d')}"
+        copy_metadata = {
+            'name': file_title,
+            'parents': [project_folder_id]
+        }
 
         try:
-            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata, supportsAllDrives=True).execute()
+            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata, supportsAllDrives=True, fields="id, webViewLink").execute()
             cloned_id = cloned_file.get('id')
+            sheet_url = cloned_file.get('webViewLink')
         except Exception as copy_err:
-            logger.warn(f"Drive file copy skipped ({copy_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
+            logger.error(f"Error copying Master Sheet to Project folder: {copy_err}")
+            raise copy_err
 
-        if not cloned_id:
-            # Create a temporary working tab directly in Master Sheet
-            dup_title = f"PDF_BUILD_{int(time.time() * 1000)}"
-            dup_res = sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=template_id,
-                body={
-                    'requests': [{
-                        'duplicateSheet': {
-                            'sourceSheetId': target_gid,
-                            'newSheetName': dup_title
-                        }
-                    }]
-                }
-            ).execute()
-            temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
-            working_spreadsheet_id = template_id
-            working_gid = temp_tab_gid
-            working_title = dup_title
-        else:
-            working_spreadsheet_id = cloned_id
-            working_gid = target_gid
-            working_title = target_sheet['properties']['title']
+        working_spreadsheet_id = cloned_id
+        working_gid = target_gid
+        working_title = target_sheet['properties']['title']
 
         # 3. Hide Column A in working Google Sheet and perform token substitution
         range_name = f"'{working_title}'!A1:Z300"
@@ -332,19 +346,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         with open(tmp.name, 'wb') as f:
             f.write(pdf_bytes)
 
-        # 5. Cleanup temporary working tab or cloned sheet
-        try:
-            if cloned_id:
-                drive_service.files().delete(fileId=cloned_id).execute()
-            elif temp_tab_gid:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=template_id,
-                    body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
-                ).execute()
-        except Exception as cleanup_err:
-            logger.warn(f"Cleanup error: {cleanup_err}")
+        # 5. Retain permanent project Google Sheet on Drive (Do not delete)
+        logger.info(f"Permanent Google Sheet saved: '{file_title}' (URL: {sheet_url})")
 
-        return tmp.name
+        return tmp.name, working_spreadsheet_id, sheet_url
 
     except Exception as e:
         logger.error(f"Google Sheet Merge Error: {e}")
