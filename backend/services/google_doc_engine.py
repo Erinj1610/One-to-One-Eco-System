@@ -242,89 +242,56 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             'parents': [doc_subfolder_id]
         }
         
-        cloned_id = None
-        temp_tab_gid = None
-
-        try:
-            # Attempt 1: Copy Master Google Sheet directly into target Order / Design Fee subfolder
-            copy_body = {
-                'name': file_title,
-                'parents': [doc_subfolder_id]
+        # 1. Duplicate target master tab into dedicated project tab inside Master Sheet (Zero Quota cost)
+        dup_title = f"{doc_folder_name} ({time.strftime('%M%S')})"
+        dup_res = sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=template_id,
+            body={
+                'requests': [{
+                    'duplicateSheet': {
+                        'sourceSheetId': target_gid,
+                        'newSheetName': dup_title
+                    }
+                }]
             }
-            try:
-                copied_file = drive_service.files().copy(
-                    fileId=template_id,
-                    body=copy_body,
-                    fields='id, webViewLink',
-                    supportsAllDrives=True
-                ).execute()
-            except Exception as copy_p_err:
-                logger.warn(f"Direct parent copy failed ({copy_p_err}), attempting copy without parents then moving...")
-                copied_file = drive_service.files().copy(
-                    fileId=template_id,
-                    body={'name': file_title},
-                    fields='id, webViewLink, parents',
-                    supportsAllDrives=True
-                ).execute()
-                c_id = copied_file.get('id')
-                prev_parents = ",".join(copied_file.get('parents', []))
-                drive_service.files().update(
-                    fileId=c_id,
-                    addParents=doc_subfolder_id,
-                    removeParents=prev_parents,
-                    fields='id, parents',
-                    supportsAllDrives=True
-                ).execute()
+        ).execute()
+        
+        temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
+        working_spreadsheet_id = template_id
+        working_gid = temp_tab_gid
+        working_title = dup_title
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
 
-            cloned_id = copied_file.get('id')
-            sheet_url = copied_file.get('webViewLink')
-            logger.info(f"Successfully placed Google Sheet '{file_title}' ({cloned_id}) inside subfolder {doc_subfolder_id}")
-
-            # Grant writer permissions so sheet can be accessed directly
+        # 2. Create Google Drive Shortcut file inside the target Drive subfolder (Zero Quota cost)
+        try:
+            shortcut_metadata = {
+                'name': f"{file_title}",
+                'mimeType': 'application/vnd.google-apps.shortcut',
+                'parents': [doc_subfolder_id],
+                'shortcutDetails': {
+                    'targetId': template_id
+                }
+            }
+            created_shortcut = drive_service.files().create(
+                body=shortcut_metadata,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+            
+            shortcut_id = created_shortcut.get('id')
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
+            logger.info(f"Successfully created Google Drive Shortcut file in '{doc_folder_name}' folder (Shortcut ID: {shortcut_id})")
+            
             try:
                 drive_service.permissions().create(
-                    fileId=cloned_id,
+                    fileId=shortcut_id,
                     body={'type': 'anyone', 'role': 'writer'},
                     supportsAllDrives=True
                 ).execute()
             except Exception as perm_err:
-                logger.warn(f"Failed to add public permission to cloned sheet: {perm_err}")
-
-            target_sheet = None
-            target_gid = 0
-            if sheet_name:
-                clean_name = str(sheet_name).strip().lower().replace('_', ' ')
-                for s in sheets:
-                    s_title = s['properties']['title'].strip().lower().replace('_', ' ')
-                    if clean_name in s_title or s_title in clean_name:
-                        target_sheet = s
-                        target_gid = s['properties']['sheetId']
-                        break
-            if not target_sheet and sheets:
-                target_sheet = sheets[0]
-                target_gid = target_sheet['properties']['sheetId']
-
-        except Exception as create_err:
-            logger.error(f"Drive file copy in project folder failed: {create_err}")
-            raise RuntimeError(f"Google Drive File Creation Failed: {create_err}")
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
-
-        if cloned_id:
-            working_spreadsheet_id = cloned_id
-            working_gid = target_gid
-            working_title = target_sheet['properties']['title']
-
-            # Delete default empty Sheet1 if present
-            try:
-                new_sp = sheets_service.spreadsheets().get(spreadsheetId=cloned_id).execute()
-                for s in new_sp.get('sheets', []):
-                    if s['properties']['sheetId'] != target_gid:
-                        sheets_service.spreadsheets().batchUpdate(
-                            spreadsheetId=cloned_id,
-                            body={'requests': [{'deleteSheet': {'sheetId': s['properties']['sheetId']}}]}
-                        ).execute()
-            except Exception:
-                pass
+                logger.warn(f"Failed setting shortcut permissions: {perm_err}")
+        except Exception as sc_err:
+            logger.warn(f"Failed creating Drive shortcut: {sc_err}")
 
         # 3. Hide Column A in working Google Sheet and perform token substitution
         range_name = f"'{working_title}'!A1:Z300"
