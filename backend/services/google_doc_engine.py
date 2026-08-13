@@ -241,37 +241,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         temp_tab_gid = None
 
         try:
-            # 1. Create clean Google Sheet resource via Sheets API (0 MB quota cost)
-            new_spreadsheet_body = {
-                'properties': {
-                    'title': file_title
-                }
+            # Copy Master Google Sheet directly into target Order / Design Fee subfolder
+            copy_body = {
+                'name': file_title,
+                'parents': [doc_subfolder_id]
             }
-            created_sheet = sheets_service.spreadsheets().create(
-                body=new_spreadsheet_body,
-                fields='spreadsheetId,spreadsheetUrl'
+            copied_file = drive_service.files().copy(
+                fileId=template_id,
+                body=copy_body,
+                fields='id, webViewLink',
+                supportsAllDrives=True
             ).execute()
-            cloned_id = created_sheet.get('spreadsheetId')
-            sheet_url = created_sheet.get('spreadsheetUrl')
 
-            # 2. Move created sheet into the client's project subfolder in Google Drive
-            try:
-                # Retrieve current parents to move it cleanly
-                file_obj = drive_service.files().get(fileId=cloned_id, fields='parents', supportsAllDrives=True).execute()
-                previous_parents = ",".join(file_obj.get('parents', []))
-                drive_service.files().update(
-                    fileId=cloned_id,
-                    addParents=doc_subfolder_id,
-                    removeParents=previous_parents,
-                    fields='id, parents',
-                    supportsAllDrives=True
-                ).execute()
-                logger.info(f"Successfully placed Google Sheet '{file_title}' ({cloned_id}) inside Drive subfolder {doc_subfolder_id}")
-            except Exception as move_err:
-                logger.warn(f"Could not move sheet into subfolder: {move_err}")
-            logger.info(f"Successfully created Project Sheet file in Drive folder: '{file_title}' (ID: {cloned_id}, Folder: {project_folder_id})")
+            cloned_id = copied_file.get('id')
+            sheet_url = copied_file.get('webViewLink')
+            logger.info(f"Successfully copied Google Sheet '{file_title}' ({cloned_id}) inside subfolder {doc_subfolder_id}")
 
-            # Grant permissions so PDF export endpoint can access cloned_id
+            # Grant writer permissions so sheet can be accessed directly
             try:
                 drive_service.permissions().create(
                     fileId=cloned_id,
@@ -281,17 +267,22 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             except Exception as perm_err:
                 logger.warn(f"Failed to add public permission to cloned sheet: {perm_err}")
 
-            copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
-            copied_tab = sheets_service.spreadsheets().sheets().copyTo(
-                spreadsheetId=template_id,
-                sheetId=target_gid,
-                body=copy_sheet_req
-            ).execute()
+            target_sheet = None
+            target_gid = 0
+            if sheet_name:
+                clean_name = str(sheet_name).strip().lower().replace('_', ' ')
+                for s in sheets:
+                    s_title = s['properties']['title'].strip().lower().replace('_', ' ')
+                    if clean_name in s_title or s_title in clean_name:
+                        target_sheet = s
+                        target_gid = s['properties']['sheetId']
+                        break
+            if not target_sheet and sheets:
+                target_sheet = sheets[0]
+                target_gid = target_sheet['properties']['sheetId']
 
-            target_gid = copied_tab.get('sheetId')
-            target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
         except Exception as create_err:
-            logger.error(f"Drive file creation in project folder failed ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
+            logger.error(f"Drive file copy in project folder failed ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
             # Create a temporary working tab directly inside Master Sheet (Zero Quota)
             dup_title = f"PDF_{int(time.time() * 1000)}"
             dup_res = sheets_service.spreadsheets().batchUpdate(
