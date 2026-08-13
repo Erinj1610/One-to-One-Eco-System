@@ -305,24 +305,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 target_gid = target_sheet['properties']['sheetId']
 
         except Exception as create_err:
-            logger.error(f"Drive file copy in project folder failed ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
-            # Create a temporary working tab directly inside Master Sheet (Zero Quota)
-            dup_title = f"PDF_{int(time.time() * 1000)}"
-            dup_res = sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=template_id,
-                body={
-                    'requests': [{
-                        'duplicateSheet': {
-                            'sourceSheetId': target_gid,
-                            'newSheetName': dup_title
-                        }
-                    }]
-                }
-            ).execute()
-            temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
-            working_spreadsheet_id = template_id
-            working_gid = temp_tab_gid
-            working_title = dup_title
+            logger.error(f"Drive file copy in project folder failed: {create_err}")
+            raise RuntimeError(f"Google Drive File Creation Failed: {create_err}")
             sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
 
         if cloned_id:
