@@ -220,9 +220,33 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     return tmp.name
             raise copy_err
 
-        # 3. Read values from target sheet and replace tokens across full sheet grid (A1:Z300)
+        # 3. Hide Column A in cloned Google Sheet and perform token substitution
         tab_title = target_sheet['properties']['title']
         range_name = f"'{tab_title}'!A1:Z300"
+        
+        # Hide column A (dimensionIndex 0) on the target tab of cloned spreadsheet
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=cloned_id,
+                body={
+                    'requests': [{
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': target_gid,
+                                'dimension': 'COLUMNS',
+                                'startIndex': 0,
+                                'endIndex': 1
+                            },
+                            'properties': {
+                                'hiddenByUser': True
+                            },
+                            'fields': 'hiddenByUser'
+                        }
+                    }]
+                }
+            ).execute()
+        except Exception as hide_err:
+            logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
         try:
             val_result = sheets_service.spreadsheets().values().get(
@@ -233,17 +257,32 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             updated_rows = []
             has_changes = False
 
+            # Case-insensitive mapping for token lookup
+            lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
+
             for row in rows:
                 new_row = []
                 for cell in row:
                     cell_str = str(cell)
                     if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
                         has_changes = True
+                        # First pass: exact token matches
                         for k, v in tokens.items():
                             if not isinstance(v, (list, dict)):
-                                cell_str = cell_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                                cell_str = cell_str.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
-                        cell_str = re.sub(r'\{\{[^}]+\}\}', '', cell_str)
+                                val_to_sub = str(v) if v is not None else ''
+                                cell_str = cell_str.replace("{{" + str(k) + "}}", val_to_sub)
+                                cell_str = cell_str.replace("{?" + str(k) + "?}", val_to_sub)
+                        
+                        # Second pass: regex case-insensitive token replacement
+                        def token_replacer(match):
+                            t_name = match.group(1).strip().lower()
+                            if t_name in lower_tokens and not isinstance(lower_tokens[t_name], (list, dict)):
+                                return str(lower_tokens[t_name])
+                            return ''
+
+                        cell_str = re.sub(r'\{\{([^}]+)\}\}', token_replacer, cell_str)
+                        cell_str = re.sub(r'\{\?([^?]+)\?\}', token_replacer, cell_str)
+
                     new_row.append(cell_str)
                 updated_rows.append(new_row)
 
@@ -258,11 +297,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as token_err:
             logger.error(f"Error updating cell tokens in cloned Google Sheet: {token_err}")
 
-        # 4. Export target tab as full-width PDF (Columns B:Z printable range, fit-to-width)
+        # 4. Export target tab as full-width PDF starting from Column B (c1=1, excluding Column A)
         export_url = (
             f"https://docs.google.com/spreadsheets/d/{cloned_id}/export?"
             f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
-            f"&fitw=true&fctr=false&attachment=false"
+            f"&fitw=true&fctr=false&attachment=false&c1=1&c2=25"
         )
         
         # Download PDF using authorized request session
