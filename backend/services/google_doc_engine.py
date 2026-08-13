@@ -246,21 +246,39 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         temp_tab_gid = None
 
         try:
-            # Copy Master Google Sheet directly into target Order / Design Fee subfolder
+            # Attempt 1: Copy Master Google Sheet directly into target Order / Design Fee subfolder
             copy_body = {
                 'name': file_title,
                 'parents': [doc_subfolder_id]
             }
-            copied_file = drive_service.files().copy(
-                fileId=template_id,
-                body=copy_body,
-                fields='id, webViewLink',
-                supportsAllDrives=True
-            ).execute()
+            try:
+                copied_file = drive_service.files().copy(
+                    fileId=template_id,
+                    body=copy_body,
+                    fields='id, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+            except Exception as copy_p_err:
+                logger.warn(f"Direct parent copy failed ({copy_p_err}), attempting copy without parents then moving...")
+                copied_file = drive_service.files().copy(
+                    fileId=template_id,
+                    body={'name': file_title},
+                    fields='id, webViewLink, parents',
+                    supportsAllDrives=True
+                ).execute()
+                c_id = copied_file.get('id')
+                prev_parents = ",".join(copied_file.get('parents', []))
+                drive_service.files().update(
+                    fileId=c_id,
+                    addParents=doc_subfolder_id,
+                    removeParents=prev_parents,
+                    fields='id, parents',
+                    supportsAllDrives=True
+                ).execute()
 
             cloned_id = copied_file.get('id')
             sheet_url = copied_file.get('webViewLink')
-            logger.info(f"Successfully copied Google Sheet '{file_title}' ({cloned_id}) inside subfolder {doc_subfolder_id}")
+            logger.info(f"Successfully placed Google Sheet '{file_title}' ({cloned_id}) inside subfolder {doc_subfolder_id}")
 
             # Grant writer permissions so sheet can be accessed directly
             try:
