@@ -203,21 +203,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as copy_err:
             err_msg = str(copy_err)
             if "storageQuotaExceeded" in err_msg or "storage quota" in err_msg.lower():
-                # Direct PDF Export fallback if Google Drive quota is exceeded
-                logger.warn("Drive storage quota exceeded on copy. Exporting target tab directly from Master Sheet...")
-                export_url = (
-                    f"https://docs.google.com/spreadsheets/d/{template_id}/export?"
-                    f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
-                    f"&fitw=true&fctr=false&attachment=false"
+                raise ValueError(
+                    "Google Drive storage quota limit reached. Please share your Master Google Sheet "
+                    "(or your destination Google Drive folder) with your Service Account so project copies can be generated."
                 )
-                import requests
-                authed_session = google.auth.transport.requests.AuthorizedSession(creds)
-                res = authed_session.get(export_url)
-                if res.status_code == 200:
-                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                    with open(tmp.name, 'wb') as f:
-                        f.write(res.content)
-                    return tmp.name
             raise copy_err
 
         # 3. Hide Column A in cloned Google Sheet and perform token substitution
