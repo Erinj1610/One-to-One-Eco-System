@@ -201,16 +201,22 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             copy_metadata['parents'] = parents
 
         try:
-            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
+            cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata, supportsAllDrives=True).execute()
             cloned_id = cloned_file.get('id')
         except Exception as copy_err:
             err_msg = str(copy_err)
             if "storageQuotaExceeded" in err_msg or "storage quota" in err_msg.lower():
-                raise ValueError(
-                    "Google Drive storage quota limit reached. Please share your Master Google Sheet "
-                    "with 858977785048-compute@developer.gserviceaccount.com (as Editor) so project copies can be generated."
-                )
-            raise copy_err
+                # Attempt retry without parents in case parent folder ownership quota blocked service account
+                try:
+                    cloned_file = drive_service.files().copy(fileId=template_id, body={'name': f"TEMP_{output_pdf_name}"}).execute()
+                    cloned_id = cloned_file.get('id')
+                except Exception as retry_err:
+                    raise ValueError(
+                        f"Google Drive Storage Quota Limit: The Service Account (858977785048-compute@developer.gserviceaccount.com) "
+                        f"cannot write to your Drive. Details: {retry_err}"
+                    )
+            else:
+                raise copy_err
 
         # 3. Hide Column A in cloned Google Sheet and perform token substitution
         tab_title = target_sheet['properties']['title']
