@@ -349,13 +349,17 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             detail="Master Google Sheet URL is missing. Please set your live Google Sheet link under Settings > Templates."
         )
 
+    service_account_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "GOOGLE_SERVICE_ACCOUNT_JSON").first()
+    credentials_json = (service_account_config.config_json or {}) if service_account_config else None
+
     try:
         from services.google_doc_engine import merge_google_sheet
         pdf_path, sheet_id, sheet_url = merge_google_sheet(
             template_source=master_gsheet_url,
             tokens=data,
             sheet_name=doc_type,
-            output_pdf_name=f"{doc_type.lower()}.pdf"
+            output_pdf_name=f"{doc_type.lower()}.pdf",
+            credentials_json=credentials_json
         )
         return FileResponse(
             pdf_path,

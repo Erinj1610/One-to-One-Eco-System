@@ -254,9 +254,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             sheet_url = created_file.get('webViewLink')
 
             # Copy target sheet tab from Master template into the newly created project spreadsheet
-            copy_sheet_req = {
-                'destinationSpreadsheetId': cloned_id
-            }
+            copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
             copied_tab = sheets_service.spreadsheets().sheets().copyTo(
                 spreadsheetId=template_id,
                 sheetId=target_gid,
@@ -265,6 +263,18 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             target_gid = copied_tab.get('sheetId')
             target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
+
+            # Delete default empty Sheet1 if present
+            try:
+                new_sp = sheets_service.spreadsheets().get(spreadsheetId=cloned_id).execute()
+                for s in new_sp.get('sheets', []):
+                    if s['properties']['sheetId'] != target_gid:
+                        sheets_service.spreadsheets().batchUpdate(
+                            spreadsheetId=cloned_id,
+                            body={'requests': [{'deleteSheet': {'sheetId': s['properties']['sheetId']}}]}
+                        ).execute()
+            except Exception:
+                pass
 
         working_spreadsheet_id = cloned_id
         working_gid = target_gid
