@@ -196,16 +196,18 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise ValueError("Invalid Master Google Sheet URL or ID")
 
     try:
-        # Extract Client & Project details for folder structure: Client > Project
+        # Extract Client, Project, and Document details for 3-tier folder structure
         client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
-        project_name = str(tokens.get('FEE_NAME') or tokens.get('PROJECT_NAME') or 'Projects').strip()
+        project_name = str(tokens.get('PROJECT_NAME') or tokens.get('PROJECT_NAME_LOCATION') or 'Project').strip()
+        doc_folder_name = str(tokens.get('FEE_NAME') or sheet_name or 'Design Fee').replace('_', ' ').strip()
         doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
-        # Build folder path: Root (1Y3R2fnGWYRBESuNlfoek4jvaV1XiqRIf) > Client Folder > Project Folder
+        # Build folder path: Root > Client > Project > Order/Design Fee Folder
         client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
         project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+        doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
 
-        logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' ({client_folder_id}) > Project='{project_name}' ({project_folder_id})")
+        logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
 
         # Get spreadsheet metadata directly to find target sheet tab GID
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=template_id).execute()
@@ -226,13 +228,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Create clean Project Spreadsheet file directly inside Project folder
+        # Create clean Google Sheet file inside the Order/Design Fee subfolder
         import time
-        file_title = f"{doc_label} - {project_name} - {time.strftime('%Y-%m-%d')}"
+        file_title = f"{doc_label} - {doc_folder_name} - {time.strftime('%Y-%m-%d')}"
         file_metadata = {
             'name': file_title,
             'mimeType': 'application/vnd.google-apps.spreadsheet',
-            'parents': [project_folder_id]
+            'parents': [doc_subfolder_id]
         }
         
         cloned_id = None
