@@ -195,7 +195,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Clone inheriting parents (so created copies use your Google Drive folder storage quota)
+        # Attempt cloning workbook or duplicate sheet tab directly inside Master Sheet (Zero Drive Quota required)
+        cloned_id = None
+        temp_tab_gid = None
+
         copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
         if parents:
             copy_metadata['parents'] = parents
@@ -204,33 +207,43 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata, supportsAllDrives=True).execute()
             cloned_id = cloned_file.get('id')
         except Exception as copy_err:
-            err_msg = str(copy_err)
-            if "storageQuotaExceeded" in err_msg or "storage quota" in err_msg.lower():
-                # Attempt retry without parents in case parent folder ownership quota blocked service account
-                try:
-                    cloned_file = drive_service.files().copy(fileId=template_id, body={'name': f"TEMP_{output_pdf_name}"}).execute()
-                    cloned_id = cloned_file.get('id')
-                except Exception as retry_err:
-                    raise ValueError(
-                        f"Google Drive Storage Quota Limit: The Service Account (858977785048-compute@developer.gserviceaccount.com) "
-                        f"cannot write to your Drive. Details: {retry_err}"
-                    )
-            else:
-                raise copy_err
+            logger.warn(f"Drive file copy skipped ({copy_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
 
-        # 3. Hide Column A in cloned Google Sheet and perform token substitution
-        tab_title = target_sheet['properties']['title']
-        range_name = f"'{tab_title}'!A1:Z300"
+        if not cloned_id:
+            # Create a temporary working tab directly in Master Sheet
+            dup_title = f"PDF_BUILD_{int(time.time() * 1000)}"
+            dup_res = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=template_id,
+                body={
+                    'requests': [{
+                        'duplicateSheet': {
+                            'sourceSheetId': target_gid,
+                            'newSheetName': dup_title
+                        }
+                    }]
+                }
+            ).execute()
+            temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
+            working_spreadsheet_id = template_id
+            working_gid = temp_tab_gid
+            working_title = dup_title
+        else:
+            working_spreadsheet_id = cloned_id
+            working_gid = target_gid
+            working_title = target_sheet['properties']['title']
+
+        # 3. Hide Column A in working Google Sheet and perform token substitution
+        range_name = f"'{working_title}'!A1:Z300"
         
-        # Hide column A (dimensionIndex 0) on the target tab of cloned spreadsheet
+        # Hide column A (dimensionIndex 0) on the target working tab
         try:
             sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=cloned_id,
+                spreadsheetId=working_spreadsheet_id,
                 body={
                     'requests': [{
                         'updateDimensionProperties': {
                             'range': {
-                                'sheetId': target_gid,
+                                'sheetId': working_gid,
                                 'dimension': 'COLUMNS',
                                 'startIndex': 0,
                                 'endIndex': 1
@@ -248,7 +261,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         
         try:
             val_result = sheets_service.spreadsheets().values().get(
-                spreadsheetId=cloned_id, range=range_name
+                spreadsheetId=working_spreadsheet_id, range=range_name
             ).execute()
             
             rows = val_result.get('values', [])
@@ -285,20 +298,20 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 updated_rows.append(new_row)
 
             if has_changes and updated_rows:
-                logger.info(f"Submitting {len(updated_rows)} token-replaced rows to cloned Google Sheet...")
+                logger.info(f"Submitting {len(updated_rows)} token-replaced rows to working Google Sheet...")
                 sheets_service.spreadsheets().values().update(
-                    spreadsheetId=cloned_id,
+                    spreadsheetId=working_spreadsheet_id,
                     range=range_name,
                     valueInputOption='USER_ENTERED',
                     body={'values': updated_rows}
                 ).execute()
         except Exception as token_err:
-            logger.error(f"Error updating cell tokens in cloned Google Sheet: {token_err}")
+            logger.error(f"Error updating cell tokens in working Google Sheet: {token_err}")
 
         # 4. Export target tab as full-width PDF starting from Column B (c1=1, excluding Column A)
         export_url = (
-            f"https://docs.google.com/spreadsheets/d/{cloned_id}/export?"
-            f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
+            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?"
+            f"format=pdf&gid={working_gid}&portrait=true&size=A4&gridlines=false"
             f"&fitw=true&fctr=false&attachment=false&c1=1&c2=25"
         )
         
@@ -309,7 +322,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         
         if res.status_code != 200:
             logger.warn(f"Native tab export returned {res.status_code}, falling back to export_media...")
-            export_request = drive_service.files().export_media(fileId=cloned_id, mimeType='application/pdf')
+            export_request = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
             pdf_bytes = export_request.execute()
         else:
             pdf_bytes = res.content
@@ -319,11 +332,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         with open(tmp.name, 'wb') as f:
             f.write(pdf_bytes)
 
-        # 5. Clean up temporary Google Sheet copy
+        # 5. Cleanup temporary working tab or cloned sheet
         try:
-            drive_service.files().delete(fileId=cloned_id).execute()
-        except Exception:
-            pass
+            if cloned_id:
+                drive_service.files().delete(fileId=cloned_id).execute()
+            elif temp_tab_gid:
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=template_id,
+                    body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+                ).execute()
+        except Exception as cleanup_err:
+            logger.warn(f"Cleanup error: {cleanup_err}")
 
         return tmp.name
 
