@@ -195,8 +195,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Clone without inheriting parents (creates in root of Service Account / User Drive)
+        # Clone inheriting parents (so created copies use your Google Drive folder storage quota)
         copy_metadata = {'name': f"TEMP_GEN_SHEET_{output_pdf_name}"}
+        if parents:
+            copy_metadata['parents'] = parents
+
         try:
             cloned_file = drive_service.files().copy(fileId=template_id, body=copy_metadata).execute()
             cloned_id = cloned_file.get('id')
@@ -205,7 +208,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             if "storageQuotaExceeded" in err_msg or "storage quota" in err_msg.lower():
                 raise ValueError(
                     "Google Drive storage quota limit reached. Please share your Master Google Sheet "
-                    "(or your destination Google Drive folder) with your Service Account so project copies can be generated."
+                    "with 858977785048-compute@developer.gserviceaccount.com (as Editor) so project copies can be generated."
                 )
             raise copy_err
 
