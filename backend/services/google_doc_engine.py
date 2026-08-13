@@ -388,9 +388,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         res = authed_session.get(export_url)
         
         if res.status_code != 200:
-            logger.warn(f"Native tab export returned {res.status_code}, falling back to export_media...")
-            export_request = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
-            pdf_bytes = export_request.execute()
+            logger.warn(f"Native tab export returned {res.status_code}, trying standard export format URL...")
+            fallback_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={working_gid}"
+            res_fb = authed_session.get(fallback_url)
+            if res_fb.status_code == 200:
+                pdf_bytes = res_fb.content
+            else:
+                raise RuntimeError(f"Google Sheet PDF export failed with status code {res_fb.status_code}")
         else:
             pdf_bytes = res.content
 
