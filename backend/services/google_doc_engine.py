@@ -245,9 +245,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 supportsAllDrives=True
             ).execute()
             cloned_id = created_file.get('id')
-            sheet_url = created_file.get('webViewLink')
-
-            # Copy target sheet tab from Master template into the newly created project spreadsheet
+            # Grant permissions so PDF export endpoint can access cloned_id
+            try:
+                drive_service.permissions().create(
+                    fileId=cloned_id,
+                    body={'type': 'anyone', 'role': 'writer'},
+                    supportsAllDrives=True
+                ).execute()
+            except Exception as perm_err:
+                logger.warn(f"Failed to add public permission to cloned sheet: {perm_err}")
             copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
             copied_tab = sheets_service.spreadsheets().sheets().copyTo(
                 spreadsheetId=template_id,
