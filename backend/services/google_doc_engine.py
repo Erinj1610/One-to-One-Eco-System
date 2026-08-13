@@ -241,13 +241,34 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         temp_tab_gid = None
 
         try:
-            created_file = drive_service.files().create(
-                body=file_metadata,
-                fields='id, webViewLink',
-                supportsAllDrives=True
+            # 1. Create clean Google Sheet resource via Sheets API (0 MB quota cost)
+            new_spreadsheet_body = {
+                'properties': {
+                    'title': file_title
+                }
+            }
+            created_sheet = sheets_service.spreadsheets().create(
+                body=new_spreadsheet_body,
+                fields='spreadsheetId,spreadsheetUrl'
             ).execute()
-            cloned_id = created_file.get('id')
-            sheet_url = created_file.get('webViewLink')
+            cloned_id = created_sheet.get('spreadsheetId')
+            sheet_url = created_sheet.get('spreadsheetUrl')
+
+            # 2. Move created sheet into the client's project subfolder in Google Drive
+            try:
+                # Retrieve current parents to move it cleanly
+                file_obj = drive_service.files().get(fileId=cloned_id, fields='parents', supportsAllDrives=True).execute()
+                previous_parents = ",".join(file_obj.get('parents', []))
+                drive_service.files().update(
+                    fileId=cloned_id,
+                    addParents=doc_subfolder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents',
+                    supportsAllDrives=True
+                ).execute()
+                logger.info(f"Successfully placed Google Sheet '{file_title}' ({cloned_id}) inside Drive subfolder {doc_subfolder_id}")
+            except Exception as move_err:
+                logger.warn(f"Could not move sheet into subfolder: {move_err}")
             logger.info(f"Successfully created Project Sheet file in Drive folder: '{file_title}' (ID: {cloned_id}, Folder: {project_folder_id})")
 
             # Grant permissions so PDF export endpoint can access cloned_id
