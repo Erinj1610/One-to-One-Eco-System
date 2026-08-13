@@ -208,7 +208,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 export_url = (
                     f"https://docs.google.com/spreadsheets/d/{template_id}/export?"
                     f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
-                    f"&fitw=true&scale=4"
+                    f"&fitw=true&fctr=false&attachment=false"
                 )
                 import requests
                 authed_session = google.auth.transport.requests.AuthorizedSession(creds)
@@ -220,45 +220,49 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     return tmp.name
             raise copy_err
 
-        # 3. Read values from target sheet and replace tokens
+        # 3. Read values from target sheet and replace tokens across full sheet grid (A1:Z300)
         tab_title = target_sheet['properties']['title']
-        range_name = f"'{tab_title}'!A1:Z200"
+        range_name = f"'{tab_title}'!A1:Z300"
         
-        val_result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=cloned_id, range=range_name
-        ).execute()
-        
-        rows = val_result.get('values', [])
-        updated_rows = []
-        has_changes = False
-
-        for row in rows:
-            new_row = []
-            for cell in row:
-                cell_str = str(cell)
-                if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
-                    has_changes = True
-                    for k, v in tokens.items():
-                        if not isinstance(v, (list, dict)):
-                            cell_str = cell_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
-                            cell_str = cell_str.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
-                    cell_str = re.sub(r'\{\{[^}]+\}\}', '', cell_str)
-                new_row.append(cell_str)
-            updated_rows.append(new_row)
-
-        if has_changes and updated_rows:
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=cloned_id,
-                range=range_name,
-                valueInputOption='USER_ENTERED',
-                body={'values': updated_rows}
+        try:
+            val_result = sheets_service.spreadsheets().values().get(
+                spreadsheetId=cloned_id, range=range_name
             ).execute()
+            
+            rows = val_result.get('values', [])
+            updated_rows = []
+            has_changes = False
 
-        # 4. Export specific sheet tab as PDF via Google Drive Export Media URL
+            for row in rows:
+                new_row = []
+                for cell in row:
+                    cell_str = str(cell)
+                    if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
+                        has_changes = True
+                        for k, v in tokens.items():
+                            if not isinstance(v, (list, dict)):
+                                cell_str = cell_str.replace("{{" + str(k) + "}}", str(v if v is not None else ''))
+                                cell_str = cell_str.replace("{?" + str(k) + "?}", str(v if v is not None else ''))
+                        cell_str = re.sub(r'\{\{[^}]+\}\}', '', cell_str)
+                    new_row.append(cell_str)
+                updated_rows.append(new_row)
+
+            if has_changes and updated_rows:
+                logger.info(f"Submitting {len(updated_rows)} token-replaced rows to cloned Google Sheet...")
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=cloned_id,
+                    range=range_name,
+                    valueInputOption='USER_ENTERED',
+                    body={'values': updated_rows}
+                ).execute()
+        except Exception as token_err:
+            logger.error(f"Error updating cell tokens in cloned Google Sheet: {token_err}")
+
+        # 4. Export target tab as full-width PDF (Columns B:Z printable range, fit-to-width)
         export_url = (
             f"https://docs.google.com/spreadsheets/d/{cloned_id}/export?"
             f"format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false"
-            f"&fitw=true&scale=4"
+            f"&fitw=true&fctr=false&attachment=false"
         )
         
         # Download PDF using authorized request session
@@ -267,7 +271,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         res = authed_session.get(export_url)
         
         if res.status_code != 200:
-            # Fallback to standard export media if export URL fails
             logger.warn(f"Native tab export returned {res.status_code}, falling back to export_media...")
             export_request = drive_service.files().export_media(fileId=cloned_id, mimeType='application/pdf')
             pdf_bytes = export_request.execute()
