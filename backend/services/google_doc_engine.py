@@ -382,32 +382,38 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             logger.error(f"Error updating cell tokens in working Google Sheet: {token_err}")
 
         # 4. Export target tab as full-width PDF starting from Column B (c1=1, excluding Column A)
-        export_url = (
-            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?"
-            f"exportFormat=pdf&format=pdf&gid={working_gid}&portrait=true&size=a4&gridlines=false"
-            f"&fitw=true&c1=1&c2=25"
-        )
-        
-        # Download PDF using authorized request session
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
-        res = authed_session.get(export_url)
-        
         pdf_bytes = None
-        if res.status_code == 200:
-            pdf_bytes = res.content
-        else:
-            logger.warn(f"Native tab export returned {res.status_code}, trying standard export format URL...")
-            fallback_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?exportFormat=pdf&gid={working_gid}"
-            res_fb = authed_session.get(fallback_url)
-            if res_fb.status_code == 200:
-                pdf_bytes = res_fb.content
-            else:
-                logger.warn(f"Authorized fallback export returned {res_fb.status_code}. Using drive_service get_media fallback...")
+
+        # Attempt 1: Export working spreadsheet via Drive API export_media
+        try:
+            export_req = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
+            pdf_bytes = export_req.execute()
+        except Exception as drive_exp_err:
+            logger.warn(f"drive_service.files().export_media failed: {drive_exp_err}")
+
+        # Attempt 2: Direct web export endpoint with Column A exclusion (c1=1)
+        if not pdf_bytes:
+            export_urls = [
+                f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={working_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25",
+                f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/pdf?gid={working_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25",
+                f"https://docs.google.com/spreadsheets/d/{template_id}/export?format=pdf&gid={target_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25"
+            ]
+            for url in export_urls:
                 try:
-                    pdf_bytes = drive_service.files().get_media(fileId=working_spreadsheet_id).execute()
-                except Exception as drive_err:
-                    logger.error(f"Export failed: authed_status={res.status_code}, fallback_status={res_fb.status_code}, drive_err={drive_err}")
-                    raise RuntimeError(f"Google Sheet PDF export failed with status code {res.status_code} (authed: {res_fb.status_code})")
+                    res = authed_session.get(url)
+                    if res.status_code == 200 and res.content:
+                        pdf_bytes = res.content
+                        break
+                    else:
+                        logger.warn(f"Export URL {url} returned status {res.status_code}")
+                except Exception as url_err:
+                    logger.warn(f"Failed fetching {url}: {url_err}")
+
+        if not pdf_bytes:
+            # Final fallback: Master Sheet direct export_media
+            export_req = drive_service.files().export_media(fileId=template_id, mimeType='application/pdf')
+            pdf_bytes = export_req.execute()
 
         # Save to temp file
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
