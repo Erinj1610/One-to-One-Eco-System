@@ -389,18 +389,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         )
         
         # Download PDF using authorized request session
-        import requests
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         res = authed_session.get(export_url)
         
         if res.status_code != 200:
-            logger.warn(f"Native tab export returned {res.status_code}, trying standard export format URL...")
+            logger.warn(f"Native tab export returned {res.status_code} ({res.text[:200]}), trying standard export format URL...")
             fallback_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={working_gid}"
             res_fb = authed_session.get(fallback_url)
             if res_fb.status_code == 200:
                 pdf_bytes = res_fb.content
             else:
-                raise RuntimeError(f"Google Sheet PDF export failed with status code {res_fb.status_code}")
+                # Direct unauthenticated request attempt if link is shared
+                import requests as req
+                raw_res = req.get(fallback_url)
+                if raw_res.status_code == 200:
+                    pdf_bytes = raw_res.content
+                else:
+                    logger.error(f"Export failed: authed_status={res.status_code}, fallback_status={res_fb.status_code}, raw_status={raw_res.status_code}")
+                    raise RuntimeError(f"Google Sheet PDF export failed with status code {res.status_code} (authed: {res_fb.status_code}, raw: {raw_res.status_code})")
         else:
             pdf_bytes = res.content
 
