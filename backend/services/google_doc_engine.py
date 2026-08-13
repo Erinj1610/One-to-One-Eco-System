@@ -415,7 +415,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
     except Exception as e:
         logger.error(f"Google Sheet Merge Error: {e}")
-        if 'cloned_id' in locals():
+        if 'cloned_id' in locals() and cloned_id:
             try: drive_service.files().delete(fileId=cloned_id).execute()
             except: pass
         raise e
