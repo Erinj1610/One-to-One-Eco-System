@@ -182,6 +182,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     try:
         if credentials_json:
             creds = service_account.Credentials.from_service_account_info(credentials_json, scopes=SCOPES_SHEETS)
+            try:
+                creds = creds.with_subject('erin.jones@1-to-1.world')
+                logger.info("Domain-Wide Delegation active: Impersonating erin.jones@1-to-1.world for Drive & Sheets operations.")
+            except Exception as subject_err:
+                logger.warn(f"Subject impersonation warning: {subject_err}")
         else:
             creds, project = default(scopes=SCOPES_SHEETS)
             
