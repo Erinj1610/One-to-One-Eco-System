@@ -239,27 +239,19 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             cloned_id = cloned_file.get('id')
             sheet_url = cloned_file.get('webViewLink')
         except Exception as copy_err:
-            logger.warn(f"Drive copy directly to folder failed ({copy_err}). Creating clean project sheet in folder via Sheets API...")
-            # Create a new spreadsheet resource inside the target project folder
-            new_sheet_body = {
-                'properties': {'title': file_title}
+            logger.warn(f"Drive copy directly to folder failed ({copy_err}). Creating clean project sheet in folder via Drive API...")
+            file_metadata = {
+                'name': file_title,
+                'mimeType': 'application/vnd.google-apps.spreadsheet',
+                'parents': [project_folder_id]
             }
-            created_sheet = sheets_service.spreadsheets().create(body=new_sheet_body, fields="spreadsheetId").execute()
-            cloned_id = created_sheet.get('spreadsheetId')
-            
-            # Move created spreadsheet into the target project folder
-            try:
-                file_parents = drive_service.files().get(fileId=cloned_id, fields="parents", supportsAllDrives=True).execute()
-                previous_parents = ",".join(file_parents.get('parents', []))
-                drive_service.files().update(
-                    fileId=cloned_id,
-                    addParents=project_folder_id,
-                    removeParents=previous_parents,
-                    fields='id, parents, webViewLink',
-                    supportsAllDrives=True
-                ).execute()
-            except Exception as move_err:
-                logger.warn(f"Failed to move created sheet to project folder: {move_err}")
+            created_file = drive_service.files().create(
+                body=file_metadata,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+            cloned_id = created_file.get('id')
+            sheet_url = created_file.get('webViewLink')
 
             # Copy target sheet tab from Master template into the newly created project spreadsheet
             copy_sheet_req = {
@@ -273,7 +265,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             target_gid = copied_tab.get('sheetId')
             target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{cloned_id}/edit#gid={target_gid}"
 
         working_spreadsheet_id = cloned_id
         working_gid = target_gid
