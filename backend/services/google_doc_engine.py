@@ -234,24 +234,54 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             'mimeType': 'application/vnd.google-apps.spreadsheet',
             'parents': [project_folder_id]
         }
-        created_file = drive_service.files().create(
-            body=file_metadata,
-            fields='id, webViewLink',
-            supportsAllDrives=True
-        ).execute()
-        cloned_id = created_file.get('id')
-        sheet_url = created_file.get('webViewLink')
+        
+        cloned_id = None
+        temp_tab_gid = None
 
-        # Copy target sheet tab from Master template into the newly created project spreadsheet
-        copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
-        copied_tab = sheets_service.spreadsheets().sheets().copyTo(
-            spreadsheetId=template_id,
-            sheetId=target_gid,
-            body=copy_sheet_req
-        ).execute()
+        try:
+            created_file = drive_service.files().create(
+                body=file_metadata,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+            cloned_id = created_file.get('id')
+            sheet_url = created_file.get('webViewLink')
 
-        target_gid = copied_tab.get('sheetId')
-        target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
+            # Copy target sheet tab from Master template into the newly created project spreadsheet
+            copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
+            copied_tab = sheets_service.spreadsheets().sheets().copyTo(
+                spreadsheetId=template_id,
+                sheetId=target_gid,
+                body=copy_sheet_req
+            ).execute()
+
+            target_gid = copied_tab.get('sheetId')
+            target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
+        except Exception as create_err:
+            logger.warn(f"Drive file creation in project folder skipped ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
+            # Create a temporary working tab directly inside Master Sheet (Zero Quota)
+            dup_title = f"PDF_{int(time.time() * 1000)}"
+            dup_res = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=template_id,
+                body={
+                    'requests': [{
+                        'duplicateSheet': {
+                            'sourceSheetId': target_gid,
+                            'newSheetName': dup_title
+                        }
+                    }]
+                }
+            ).execute()
+            temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
+            working_spreadsheet_id = template_id
+            working_gid = temp_tab_gid
+            working_title = dup_title
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
+
+        if cloned_id:
+            working_spreadsheet_id = cloned_id
+            working_gid = target_gid
+            working_title = target_sheet['properties']['title']
 
         # Delete default empty Sheet1 if present
         try:
@@ -369,8 +399,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         with open(tmp.name, 'wb') as f:
             f.write(pdf_bytes)
 
-        # 5. Retain permanent project Google Sheet on Drive (Do not delete)
-        logger.info(f"Permanent Google Sheet saved: '{file_title}' (URL: {sheet_url})")
+        # 5. Retain permanent project Google Sheet on Drive or cleanup temp tab if fallback was used
+        if temp_tab_gid:
+            try:
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=template_id,
+                    body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+                ).execute()
+            except Exception as del_err:
+                logger.warn(f"Failed to cleanup temp tab: {del_err}")
+
+        logger.info(f"Google Sheet PDF generated successfully: '{file_title}' (URL: {sheet_url})")
 
         return tmp.name, working_spreadsheet_id, sheet_url
 
