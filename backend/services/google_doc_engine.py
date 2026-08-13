@@ -196,16 +196,16 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise ValueError("Invalid Master Google Sheet URL or ID")
 
     try:
-        # Extract Client & Project details for folder structure
-        client_name = str(tokens.get('COMPANY_NAME') or tokens.get('CLIENT_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
-        project_name = str(tokens.get('PROJECT_NAME') or tokens.get('FEE_NAME') or 'Projects').strip()
+        # Extract Client & Project details for folder structure: Client > Project
+        client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
+        project_name = str(tokens.get('FEE_NAME') or tokens.get('PROJECT_NAME') or 'Projects').strip()
         doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
-        # Build folder path: Root > Client Folder > Project Folder
+        # Build folder path: Root (1Y3R2fnGWYRBESuNlfoek4jvaV1XiqRIf) > Client Folder > Project Folder
         client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
         project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
 
-        logger.info(f"Target Google Drive Folder: Client='{client_name}', Project='{project_name}' (ID: {project_folder_id})")
+        logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' ({client_folder_id}) > Project='{project_name}' ({project_folder_id})")
 
         # Get spreadsheet metadata directly to find target sheet tab GID
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=template_id).execute()
@@ -245,6 +245,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 supportsAllDrives=True
             ).execute()
             cloned_id = created_file.get('id')
+            sheet_url = created_file.get('webViewLink')
+            logger.info(f"Successfully created Project Sheet file in Drive folder: '{file_title}' (ID: {cloned_id}, Folder: {project_folder_id})")
+
             # Grant permissions so PDF export endpoint can access cloned_id
             try:
                 drive_service.permissions().create(
@@ -254,6 +257,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 ).execute()
             except Exception as perm_err:
                 logger.warn(f"Failed to add public permission to cloned sheet: {perm_err}")
+
             copy_sheet_req = {'destinationSpreadsheetId': cloned_id}
             copied_tab = sheets_service.spreadsheets().sheets().copyTo(
                 spreadsheetId=template_id,
@@ -264,7 +268,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_gid = copied_tab.get('sheetId')
             target_sheet = {'properties': {'title': copied_tab.get('title'), 'sheetId': target_gid}}
         except Exception as create_err:
-            logger.warn(f"Drive file creation in project folder skipped ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
+            logger.error(f"Drive file creation in project folder failed ({create_err}). Falling back to temporary in-sheet working tab (Zero Quota)...")
             # Create a temporary working tab directly inside Master Sheet (Zero Quota)
             dup_title = f"PDF_{int(time.time() * 1000)}"
             dup_res = sheets_service.spreadsheets().batchUpdate(
