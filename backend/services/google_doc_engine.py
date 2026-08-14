@@ -174,11 +174,10 @@ def get_or_create_folder(drive_service, folder_name, parent_id):
                 fields='id',
                 supportsAllDrives=True
             ).execute()
-            return created.get('id')
+            return created.get('id') or parent_id
         except Exception as e:
             logger.error(f"Failed to create folder '{clean_name}': {e}")
-            raise e
-        return parent_id
+            return parent_id
 
 def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None, is_save_action=False):
     """
