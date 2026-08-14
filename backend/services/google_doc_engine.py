@@ -294,7 +294,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         working_gid = target_gid
         working_title = target_sheet['properties']['title']
 
-        # Hide column A (dimensionIndex 0) on the target working tab
+        # Duplicate target tab into a temporary working tab inside the dedicated template file
+        dup_title = f"PDF_Render_{int(time.time() * 1000)}"
+        dup_res = sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=working_spreadsheet_id,
+            body={
+                'requests': [{
+                    'duplicateSheet': {
+                        'sourceSheetId': target_gid,
+                        'newSheetName': dup_title
+                    }
+                }]
+            }
+        ).execute()
+        
+        temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
+
+        # Hide column A (dimensionIndex 0) on the temporary working tab
         try:
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=working_spreadsheet_id,
@@ -302,7 +318,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     'requests': [{
                         'updateDimensionProperties': {
                             'range': {
-                                'sheetId': working_gid,
+                                'sheetId': temp_tab_gid,
                                 'dimension': 'COLUMNS',
                                 'startIndex': 0,
                                 'endIndex': 1
@@ -318,37 +334,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as hide_err:
             logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
-        # Read cell grid from Master Template to locate exact token coordinates
-        range_name = f"'{working_title}'!A1:Z300"
+        # Read cell grid from temporary tab, perform token replacement, and update temporary tab
+        temp_range_name = f"'{dup_title}'!A1:Z300"
         try:
-            template_vals_res = sheets_service.spreadsheets().values().get(
-                spreadsheetId=template_id, range=range_name
+            temp_vals_res = sheets_service.spreadsheets().values().get(
+                spreadsheetId=working_spreadsheet_id, range=temp_range_name
             ).execute()
-            master_rows = template_vals_res.get('values', [])
+            temp_rows = temp_vals_res.get('values', [])
             
-            # Read current values from target standalone working sheet
-            working_vals_res = sheets_service.spreadsheets().values().get(
-                spreadsheetId=working_spreadsheet_id, range=range_name
-            ).execute()
-            working_rows = working_vals_res.get('values', [])
-
-            # Pad working rows to match master rows dimensions
-            while len(working_rows) < len(master_rows):
-                working_rows.append([])
-            for r_i, m_row in enumerate(master_rows):
-                while len(working_rows[r_i]) < len(m_row):
-                    working_rows[r_i].append("")
-
             has_changes = False
             import re
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
 
-            for r_i, m_row in enumerate(master_rows):
-                for c_i, m_cell in enumerate(m_row):
-                    m_cell_str = str(m_cell)
-                    if "{{" in m_cell_str or "}}" in m_cell_str or "{?" in m_cell_str:
+            for r_i, row in enumerate(temp_rows):
+                for c_i, cell in enumerate(row):
+                    cell_str = str(cell)
+                    if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
                         has_changes = True
-                        cell_val = m_cell_str
+                        cell_val = cell_str
                         # Replace exact token matches
                         for k, v in tokens.items():
                             if not isinstance(v, (list, dict)):
@@ -366,32 +369,32 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         cell_val = re.sub(r'\{\{([^}]+)\}\}', token_replacer, cell_val)
                         cell_val = re.sub(r'\{\?([^?]+)\?\}', token_replacer, cell_val)
 
-                        working_rows[r_i][c_i] = cell_val
+                        temp_rows[r_i][c_i] = cell_val
 
-            if has_changes and working_rows:
-                logger.info(f"Dynamically updating {len(working_rows)} token cell coordinates in dedicated Google Sheet ({working_spreadsheet_id})...")
+            if has_changes and temp_rows:
+                logger.info(f"Populating tokens on temporary tab '{dup_title}' in dedicated Google Sheet ({working_spreadsheet_id})...")
                 sheets_service.spreadsheets().values().update(
                     spreadsheetId=working_spreadsheet_id,
-                    range=range_name,
+                    range=temp_range_name,
                     valueInputOption='USER_ENTERED',
-                    body={'values': working_rows}
+                    body={'values': temp_rows}
                 ).execute()
         except Exception as token_err:
-            logger.error(f"Error updating cell tokens in working Google Sheet: {token_err}")
+            logger.error(f"Error updating cell tokens in temporary working tab: {token_err}")
 
-        # Render PDF stream
+        # Render PDF stream from the temporary tab
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         pdf_bytes = None
 
         export_urls = [
-            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={working_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25",
-            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/pdf?gid={working_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25"
+            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25",
+            f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/pdf?gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=25"
         ]
         for url in export_urls:
             try:
                 res = authed_session.get(url)
                 if res.status_code == 200 and res.content and len(res.content) > 1000:
-                    logger.info(f"Successfully exported PDF from working tab via {url}")
+                    logger.info(f"Successfully exported PDF from temporary working tab via {url}")
                     pdf_bytes = res.content
                     break
             except Exception as url_err:
@@ -400,6 +403,16 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         if not pdf_bytes:
             export_req = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
             pdf_bytes = export_req.execute()
+
+        # Delete temporary tab so dedicated template sheet remains 100% pristine with raw variables!
+        try:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=working_spreadsheet_id,
+                body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+            ).execute()
+            logger.info(f"Cleaned up temporary tab '{dup_title}', leaving dedicated template pristine.")
+        except Exception as del_err:
+            logger.warn(f"Failed to delete temp tab: {del_err}")
 
         # Save to local temp file for UI preview/return
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
