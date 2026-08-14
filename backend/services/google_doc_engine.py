@@ -373,26 +373,104 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             row_data = grid_data.get('rowData', [])
             
             import re
+            items_list = tokens.get('items', [])
+            
+            # Helper to clean block tags like {{#floor}}, {{/floor}}, {{#area}}, {{/area}}
+            def clean_block_tags(text):
+                if not text:
+                    return text
+                return re.sub(r'\{\{/#?[a-zA-Z0-9_\.]+\}\}', '', text)
+
+            # Group items by floor and area space
+            grouped_floors = {}
+            for item in items_list:
+                fl = item.get('floor') or item.get('Floor') or 'Ground Floor'
+                ar = item.get('area') or item.get('Area') or 'General Area'
+                if fl not in grouped_floors:
+                    grouped_floors[fl] = {}
+                if ar not in grouped_floors[fl]:
+                    grouped_floors[fl][ar] = []
+                grouped_floors[fl][ar].append(item)
+
+            # Identify Column A directives across template rows
+            parsed_rows = []
+            for r_i, r_obj in enumerate(row_data):
+                cell_objs = r_obj.get('values', [])
+                col_a_val = ''
+                if cell_objs and len(cell_objs) > 0:
+                    c0 = cell_objs[0]
+                    col_a_val = str(c0.get('formattedValue', '') or c0.get('userEnteredValue', {}).get('stringValue', '')).strip().upper()
+                parsed_rows.append((r_i, col_a_val, cell_objs))
+
+            # Build final expanded row definitions
+            expanded_rows = []
+            
+            for r_i, directive, cell_objs in parsed_rows:
+                if directive in ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_FOOTER]', '[FLOOR_FOOTER]', '[ITEM_ROW]'):
+                    # Handled dynamically below when processing grouped_floors
+                    continue
+                else:
+                    # [FIXED] or unlabelled row -> single copy
+                    expanded_rows.append((directive, cell_objs, {}))
+
+                # When encountering the dynamic block start, inject all grouped floors & items
+                if r_i == 8 and grouped_floors:
+                    # Find template row definitions
+                    fl_header_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_HEADER]'), None)
+                    table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_TABLE_HEAD]'), None)
+                    area_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_FOOTER]'), None)
+                    fl_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_FOOTER]'), None)
+                    item_row_cells = next((cells for _, d, cells in parsed_rows if d == '[ITEM_ROW]'), None)
+
+                    for fl_name, areas in grouped_floors.items():
+                        # Calculate floor total retail
+                        fl_items = [it for ar_items in areas.values() for it in ar_items]
+                        fl_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('unitRetail', 0)).replace('R', '').replace(',', '').strip() or 0)) for it in fl_items)
+                        fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
+
+                        fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
+
+                        if fl_header_cells:
+                            expanded_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
+                        if table_head_cells:
+                            expanded_rows.append(('[FLOOR_TABLE_HEAD]', table_head_cells, fl_ctx))
+
+                        for ar_name, ar_items in areas.items():
+                            ar_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('unitRetail', 0)).replace('R', '').replace(',', '').strip() or 0)) for it in ar_items)
+                            ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
+                            ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
+
+                            for item_obj in ar_items:
+                                item_ctx = {**ar_ctx}
+                                for k, v in item_obj.items():
+                                    item_ctx[k] = str(v) if v is not None else ''
+                                if item_row_cells:
+                                    expanded_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
+
+                            if area_footer_cells:
+                                expanded_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
+
+                        if fl_footer_cells:
+                            expanded_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
             update_cell_requests = []
 
-            for r_i, r_obj in enumerate(row_data):
-                cell_objs = r_obj.get('values', [])
+            for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
+                # Merge local context into tokens
+                row_tokens = {**tokens, **ctx}
+                row_lower_tokens = {str(k).lower(): v for k, v in row_tokens.items()}
+
                 for c_i, c_obj in enumerate(cell_objs):
                     user_val = c_obj.get('userEnteredValue', {})
                     formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
                     if not formatted_val:
                         continue
                     
-                    cell_str = str(formatted_val)
+                    cell_str = clean_block_tags(str(formatted_val))
                     if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
-                        # Extract original rich text formatting runs
                         orig_runs = c_obj.get('textFormatRuns', [])
-                        
-                        # Track character index replacements for accurate format run shifting
                         replacements = []
-                        
-                        # Find all token occurrences and their ranges in original cell string
                         token_matches = list(re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str))
                         
                         new_str = cell_str
@@ -404,10 +482,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             token_key_lower = token_key.lower()
                             
                             sub_val = ''
-                            if token_key in tokens and not isinstance(tokens[token_key], (list, dict)):
-                                sub_val = str(tokens[token_key]) if tokens[token_key] is not None else ''
-                            elif token_key_lower in lower_tokens and not isinstance(lower_tokens[token_key_lower], (list, dict)):
-                                sub_val = str(lower_tokens[token_key_lower]) if lower_tokens[token_key_lower] is not None else ''
+                            if token_key in row_tokens and not isinstance(row_tokens[token_key], (list, dict)):
+                                sub_val = str(row_tokens[token_key]) if row_tokens[token_key] is not None else ''
+                            elif token_key_lower in row_lower_tokens and not isinstance(row_lower_tokens[token_key_lower], (list, dict)):
+                                sub_val = str(row_lower_tokens[token_key_lower]) if row_lower_tokens[token_key_lower] is not None else ''
                             
                             match_start = m.start() + offset
                             old_len = len(raw_match)
@@ -418,9 +496,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             offset += delta
                             replacements.append((m.start(), old_len, delta))
 
-                        # Build adjusted rich text format runs
                         new_cell_data = {
-                            'userEnteredValue': {'stringValue': new_str}
+                            'userEnteredValue': {'stringValue': clean_block_tags(new_str)}
                         }
 
                         if orig_runs:
@@ -428,24 +505,18 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             for run in orig_runs:
                                 orig_start = run.get('startIndex', 0)
                                 format_info = run.get('format', {})
-                                
-                                # Shift startIndex based on cumulative character deltas preceding orig_start
                                 shifted_start = orig_start
                                 for rep_start, rep_old_len, rep_delta in replacements:
                                     if orig_start > rep_start:
                                         if orig_start >= rep_start + rep_old_len:
                                             shifted_start += rep_delta
                                         else:
-                                            # If run started inside the token, align to replacement start
                                             shifted_start = rep_start
-                                
                                 shifted_start = max(0, min(shifted_start, len(new_str)))
                                 new_runs.append({'startIndex': shifted_start, 'format': format_info})
-                            
                             if new_runs:
                                 new_cell_data['textFormatRuns'] = new_runs
 
-                        # Preserve overall cell formatting
                         if 'userEnteredFormat' in c_obj:
                             new_cell_data['userEnteredFormat'] = c_obj['userEnteredFormat']
 
@@ -457,7 +528,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                                 'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
                                 'start': {
                                     'sheetId': temp_tab_gid,
-                                    'rowIndex': r_i,
+                                    'rowIndex': r_idx,
                                     'columnIndex': c_i
                                 }
                             }
