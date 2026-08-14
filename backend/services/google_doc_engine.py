@@ -336,7 +336,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         
         temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
 
-        # Hide column A (dimensionIndex 0) on the temporary working tab
+        # Hide Column A (dimensionIndex 0 to 1) on the temporary working tab so it is omitted from PDF
         try:
             sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=working_spreadsheet_id,
@@ -357,6 +357,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }]
                 }
             ).execute()
+            logger.info(f"Successfully hidden Column A on temporary tab {temp_tab_gid}")
         except Exception as hide_err:
             logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
@@ -471,7 +472,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as token_err:
             logger.error(f"Error updating rich text cell tokens in temporary working tab: {token_err}")
 
-        # Render PDF stream from the temporary tab
+        # Render PDF stream from the temporary tab (c1=1 skips Column A, starting from Column B!)
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         pdf_bytes = None
 
