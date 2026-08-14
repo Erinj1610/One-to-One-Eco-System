@@ -2023,124 +2023,134 @@ export default function OrdersPage() {
     setActiveOrderItems(prev => [...prev, newCreditItem]);
   };
 
+  const [isSaving, setIsSaving] = useState(false);
+
   // Save the spreadsheet and update the global store context
   const handleSaveOrderSpreadsheet = async () => {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
-    // Calculate aggregated order totals from items list
-    const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-    const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-    const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
-    const itemsCount = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((s, item) => s + (Number(item.qty) || 0), 0);
-    const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
-
-    // Attach explicit sequential sortOrder index to preserve exact drag-and-drop sequence in DB
-    const orderedItemsWithIndex = activeOrderItems.map((item, idx) => ({
-      ...item,
-      sortOrder: idx
-    }));
-
-    const updatedOrders = (proj.orders || []).map(o => {
-      if (o.id === selectedOrderId) {
-        return {
-          ...o,
-          supplier: orderSupplier,
-          status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
-          eta: orderEta,
-          items: itemsCount,
-          value: Math.round(discountedValue),
-          costValue: Math.round(totalCostTotal),
-          discount: Number(orderDiscount) || 0,
-          paid: paidSum,
-          payments: orderPayments,
-          outstanding: Math.round(balanceOutstanding),
-          itemsList: orderedItemsWithIndex,
-          // Save order-specific adjusted metadata fields
-          quote_name: quoteName,
-          clientCompany,
-          clientContact,
-          clientPhone,
-          clientEmail,
-          projectFullName,
-          projectTier,
-          projectSize,
-          electrician,
-          electricianPhone,
-          contractor,
-          contractorPhone,
-          interiorDesigner,
-          interiorDesignerPhone,
-          oneOneRep,
-          pmName,
-          pmPhone,
-          pmEmail,
-          deliveryAddress,
-          billingDetails,
-          orderDate,
-          pfNumber,
-          pfDate,
-          fileSource,
-          projectClass,
-          quotationSentDate,
-          division
-        };
-      }
-      return o;
-    });
-
-    // Save back to dynamic project state
-    updateProject(selectedProjectKey, 'orders', updatedOrders);
-
-    // Calculate global margins for the project
-    const designTotal = (proj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
-    const orderTotal = updatedOrders.reduce((s, o) => s + (o.value || 0), 0);
-    const contractTotal = designTotal + orderTotal;
-    
-    const designMarginValue = (proj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
-    const orderMarginValue = updatedOrders.reduce((s, o) => s + ((o.value || 0) - (o.costValue || 0)), 0);
-    const totalProfit = designMarginValue + orderMarginValue;
-    const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
-
-    updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
-
-    // Await sequential background Drive vault saves & revision creation for order documents
-    const clientNameVal = clientContact || proj.client || 'Client Name';
-    const projNameVal = projectFullName || proj.name || 'Private Client Project';
-    
+    setIsSaving(true);
     try {
-      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-      for (const dType of orderDocTypes) {
-        try {
-          await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              PROJECT_NAME: projNameVal,
-              CLIENT_NAME: clientNameVal,
-              DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-              DOCUMENT_NUMBER: selectedOrderId,
-              PROPOSAL_NUMBER: selectedOrderId,
-              FEE_NAME: `Order ${selectedOrderId}`,
-              ORDER_NUMBER: selectedOrderId,
-              ORDER_STATUS: orderStatus || 'Draft',
-              CLIENT_COMPANY: clientCompany || '',
-              CLIENT_CONTACT_PERSON: clientContact || '',
-              SUBTOTAL: `R ${totalRetailTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            })
-          });
-        } catch (dErr) {
-          console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
-        }
-      }
-    } catch (vaultErr) {
-      console.warn('Drive Vault Save preparation warning:', vaultErr);
-    }
+      // Calculate aggregated order totals from items list
+      const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+      const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+      const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
+      const itemsCount = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((s, item) => s + (Number(item.qty) || 0), 0);
+      const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
 
-    alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n- Drive Vault Files & Revisions Created!`);
-    setSelectedOrderId(null);
+      // Attach explicit sequential sortOrder index to preserve exact drag-and-drop sequence in DB
+      const orderedItemsWithIndex = activeOrderItems.map((item, idx) => ({
+        ...item,
+        sortOrder: idx
+      }));
+
+      const updatedOrders = (proj.orders || []).map(o => {
+        if (o.id === selectedOrderId) {
+          return {
+            ...o,
+            supplier: orderSupplier,
+            status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
+            eta: orderEta,
+            items: itemsCount,
+            value: Math.round(discountedValue),
+            costValue: Math.round(totalCostTotal),
+            discount: Number(orderDiscount) || 0,
+            paid: paidSum,
+            payments: orderPayments,
+            outstanding: Math.round(balanceOutstanding),
+            itemsList: orderedItemsWithIndex,
+            // Save order-specific adjusted metadata fields
+            quote_name: quoteName,
+            clientCompany,
+            clientContact,
+            clientPhone,
+            clientEmail,
+            projectFullName,
+            projectTier,
+            projectSize,
+            electrician,
+            electricianPhone,
+            contractor,
+            contractorPhone,
+            interiorDesigner,
+            interiorDesignerPhone,
+            oneOneRep,
+            pmName,
+            pmPhone,
+            pmEmail,
+            deliveryAddress,
+            billingDetails,
+            orderDate,
+            pfNumber,
+            pfDate,
+            fileSource,
+            projectClass,
+            quotationSentDate,
+            division
+          };
+        }
+        return o;
+      });
+
+      // Save back to dynamic project state
+      updateProject(selectedProjectKey, 'orders', updatedOrders);
+
+      // Calculate global margins for the project
+      const designTotal = (proj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
+      const orderTotal = updatedOrders.reduce((s, o) => s + (o.value || 0), 0);
+      const contractTotal = designTotal + orderTotal;
+      
+      const designMarginValue = (proj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
+      const orderMarginValue = updatedOrders.reduce((s, o) => s + ((o.value || 0) - (o.costValue || 0)), 0);
+      const totalProfit = designMarginValue + orderMarginValue;
+      const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
+
+      updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
+
+      // Await sequential background Drive vault saves & revision creation for order documents
+      const clientNameVal = clientContact || proj.client || 'Client Name';
+      const projNameVal = projectFullName || proj.name || 'Private Client Project';
+      
+      try {
+        const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+        for (const dType of orderDocTypes) {
+          try {
+            await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                PROJECT_NAME: projNameVal,
+                CLIENT_NAME: clientNameVal,
+                DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+                DOCUMENT_NUMBER: selectedOrderId,
+                PROPOSAL_NUMBER: selectedOrderId,
+                FEE_NAME: `Order ${selectedOrderId}`,
+                ORDER_NUMBER: selectedOrderId,
+                ORDER_STATUS: orderStatus || 'Draft',
+                CLIENT_COMPANY: clientCompany || '',
+                CLIENT_CONTACT_PERSON: clientContact || '',
+                SUBTOTAL: `R ${totalRetailTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              })
+            });
+          } catch (dErr) {
+            console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
+          }
+        }
+      } catch (vaultErr) {
+        console.warn('Drive Vault Save preparation warning:', vaultErr);
+      }
+
+      alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n- Drive Vault Files & Revisions Created!`);
+      setSelectedOrderId(null);
+    } catch (saveErr) {
+      console.error('Error during save:', saveErr);
+      alert(`Save Error: ${saveErr.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Create a brand-new Purchase Order / Quotation
@@ -2857,9 +2867,10 @@ export default function OrdersPage() {
                 <button 
                   className="btn btn-primary btn-sm" 
                   onClick={handleSaveOrderSpreadsheet}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  disabled={isSaving}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: isSaving ? 0.7 : 1 }}
                 >
-                  <Save size={14} /> Save & Sync BOQ
+                  <Save size={14} className={isSaving ? 'spin-icon' : ''} /> {isSaving ? 'Saving Order & Drive Vault...' : 'Save & Sync BOQ'}
                 </button>
               </div>
             </div>
