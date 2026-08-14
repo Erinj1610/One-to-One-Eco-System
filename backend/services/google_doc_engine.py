@@ -136,31 +136,40 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             except: pass
         raise e
 
-ROOT_DRIVE_FOLDER_ID = "1Y3R2fnGWYRBESuNlfoek4jvaV1XiqRIf"
+ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 
 def get_or_create_folder(drive_service, folder_name, parent_id):
     """
-    Finds a folder by name inside parent_id or creates a new one.
+    Finds a folder by name inside parent_id or creates a new one inside Shared Drive.
     """
     clean_name = str(folder_name).strip() if folder_name else "General"
     safe_name = clean_name.replace("'", "\\'")
     query = f"mimeType='application/vnd.google-apps.folder' and name='{safe_name}' and '{parent_id}' in parents and trashed=false"
     try:
-        res = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
         files = res.get('files', [])
         if files:
             return files[0]['id']
     except Exception as e:
         logger.warn(f"Folder search error for {clean_name}: {e}")
 
-    # Create folder
+    # Create folder inside Shared Drive
     folder_metadata = {
         'name': clean_name,
         'mimeType': 'application/vnd.google-apps.folder',
         'parents': [parent_id]
     }
     try:
-        created = drive_service.files().create(body=folder_metadata, fields='id', supportsAllDrives=True).execute()
+        created = drive_service.files().create(
+            body=folder_metadata,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
         return created.get('id')
     except Exception as e:
         logger.error(f"Failed to create folder '{clean_name}': {e}")
@@ -233,65 +242,28 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Create clean Google Sheet file inside the Order/Design Fee subfolder
+        # Copy Master Google Sheet directly into target Shared Drive subfolder
         import time
         file_title = f"{doc_label} - {doc_folder_name} - {time.strftime('%Y-%m-%d')}"
-        file_metadata = {
+        copy_body = {
             'name': file_title,
-            'mimeType': 'application/vnd.google-apps.spreadsheet',
             'parents': [doc_subfolder_id]
         }
         
-        # 1. Duplicate target master tab into dedicated project tab inside Master Sheet (Zero Quota cost)
-        dup_title = f"{doc_folder_name} ({time.strftime('%M%S')})"
-        dup_res = sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=template_id,
-            body={
-                'requests': [{
-                    'duplicateSheet': {
-                        'sourceSheetId': target_gid,
-                        'newSheetName': dup_title
-                    }
-                }]
-            }
+        copied_file = drive_service.files().copy(
+            fileId=template_id,
+            body=copy_body,
+            fields='id, webViewLink',
+            supportsAllDrives=True
         ).execute()
-        
-        temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
-        working_spreadsheet_id = template_id
-        working_gid = temp_tab_gid
-        working_title = dup_title
-        sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
 
-        # 2. Create Google Drive Shortcut file inside the target Drive subfolder (Zero Quota cost)
-        try:
-            shortcut_metadata = {
-                'name': f"{file_title}",
-                'mimeType': 'application/vnd.google-apps.shortcut',
-                'parents': [doc_subfolder_id],
-                'shortcutDetails': {
-                    'targetId': template_id
-                }
-            }
-            created_shortcut = drive_service.files().create(
-                body=shortcut_metadata,
-                fields='id, webViewLink',
-                supportsAllDrives=True
-            ).execute()
-            
-            shortcut_id = created_shortcut.get('id')
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}/edit#gid={temp_tab_gid}"
-            logger.info(f"Successfully created Google Drive Shortcut file in '{doc_folder_name}' folder (Shortcut ID: {shortcut_id})")
-            
-            try:
-                drive_service.permissions().create(
-                    fileId=shortcut_id,
-                    body={'type': 'anyone', 'role': 'writer'},
-                    supportsAllDrives=True
-                ).execute()
-            except Exception as perm_err:
-                logger.warn(f"Failed setting shortcut permissions: {perm_err}")
-        except Exception as sc_err:
-            logger.warn(f"Failed creating Drive shortcut: {sc_err}")
+        cloned_id = copied_file.get('id')
+        sheet_url = copied_file.get('webViewLink')
+        logger.info(f"Successfully created standalone Google Sheet '{file_title}' ({cloned_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+
+        working_spreadsheet_id = cloned_id
+        working_gid = target_gid
+        working_title = target_sheet['properties']['title']
 
         # 3. Hide Column A in working Google Sheet and perform token substitution
         range_name = f"'{working_title}'!A1:Z300"
