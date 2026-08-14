@@ -2024,7 +2024,7 @@ export default function OrdersPage() {
   };
 
   // Save the spreadsheet and update the global store context
-  const handleSaveOrderSpreadsheet = () => {
+  const handleSaveOrderSpreadsheet = async () => {
     const proj = projects[selectedProjectKey];
     if (!proj) return;
 
@@ -2105,40 +2105,41 @@ export default function OrdersPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    // Trigger sequential background Drive vault saves & revision creation for order documents
-    (async () => {
-      try {
-        const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-        for (const dType of orderDocTypes) {
-          try {
-            await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
-                CLIENT_NAME: clientContact || proj.client || 'Client Name',
-                DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-                DOCUMENT_NUMBER: selectedOrderId,
-                PROPOSAL_NUMBER: selectedOrderId,
-                FEE_NAME: `Order ${selectedOrderId}`,
-                ORDER_NUMBER: selectedOrderId,
-                ORDER_STATUS: orderStatus || 'Draft',
-                CLIENT_COMPANY: clientCompany || '',
-                CLIENT_CONTACT_PERSON: clientContact || '',
-                SUBTOTAL: `R ${totalRetailTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              })
-            });
-          } catch (dErr) {
-            console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
-          }
+    // Await sequential background Drive vault saves & revision creation for order documents
+    const clientNameVal = clientContact || proj.client || 'Client Name';
+    const projNameVal = projectFullName || proj.name || 'Private Client Project';
+    
+    try {
+      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+      for (const dType of orderDocTypes) {
+        try {
+          await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              PROJECT_NAME: projNameVal,
+              CLIENT_NAME: clientNameVal,
+              DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+              DOCUMENT_NUMBER: selectedOrderId,
+              PROPOSAL_NUMBER: selectedOrderId,
+              FEE_NAME: `Order ${selectedOrderId}`,
+              ORDER_NUMBER: selectedOrderId,
+              ORDER_STATUS: orderStatus || 'Draft',
+              CLIENT_COMPANY: clientCompany || '',
+              CLIENT_CONTACT_PERSON: clientContact || '',
+              SUBTOTAL: `R ${totalRetailTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            })
+          });
+        } catch (dErr) {
+          console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
         }
-      } catch (vaultErr) {
-        console.warn('Drive Vault Save preparation warning:', vaultErr);
       }
-    })();
+    } catch (vaultErr) {
+      console.warn('Drive Vault Save preparation warning:', vaultErr);
+    }
 
-    alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+    alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n- Drive Vault Files & Revisions Created!`);
     setSelectedOrderId(null);
   };
 
