@@ -136,6 +136,7 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             except: pass
         raise e
 
+ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 import threading
 folder_lock = threading.Lock()
 
