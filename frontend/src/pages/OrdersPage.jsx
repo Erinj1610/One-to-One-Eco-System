@@ -2113,24 +2113,27 @@ export default function OrdersPage() {
       setSelectedOrderId(null);
 
       // Non-blocking fire-and-forget background Drive vault saves & revision creation
-      const clientNameVal = clientContact || proj.client || 'Client Name';
-      const projNameVal = projectFullName || proj.name || 'Private Client Project';
+      const activeOrd = (proj.orders || []).find(o => o.id === selectedOrderId) || {};
+      const clientNameVal = clientContact || activeOrd.clientContact || proj.client || 'Clients';
+      const projNameVal = projectFullName || activeOrd.projectFullName || proj.name || 'Project';
+      const currentOrderId = selectedOrderId;
       
       const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
       (async () => {
+        console.log(`Starting background Drive Vault generation for Order ${currentOrderId}...`);
         for (const dType of orderDocTypes) {
           try {
-            await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+            const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 PROJECT_NAME: projNameVal,
                 CLIENT_NAME: clientNameVal,
                 DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-                DOCUMENT_NUMBER: selectedOrderId,
-                PROPOSAL_NUMBER: selectedOrderId,
-                FEE_NAME: `Order ${selectedOrderId}`,
-                ORDER_NUMBER: selectedOrderId,
+                DOCUMENT_NUMBER: currentOrderId,
+                PROPOSAL_NUMBER: currentOrderId,
+                FEE_NAME: `Order ${currentOrderId}`,
+                ORDER_NUMBER: currentOrderId,
                 ORDER_STATUS: orderStatus || 'Draft',
                 CLIENT_COMPANY: clientCompany || '',
                 CLIENT_CONTACT_PERSON: clientContact || '',
@@ -2138,6 +2141,7 @@ export default function OrdersPage() {
                 TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               })
             });
+            console.log(`Drive Vault Background save for ${dType} returned status: ${res.status}`);
           } catch (dErr) {
             console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
           }
