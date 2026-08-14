@@ -4602,24 +4602,7 @@ export default function OrdersPage() {
                     onClick={handleExportXlsxTemplate}
                     disabled={exportingXlsx}
                   >
-                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF (Spreadsheet Template) 📊'}
-                  </button>
-
-                  <button 
-                    className="btn"
-                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: '#0284c7', border: 'none', color: '#fff', width: '100%', fontWeight: 600 }}
-                    onClick={handleDownloadExcelFile}
-                    disabled={exportingXlsx}
-                  >
-                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Generating Excel...' : 'Download Excel Spreadsheet (.xlsx) 📥'}
-                  </button>
-
-                  <button 
-                    className="btn"
-                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', width: '100%' }}
-                    onClick={() => window.print()}
-                  >
-                    <Printer size={15} /> Print Browser View 🖨️
+                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF 📄'}
                   </button>
                 </div>
 
