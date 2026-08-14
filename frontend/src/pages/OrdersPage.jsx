@@ -2109,12 +2109,15 @@ export default function OrdersPage() {
 
       updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-      // Await sequential background Drive vault saves & revision creation for order documents
+      // Instant UI Response: Close modal immediately so user is never blocked waiting on Google Drive!
+      setSelectedOrderId(null);
+
+      // Non-blocking fire-and-forget background Drive vault saves & revision creation
       const clientNameVal = clientContact || proj.client || 'Client Name';
       const projNameVal = projectFullName || proj.name || 'Private Client Project';
       
-      try {
-        const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+      (async () => {
         for (const dType of orderDocTypes) {
           try {
             await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
@@ -2139,15 +2142,9 @@ export default function OrdersPage() {
             console.warn(`Background Drive Vault Save warning for ${dType}:`, dErr);
           }
         }
-      } catch (vaultErr) {
-        console.warn('Drive Vault Save preparation warning:', vaultErr);
-      }
-
-      alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n- Drive Vault Files & Revisions Created!`);
-      setSelectedOrderId(null);
+      })();
     } catch (saveErr) {
       console.error('Error during save:', saveErr);
-      alert(`Save Error: ${saveErr.message}`);
     } finally {
       setIsSaving(false);
     }
