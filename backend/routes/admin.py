@@ -144,29 +144,31 @@ async def upload_master_excel_template(file: UploadFile = File(...), db: Session
 @router.post("/templates/master_google_sheet/url")
 async def save_master_google_sheet_url(request: Request, db: Session = Depends(get_db)):
     """
-    Saves the live Master Google Sheet Spreadsheet URL.
+    Saves live Master Google Sheet URLs (supports template_key: MASTER_DESIGN_FEE_SHEET, MASTER_ORDERS_SHEET, MASTER_GOOGLE_SHEET).
     """
     data = await request.json()
     url = data.get("url", "").strip()
-    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+    key = data.get("key", "MASTER_GOOGLE_SHEET").strip()
+    
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == key).first()
     if config:
         cfg = config.config_json or {}
         cfg["url"] = url
         config.config_json = cfg
     else:
-        config = TemplateConfig(template_key="MASTER_GOOGLE_SHEET", config_json={"url": url})
+        config = TemplateConfig(template_key=key, config_json={"url": url})
         db.add(config)
     db.commit()
-    return {"message": "Master Google Sheet URL saved successfully", "url": url}
+    return {"message": f"Master Google Sheet URL saved for {key}", "key": key, "url": url}
 
 @router.get("/templates/master_google_sheet/url")
-async def get_master_google_sheet_url(db: Session = Depends(get_db)):
+async def get_master_google_sheet_url(key: str = "MASTER_GOOGLE_SHEET", db: Session = Depends(get_db)):
     """
-    Gets the saved Master Google Sheet Spreadsheet URL.
+    Gets saved Master Google Sheet Spreadsheet URLs by key.
     """
-    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+    config = db.query(TemplateConfig).filter(TemplateConfig.template_key == key).first()
     url = (config.config_json or {}).get("url", "") if config else ""
-    return {"url": url}
+    return {"key": key, "url": url}
 
 @router.post("/templates/{doc_type}/xlsx/upload")
 async def upload_xlsx_template(doc_type: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -336,18 +338,26 @@ from fastapi import Body
 def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_save_action: bool = False, data: dict = Body(...), db: Session = Depends(get_db)):
     """
     100% Google Sheets Document Generator Engine.
-    Uses Master Google Sheet Workbook URL exclusively to render documents as native PDFs.
+    Supports Dual Master Templates: MASTER_DESIGN_FEE_SHEET for Design Fees & MASTER_ORDERS_SHEET for Orders/BOQ.
     Pass is_save_action=true to trigger Drive vault revision archival.
     """
     print(f"DEBUG: Generating {doc_type} via Master Google Sheets Engine with tokens: {list(data.keys())} (is_save_action={is_save_action})")
     
-    master_gsheet_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
-    master_gsheet_url = (master_gsheet_config.config_json or {}).get("url", "").strip() if master_gsheet_config else ""
+    # 1. Determine specific template key based on document type
+    target_key = "MASTER_DESIGN_FEE_SHEET" if doc_type == "DESIGN_FEE_PROPOSAL" else "MASTER_ORDERS_SHEET"
+    
+    specific_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == target_key).first()
+    master_gsheet_url = (specific_config.config_json or {}).get("url", "").strip() if specific_config else ""
+    
+    # Fallback to general MASTER_GOOGLE_SHEET if specific key is empty
+    if not master_gsheet_url:
+        fallback_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+        master_gsheet_url = (fallback_config.config_json or {}).get("url", "").strip() if fallback_config else ""
 
     if not master_gsheet_url:
         raise HTTPException(
             status_code=400, 
-            detail="Master Google Sheet URL is missing. Please set your live Google Sheet link under Settings > Templates."
+            detail=f"Master Google Sheet URL for {target_key} is missing. Please set your live Google Sheet links under Settings > Templates."
         )
 
     service_account_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "GOOGLE_SERVICE_ACCOUNT_JSON").first()

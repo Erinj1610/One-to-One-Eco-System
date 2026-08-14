@@ -265,19 +265,22 @@ function DesignFeeCostingsSettings() {
   );
 }
 
-function MasterGoogleSheetSettings() {
-  const [url, setUrl] = useState('');
+function MasterGoogleSheetManager() {
+  const [designFeeUrl, setDesignFeeUrl] = useState('');
+  const [ordersUrl, setOrdersUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/admin/templates/master_google_sheet/url`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.url) setUrl(data.url);
-      })
-      .catch(err => console.error("Error fetching Master Google Sheet URL:", err))
+    Promise.all([
+      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_DESIGN_FEE_SHEET`).then(r => r.json()),
+      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_ORDERS_SHEET`).then(r => r.json()),
+      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_GOOGLE_SHEET`).then(r => r.json())
+    ]).then(([dfData, ordData, fallbackData]) => {
+      setDesignFeeUrl(dfData?.url || fallbackData?.url || '');
+      setOrdersUrl(ordData?.url || fallbackData?.url || '');
+    }).catch(err => console.error("Error fetching Master Google Sheet URLs:", err))
       .finally(() => setLoading(false));
   }, []);
 
@@ -285,16 +288,19 @@ function MasterGoogleSheetSettings() {
     setSaving(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      if (res.ok) {
-        setMsg({ type: 'success', text: 'Master Google Sheet URL saved successfully! Live document previews will generate directly from this workbook.' });
-      } else {
-        setMsg({ type: 'error', text: 'Failed to save Google Sheet URL.' });
-      }
+      await Promise.all([
+        fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'MASTER_DESIGN_FEE_SHEET', url: designFeeUrl })
+        }),
+        fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'MASTER_ORDERS_SHEET', url: ordersUrl })
+        })
+      ]);
+      setMsg({ type: 'success', text: 'Dual Master Google Sheet URLs saved successfully! Design Fees and Orders will render from their dedicated workbooks.' });
     } catch (e) {
       setMsg({ type: 'error', text: e.message });
     } finally {
@@ -304,32 +310,46 @@ function MasterGoogleSheetSettings() {
 
   return (
     <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-      <div className="section-label">Master Google Sheet Template Workbook</div>
+      <div className="section-label">Master Google Sheet Template Workbooks</div>
       <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-        Link your single Master Google Sheet workbook containing all document template tabs (Design Fee Proposal, BOQ, Lighting Schedule, Quotations, Invoices). The system will read your live layout, fonts, and formulas dynamically without touching your master file.
+        Link separate Master Google Sheet workbooks for <strong>Design Fees</strong> and <strong>Orders / BOQ</strong>. Document previews and Drive vaults generate directly from their dedicated master templates.
       </div>
 
       <div className="card" style={{ maxWidth: '650px', padding: '20px' }}>
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-            Master Google Sheet Spreadsheet Link / URL
+          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+            🎨 Design Fee Master Google Sheet Link
           </label>
           <input 
             type="text" 
             className="form-control" 
-            placeholder="https://docs.google.com/spreadsheets/d/1.../edit"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
+            placeholder="https://docs.google.com/spreadsheets/d/1.../edit (Design Fee Master)"
+            value={designFeeUrl}
+            onChange={e => setDesignFeeUrl(e.target.value)}
+            style={{ fontSize: '12.5px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+            📦 Orders & BOQ Master Google Sheet Link
+          </label>
+          <input 
+            type="text" 
+            className="form-control" 
+            placeholder="https://docs.google.com/spreadsheets/d/1.../edit (Orders Master)"
+            value={ordersUrl}
+            onChange={e => setOrdersUrl(e.target.value)}
             style={{ fontSize: '12.5px' }}
           />
           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '6px', display: 'block' }}>
-            Ensure your Google Sheet link is set to "Anyone with the link can view" or shared with your Google Service Account.
+            Ensure your Google Sheet links are set to "Anyone with the link can view" or shared with your Google Service Account.
           </span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving || loading}>
-            {saving ? 'Saving Link...' : 'Save Master Template Link'}
+            {saving ? 'Saving Links...' : '💾 Save Dual Master Template Links'}
           </button>
         </div>
 

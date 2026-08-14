@@ -212,24 +212,22 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise ValueError("Invalid Master Google Sheet URL or ID")
 
     try:
-        # Extract Client, Project, and Document details for 3-tier folder structure
+        # Extract Client, Project, and Document details for folder hierarchy
         client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
         project_name = str(tokens.get('PROJECT_NAME') or tokens.get('PROJECT_NAME_LOCATION') or 'Project').strip()
-        doc_folder_name = str(tokens.get('FEE_NAME') or sheet_name or 'Design Fee').replace('_', ' ').strip()
+        
+        # Calculate subfolder name (e.g. "Design Fee Proposal" or "Order Q-2026-0576")
+        order_num = tokens.get('ORDER_NUMBER') or tokens.get('DOCUMENT_NUMBER') or tokens.get('PROPOSAL_NUMBER')
+        if sheet_name == 'DESIGN_FEE_PROPOSAL':
+            doc_folder_name = "Design Fee Proposal"
+        elif order_num and not str(order_num).endswith('XXX'):
+            doc_folder_name = f"Order {order_num}"
+        else:
+            doc_folder_name = str(tokens.get('FEE_NAME') or sheet_name or 'Document').replace('_', ' ').strip()
+
         doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
-        # Build folder path: Root > Client > Project > Order/Design Fee Folder
-        client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
-        project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
-        doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
-
-        # Build Vault Subfolders: Latest & History
-        latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
-        history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
-
-        logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
-
-        # Get spreadsheet metadata directly to find target sheet tab GID
+        # Get spreadsheet metadata directly from Master Template to find target sheet tab GID
         spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=template_id).execute()
         sheets = spreadsheet.get('sheets', [])
         
@@ -248,49 +246,72 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Check if a dedicated frozen template sheet already exists for this order/design fee
+        working_spreadsheet_id = template_id
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}"
+
+        # Lazy Drive Initialization: Create folders and dedicated template copy ONLY on SAVE action!
+        if is_save_action:
+            # Build folder path: Root > Client > Project > Document/Order Folder
+            client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
+            project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+            doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
+
+            # Build Vault Subfolders: Latest & History
+            latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
+            history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
+
+            logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
+
+            # Check if a dedicated frozen template sheet already exists for this order/design fee
+            template_file_title = f"[Template] {doc_label} - {doc_folder_name}"
+            existing_sheet_id = None
+            existing_sheet_url = None
+
+            try:
+                query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
+                existing_res = drive_service.files().list(
+                    q=query,
+                    fields="files(id, webViewLink, name)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+                existing_files = existing_res.get('files', [])
+                for ef in existing_files:
+                    if ef.get('name') == template_file_title or template_file_title in ef.get('name', ''):
+                        existing_sheet_id = ef['id']
+                        existing_sheet_url = ef.get('webViewLink')
+                        break
+                if not existing_sheet_id and existing_files:
+                    existing_sheet_id = existing_files[0]['id']
+                    existing_sheet_url = existing_files[0].get('webViewLink')
+
+                if existing_sheet_id:
+                    logger.info(f"Found dedicated frozen template sheet '{template_file_title}' ({existing_sheet_id}).")
+            except Exception as search_err:
+                logger.warn(f"Search for dedicated sheet in subfolder {doc_subfolder_id} failed: {search_err}")
+
+            if existing_sheet_id:
+                working_spreadsheet_id = existing_sheet_id
+                sheet_url = existing_sheet_url
+            else:
+                # Copy current Master Google Sheet directly into target Shared Drive subfolder as pristine frozen template
+                copy_body = {
+                    'name': template_file_title,
+                    'parents': [doc_subfolder_id]
+                }
+                
+                copied_file = drive_service.files().copy(
+                    fileId=template_id,
+                    body=copy_body,
+                    fields='id, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+
+                working_spreadsheet_id = copied_file.get('id')
+                sheet_url = copied_file.get('webViewLink')
+                logger.info(f"Created new dedicated frozen template sheet '{template_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+
         import time
-        template_file_title = f"[Template] {doc_label} - {doc_folder_name}"
-        existing_sheet_id = None
-        existing_sheet_url = None
-
-        try:
-            query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
-            existing_res = drive_service.files().list(
-                q=query,
-                fields="files(id, webViewLink, name)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-            existing_files = existing_res.get('files', [])
-            if existing_files:
-                existing_sheet_id = existing_files[0]['id']
-                existing_sheet_url = existing_files[0].get('webViewLink')
-                logger.info(f"Found dedicated frozen template sheet '{existing_files[0]['name']}' ({existing_sheet_id}).")
-        except Exception as search_err:
-            logger.warn(f"Search for dedicated sheet in subfolder {doc_subfolder_id} failed: {search_err}")
-
-        if existing_sheet_id:
-            working_spreadsheet_id = existing_sheet_id
-            sheet_url = existing_sheet_url
-        else:
-            # Day 1 Creation: Copy current Master Google Sheet directly into target Shared Drive subfolder as frozen template
-            copy_body = {
-                'name': template_file_title,
-                'parents': [doc_subfolder_id]
-            }
-            
-            copied_file = drive_service.files().copy(
-                fileId=template_id,
-                body=copy_body,
-                fields='id, webViewLink',
-                supportsAllDrives=True
-            ).execute()
-
-            working_spreadsheet_id = copied_file.get('id')
-            sheet_url = copied_file.get('webViewLink')
-            logger.info(f"Created new dedicated frozen template sheet '{template_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
-
         working_gid = target_gid
         working_title = target_sheet['properties']['title']
 
