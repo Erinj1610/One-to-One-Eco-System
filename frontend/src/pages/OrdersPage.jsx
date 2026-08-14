@@ -2105,32 +2105,73 @@ export default function OrdersPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    // Trigger background Drive vault save & revision creation for order documents
-    try {
-      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-      orderDocTypes.forEach(dType => {
-        fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
-            CLIENT_NAME: clientContact || proj.client || 'Client Name',
-            DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-            DOCUMENT_NUMBER: selectedOrderId,
-            PROPOSAL_NUMBER: selectedOrderId,
-            FEE_NAME: `Order ${selectedOrderId}`,
-            ORDER_NUMBER: selectedOrderId,
-            ORDER_STATUS: orderStatus || 'Draft',
-            CLIENT_COMPANY: clientCompany || '',
-            CLIENT_CONTACT_PERSON: clientContact || '',
-            SUBTOTAL: `R ${totalRetailTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            TOTAL_RETAIL: `R ${(discountedValue * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          })
-        }).catch(e => console.warn(`Background Drive Vault Save warning for ${dType}:`, e));
-      });
-    } catch (vaultErr) {
-      console.warn('Drive Vault Save preparation warning:', vaultErr);
-    }
+    // Trigger background Drive vault save & revision creation for order documents sequentially
+    (async () => {
+      try {
+        const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+        const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+        const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+        const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+        const vatAmount = discountedRetail * 0.15;
+        const finalTotalInclVat = discountedRetail * 1.15;
+
+        const finalItems = activeOrderItems.map((item, idx) => ({
+          index: (idx + 1).toString(),
+          code: item.code || '',
+          oneOneCode: item.oneOneCode || '',
+          type: item.type || '',
+          description: item.description || '',
+          qty: (item.qty || 0).toString(),
+          brand: item.brand || '',
+          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          floor: item.floor || '',
+          area: item.area || '',
+          dimming: item.dimming || 'Non-dim',
+          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          stockStatus: item.stockStatus || 'In Stock',
+          eta: item.eta || '4 weeks'
+        }));
+
+        const vaultTokens = {
+          PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
+          CLIENT_NAME: clientContact || clientCompany || proj.client || 'Client Name',
+          DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+          DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
+          PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
+          FEE_NAME: `Order ${selectedOrderId}`,
+          ORDER_NUMBER: selectedOrderId,
+          ORDER_STATUS: orderStatus || 'Draft',
+          CLIENT_COMPANY: clientCompany || proj.client || 'Private Client',
+          CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+          CLIENT_EMAIL: clientEmail || '',
+          CLIENT_PHONE: clientPhone || '',
+          DELIVERY_ADDRESS: deliveryAddress || '',
+          ONEONE_REP: oneOneRep || 'Martin Döller',
+          PM_NAME: pmName || 'Merlyn Mittins',
+          SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          items: finalItems
+        };
+
+        for (const dType of orderDocTypes) {
+          try {
+            await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(vaultTokens)
+            });
+          } catch (e) {
+            console.warn(`Background Drive Vault Save warning for ${dType}:`, e);
+          }
+        }
+      } catch (vaultErr) {
+        console.warn('Drive Vault Save preparation warning:', vaultErr);
+      }
+    })();
 
     alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
     setSelectedOrderId(null);
