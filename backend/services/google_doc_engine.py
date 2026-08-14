@@ -316,51 +316,61 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as hide_err:
             logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
+        # 3. Read cell grid from Master Template to locate exact token coordinates
         try:
-            val_result = sheets_service.spreadsheets().values().get(
+            template_vals_res = sheets_service.spreadsheets().values().get(
+                spreadsheetId=template_id, range=range_name
+            ).execute()
+            master_rows = template_vals_res.get('values', [])
+            
+            # Read current values from target standalone working sheet
+            working_vals_res = sheets_service.spreadsheets().values().get(
                 spreadsheetId=working_spreadsheet_id, range=range_name
             ).execute()
-            
-            rows = val_result.get('values', [])
-            updated_rows = []
-            has_changes = False
+            working_rows = working_vals_res.get('values', [])
 
-            # Case-insensitive mapping for token lookup
+            # Pad working rows to match master rows dimensions
+            while len(working_rows) < len(master_rows):
+                working_rows.append([])
+            for r_i, m_row in enumerate(master_rows):
+                while len(working_rows[r_i]) < len(m_row):
+                    working_rows[r_i].append("")
+
+            has_changes = False
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
 
-            for row in rows:
-                new_row = []
-                for cell in row:
-                    cell_str = str(cell)
-                    if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
+            for r_i, m_row in enumerate(master_rows):
+                for c_i, m_cell in enumerate(m_row):
+                    m_cell_str = str(m_cell)
+                    if "{{" in m_cell_str or "}}" in m_cell_str or "{?" in m_cell_str:
                         has_changes = True
-                        # First pass: exact token matches
+                        cell_val = m_cell_str
+                        # Replace exact token matches
                         for k, v in tokens.items():
                             if not isinstance(v, (list, dict)):
                                 val_to_sub = str(v) if v is not None else ''
-                                cell_str = cell_str.replace("{{" + str(k) + "}}", val_to_sub)
-                                cell_str = cell_str.replace("{?" + str(k) + "?}", val_to_sub)
+                                cell_val = cell_val.replace("{{" + str(k) + "}}", val_to_sub)
+                                cell_val = cell_val.replace("{?" + str(k) + "?}", val_to_sub)
                         
-                        # Second pass: regex case-insensitive token replacement
+                        # Replace case-insensitive tokens
                         def token_replacer(match):
                             t_name = match.group(1).strip().lower()
                             if t_name in lower_tokens and not isinstance(lower_tokens[t_name], (list, dict)):
                                 return str(lower_tokens[t_name])
                             return ''
 
-                        cell_str = re.sub(r'\{\{([^}]+)\}\}', token_replacer, cell_str)
-                        cell_str = re.sub(r'\{\?([^?]+)\?\}', token_replacer, cell_str)
+                        cell_val = re.sub(r'\{\{([^}]+)\}\}', token_replacer, cell_val)
+                        cell_val = re.sub(r'\{\?([^?]+)\?\}', token_replacer, cell_val)
 
-                    new_row.append(cell_str)
-                updated_rows.append(new_row)
+                        working_rows[r_i][c_i] = cell_val
 
-            if has_changes and updated_rows:
-                logger.info(f"Submitting {len(updated_rows)} token-replaced rows to working Google Sheet...")
+            if has_changes and working_rows:
+                logger.info(f"Dynamically updating {len(working_rows)} token cell coordinates in standalone Google Sheet ({working_spreadsheet_id})...")
                 sheets_service.spreadsheets().values().update(
                     spreadsheetId=working_spreadsheet_id,
                     range=range_name,
                     valueInputOption='USER_ENTERED',
-                    body={'values': updated_rows}
+                    body={'values': working_rows}
                 ).execute()
         except Exception as token_err:
             logger.error(f"Error updating cell tokens in working Google Sheet: {token_err}")
