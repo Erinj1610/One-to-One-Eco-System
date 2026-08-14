@@ -1,5 +1,4 @@
 import os
-import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from google.auth import default
@@ -137,16 +136,19 @@ def merge_google_doc(template_source, tokens, output_pdf_name, credentials_json=
             except: pass
         raise e
 
-drive_lock = threading.Lock()
+import threading
+folder_lock = threading.Lock()
 
 def get_or_create_folder(drive_service, folder_name, parent_id):
     """
-    Finds a folder by name inside parent_id or creates a new one inside Shared Drive (Thread-Safe).
+    Finds a folder by name inside parent_id or creates a new one inside Shared Drive.
+    Thread-safe to prevent parallel duplicate folder creation.
     """
-    with drive_lock:
-        clean_name = str(folder_name).strip() if folder_name else "General"
-        safe_name = clean_name.replace("'", "\\'")
-        query = f"mimeType='application/vnd.google-apps.folder' and name='{safe_name}' and '{parent_id}' in parents and trashed=false"
+    clean_name = str(folder_name).strip() if folder_name else "General"
+    safe_name = clean_name.replace("'", "\\'")
+    query = f"mimeType='application/vnd.google-apps.folder' and name='{safe_name}' and '{parent_id}' in parents and trashed=false"
+    
+    with folder_lock:
         try:
             res = drive_service.files().list(
                 q=query,
@@ -176,8 +178,7 @@ def get_or_create_folder(drive_service, folder_name, parent_id):
         except Exception as e:
             logger.error(f"Failed to create folder '{clean_name}': {e}")
             raise e
-
-ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
+        return parent_id
 
 def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None, is_save_action=False):
     """
@@ -224,13 +225,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         order_num = tokens.get('ORDER_NUMBER') or tokens.get('DOCUMENT_NUMBER') or tokens.get('PROPOSAL_NUMBER')
         if sheet_name == 'DESIGN_FEE_PROPOSAL':
             doc_folder_name = "Design Fee Proposal"
-            template_file_title = f"[Template] Design Fee - {project_name}"
         elif order_num and not str(order_num).endswith('XXX'):
             doc_folder_name = f"Order {order_num}"
-            template_file_title = f"[Template] {doc_folder_name}"
         else:
             doc_folder_name = str(tokens.get('FEE_NAME') or sheet_name or 'Document').replace('_', ' ').strip()
-            template_file_title = f"[Template] {doc_folder_name}"
 
         doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
@@ -258,65 +256,65 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # Lazy Drive Initialization: Create folders and dedicated template copy ONLY on SAVE action!
         if is_save_action:
-            with drive_lock:
-                # Build folder path: Root > Client > Project > Document/Order Folder
-                client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
-                project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
-                doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
+            # Build folder path: Root > Client > Project > Document/Order Folder
+            client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
+            project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+            doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
 
-                # Build Vault Subfolders: Latest & History
-                latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
-                history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
+            # Build Vault Subfolders: Latest & History
+            latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
+            history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
 
-                logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
+            logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
 
-                # Check if a dedicated frozen template sheet already exists for this order/design fee
-                existing_sheet_id = None
-                existing_sheet_url = None
+            # Check if a dedicated frozen template sheet already exists for this order/design fee
+            template_file_title = f"[Template] {doc_label} - {doc_folder_name}"
+            existing_sheet_id = None
+            existing_sheet_url = None
 
-                try:
-                    query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
-                    existing_res = drive_service.files().list(
-                        q=query,
-                        fields="files(id, webViewLink, name)",
-                        supportsAllDrives=True,
-                        includeItemsFromAllDrives=True
-                    ).execute()
-                    existing_files = existing_res.get('files', [])
-                    for ef in existing_files:
-                        if ef.get('name') == template_file_title or template_file_title in ef.get('name', ''):
-                            existing_sheet_id = ef['id']
-                            existing_sheet_url = ef.get('webViewLink')
-                            break
-                    if not existing_sheet_id and existing_files:
-                        existing_sheet_id = existing_files[0]['id']
-                        existing_sheet_url = existing_files[0].get('webViewLink')
-
-                    if existing_sheet_id:
-                        logger.info(f"Found dedicated frozen template sheet '{template_file_title}' ({existing_sheet_id}).")
-                except Exception as search_err:
-                    logger.warn(f"Search for dedicated sheet in subfolder {doc_subfolder_id} failed: {search_err}")
+            try:
+                query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
+                existing_res = drive_service.files().list(
+                    q=query,
+                    fields="files(id, webViewLink, name)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+                existing_files = existing_res.get('files', [])
+                for ef in existing_files:
+                    if ef.get('name') == template_file_title or template_file_title in ef.get('name', ''):
+                        existing_sheet_id = ef['id']
+                        existing_sheet_url = ef.get('webViewLink')
+                        break
+                if not existing_sheet_id and existing_files:
+                    existing_sheet_id = existing_files[0]['id']
+                    existing_sheet_url = existing_files[0].get('webViewLink')
 
                 if existing_sheet_id:
-                    working_spreadsheet_id = existing_sheet_id
-                    sheet_url = existing_sheet_url
-                else:
-                    # Copy current Master Google Sheet directly into target Shared Drive subfolder as pristine frozen template
-                    copy_body = {
-                        'name': template_file_title,
-                        'parents': [doc_subfolder_id]
-                    }
-                    
-                    copied_file = drive_service.files().copy(
-                        fileId=template_id,
-                        body=copy_body,
-                        fields='id, webViewLink',
-                        supportsAllDrives=True
-                    ).execute()
+                    logger.info(f"Found dedicated frozen template sheet '{template_file_title}' ({existing_sheet_id}).")
+            except Exception as search_err:
+                logger.warn(f"Search for dedicated sheet in subfolder {doc_subfolder_id} failed: {search_err}")
 
-                    working_spreadsheet_id = copied_file.get('id')
-                    sheet_url = copied_file.get('webViewLink')
-                    logger.info(f"Created new dedicated frozen template sheet '{template_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+            if existing_sheet_id:
+                working_spreadsheet_id = existing_sheet_id
+                sheet_url = existing_sheet_url
+            else:
+                # Copy current Master Google Sheet directly into target Shared Drive subfolder as pristine frozen template
+                copy_body = {
+                    'name': template_file_title,
+                    'parents': [doc_subfolder_id]
+                }
+                
+                copied_file = drive_service.files().copy(
+                    fileId=template_id,
+                    body=copy_body,
+                    fields='id, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+
+                working_spreadsheet_id = copied_file.get('id')
+                sheet_url = copied_file.get('webViewLink')
+                logger.info(f"Created new dedicated frozen template sheet '{template_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
 
         import time
         working_gid = target_gid
