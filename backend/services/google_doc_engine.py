@@ -511,7 +511,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         # Execute PDF Revision Vault Management ONLY when is_save_action is True
         if is_save_action:
             try:
-                # 1. Search for existing PDFs in Latest/
+                # 1. Search for existing PDF of THIS specific document type in Latest/
+                doc_prefix = f"{doc_label} - {doc_folder_name}"
                 latest_query = f"'{latest_folder_id}' in parents and mimeType='application/pdf' and trashed=false"
                 latest_res = drive_service.files().list(
                     q=latest_query,
@@ -519,11 +520,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     supportsAllDrives=True,
                     includeItemsFromAllDrives=True
                 ).execute()
-                existing_latest_files = latest_res.get('files', [])
-
-                rev_count = len(existing_latest_files) + 1
+                all_latest_files = latest_res.get('files', [])
                 
-                # Check history folder to compute exact revision number
+                # Match files specifically for this document type (e.g. Quotation vs Deposit Invoice)
+                matching_latest_files = [f for f in all_latest_files if f.get('name', '').startswith(doc_label) or doc_label in f.get('name', '')]
+
+                # 2. Search history for exact revision count of THIS specific document type
                 history_query = f"'{history_folder_id}' in parents and mimeType='application/pdf' and trashed=false"
                 history_res = drive_service.files().list(
                     q=history_query,
@@ -531,14 +533,16 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     supportsAllDrives=True,
                     includeItemsFromAllDrives=True
                 ).execute()
-                hist_files = history_res.get('files', [])
-                total_revisions = len(existing_latest_files) + len(hist_files) + 1
+                all_hist_files = history_res.get('files', [])
+                matching_hist_files = [f for f in all_hist_files if f.get('name', '').startswith(doc_label) or doc_label in f.get('name', '')]
 
-                # Move previous PDF from Latest to History with timestamped name
-                for old_f in existing_latest_files:
+                doc_revision_num = len(matching_latest_files) + len(matching_hist_files) + 1
+
+                # Move ONLY previous revision of THIS document type from Latest to History
+                for old_f in matching_latest_files:
                     old_id = old_f['id']
                     timestamp_str = time.strftime('%Y-%m-%d %H-%M')
-                    archive_name = f"{doc_label} - {doc_folder_name} - Rev {total_revisions - 1} ({timestamp_str}).pdf"
+                    archive_name = f"{doc_label} - {doc_folder_name} - Rev {doc_revision_num - 1} ({timestamp_str}).pdf"
                     
                     drive_service.files().update(
                         fileId=old_id,
@@ -551,7 +555,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     logger.info(f"Moved previous revision '{archive_name}' to History folder.")
 
                 # Save new PDF into Latest/
-                new_pdf_name = f"{doc_label} - {doc_folder_name} - Rev {total_revisions}.pdf"
+                new_pdf_name = f"{doc_label} - {doc_folder_name} - Rev {doc_revision_num}.pdf"
                 pdf_metadata = {
                     'name': new_pdf_name,
                     'mimeType': 'application/pdf',

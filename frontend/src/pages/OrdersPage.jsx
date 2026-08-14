@@ -2023,10 +2023,14 @@ export default function OrdersPage() {
     setActiveOrderItems(prev => [...prev, newCreditItem]);
   };
 
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
   // Save the spreadsheet and update the global store context
-  const handleSaveOrderSpreadsheet = () => {
+  const handleSaveOrderSpreadsheet = async () => {
+    if (isSavingOrder) return;
     const proj = projects[selectedProjectKey];
     if (!proj) return;
+    setIsSavingOrder(true);
 
     // Calculate aggregated order totals from items list
     const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
@@ -2186,6 +2190,7 @@ export default function OrdersPage() {
       } catch (vaultErr) {
         alert(`Quotation Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
       } finally {
+        setIsSavingOrder(false);
         setSelectedOrderId(null);
       }
     })();
@@ -2905,9 +2910,10 @@ export default function OrdersPage() {
                 <button 
                   className="btn btn-primary btn-sm" 
                   onClick={handleSaveOrderSpreadsheet}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  disabled={isSavingOrder}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: isSavingOrder ? 0.7 : 1, cursor: isSavingOrder ? 'not-allowed' : 'pointer' }}
                 >
-                  <Save size={14} /> Save & Sync BOQ
+                  <Save size={14} /> {isSavingOrder ? '⏳ Syncing Drive Vault...' : 'Save & Sync BOQ'}
                 </button>
               </div>
             </div>
