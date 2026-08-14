@@ -242,26 +242,50 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Copy Master Google Sheet directly into target Shared Drive subfolder
+        # Check if a standalone Google Sheet file already exists for this order/design fee in the subfolder
         import time
-        file_title = f"{doc_label} - {doc_folder_name} - {time.strftime('%Y-%m-%d')}"
-        copy_body = {
-            'name': file_title,
-            'parents': [doc_subfolder_id]
-        }
-        
-        copied_file = drive_service.files().copy(
-            fileId=template_id,
-            body=copy_body,
-            fields='id, webViewLink',
-            supportsAllDrives=True
-        ).execute()
+        file_title = f"{doc_label} - {doc_folder_name}"
+        existing_sheet_id = None
+        existing_sheet_url = None
 
-        cloned_id = copied_file.get('id')
-        sheet_url = copied_file.get('webViewLink')
-        logger.info(f"Successfully created standalone Google Sheet '{file_title}' ({cloned_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+        try:
+            query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
+            existing_res = drive_service.files().list(
+                q=query,
+                fields="files(id, webViewLink, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+            existing_files = existing_res.get('files', [])
+            if existing_files:
+                existing_sheet_id = existing_files[0]['id']
+                existing_sheet_url = existing_files[0].get('webViewLink')
+                logger.info(f"Found existing isolated Google Sheet '{existing_files[0]['name']}' ({existing_sheet_id}) in subfolder {doc_subfolder_id}. Re-syncing data into existing file...")
+        except Exception as search_err:
+            logger.warn(f"Search for existing sheet in subfolder {doc_subfolder_id} failed: {search_err}")
 
-        working_spreadsheet_id = cloned_id
+        if existing_sheet_id:
+            working_spreadsheet_id = existing_sheet_id
+            sheet_url = existing_sheet_url
+        else:
+            # First time creation: Copy current Master Google Sheet directly into target Shared Drive subfolder
+            full_file_title = f"{file_title} - {time.strftime('%Y-%m-%d')}"
+            copy_body = {
+                'name': full_file_title,
+                'parents': [doc_subfolder_id]
+            }
+            
+            copied_file = drive_service.files().copy(
+                fileId=template_id,
+                body=copy_body,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+
+            working_spreadsheet_id = copied_file.get('id')
+            sheet_url = copied_file.get('webViewLink')
+            logger.info(f"Created new isolated Google Sheet '{full_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+
         working_gid = target_gid
         working_title = target_sheet['properties']['title']
 
