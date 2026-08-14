@@ -362,43 +362,63 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         # Extract original rich text formatting runs
                         orig_runs = c_obj.get('textFormatRuns', [])
                         
-                        # Build token replacement map
+                        # Track character index replacements for accurate format run shifting
+                        replacements = []
+                        
+                        # Find all token occurrences and their ranges in original cell string
+                        token_matches = list(re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str))
+                        
                         new_str = cell_str
-                        # First pass: exact tokens
-                        for k, v in tokens.items():
-                            if not isinstance(v, (list, dict)):
-                                val_to_sub = str(v) if v is not None else ''
-                                new_str = new_str.replace("{{" + str(k) + "}}", val_to_sub)
-                                new_str = new_str.replace("{?" + str(k) + "?}", val_to_sub)
+                        offset = 0
+                        
+                        for m in token_matches:
+                            raw_match = m.group(0)
+                            token_key = (m.group(1) or m.group(2) or '').strip()
+                            token_key_lower = token_key.lower()
+                            
+                            sub_val = ''
+                            if token_key in tokens and not isinstance(tokens[token_key], (list, dict)):
+                                sub_val = str(tokens[token_key]) if tokens[token_key] is not None else ''
+                            elif token_key_lower in lower_tokens and not isinstance(lower_tokens[token_key_lower], (list, dict)):
+                                sub_val = str(lower_tokens[token_key_lower]) if lower_tokens[token_key_lower] is not None else ''
+                            
+                            match_start = m.start() + offset
+                            old_len = len(raw_match)
+                            new_len = len(sub_val)
+                            
+                            new_str = new_str[:match_start] + sub_val + new_str[match_start + old_len:]
+                            delta = new_len - old_len
+                            offset += delta
+                            replacements.append((m.start(), old_len, delta))
 
-                        # Second pass: regex tokens
-                        def token_replacer(match):
-                            t_name = match.group(1).strip().lower()
-                            if t_name in lower_tokens and not isinstance(lower_tokens[t_name], (list, dict)):
-                                return str(lower_tokens[t_name])
-                            return ''
-
-                        new_str = re.sub(r'\{\{([^}]+)\}\}', token_replacer, new_str)
-                        new_str = re.sub(r'\{\?([^?]+)\?\}', token_replacer, new_str)
-
-                        # Remap rich text runs or preserve cell font formatting
+                        # Build adjusted rich text format runs
                         new_cell_data = {
                             'userEnteredValue': {'stringValue': new_str}
                         }
 
                         if orig_runs:
-                            # Re-assign format runs proportionally or inherit bold styling
                             new_runs = []
                             for run in orig_runs:
-                                start_idx = run.get('startIndex', 0)
+                                orig_start = run.get('startIndex', 0)
                                 format_info = run.get('format', {})
-                                # Scale start index to new string length
-                                if start_idx < len(new_str):
-                                    new_runs.append({'startIndex': start_idx, 'format': format_info})
+                                
+                                # Shift startIndex based on cumulative character deltas preceding orig_start
+                                shifted_start = orig_start
+                                for rep_start, rep_old_len, rep_delta in replacements:
+                                    if orig_start > rep_start:
+                                        if orig_start >= rep_start + rep_old_len:
+                                            shifted_start += rep_delta
+                                        else:
+                                            # If run started inside the token, align to replacement start
+                                            shifted_start = rep_start
+                                
+                                shifted_start = max(0, min(shifted_start, len(new_str)))
+                                new_runs.append({'startIndex': shifted_start, 'format': format_info})
+                            
                             if new_runs:
                                 new_cell_data['textFormatRuns'] = new_runs
 
-                        # Also preserve overall cell formatting if specified
+                        # Preserve overall cell formatting
                         if 'userEnteredFormat' in c_obj:
                             new_cell_data['userEnteredFormat'] = c_obj['userEnteredFormat']
 
