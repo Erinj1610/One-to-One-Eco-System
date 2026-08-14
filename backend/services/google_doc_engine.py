@@ -394,64 +394,78 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             # Identify Column A directives across template rows
             parsed_rows = []
+            dynamic_directives = ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_HEADER]', '[AREA_ROW]', '[AREA_TABLE_HEAD]', '[ITEM_ROW]', '[AREA_FOOTER]', '[FLOOR_FOOTER]')
+            
+            first_dyn_idx = None
             for r_i, r_obj in enumerate(row_data):
                 cell_objs = r_obj.get('values', [])
                 col_a_val = ''
                 if cell_objs and len(cell_objs) > 0:
                     c0 = cell_objs[0]
                     col_a_val = str(c0.get('formattedValue', '') or c0.get('userEnteredValue', {}).get('stringValue', '')).strip().upper()
+                
+                if col_a_val in dynamic_directives and first_dyn_idx is None:
+                    first_dyn_idx = r_i
+                
                 parsed_rows.append((r_i, col_a_val, cell_objs))
 
             # Build final expanded row definitions
             expanded_rows = []
-            
+            dynamic_processed = False
+
             for r_i, directive, cell_objs in parsed_rows:
-                if directive in ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_FOOTER]', '[FLOOR_FOOTER]', '[ITEM_ROW]'):
-                    # Handled dynamically below when processing grouped_floors
-                    continue
-                else:
-                    # [FIXED] or unlabelled row -> single copy
-                    expanded_rows.append((directive, cell_objs, {}))
+                if directive in dynamic_directives:
+                    if not dynamic_processed and (first_dyn_idx is None or r_i == first_dyn_idx):
+                        dynamic_processed = True
+                        
+                        # Find template row definitions
+                        fl_header_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_HEADER]'), None)
+                        fl_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_TABLE_HEAD]'), None)
+                        area_header_cells = next((cells for _, d, cells in parsed_rows if d in ('[AREA_HEADER]', '[AREA_ROW]')), None)
+                        area_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_TABLE_HEAD]'), None)
+                        area_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_FOOTER]'), None)
+                        fl_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_FOOTER]'), None)
+                        item_row_cells = next((cells for _, d, cells in parsed_rows if d == '[ITEM_ROW]'), None)
 
-                # When encountering the dynamic block start, inject all grouped floors & items
-                if r_i == 8 and grouped_floors:
-                    # Find template row definitions
-                    fl_header_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_HEADER]'), None)
-                    table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_TABLE_HEAD]'), None)
-                    area_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_FOOTER]'), None)
-                    fl_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_FOOTER]'), None)
-                    item_row_cells = next((cells for _, d, cells in parsed_rows if d == '[ITEM_ROW]'), None)
+                        for fl_name, areas in grouped_floors.items():
+                            # Calculate floor total retail
+                            fl_items = [it for ar_items in areas.values() for it in ar_items]
+                            fl_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('totalRetail', it.get('retail', 0))).replace('R', '').replace(',', '').strip() or 0)) for it in fl_items)
+                            fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
 
-                    for fl_name, areas in grouped_floors.items():
-                        # Calculate floor total retail
-                        fl_items = [it for ar_items in areas.values() for it in ar_items]
-                        fl_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('unitRetail', 0)).replace('R', '').replace(',', '').strip() or 0)) for it in fl_items)
-                        fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
+                            fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
-                        fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
+                            if fl_header_cells:
+                                expanded_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
+                            if fl_table_head_cells:
+                                expanded_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
 
-                        if fl_header_cells:
-                            expanded_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
-                        if table_head_cells:
-                            expanded_rows.append(('[FLOOR_TABLE_HEAD]', table_head_cells, fl_ctx))
+                            for ar_name, ar_items in areas.items():
+                                ar_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('totalRetail', it.get('retail', 0))).replace('R', '').replace(',', '').strip() or 0)) for it in ar_items)
+                                ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
+                                ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
-                        for ar_name, ar_items in areas.items():
-                            ar_subtotal_num = sum((float(it.get('qty', 1)) * float(str(it.get('unitRetail', 0)).replace('R', '').replace(',', '').strip() or 0)) for it in ar_items)
-                            ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
-                            ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
+                                if area_header_cells:
+                                    expanded_rows.append(('[AREA_HEADER]', area_header_cells, ar_ctx))
+                                if area_table_head_cells:
+                                    expanded_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
 
-                            for item_obj in ar_items:
-                                item_ctx = {**ar_ctx}
-                                for k, v in item_obj.items():
-                                    item_ctx[k] = str(v) if v is not None else ''
+                                # IF ITEM_ROW is present in template (e.g. Detailed BOQ), repeat for every item!
                                 if item_row_cells:
-                                    expanded_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
+                                    for item_obj in ar_items:
+                                        item_ctx = {**ar_ctx}
+                                        for k, v in item_obj.items():
+                                            item_ctx[k] = str(v) if v is not None else ''
+                                        expanded_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
 
-                            if area_footer_cells:
-                                expanded_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
+                                if area_footer_cells:
+                                    expanded_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
 
-                        if fl_footer_cells:
-                            expanded_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+                            if fl_footer_cells:
+                                expanded_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+                else:
+                    # [FIXED] or unlabelled static row -> single copy
+                    expanded_rows.append((directive, cell_objs, {}))
 
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
             update_cell_requests = []
