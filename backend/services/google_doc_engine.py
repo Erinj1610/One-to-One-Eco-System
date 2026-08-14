@@ -334,53 +334,96 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as hide_err:
             logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
-        # Read cell grid from temporary tab, perform token replacement, and update temporary tab
-        temp_range_name = f"'{dup_title}'!A1:Z300"
+        # Read full cell metadata with rich text formatting runs from temporary tab
         try:
-            temp_vals_res = sheets_service.spreadsheets().values().get(
-                spreadsheetId=working_spreadsheet_id, range=temp_range_name
+            sp_data = sheets_service.spreadsheets().get(
+                spreadsheetId=working_spreadsheet_id,
+                ranges=[f"'{dup_title}'!A1:Z300"],
+                includeGridData=True
             ).execute()
-            temp_rows = temp_vals_res.get('values', [])
             
-            has_changes = False
+            grid_data = sp_data['sheets'][0]['data'][0]
+            row_data = grid_data.get('rowData', [])
+            
             import re
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
+            update_cell_requests = []
 
-            for r_i, row in enumerate(temp_rows):
-                for c_i, cell in enumerate(row):
-                    cell_str = str(cell)
+            for r_i, r_obj in enumerate(row_data):
+                cell_objs = r_obj.get('values', [])
+                for c_i, c_obj in enumerate(cell_objs):
+                    user_val = c_obj.get('userEnteredValue', {})
+                    formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                    if not formatted_val:
+                        continue
+                    
+                    cell_str = str(formatted_val)
                     if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
-                        has_changes = True
-                        cell_val = cell_str
-                        # Replace exact token matches
+                        # Extract original rich text formatting runs
+                        orig_runs = c_obj.get('textFormatRuns', [])
+                        
+                        # Build token replacement map
+                        new_str = cell_str
+                        # First pass: exact tokens
                         for k, v in tokens.items():
                             if not isinstance(v, (list, dict)):
                                 val_to_sub = str(v) if v is not None else ''
-                                cell_val = cell_val.replace("{{" + str(k) + "}}", val_to_sub)
-                                cell_val = cell_val.replace("{?" + str(k) + "?}", val_to_sub)
-                        
-                        # Replace case-insensitive tokens
+                                new_str = new_str.replace("{{" + str(k) + "}}", val_to_sub)
+                                new_str = new_str.replace("{?" + str(k) + "?}", val_to_sub)
+
+                        # Second pass: regex tokens
                         def token_replacer(match):
                             t_name = match.group(1).strip().lower()
                             if t_name in lower_tokens and not isinstance(lower_tokens[t_name], (list, dict)):
                                 return str(lower_tokens[t_name])
                             return ''
 
-                        cell_val = re.sub(r'\{\{([^}]+)\}\}', token_replacer, cell_val)
-                        cell_val = re.sub(r'\{\?([^?]+)\?\}', token_replacer, cell_val)
+                        new_str = re.sub(r'\{\{([^}]+)\}\}', token_replacer, new_str)
+                        new_str = re.sub(r'\{\?([^?]+)\?\}', token_replacer, new_str)
 
-                        temp_rows[r_i][c_i] = cell_val
+                        # Remap rich text runs or preserve cell font formatting
+                        new_cell_data = {
+                            'userEnteredValue': {'stringValue': new_str}
+                        }
 
-            if has_changes and temp_rows:
-                logger.info(f"Populating tokens on temporary tab '{dup_title}' in dedicated Google Sheet ({working_spreadsheet_id})...")
-                sheets_service.spreadsheets().values().update(
+                        if orig_runs:
+                            # Re-assign format runs proportionally or inherit bold styling
+                            new_runs = []
+                            for run in orig_runs:
+                                start_idx = run.get('startIndex', 0)
+                                format_info = run.get('format', {})
+                                # Scale start index to new string length
+                                if start_idx < len(new_str):
+                                    new_runs.append({'startIndex': start_idx, 'format': format_info})
+                            if new_runs:
+                                new_cell_data['textFormatRuns'] = new_runs
+
+                        # Also preserve overall cell formatting if specified
+                        if 'userEnteredFormat' in c_obj:
+                            new_cell_data['userEnteredFormat'] = c_obj['userEnteredFormat']
+
+                        update_cell_requests.append({
+                            'updateCells': {
+                                'rows': [{
+                                    'values': [new_cell_data]
+                                }],
+                                'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
+                                'start': {
+                                    'sheetId': temp_tab_gid,
+                                    'rowIndex': r_i,
+                                    'columnIndex': c_i
+                                }
+                            }
+                        })
+
+            if update_cell_requests:
+                logger.info(f"Submitting {len(update_cell_requests)} rich-text bold-preserving cell updates to temporary tab '{dup_title}'...")
+                sheets_service.spreadsheets().batchUpdate(
                     spreadsheetId=working_spreadsheet_id,
-                    range=temp_range_name,
-                    valueInputOption='USER_ENTERED',
-                    body={'values': temp_rows}
+                    body={'requests': update_cell_requests}
                 ).execute()
         except Exception as token_err:
-            logger.error(f"Error updating cell tokens in temporary working tab: {token_err}")
+            logger.error(f"Error updating rich text cell tokens in temporary working tab: {token_err}")
 
         # Render PDF stream from the temporary tab
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
