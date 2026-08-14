@@ -2105,7 +2105,7 @@ export default function OrdersPage() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    // Trigger background Drive vault save & revision creation for order documents sequentially
+    // Trigger Drive vault save with visible feedback
     (async () => {
       try {
         const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
@@ -2157,24 +2157,38 @@ export default function OrdersPage() {
           items: finalItems
         };
 
+        let successCount = 0;
+        let errors = [];
+
         for (const dType of orderDocTypes) {
           try {
-            await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+            const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(vaultTokens)
             });
+            if (res.ok) {
+              successCount++;
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              errors.push(`${dType}: ${errData.detail || res.statusText || 'Failed'}`);
+            }
           } catch (e) {
-            console.warn(`Background Drive Vault Save warning for ${dType}:`, e);
+            errors.push(`${dType}: ${e.message}`);
           }
         }
+
+        if (errors.length > 0) {
+          alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n\n⚠️ Drive Vault Save Details:\n` + errors.join('\n'));
+        } else {
+          alert(`Quotation Workspace Brain & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+        }
       } catch (vaultErr) {
-        console.warn('Drive Vault Save preparation warning:', vaultErr);
+        alert(`Quotation Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
+      } finally {
+        setSelectedOrderId(null);
       }
     })();
-
-    alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
-    setSelectedOrderId(null);
   };
 
   // Create a brand-new Purchase Order / Quotation
