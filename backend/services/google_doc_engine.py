@@ -376,7 +376,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             f.write(pdf_bytes)
 
         # 5. Retain permanent project Google Sheet on Drive or cleanup temp tab if fallback was used
-        if temp_tab_gid:
+        if 'temp_tab_gid' in locals() and temp_tab_gid:
             try:
                 sheets_service.spreadsheets().batchUpdate(
                     spreadsheetId=template_id,
