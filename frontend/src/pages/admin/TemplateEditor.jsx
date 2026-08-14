@@ -1027,61 +1027,11 @@ export default function TemplateHub() {
         </div>
       </div>
 
-      {/* MASTER GOOGLE SHEET URL INPUT CARD */}
-      <div className="card" style={{ marginBottom: '20px', padding: '16px 20px', border: '1px solid var(--border-info)', background: 'rgba(59, 130, 246, 0.04)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '300px' }}>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>🔗 Live Master Google Sheet Link</span>
-              <span className="badge b-success" style={{ fontSize: '10px' }}>Recommended 1:1 Fonts & Formatting</span>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Paste your single Master Google Sheet URL containing your template tabs. The portal reads your live fonts, colors, and bold weights without modifying your master sheet.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '10px', flex: 1, maxWidth: '600px', alignItems: 'center' }}>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="https://docs.google.com/spreadsheets/d/1.../edit"
-              value={gsheetUrl}
-              onChange={e => setGsheetUrl(e.target.value)}
-              style={{ fontSize: '12.5px', height: '38px', flex: 1 }}
-            />
-            <button 
-              className="btn btn-primary" 
-              onClick={handleSaveGsheetUrl} 
-              disabled={savingGsheet}
-              style={{ height: '38px', padding: '0 16px', fontWeight: 600, whiteSpace: 'nowrap' }}
-            >
-              {savingGsheet ? 'Saving...' : 'Save Google Sheet Link'}
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: '20px', alignItems: 'start' }}>
         
         {/* Document Left Selector */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '16px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Global Costings</div>
-          <button
-            onClick={() => setSelectedDoc('DESIGN_FEE_COSTINGS')}
-            className="btn btn-ghost"
-            style={{
-              textAlign: 'left', padding: '10px 12px', borderRadius: '6px',
-              width: '100%', justifyContent: 'flex-start', fontSize: '12.5px',
-              border: '1px solid',
-              borderColor: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'var(--border-info)' : 'transparent',
-              background: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-              color: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 'var(--text-info)' : 'var(--text-secondary)',
-              fontWeight: selectedDoc === 'DESIGN_FEE_COSTINGS' ? 600 : 500
-            }}
-          >
-            💰 Design Fee Costings Matrix
-          </button>
-
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '12px 0 6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Document Types</span>
           </div>
           {Object.values(docTypesList).map(doc => (
