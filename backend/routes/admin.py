@@ -333,12 +333,13 @@ import tempfile
 from fastapi import Body
 
 @router.post("/generate/{doc_type}")
-def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data: dict = Body(...), db: Session = Depends(get_db)):
+def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_save_action: bool = False, data: dict = Body(...), db: Session = Depends(get_db)):
     """
     100% Google Sheets Document Generator Engine.
     Uses Master Google Sheet Workbook URL exclusively to render documents as native PDFs.
+    Pass is_save_action=true to trigger Drive vault revision archival.
     """
-    print(f"DEBUG: Generating {doc_type} via Master Google Sheets Engine with tokens: {list(data.keys())}")
+    print(f"DEBUG: Generating {doc_type} via Master Google Sheets Engine with tokens: {list(data.keys())} (is_save_action={is_save_action})")
     
     master_gsheet_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
     master_gsheet_url = (master_gsheet_config.config_json or {}).get("url", "").strip() if master_gsheet_config else ""
@@ -359,7 +360,8 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', data
             tokens=data,
             sheet_name=doc_type,
             output_pdf_name=f"{doc_type.lower()}.pdf",
-            credentials_json=credentials_json
+            credentials_json=credentials_json,
+            is_save_action=is_save_action
         )
         return FileResponse(
             pdf_path,

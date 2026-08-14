@@ -175,13 +175,15 @@ def get_or_create_folder(drive_service, folder_name, parent_id):
         logger.error(f"Failed to create folder '{clean_name}': {e}")
         return parent_id
 
-def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None):
+def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="proposal.pdf", credentials_json=None, is_save_action=False):
     """
-    1. Locates/Creates Client Folder > Project Folder under Root Drive Folder.
-    2. Copies Master Google Sheet Workbook into the Project Folder.
-    3. Replaces {{TOKENS}} in the target sheet tab using Google Sheets API.
-    4. Hides Column A ([FIXED]).
-    5. Exports the target sheet tab as PDF and retains the permanent live Google Sheet.
+    Hybrid Dedicated Template + PDF Revision Vault System:
+    1. Locates/Creates Root > Client > Project > Order/Design Fee Folder.
+    2. Ensures subfolders 'Latest' and 'History' exist.
+    3. Manages dedicated frozen template copy '[Template] {doc_folder_name}'.
+    4. Updates values dynamically on target standalone sheet.
+    5. On Save: Moves previous PDF from Latest to History (timestamped) and saves new PDF to Latest.
+    6. On Preview: Returns PDF stream read-only without modifying Google Drive files/revisions.
     """
     SCOPES_SHEETS = [
         'https://www.googleapis.com/auth/spreadsheets',
@@ -221,6 +223,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
         doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
 
+        # Build Vault Subfolders: Latest & History
+        latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
+        history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
+
         logger.info(f"Target Google Drive Folder Path: Root > Client='{client_name}' > Project='{project_name}' > DocFolder='{doc_folder_name}' ({doc_subfolder_id})")
 
         # Get spreadsheet metadata directly to find target sheet tab GID
@@ -242,9 +248,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
 
-        # Check if a standalone Google Sheet file already exists for this order/design fee in the subfolder
+        # Check if a dedicated frozen template sheet already exists for this order/design fee
         import time
-        file_title = f"{doc_label} - {doc_folder_name}"
+        template_file_title = f"[Template] {doc_label} - {doc_folder_name}"
         existing_sheet_id = None
         existing_sheet_url = None
 
@@ -260,18 +266,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             if existing_files:
                 existing_sheet_id = existing_files[0]['id']
                 existing_sheet_url = existing_files[0].get('webViewLink')
-                logger.info(f"Found existing isolated Google Sheet '{existing_files[0]['name']}' ({existing_sheet_id}) in subfolder {doc_subfolder_id}. Re-syncing data into existing file...")
+                logger.info(f"Found dedicated frozen template sheet '{existing_files[0]['name']}' ({existing_sheet_id}).")
         except Exception as search_err:
-            logger.warn(f"Search for existing sheet in subfolder {doc_subfolder_id} failed: {search_err}")
+            logger.warn(f"Search for dedicated sheet in subfolder {doc_subfolder_id} failed: {search_err}")
 
         if existing_sheet_id:
             working_spreadsheet_id = existing_sheet_id
             sheet_url = existing_sheet_url
         else:
-            # First time creation: Copy current Master Google Sheet directly into target Shared Drive subfolder
-            full_file_title = f"{file_title} - {time.strftime('%Y-%m-%d')}"
+            # Day 1 Creation: Copy current Master Google Sheet directly into target Shared Drive subfolder as frozen template
             copy_body = {
-                'name': full_file_title,
+                'name': template_file_title,
                 'parents': [doc_subfolder_id]
             }
             
@@ -284,14 +289,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             working_spreadsheet_id = copied_file.get('id')
             sheet_url = copied_file.get('webViewLink')
-            logger.info(f"Created new isolated Google Sheet '{full_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
+            logger.info(f"Created new dedicated frozen template sheet '{template_file_title}' ({working_spreadsheet_id}) inside Shared Drive subfolder {doc_subfolder_id}")
 
         working_gid = target_gid
         working_title = target_sheet['properties']['title']
 
-        # 3. Hide Column A in working Google Sheet and perform token substitution
-        range_name = f"'{working_title}'!A1:Z300"
-        
         # Hide column A (dimensionIndex 0) on the target working tab
         try:
             sheets_service.spreadsheets().batchUpdate(
@@ -316,7 +318,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as hide_err:
             logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
         
-        # 3. Read cell grid from Master Template to locate exact token coordinates
+        # Read cell grid from Master Template to locate exact token coordinates
+        range_name = f"'{working_title}'!A1:Z300"
         try:
             template_vals_res = sheets_service.spreadsheets().values().get(
                 spreadsheetId=template_id, range=range_name
@@ -337,6 +340,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     working_rows[r_i].append("")
 
             has_changes = False
+            import re
             lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
 
             for r_i, m_row in enumerate(master_rows):
@@ -365,7 +369,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         working_rows[r_i][c_i] = cell_val
 
             if has_changes and working_rows:
-                logger.info(f"Dynamically updating {len(working_rows)} token cell coordinates in standalone Google Sheet ({working_spreadsheet_id})...")
+                logger.info(f"Dynamically updating {len(working_rows)} token cell coordinates in dedicated Google Sheet ({working_spreadsheet_id})...")
                 sheets_service.spreadsheets().values().update(
                     spreadsheetId=working_spreadsheet_id,
                     range=range_name,
@@ -375,7 +379,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as token_err:
             logger.error(f"Error updating cell tokens in working Google Sheet: {token_err}")
 
-        # 4. Export target tab as full-width PDF starting from Column B (c1=1, excluding Column A)
+        # Render PDF stream
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         pdf_bytes = None
 
@@ -390,42 +394,83 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     logger.info(f"Successfully exported PDF from working tab via {url}")
                     pdf_bytes = res.content
                     break
-                else:
-                    logger.warn(f"Export URL returned status {res.status_code}")
             except Exception as url_err:
                 logger.warn(f"Failed fetching PDF export URL: {url_err}")
 
-        # Fallback to export_media if URL export failed
         if not pdf_bytes:
-            try:
-                logger.info(f"Attempting drive_service export_media for {working_spreadsheet_id}...")
-                export_req = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
-                pdf_bytes = export_req.execute()
-            except Exception as drive_exp_err:
-                logger.error(f"drive_service.files().export_media failed: {drive_exp_err}")
+            export_req = drive_service.files().export_media(fileId=working_spreadsheet_id, mimeType='application/pdf')
+            pdf_bytes = export_req.execute()
 
-        # Save to temp file
+        # Save to local temp file for UI preview/return
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
         with open(tmp.name, 'wb') as f:
             f.write(pdf_bytes)
 
-        # 5. Retain permanent project Google Sheet on Drive or cleanup temp tab if fallback was used
-        if 'temp_tab_gid' in locals() and temp_tab_gid:
+        # Execute PDF Revision Vault Management ONLY when is_save_action is True
+        if is_save_action:
             try:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=template_id,
-                    body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+                # 1. Search for existing PDFs in Latest/
+                latest_query = f"'{latest_folder_id}' in parents and mimeType='application/pdf' and trashed=false"
+                latest_res = drive_service.files().list(
+                    q=latest_query,
+                    fields="files(id, name, parents)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
                 ).execute()
-            except Exception as del_err:
-                logger.warn(f"Failed to cleanup temp tab: {del_err}")
+                existing_latest_files = latest_res.get('files', [])
 
-        logger.info(f"Google Sheet PDF generated successfully: '{file_title}' (URL: {sheet_url})")
+                rev_count = len(existing_latest_files) + 1
+                
+                # Check history folder to compute exact revision number
+                history_query = f"'{history_folder_id}' in parents and mimeType='application/pdf' and trashed=false"
+                history_res = drive_service.files().list(
+                    q=history_query,
+                    fields="files(id, name)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+                hist_files = history_res.get('files', [])
+                total_revisions = len(existing_latest_files) + len(hist_files) + 1
 
+                # Move previous PDF from Latest to History with timestamped name
+                for old_f in existing_latest_files:
+                    old_id = old_f['id']
+                    timestamp_str = time.strftime('%Y-%m-%d %H-%M')
+                    archive_name = f"{doc_label} - {doc_folder_name} - Rev {total_revisions - 1} ({timestamp_str}).pdf"
+                    
+                    drive_service.files().update(
+                        fileId=old_id,
+                        addParents=history_folder_id,
+                        removeParents=latest_folder_id,
+                        body={'name': archive_name},
+                        fields='id, parents, name',
+                        supportsAllDrives=True
+                    ).execute()
+                    logger.info(f"Moved previous revision '{archive_name}' to History folder.")
+
+                # Save new PDF into Latest/
+                new_pdf_name = f"{doc_label} - {doc_folder_name} - Rev {total_revisions}.pdf"
+                pdf_metadata = {
+                    'name': new_pdf_name,
+                    'mimeType': 'application/pdf',
+                    'parents': [latest_folder_id]
+                }
+                
+                from googleapiclient.http import MediaFileUpload
+                media = MediaFileUpload(tmp.name, mimetype='application/pdf')
+                uploaded_pdf = drive_service.files().create(
+                    body=pdf_metadata,
+                    media_body=media,
+                    fields='id, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+                logger.info(f"Saved new PDF '{new_pdf_name}' ({uploaded_pdf.get('id')}) into Latest folder.")
+            except Exception as vault_err:
+                logger.error(f"Error managing PDF Vault in Google Drive: {vault_err}")
+
+        logger.info(f"Google Sheet PDF operation complete: '{doc_folder_name}' (SaveAction: {is_save_action})")
         return tmp.name, working_spreadsheet_id, sheet_url
 
     except Exception as e:
         logger.error(f"Google Sheet Merge Error: {e}")
-        if 'cloned_id' in locals() and cloned_id:
-            try: drive_service.files().delete(fileId=cloned_id).execute()
-            except: pass
         raise e

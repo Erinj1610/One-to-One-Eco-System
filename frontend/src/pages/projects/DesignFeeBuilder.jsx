@@ -947,7 +947,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
               </button>
               <button
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#ecfdf5', border: '1.5px solid #059669', color: '#059669', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}
-                onClick={() => {
+                onClick={async () => {
                   if (updateFee) {
                     updateFee({
                       feeName,
@@ -982,6 +982,27 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       deposit: depositValue,
                       fittings: archSubtotalRaw
                     });
+                  }
+                  // Trigger background Drive vault save & revision creation
+                  try {
+                    const tokens = buildTokens({
+                      feeName, projectName, companyName, contactPerson, proposalType, quoteBy,
+                      sigConsult, conceptDesign, schematicDesign, finalDesign,
+                      archFittings, siteSupport, commissioning,
+                      livingArea, landscapeArea,
+                      sqExpLiving, sqSecLiving, sqNonExpLiving, sqExpLand, sqSecLand,
+                      ConceptCost, SchematicCost, FinalCost,
+                      rawDesignSubtotal, unifiedDiscountValue, designNet,
+                      depositValue, archSubtotalRaw, siteSupportCost, commissioningCost,
+                      absoluteProjectBudget, usdConv,
+                    });
+                    fetch(`${API_BASE}/admin/generate/DESIGN_FEE_PROPOSAL?is_save_action=true`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(tokens)
+                    }).catch(e => console.warn('Background Drive Vault Save warning:', e));
+                  } catch (err) {
+                    console.warn('Drive Vault Save preparation warning:', err);
                   }
                 }}
               >
