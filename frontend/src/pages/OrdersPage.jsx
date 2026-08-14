@@ -1034,6 +1034,8 @@ export default function OrdersPage() {
         DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
         DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
         PROPOSAL_NUMBER: selectedOrderId || 'Q-2025-XXX',
+        FEE_NAME: `Order ${selectedOrderId || 'Q-2025-XXX'}`,
+        ORDER_NUMBER: selectedOrderId || 'Q-2025-XXX',
         ORDER_STATUS: orderStatus || 'Draft',
         
         CLIENT_COMPANY: clientCompany || 'Private Client',
@@ -1243,7 +1245,7 @@ export default function OrdersPage() {
         })()
       };
 
-      const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
+      const res = await fetch(`${API_BASE}/admin/generate/${docType}?is_save_action=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tokens)
