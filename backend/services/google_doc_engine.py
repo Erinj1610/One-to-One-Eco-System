@@ -481,22 +481,34 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             
             new_row_data.append({'values': new_row_values})
 
-        # Submit single batchUpdate to write full expanded grid
+        # Ensure temporary tab has enough physical rows for the expanded grid
+        grid_requests = []
+        if len(new_row_data) > len(row_data):
+            extra_rows = len(new_row_data) - len(row_data) + 10
+            grid_requests.append({
+                'appendDimension': {
+                    'sheetId': temp_tab_gid,
+                    'dimension': 'ROWS',
+                    'length': extra_rows
+                }
+            })
+
+        grid_requests.append({
+            'updateCells': {
+                'rows': new_row_data,
+                'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
+                'start': {
+                    'sheetId': temp_tab_gid,
+                    'rowIndex': 0,
+                    'columnIndex': 0
+                }
+            }
+        })
+
+        # Submit single batchUpdate to expand dimension and write full expanded grid
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=working_spreadsheet_id,
-            body={
-                'requests': [{
-                    'updateCells': {
-                        'rows': new_row_data,
-                        'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
-                        'start': {
-                            'sheetId': temp_tab_gid,
-                            'rowIndex': 0,
-                            'columnIndex': 0
-                        }
-                    }
-                }]
-            }
+            body={'requests': grid_requests}
         ).execute()
 
     except Exception as token_err:
