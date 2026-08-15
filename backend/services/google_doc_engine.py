@@ -525,8 +525,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         if new_runs:
                             cell_copy['textFormatRuns'] = new_runs
                 else:
-                    cleaned_final = clean_block_tags(cell_str)
-                    cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
+                    # PRESERVE ORIGINAL UNTOUCHED CELL DATA (In-Cell Images, Formulas, Image Objects)
+                    if 'userEnteredValue' in c_obj:
+                        cell_copy['userEnteredValue'] = c_obj['userEnteredValue']
                     if 'textFormatRuns' in c_obj:
                         cell_copy['textFormatRuns'] = c_obj['textFormatRuns']
 
