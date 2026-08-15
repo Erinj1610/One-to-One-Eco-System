@@ -467,20 +467,27 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     # [FIXED] or unlabelled static row -> single copy
                     expanded_rows.append((directive, cell_objs, {}))
 
-            lower_tokens = {str(k).lower(): v for k, v in tokens.items()}
-            update_cell_requests = []
+            # Build complete rowData for all expanded rows
+            new_row_data = []
 
             for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
-                # Merge local context into tokens
                 row_tokens = {**tokens, **ctx}
                 row_lower_tokens = {str(k).lower(): v for k, v in row_tokens.items()}
-
+                
+                new_row_values = []
                 for c_i, c_obj in enumerate(cell_objs):
+                    # Deep copy cell object structure
+                    cell_copy = {}
                     user_val = c_obj.get('userEnteredValue', {})
                     formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
-                    if not formatted_val:
-                        continue
                     
+                    if 'userEnteredFormat' in c_obj:
+                        cell_copy['userEnteredFormat'] = c_obj['userEnteredFormat']
+
+                    if not formatted_val:
+                        new_row_values.append(cell_copy)
+                        continue
+
                     cell_str = clean_block_tags(str(formatted_val))
                     if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
                         orig_runs = c_obj.get('textFormatRuns', [])
@@ -510,9 +517,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             offset += delta
                             replacements.append((m.start(), old_len, delta))
 
-                        new_cell_data = {
-                            'userEnteredValue': {'stringValue': clean_block_tags(new_str)}
-                        }
+                        cleaned_final = clean_block_tags(new_str)
+                        cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
 
                         if orig_runs:
                             new_runs = []
@@ -526,34 +532,44 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                                             shifted_start += rep_delta
                                         else:
                                             shifted_start = rep_start
-                                shifted_start = max(0, min(shifted_start, len(new_str)))
+                                shifted_start = max(0, min(shifted_start, len(cleaned_final)))
                                 new_runs.append({'startIndex': shifted_start, 'format': format_info})
                             if new_runs:
-                                new_cell_data['textFormatRuns'] = new_runs
+                                cell_copy['textFormatRuns'] = new_runs
+                    else:
+                        cleaned_final = clean_block_tags(cell_str)
+                        if 'stringValue' in user_val:
+                            cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
+                        elif user_val:
+                            cell_copy['userEnteredValue'] = user_val
+                        elif formatted_val:
+                            cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
+                        
+                        if 'textFormatRuns' in c_obj:
+                            cell_copy['textFormatRuns'] = c_obj['textFormatRuns']
 
-                        if 'userEnteredFormat' in c_obj:
-                            new_cell_data['userEnteredFormat'] = c_obj['userEnteredFormat']
+                    new_row_values.append(cell_copy)
+                
+                new_row_data.append({'values': new_row_values})
 
-                        update_cell_requests.append({
-                            'updateCells': {
-                                'rows': [{
-                                    'values': [new_cell_data]
-                                }],
-                                'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
-                                'start': {
-                                    'sheetId': temp_tab_gid,
-                                    'rowIndex': r_idx,
-                                    'columnIndex': c_i
-                                }
+            # Write full new_row_data to temporary tab using single updateCells request
+            logger.info(f"Writing full expanded grid ({len(new_row_data)} rows) to temporary tab '{dup_title}'...")
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=working_spreadsheet_id,
+                body={
+                    'requests': [{
+                        'updateCells': {
+                            'rows': new_row_data,
+                            'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
+                            'start': {
+                                'sheetId': temp_tab_gid,
+                                'rowIndex': 0,
+                                'columnIndex': 0
                             }
-                        })
-
-            if update_cell_requests:
-                logger.info(f"Submitting {len(update_cell_requests)} rich-text bold-preserving cell updates to temporary tab '{dup_title}'...")
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=working_spreadsheet_id,
-                    body={'requests': update_cell_requests}
-                ).execute()
+                        }
+                    }]
+                }
+            ).execute()
         except Exception as token_err:
             logger.error(f"Error updating rich text cell tokens in temporary working tab: {token_err}")
 
