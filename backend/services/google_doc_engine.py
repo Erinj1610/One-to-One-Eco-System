@@ -476,7 +476,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 
                 new_row_values = []
                 for c_i, c_obj in enumerate(cell_objs):
-                    # Deep copy cell object structure
                     cell_copy = {}
                     user_val = c_obj.get('userEnteredValue', {})
                     formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -489,6 +488,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         continue
 
                     cell_str = clean_block_tags(str(formatted_val))
+                    
+                    # Perform token replacement if cell contains {{ or {?
                     if "{{" in cell_str or "}}" in cell_str or "{?" in cell_str:
                         orig_runs = c_obj.get('textFormatRuns', [])
                         replacements = []
@@ -502,12 +503,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             token_key = (m.group(1) or m.group(2) or '').strip()
                             token_key_lower = token_key.lower()
                             
-                            sub_val = ''
+                            sub_val = None
                             if token_key in row_tokens and not isinstance(row_tokens[token_key], (list, dict)):
                                 sub_val = str(row_tokens[token_key]) if row_tokens[token_key] is not None else ''
                             elif token_key_lower in row_lower_tokens and not isinstance(row_lower_tokens[token_key_lower], (list, dict)):
                                 sub_val = str(row_lower_tokens[token_key_lower]) if row_lower_tokens[token_key_lower] is not None else ''
                             
+                            if sub_val is None:
+                                sub_val = ''
+
                             match_start = m.start() + offset
                             old_len = len(raw_match)
                             new_len = len(sub_val)
@@ -538,13 +542,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                                 cell_copy['textFormatRuns'] = new_runs
                     else:
                         cleaned_final = clean_block_tags(cell_str)
-                        if 'stringValue' in user_val:
-                            cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
-                        elif user_val:
-                            cell_copy['userEnteredValue'] = user_val
-                        elif formatted_val:
-                            cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
-                        
+                        cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
                         if 'textFormatRuns' in c_obj:
                             cell_copy['textFormatRuns'] = c_obj['textFormatRuns']
 
