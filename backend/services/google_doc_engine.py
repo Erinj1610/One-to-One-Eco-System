@@ -345,59 +345,112 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             
             parsed_rows.append((r_i, norm_dir, cell_objs))
 
-        # Build final expanded row definitions
-        expanded_rows = []
-        dynamic_processed = False
+        # Partition parsed rows into top_fixed, dynamic_template_block, and bottom_fixed
+        top_fixed = []
+        dynamic_template_rows = []
+        bottom_fixed = []
 
-        for r_i, directive, cell_objs in parsed_rows:
-            if directive in dynamic_directives or directive in ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_HEADER]', '[AREA_TABLE_HEAD]', '[ITEM_ROW]', '[AREA_FOOTER]', '[FLOOR_FOOTER]'):
-                if not dynamic_processed and (first_dyn_idx is None or r_i == first_dyn_idx):
-                    dynamic_processed = True
-                    
-                    fl_header_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_HEADER]'), None)
-                    fl_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_TABLE_HEAD]'), None)
-                    area_header_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_HEADER]'), None)
-                    area_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_TABLE_HEAD]'), None)
-                    area_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_FOOTER]'), None)
-                    fl_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_FOOTER]'), None)
-                    item_row_cells = next((cells for _, d, cells in parsed_rows if d == '[ITEM_ROW]'), None)
+        in_dynamic_block = False
+        dynamic_block_started = False
 
-                    for fl_name, areas in grouped_floors.items():
-                        fl_items = [it for ar_items in areas.values() for it in ar_items]
-                        fl_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in fl_items)
-                        fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
-
-                        fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
-
-                        if fl_header_cells:
-                            expanded_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
-                        if fl_table_head_cells:
-                            expanded_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
-
-                        for ar_name, ar_items in areas.items():
-                            ar_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in ar_items)
-                            ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
-                            ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
-
-                            if area_header_cells:
-                                expanded_rows.append(('[AREA_HEADER]', area_header_cells, ar_ctx))
-                            if area_table_head_cells:
-                                expanded_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
-
-                            if item_row_cells:
-                                for item_obj in ar_items:
-                                    item_ctx = {**ar_ctx}
-                                    for k, v in item_obj.items():
-                                        item_ctx[k] = str(v) if v is not None else ''
-                                    expanded_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
-
-                            if area_footer_cells:
-                                expanded_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
-
-                        if fl_footer_cells:
-                            expanded_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+        for r_i, norm_dir, cell_objs in parsed_rows:
+            if norm_dir in dynamic_directives:
+                dynamic_block_started = True
+                in_dynamic_block = True
+                dynamic_template_rows.append((r_i, norm_dir, cell_objs))
             else:
-                expanded_rows.append((directive, cell_objs, {}))
+                if not dynamic_block_started:
+                    top_fixed.append((r_i, norm_dir, cell_objs, {}))
+                else:
+                    in_dynamic_block = False
+                    bottom_fixed.append((r_i, norm_dir, cell_objs, {}))
+
+        # Extract template cell definitions for dynamic rows
+        fl_header_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_HEADER]'), None)
+        fl_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_TABLE_HEAD]'), None)
+        area_header_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_HEADER]'), None)
+        area_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_TABLE_HEAD]'), None)
+        area_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_FOOTER]'), None)
+        fl_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_FOOTER]'), None)
+        item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[ITEM_ROW]'), None)
+
+        # Generate all dynamic rows required for the order
+        generated_dynamic_rows = []
+        for fl_name, areas in grouped_floors.items():
+            fl_items = [it for ar_items in areas.values() for it in ar_items]
+            fl_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in fl_items)
+            fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
+            fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
+
+            if fl_header_cells:
+                generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
+            if fl_table_head_cells:
+                generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
+
+            for ar_name, ar_items in areas.items():
+                ar_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in ar_items)
+                ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
+                ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
+
+                if area_header_cells:
+                    generated_dynamic_rows.append(('[AREA_HEADER]', area_header_cells, ar_ctx))
+                if area_table_head_cells:
+                    generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
+
+                if item_row_cells:
+                    for item_obj in ar_items:
+                        item_ctx = {**ar_ctx}
+                        for k, v in item_obj.items():
+                            item_ctx[k] = str(v) if v is not None else ''
+                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
+
+                if area_footer_cells:
+                    generated_dynamic_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
+
+            if fl_footer_cells:
+                generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+
+        # Calculate row difference between generated dynamic block and original template block
+        orig_dyn_count = len(dynamic_template_rows)
+        new_dyn_count = len(generated_dynamic_rows)
+        row_diff = new_dyn_count - orig_dyn_count
+
+        start_insert_idx = len(top_fixed) + orig_dyn_count
+
+        # Physically insert or delete rows in Google Sheet so bottom fixed rows are pushed down cleanly
+        dimension_requests = []
+        if row_diff > 0:
+            dimension_requests.append({
+                'insertDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': start_insert_idx,
+                        'endIndex': start_insert_idx + row_diff
+                    },
+                    'inheritFromBefore': True
+                }
+            })
+        elif row_diff < 0:
+            delete_count = abs(row_diff)
+            dimension_requests.append({
+                'deleteDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': start_insert_idx - delete_count,
+                        'endIndex': start_insert_idx
+                    }
+                }
+            })
+
+        if dimension_requests:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=working_spreadsheet_id,
+                body={'requests': dimension_requests}
+            ).execute()
+
+        expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
         # Construct complete rowData for all expanded rows
         new_row_data = []
