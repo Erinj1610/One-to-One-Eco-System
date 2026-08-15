@@ -360,10 +360,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 dynamic_template_rows.append((r_i, norm_dir, cell_objs))
             else:
                 if not dynamic_block_started:
-                    top_fixed.append((r_i, norm_dir, cell_objs, {}))
+                    top_fixed.append((norm_dir, cell_objs, {}))
                 else:
                     in_dynamic_block = False
-                    bottom_fixed.append((r_i, norm_dir, cell_objs, {}))
+                    bottom_fixed.append((norm_dir, cell_objs, {}))
 
         # Extract template cell definitions for dynamic rows
         fl_header_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_HEADER]'), None)
