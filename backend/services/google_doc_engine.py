@@ -452,10 +452,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
-        # Construct complete rowData for all expanded rows
-        new_row_data = []
+        # Construct rowData strictly for generated dynamic rows (starting at len(top_fixed))
+        dynamic_row_data = []
 
-        for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
+        for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             row_tokens = {**tokens, **ctx}
             row_lower_tokens = {str(k).lower(): v for k, v in row_tokens.items()}
             
@@ -469,6 +469,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     cell_copy['userEnteredFormat'] = c_obj['userEnteredFormat']
 
                 if not formatted_val:
+                    if 'userEnteredValue' in c_obj:
+                        cell_copy['userEnteredValue'] = c_obj['userEnteredValue']
                     new_row_values.append(cell_copy)
                     continue
 
@@ -525,7 +527,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         if new_runs:
                             cell_copy['textFormatRuns'] = new_runs
                 else:
-                    # PRESERVE ORIGINAL UNTOUCHED CELL DATA (In-Cell Images, Formulas, Image Objects)
                     if 'userEnteredValue' in c_obj:
                         cell_copy['userEnteredValue'] = c_obj['userEnteredValue']
                     if 'textFormatRuns' in c_obj:
@@ -533,12 +534,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
                 new_row_values.append(cell_copy)
             
-            new_row_data.append({'values': new_row_values})
+            dynamic_row_data.append({'values': new_row_values})
 
         # Ensure temporary tab has enough physical rows for the expanded grid
         grid_requests = []
-        if len(new_row_data) > len(row_data):
-            extra_rows = len(new_row_data) - len(row_data) + 10
+        if new_dyn_count > orig_dyn_count:
+            extra_rows = new_dyn_count - orig_dyn_count + 10
             grid_requests.append({
                 'appendDimension': {
                     'sheetId': temp_tab_gid,
@@ -547,17 +548,45 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        grid_requests.append({
-            'updateCells': {
-                'rows': new_row_data,
-                'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
-                'start': {
-                    'sheetId': temp_tab_gid,
-                    'rowIndex': 0,
-                    'columnIndex': 0
+        # Target updateCells ONLY to dynamic block rows starting at len(top_fixed) (Row 1 logo is NEVER touched!)
+        if dynamic_row_data:
+            grid_requests.append({
+                'updateCells': {
+                    'rows': dynamic_row_data,
+                    'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
+                    'start': {
+                        'sheetId': temp_tab_gid,
+                        'rowIndex': len(top_fixed),
+                        'columnIndex': 0
+                    }
                 }
-            }
-        })
+            })
+
+        # Targeted token updates for top_fixed rows ONLY on cells containing tokens
+        for r_i, norm_dir, cell_objs, _ in top_fixed:
+            for c_i, c_obj in enumerate(cell_objs):
+                user_val = c_obj.get('userEnteredValue', {})
+                formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                    cell_str = clean_block_tags(str(formatted_val))
+                    new_str = cell_str
+                    for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                        raw_match = m.group(0)
+                        token_key = (m.group(1) or m.group(2) or '').strip()
+                        sub_val = str(tokens.get(token_key, tokens.get(token_key.lower(), '')))
+                        new_str = new_str.replace(raw_match, sub_val)
+                    cleaned_top = clean_block_tags(new_str)
+                    grid_requests.append({
+                        'updateCells': {
+                            'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_top}}]}],
+                            'fields': 'userEnteredValue',
+                            'start': {
+                                'sheetId': temp_tab_gid,
+                                'rowIndex': r_i,
+                                'columnIndex': c_i
+                            }
+                        }
+                    })
 
         # Extract cell merges from ROOT sheet object (sp_data['sheets'][0]), NOT data[0]
         sheet_obj = sp_data['sheets'][0]
