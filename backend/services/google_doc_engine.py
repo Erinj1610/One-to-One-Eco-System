@@ -4,6 +4,7 @@ import time
 import logging
 import tempfile
 import google.auth.transport.requests
+import googleapiclient.http
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from google.auth import default
