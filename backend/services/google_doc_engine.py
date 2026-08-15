@@ -563,7 +563,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             })
 
         # Targeted token updates for top_fixed rows ONLY on cells containing tokens
-        for r_i, norm_dir, cell_objs, _ in top_fixed:
+        for r_i, (norm_dir, cell_objs, _) in enumerate(top_fixed):
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
