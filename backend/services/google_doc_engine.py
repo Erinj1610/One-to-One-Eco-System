@@ -558,13 +558,19 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             }
         })
 
-        # Collect cell merge ranges for generated dynamic rows
-        template_merges_by_row = {}
-        orig_merges = grid_data.get('merges', [])
-        for m in orig_merges:
-            if m.get('startRowIndex') is not None and m.get('endRowIndex') is not None:
-                # Store merge column bounds indexed by starting template row index
-                template_merges_by_row[m['startRowIndex']] = (m.get('startColumnIndex', 0), m.get('endColumnIndex', 1))
+        # Extract cell merges from ROOT sheet object (sp_data['sheets'][0]), NOT data[0]
+        sheet_obj = sp_data['sheets'][0]
+        orig_merges = sheet_obj.get('merges', [])
+        
+        # Build mapping of directive_name -> list of (startColumnIndex, endColumnIndex)
+        directive_merges = {}
+        for orig_r_i, orig_dir, _ in dynamic_template_rows:
+            directive_merges[orig_dir] = []
+            for m in orig_merges:
+                if m.get('startRowIndex') == orig_r_i:
+                    start_c = m.get('startColumnIndex', 0)
+                    end_c = m.get('endColumnIndex', 1)
+                    directive_merges[orig_dir].append((start_c, end_c))
 
         # First, unmerge existing cell ranges in the dynamic block area to prevent merge conflicts
         if new_dyn_count > 0:
@@ -575,17 +581,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'startRowIndex': len(top_fixed),
                         'endRowIndex': len(top_fixed) + new_dyn_count,
                         'startColumnIndex': 0,
-                        'endColumnIndex': 20
+                        'endColumnIndex': 30
                     }
                 }
             })
 
-        # Generate mergeCells requests for expanded rows
+        # Generate mergeCells requests for every expanded dynamic row based on its template directive merge spans
         for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
-            # Check if this directive corresponds to a dynamic row with template merge definitions
-            for orig_r_i, orig_dir, _ in dynamic_template_rows:
-                if orig_dir == directive and orig_r_i in template_merges_by_row:
-                    start_c, end_c = template_merges_by_row[orig_r_i]
+            if directive in directive_merges:
+                for start_c, end_c in directive_merges[directive]:
                     grid_requests.append({
                         'mergeCells': {
                             'range': {
@@ -598,9 +602,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'mergeType': 'MERGE_ALL'
                         }
                     })
-                    break
 
-        # Submit single batchUpdate to expand dimension, write grid, unmerge, and apply merges
+        # Submit single batchUpdate to expand dimension, write grid, unmerge, and apply exact cell merges
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=working_spreadsheet_id,
             body={'requests': grid_requests}
@@ -610,13 +613,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         logger.error(f"Error expanding working sheet grid: {token_err}")
         raise RuntimeError(f"Sheet Grid Expansion Error: {token_err}")
 
-    # Export PDF from temporary tab (c1=1 skips Column A, c2=12 includes full sheet width & logo)
+    # Export PDF from temporary tab (Hidden Column A is automatically excluded; no c1/c2 parameter to avoid cropping top-right logo)
     authed_session = google.auth.transport.requests.AuthorizedSession(creds)
     pdf_bytes = None
 
     export_urls = [
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=12",
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true"
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true",
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false"
     ]
 
     for export_url in export_urls:
