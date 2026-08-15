@@ -329,9 +329,7 @@ async def get_template_metadata(doc_type: str, db: Session = Depends(get_db)):
     }
 
 
-from services.google_doc_engine import merge_google_doc
 import tempfile
-
 from fastapi import Body
 
 @router.post("/generate/{doc_type}")
