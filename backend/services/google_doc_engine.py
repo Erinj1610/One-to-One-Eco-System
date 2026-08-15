@@ -566,6 +566,20 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 # Store merge column bounds indexed by starting template row index
                 template_merges_by_row[m['startRowIndex']] = (m.get('startColumnIndex', 0), m.get('endColumnIndex', 1))
 
+        # First, unmerge existing cell ranges in the dynamic block area to prevent merge conflicts
+        if new_dyn_count > 0:
+            grid_requests.append({
+                'unmergeCells': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'startRowIndex': len(top_fixed),
+                        'endRowIndex': len(top_fixed) + new_dyn_count,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 20
+                    }
+                }
+            })
+
         # Generate mergeCells requests for expanded rows
         for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
             # Check if this directive corresponds to a dynamic row with template merge definitions
@@ -586,7 +600,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     })
                     break
 
-        # Submit single batchUpdate to expand dimension, write grid, and apply merges
+        # Submit single batchUpdate to expand dimension, write grid, unmerge, and apply merges
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=working_spreadsheet_id,
             body={'requests': grid_requests}
@@ -596,13 +610,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         logger.error(f"Error expanding working sheet grid: {token_err}")
         raise RuntimeError(f"Sheet Grid Expansion Error: {token_err}")
 
-    # Export PDF from temporary tab (Google Sheets automatically excludes Column A because hiddenByUser=True)
+    # Export PDF from temporary tab (c1=1 skips Column A, c2=12 includes full sheet width & logo)
     authed_session = google.auth.transport.requests.AuthorizedSession(creds)
     pdf_bytes = None
 
     export_urls = [
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true",
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false"
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true&c1=1&c2=12",
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true"
     ]
 
     for export_url in export_urls:
