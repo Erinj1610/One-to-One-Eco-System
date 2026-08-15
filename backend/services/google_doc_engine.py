@@ -336,38 +336,38 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         
         temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
 
-        # Hide Column A (dimensionIndex 0 to 1) on the temporary working tab so it is omitted from PDF
-        try:
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=working_spreadsheet_id,
-                body={
-                    'requests': [{
-                        'updateDimensionProperties': {
-                            'range': {
-                                'sheetId': temp_tab_gid,
-                                'dimension': 'COLUMNS',
-                                'startIndex': 0,
-                                'endIndex': 1
-                            },
-                            'properties': {
-                                'hiddenByUser': True
-                            },
-                            'fields': 'hiddenByUser'
-                        }
-                    }]
-                }
-            ).execute()
-            logger.info(f"Successfully hidden Column A on temporary tab {temp_tab_gid}")
-        except Exception as hide_err:
-            logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
-        
-        # Read full cell metadata with rich text formatting runs from temporary tab
+        # Read full cell metadata with rich text formatting runs from temporary tab BEFORE hiding Column A
         try:
             sp_data = sheets_service.spreadsheets().get(
                 spreadsheetId=working_spreadsheet_id,
                 ranges=[f"'{dup_title}'!A1:Z300"],
                 includeGridData=True
             ).execute()
+
+            # Now hide Column A (dimensionIndex 0 to 1) on the temporary working tab so it is omitted from PDF output
+            try:
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=working_spreadsheet_id,
+                    body={
+                        'requests': [{
+                            'updateDimensionProperties': {
+                                'range': {
+                                    'sheetId': temp_tab_gid,
+                                    'dimension': 'COLUMNS',
+                                    'startIndex': 0,
+                                    'endIndex': 1
+                                },
+                                'properties': {
+                                    'hiddenByUser': True
+                                },
+                                'fields': 'hiddenByUser'
+                            }
+                        }]
+                    }
+                ).execute()
+                logger.info(f"Successfully hidden Column A on temporary tab {temp_tab_gid}")
+            except Exception as hide_err:
+                logger.warn(f"Could not hide Column A via batchUpdate: {hide_err}")
             
             grid_data = sp_data['sheets'][0]['data'][0]
             row_data = grid_data.get('rowData', [])
@@ -392,9 +392,16 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     grouped_floors[fl][ar] = []
                 grouped_floors[fl][ar].append(item)
 
-            # Identify Column A directives across template rows
+            # Identify Column A directives across template rows with flexible normalization
             parsed_rows = []
-            dynamic_directives = ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_HEADER]', '[AREA_ROW]', '[AREA_TABLE_HEAD]', '[ITEM_ROW]', '[AREA_FOOTER]', '[FLOOR_FOOTER]')
+            dynamic_directives = (
+                '[FLOOR_HEADER]', '[FLOOR_HEAD]',
+                '[FLOOR_TABLE_HEAD]', '[FLOOR_TABLE_HEADER]',
+                '[AREA_HEADER]', '[AREA_HEAD]', '[AREA_ROW]',
+                '[AREA_TABLE_HEAD]', '[AREA_TABLE_HEADER]',
+                '[ITEM_ROW]',
+                '[AREA_FOOTER]', '[FLOOR_FOOTER]'
+            )
             
             first_dyn_idx = None
             for r_i, r_obj in enumerate(row_data):
@@ -404,24 +411,36 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     c0 = cell_objs[0]
                     col_a_val = str(c0.get('formattedValue', '') or c0.get('userEnteredValue', {}).get('stringValue', '')).strip().upper()
                 
+                # Normalize directive aliases
+                if col_a_val in ('[FLOOR_HEAD]', '[FLOOR_HEADER]'):
+                    norm_dir = '[FLOOR_HEADER]'
+                elif col_a_val in ('[FLOOR_TABLE_HEAD]', '[FLOOR_TABLE_HEADER]'):
+                    norm_dir = '[FLOOR_TABLE_HEAD]'
+                elif col_a_val in ('[AREA_HEAD]', '[AREA_HEADER]', '[AREA_ROW]'):
+                    norm_dir = '[AREA_HEADER]'
+                elif col_a_val in ('[AREA_TABLE_HEAD]', '[AREA_TABLE_HEADER]'):
+                    norm_dir = '[AREA_TABLE_HEAD]'
+                else:
+                    norm_dir = col_a_val
+
                 if col_a_val in dynamic_directives and first_dyn_idx is None:
                     first_dyn_idx = r_i
                 
-                parsed_rows.append((r_i, col_a_val, cell_objs))
+                parsed_rows.append((r_i, norm_dir, cell_objs))
 
             # Build final expanded row definitions
             expanded_rows = []
             dynamic_processed = False
 
             for r_i, directive, cell_objs in parsed_rows:
-                if directive in dynamic_directives:
+                if directive in dynamic_directives or directive in ('[FLOOR_HEADER]', '[FLOOR_TABLE_HEAD]', '[AREA_HEADER]', '[AREA_TABLE_HEAD]', '[ITEM_ROW]', '[AREA_FOOTER]', '[FLOOR_FOOTER]'):
                     if not dynamic_processed and (first_dyn_idx is None or r_i == first_dyn_idx):
                         dynamic_processed = True
                         
                         # Find template row definitions
                         fl_header_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_HEADER]'), None)
                         fl_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_TABLE_HEAD]'), None)
-                        area_header_cells = next((cells for _, d, cells in parsed_rows if d in ('[AREA_HEADER]', '[AREA_ROW]')), None)
+                        area_header_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_HEADER]'), None)
                         area_table_head_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_TABLE_HEAD]'), None)
                         area_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[AREA_FOOTER]'), None)
                         fl_footer_cells = next((cells for _, d, cells in parsed_rows if d == '[FLOOR_FOOTER]'), None)
