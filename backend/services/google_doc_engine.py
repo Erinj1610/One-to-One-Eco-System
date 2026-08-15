@@ -240,16 +240,25 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         target_gid = 0
         if sheet_name:
             clean_name = str(sheet_name).strip().lower().replace('_', ' ')
+            # Aliases map
+            alias_list = [clean_name]
+            if clean_name in ('quotation', 'quote'):
+                alias_list.extend(['quotation', 'quote', 'quotes', 'summarized quotation'])
+            elif clean_name in ('boq', 'boq doc'):
+                alias_list.extend(['boq', 'boq doc', 'detailed boq', 'bill of quantities'])
+
             for s in sheets:
                 s_title = s['properties']['title'].strip().lower().replace('_', ' ')
-                if clean_name in s_title or s_title in clean_name:
+                if any(alias in s_title or s_title in alias for alias in alias_list):
                     target_sheet = s
                     target_gid = s['properties']['sheetId']
+                    logger.info(f"Matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested sheet_name='{sheet_name}'")
                     break
         
         if not target_sheet and sheets:
             target_sheet = sheets[0]
             target_gid = target_sheet['properties']['sheetId']
+            logger.warn(f"Fallback to default first tab '{target_sheet['properties']['title']}' (GID={target_gid}) for requested sheet_name='{sheet_name}'")
 
         working_spreadsheet_id = template_id
         sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}"
@@ -391,6 +400,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 if ar not in grouped_floors[fl]:
                     grouped_floors[fl][ar] = []
                 grouped_floors[fl][ar].append(item)
+
+            if not grouped_floors:
+                grouped_floors['Ground Floor'] = {'General Area': []}
 
             # Identify Column A directives across template rows with flexible normalization
             parsed_rows = []
