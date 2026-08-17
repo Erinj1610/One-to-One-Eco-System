@@ -290,6 +290,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         row_data = grid_data.get('rowData', [])
         items_list = tokens.get('items', [])
 
+        # Dynamically determine the maximum column count present in this specific template sheet
+        max_col_count = 12
+        for r_item in row_data:
+            c_vals = r_item.get('values', [])
+            if len(c_vals) > max_col_count:
+                max_col_count = len(c_vals)
+        if max_col_count < 1:
+            max_col_count = 12
+
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
             c_str = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip().upper()
@@ -685,7 +694,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'startRowIndex': len(top_fixed),
                         'endRowIndex': len(top_fixed) + new_dyn_count,
                         'startColumnIndex': 0,
-                        'endColumnIndex': 30
+                        'endColumnIndex': max_col_count
                     }
                 }
             })
@@ -702,21 +711,21 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'startRowIndex': orig_src_r,
                             'endRowIndex': orig_src_r + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 30
+                            'endColumnIndex': max_col_count
                         },
                         'destination': {
                             'sheetId': temp_tab_gid,
                             'startRowIndex': actual_row_i,
                             'endRowIndex': actual_row_i + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 30
+                            'endColumnIndex': max_col_count
                         },
                         'pasteType': 'PASTE_NORMAL',
                         'pasteOrientation': 'NORMAL'
                     }
                 })
 
-            # If row is a SPACER row, explicitly wipe ALL cell text across columns 0-12
+            # If row is a SPACER row, explicitly wipe ALL cell text across columns
             if ctx and ctx.get('_is_spacer'):
                 grid_requests.append({
                     'updateCells': {
@@ -725,10 +734,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'startRowIndex': actual_row_i,
                             'endRowIndex': actual_row_i + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 12
+                            'endColumnIndex': max_col_count
                         },
                         'rows': [{
-                            'values': [{'userEnteredValue': {'stringValue': ''}} for _ in range(12)]
+                            'values': [{'userEnteredValue': {'stringValue': ''}} for _ in range(max_col_count)]
                         }],
                         'fields': 'userEnteredValue'
                     }
@@ -830,7 +839,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'startRowIndex': actual_row_i,
                             'endRowIndex': actual_row_i + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 12
+                            'endColumnIndex': max_col_count
                         },
                         'cell': {
                             'userEnteredValue': {'stringValue': ''},
