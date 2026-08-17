@@ -255,11 +255,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
 
     try:
-        # Read full cell metadata WITH Column A BEFORE hiding Column A
+        # Read full cell metadata AND exact row heights directly from template before hiding Column A
         sp_data = sheets_service.spreadsheets().get(
             spreadsheetId=working_spreadsheet_id,
             ranges=[f"'{dup_title}'!A1:Z300"],
-            includeGridData=True
+            includeGridData=True,
+            fields='sheets(data(rowData(rowMetadata(pixelSize),values(userEnteredValue,formattedValue,userEnteredFormat,textFormatRuns))))'
         ).execute()
 
         # Hide Column A on temporary tab so PDF rendering excludes Column A
@@ -694,14 +695,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
 
-            # Re-apply template row height to newly generated dynamic row (e.g. Ground header 35px)
-            target_pixel_size = None
+            # Re-apply exact template row height from template source row
             if orig_src_r is not None and orig_src_r in exact_row_height_by_index:
-                target_pixel_size = exact_row_height_by_index[orig_src_r]
-            elif directive in ('[FLOOR_HEADER]', '[FLOOR_HEAD]'):
-                target_pixel_size = 35
-
-            if target_pixel_size:
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -711,7 +706,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': target_pixel_size
+                            'pixelSize': exact_row_height_by_index[orig_src_r]
                         },
                         'fields': 'pixelSize'
                     }
