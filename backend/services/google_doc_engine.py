@@ -780,7 +780,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'fields': 'pixelSize'
                     }
                 })
-                # Apply light grey background across all columns for SPACER bar
+                # Clear all text and apply light grey background across all columns for pure 5px SPACER bar
                 grid_requests.append({
                     'repeatCell': {
                         'range': {
@@ -791,11 +791,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endColumnIndex': 30
                         },
                         'cell': {
+                            'userEnteredValue': {'stringValue': ''},
                             'userEnteredFormat': {
                                 'backgroundColor': {'red': 0.88, 'green': 0.88, 'blue': 0.88}
                             }
                         },
-                        'fields': 'userEnteredFormat.backgroundColor'
+                        'fields': 'userEnteredValue,userEnteredFormat.backgroundColor'
                     }
                 })
             else:
