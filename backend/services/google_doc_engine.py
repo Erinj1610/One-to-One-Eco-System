@@ -426,7 +426,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 is_spacer = (code_str.upper() == 'SPACER' or desc_str.upper() == 'SPACER' or 'SPACER' in code_str.upper() or 'SPACER' in desc_str.upper())
 
                 if is_spacer:
-                    item_ctx = {
+                    return {
                         'item.qty': '',
                         'item.oneOneCode': '',
                         'item.type': '',
@@ -434,23 +434,25 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'item.floor': '',
                         'item.area': '',
                         'item.eta': '',
+                        'item.lead_time': '',
+                        'item.leadTime': '',
                         'item.retail': '',
                         'item.totalRetail': '',
                         '_is_spacer': True
                     }
-                else:
-                    item_ctx = {
-                        'item.qty': str(int(q_val)) if q_val.is_integer() else f"{q_val:.2f}",
-                        'item.oneOneCode': code_str,
-                        'item.type': str(item_obj.get('type') or item_obj.get('category') or item_obj.get('plan_code') or ''),
-                        'item.description': desc_str,
-                        'item.floor': str(item_obj.get('floor') or ''),
-                        'item.area': str(item_obj.get('area') or ''),
-                        'item.eta': str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks'),
-                        'item.retail': f"R {u_val:,.2f}",
-                        'item.totalRetail': f"R {tot_val:,.2f}",
-                        '_is_spacer': False
-                    }
+
+                item_ctx = {
+                    'item.qty': str(int(q_val)) if q_val.is_integer() else f"{q_val:.2f}",
+                    'item.oneOneCode': code_str,
+                    'item.type': str(item_obj.get('type') or item_obj.get('category') or item_obj.get('plan_code') or ''),
+                    'item.description': desc_str,
+                    'item.floor': str(item_obj.get('floor') or ''),
+                    'item.area': str(item_obj.get('area') or ''),
+                    'item.eta': str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks'),
+                    'item.retail': f"R {u_val:,.2f}",
+                    'item.totalRetail': f"R {tot_val:,.2f}",
+                    '_is_spacer': False
+                }
                 for k, v in item_obj.items():
                     if k not in item_ctx and v is not None:
                         item_ctx[f"item.{k}"] = str(v)
