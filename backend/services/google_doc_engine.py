@@ -579,6 +579,14 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
 
+        # Extract original row heights (pixelSize) for template dynamic rows
+        template_row_heights = {}
+        for orig_r_i, orig_dir, _ in dynamic_template_rows:
+            if orig_r_i < len(row_data):
+                r_meta = row_data[orig_r_i].get('rowMetadata', {})
+                if 'pixelSize' in r_meta:
+                    template_row_heights[orig_dir] = r_meta['pixelSize']
+
         # Calculate exact net inserted rows for universal row shifting (ZERO hardcoding)
         orig_dyn_count = len(dynamic_template_rows)
         new_dyn_count = len(generated_dynamic_rows)
