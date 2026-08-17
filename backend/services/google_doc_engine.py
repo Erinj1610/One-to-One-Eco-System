@@ -287,6 +287,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             logger.warn(f"Column A hide notice: {hide_err}")
 
         grid_data = sp_data['sheets'][0]['data'][0]
+        row_data = grid_data.get('rowData', [])
+        items_list = tokens.get('items', [])
+
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
             c_str = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip().upper()
