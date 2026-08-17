@@ -287,18 +287,25 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             logger.warn(f"Column A hide notice: {hide_err}")
 
         grid_data = sp_data['sheets'][0]['data'][0]
-        row_data = grid_data.get('rowData', [])
+        # Helper to check if an item is a SPACER item
+        def is_spacer_item(it):
+            c_str = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip().upper()
+            d_str = str(it.get('description') or it.get('name') or '').strip().upper()
+            return 'SPACER' in c_str or 'SPACER' in d_str
 
-        items_list = tokens.get('items', [])
-
-        # Group items by floor and area space strictly preserving explicit user declarations
+        # Group non-spacer items by floor and area space strictly preserving explicit user declarations
         grouped_floors = {}
         for item in items_list:
+            if is_spacer_item(item):
+                continue
             fl_raw = item.get('floor') or item.get('Floor') or ''
             ar_raw = item.get('area') or item.get('Area') or ''
             
             fl = str(fl_raw).strip()
             ar = str(ar_raw).strip()
+
+            if not fl and not ar:
+                continue
 
             if not fl:
                 fl = 'General'
@@ -511,12 +518,21 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         dynamic_row_data = []
 
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
+            is_spacer_row = ctx.get('_is_spacer', False) if ctx else False
             row_tokens = {**tokens, **ctx}
             row_lower_tokens = {str(k).lower(): v for k, v in row_tokens.items()}
             
             new_row_values = []
             for c_i, c_obj in enumerate(cell_objs):
                 cell_copy = {}
+                if 'userEnteredFormat' in c_obj:
+                    cell_copy['userEnteredFormat'] = c_obj['userEnteredFormat']
+
+                if is_spacer_row:
+                    cell_copy['userEnteredValue'] = {'stringValue': ''}
+                    new_row_values.append(cell_copy)
+                    continue
+
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
                 
