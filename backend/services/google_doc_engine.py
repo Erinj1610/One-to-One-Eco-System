@@ -813,12 +813,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': 5
+                            'pixelSize': 10
                         },
                         'fields': 'pixelSize'
                     }
                 })
-                # Clear all text and apply light grey background across all columns for pure 5px SPACER bar
+                # Clear all text and apply light grey background across all columns for pure 10px SPACER bar
                 grid_requests.append({
                     'repeatCell': {
                         'range': {
@@ -831,7 +831,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'cell': {
                             'userEnteredValue': {'stringValue': ''},
                             'userEnteredFormat': {
-                                'backgroundColor': {'red': 0.88, 'green': 0.88, 'blue': 0.88}
+                                'backgroundColor': {'red': 0.90, 'green': 0.90, 'blue': 0.90}
                             }
                         },
                         'fields': 'userEnteredValue,userEnteredFormat.backgroundColor'
