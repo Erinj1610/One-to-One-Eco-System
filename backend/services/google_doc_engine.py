@@ -372,10 +372,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 dynamic_template_rows.append((r_i, norm_dir, cell_objs))
             else:
                 if not dynamic_block_started:
-                    top_fixed.append((norm_dir, cell_objs, {}))
+                    top_fixed.append((r_i, norm_dir, cell_objs, {}))
                 else:
                     in_dynamic_block = False
-                    bottom_fixed.append((norm_dir, cell_objs, {}))
+                    bottom_fixed.append((r_i, norm_dir, cell_objs, {}))
 
         # Extract template cell definitions using exact directive names from Column A of the template
         fl_header_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[FLOOR_HEADER]', '[FLOOR_HEAD]')), None)
@@ -658,7 +658,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             })
 
         # STEP 3: Targeted token updates for top_fixed rows ONLY on cells containing tokens
-        for r_i, (norm_dir, cell_objs, _) in enumerate(top_fixed):
+        for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -677,16 +677,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'fields': 'userEnteredValue',
                             'start': {
                                 'sheetId': temp_tab_gid,
-                                'rowIndex': r_i,
+                                'rowIndex': orig_r_i,
                                 'columnIndex': c_i
                             }
                         }
                     })
 
         # STEP 4: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
-        start_bottom_idx = len(top_fixed) + len(generated_dynamic_rows)
-        for r_i, (norm_dir, cell_objs, _) in enumerate(bottom_fixed):
-            actual_r_idx = start_bottom_idx + r_i
+        for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
+            actual_r_idx = orig_r_i + extra_rows_needed
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
