@@ -589,13 +589,31 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # Ensure temporary tab has enough physical rows for the expanded grid
         grid_requests = []
-        if new_dyn_count > orig_dyn_count:
-            extra_rows = new_dyn_count - orig_dyn_count + 10
+        extra_rows_needed = new_dyn_count - orig_dyn_count
+
+        if extra_rows_needed > 0:
+            # Physically insert blank rows right after the dynamic template block to push Row 13 down
             grid_requests.append({
-                'appendDimension': {
-                    'sheetId': temp_tab_gid,
-                    'dimension': 'ROWS',
-                    'length': extra_rows
+                'insertDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': len(top_fixed) + orig_dyn_count,
+                        'endIndex': len(top_fixed) + orig_dyn_count + extra_rows_needed
+                    },
+                    'inheritFromBefore': False
+                }
+            })
+        elif extra_rows_needed < 0:
+            # Delete excess template rows if fewer rows were generated
+            grid_requests.append({
+                'deleteDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': len(top_fixed) + new_dyn_count,
+                        'endIndex': len(top_fixed) + orig_dyn_count
+                    }
                 }
             })
 
