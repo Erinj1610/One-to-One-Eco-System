@@ -335,8 +335,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             '[AREA_HEADER]', '[AREA_HEAD]', '[AREA_ROW]',
             '[AREA_TABLE_HEAD]', '[AREA_TABLE_HEADER]',
             '[TABLE_HEADER]', '[TABLE_HEAD]',
-            '[ITEM_ROW]',
-            '[CREDIT_HEADER]', '[CREDIT_HEAD]', '[CREDIT_ITEM_ROW]',
+            '[ITEM_ROW]', '[ITEM_SUMMARY]',
+            '[CREDIT_HEADER]', '[CREDIT_HEAD]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]',
             '[AREA_FOOTER]', '[FLOOR_FOOTER]'
         )
         
@@ -361,6 +361,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 norm_dir = '[TABLE_HEADER]'
             elif col_a_val in ('[CREDIT_HEAD]', '[CREDIT_HEADER]'):
                 norm_dir = '[CREDIT_HEADER]'
+            elif col_a_val == '[ITEM_SUMMARY]':
+                norm_dir = '[ITEM_ROW]'
+            elif col_a_val == '[CREDIT_ITEM_SUMMARY]':
+                norm_dir = '[CREDIT_ITEM_ROW]'
             else:
                 norm_dir = col_a_val
 
@@ -397,9 +401,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[TABLE_HEADER]'), None)
         area_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_FOOTER]'), None)
         fl_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_FOOTER]'), None)
-        item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[ITEM_ROW]'), None)
+        item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[ITEM_ROW]', '[ITEM_SUMMARY]')), None)
         credit_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[CREDIT_HEADER]'), None)
-        credit_item_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[CREDIT_ITEM_ROW]'), None)
+        credit_item_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')), None)
 
         # Helper to compute exact line item total from BOQ item objects
         def resolve_item_total(it):
