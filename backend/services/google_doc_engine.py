@@ -642,25 +642,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
 
-        # First, unmerge existing cell ranges in the dynamic block area to prevent merge conflicts
-        if new_dyn_count > 0:
-            grid_requests.append({
-                'unmergeCells': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'startRowIndex': len(top_fixed),
-                        'endRowIndex': len(top_fixed) + new_dyn_count,
-                        'startColumnIndex': 0,
-                        'endColumnIndex': 30
-                    }
-                }
-            })
-
-        # Generate mergeCells requests for every generated dynamic row using its absolute sheet row index
+        # ONLY unmerge and re-merge rows whose template directives actually contained merged cells
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
-            if directive in directive_merges:
+            if directive in directive_merges and directive_merges[directive]:
                 for start_c, end_c in directive_merges[directive]:
+                    # Unmerge first on this specific row to prevent API conflicts
+                    grid_requests.append({
+                        'unmergeCells': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'startRowIndex': actual_row_i,
+                                'endRowIndex': actual_row_i + 1,
+                                'startColumnIndex': start_c,
+                                'endColumnIndex': end_c
+                            }
+                        }
+                    })
+                    # Re-apply exact template column merge
                     grid_requests.append({
                         'mergeCells': {
                             'range': {
