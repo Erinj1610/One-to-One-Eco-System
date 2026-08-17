@@ -579,33 +579,41 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
 
-        # Extract original row heights (pixelSize) for template dynamic rows
-        template_row_heights = {}
-        for orig_r_i, orig_dir, _ in dynamic_template_rows:
-            if orig_r_i < len(row_data):
-                r_meta = row_data[orig_r_i].get('rowMetadata', {})
-                if 'pixelSize' in r_meta:
-                    template_row_heights[orig_dir] = r_meta['pixelSize']
+        # Calculate exact net inserted rows for universal row shifting (ZERO hardcoding)
+        orig_dyn_count = len(dynamic_template_rows)
+        new_dyn_count = len(generated_dynamic_rows)
+        net_inserted_rows = new_dyn_count - orig_dyn_count
 
-        # Ensure temporary tab has enough physical rows for the expanded grid
         grid_requests = []
-        extra_rows_needed = new_dyn_count - orig_dyn_count
 
-        if extra_rows_needed > 0:
-            # Physically insert blank rows right after the dynamic template block to push Row 13 down
+        # STEP 1: Clear all pre-existing merges in the dynamic template region so Row 12's merge never corrupts unmerged rows like [AREA_ROW]
+        if orig_dyn_count > 0:
+            grid_requests.append({
+                'unmergeCells': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'startRowIndex': len(top_fixed),
+                        'endRowIndex': len(top_fixed) + orig_dyn_count + 5,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 30
+                    }
+                }
+            })
+
+        # STEP 2: Shift bottom fixed rows physically using insertDimension / deleteDimension
+        if net_inserted_rows > 0:
             grid_requests.append({
                 'insertDimension': {
                     'range': {
                         'sheetId': temp_tab_gid,
                         'dimension': 'ROWS',
                         'startIndex': len(top_fixed) + orig_dyn_count,
-                        'endIndex': len(top_fixed) + orig_dyn_count + extra_rows_needed
+                        'endIndex': len(top_fixed) + orig_dyn_count + net_inserted_rows
                     },
                     'inheritFromBefore': False
                 }
             })
-        elif extra_rows_needed < 0:
-            # Delete excess template rows if fewer rows were generated
+        elif net_inserted_rows < 0:
             grid_requests.append({
                 'deleteDimension': {
                     'range': {
@@ -617,7 +625,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 1: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
+        # STEP 3: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
@@ -643,7 +651,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
 
-        # STEP 2: Update token text values on dynamic rows while strictly preserving userEnteredFormat
+        # STEP 4: Update token text values on dynamic rows while strictly preserving userEnteredFormat
         if dynamic_row_data:
             grid_requests.append({
                 'updateCells': {
@@ -657,7 +665,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 3: Targeted token updates for top_fixed rows ONLY on cells containing tokens
+        # STEP 5: Targeted token updates for top_fixed rows ONLY on cells containing tokens
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
@@ -683,9 +691,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
-        # STEP 4: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
+        # STEP 6: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
-            actual_r_idx = orig_r_i + extra_rows_needed
+            actual_r_idx = orig_r_i + net_inserted_rows
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -710,7 +718,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
-        # STEP 5: Re-apply exact column merges and row heights strictly on generated rows
+        # STEP 7: Re-apply exact column merges and row heights strictly on generated dynamic rows
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
 
