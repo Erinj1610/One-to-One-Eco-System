@@ -291,13 +291,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         items_list = tokens.get('items', [])
 
         # Dynamically determine the maximum column count present in this specific template sheet
-        max_col_count = 12
-        for r_item in row_data:
-            c_vals = r_item.get('values', [])
-            if len(c_vals) > max_col_count:
-                max_col_count = len(c_vals)
-        if max_col_count < 1:
-            max_col_count = 12
+        max_col_count = max([len(r_item.get('values', [])) for r_item in row_data] + [10])
 
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
