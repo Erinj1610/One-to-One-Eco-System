@@ -582,14 +582,14 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 2: Clear pre-existing merges in the expanded dynamic region before copying
+        # STEP 2: Clear pre-existing merges STRICTLY in the generated dynamic region (NEVER touch fixed rows)
         if new_dyn_count > 0:
             grid_requests.append({
                 'unmergeCells': {
                     'range': {
                         'sheetId': temp_tab_gid,
                         'startRowIndex': len(top_fixed),
-                        'endRowIndex': len(top_fixed) + new_dyn_count + 2,
+                        'endRowIndex': len(top_fixed) + new_dyn_count,
                         'startColumnIndex': 0,
                         'endColumnIndex': 30
                     }
@@ -689,12 +689,19 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
-        # STEP 7: Re-apply exact column merges and row heights strictly on generated dynamic rows AND bottom fixed rows
+        # STEP 7: Re-apply exact column merges and row heights AFTER copyPaste
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
 
+            # Re-apply template row height to newly generated dynamic row (e.g. Ground header 35px)
+            target_pixel_size = None
             if orig_src_r is not None and orig_src_r in exact_row_height_by_index:
+                target_pixel_size = exact_row_height_by_index[orig_src_r]
+            elif directive in ('[FLOOR_HEADER]', '[FLOOR_HEAD]'):
+                target_pixel_size = 35
+
+            if target_pixel_size:
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -704,7 +711,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': exact_row_height_by_index[orig_src_r]
+                            'pixelSize': target_pixel_size
                         },
                         'fields': 'pixelSize'
                     }
@@ -725,7 +732,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
-        # Ensure all bottom fixed rows (including Row 13 blank spacer) maintain their exact original row height
+        # Ensure all bottom fixed rows maintain their exact original row height AFTER copyPaste
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             actual_r_idx = orig_r_i + extra_rows
             if orig_r_i in exact_row_height_by_index:
