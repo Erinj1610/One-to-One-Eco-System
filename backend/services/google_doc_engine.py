@@ -695,21 +695,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             orig_src_r = directive_orig_row.get(directive)
 
             # Re-apply exact template row height from template source row
-            if orig_src_r is not None and orig_src_r in exact_row_height_by_index:
-                grid_requests.append({
-                    'updateDimensionProperties': {
-                        'range': {
-                            'sheetId': temp_tab_gid,
-                            'dimension': 'ROWS',
-                            'startIndex': actual_row_i,
-                            'endIndex': actual_row_i + 1
-                        },
-                        'properties': {
-                            'pixelSize': exact_row_height_by_index[orig_src_r]
-                        },
-                        'fields': 'pixelSize'
-                    }
-                })
+            if orig_src_r is not None and orig_src_r < len(row_data):
+                orig_r_meta = row_data[orig_src_r].get('rowMetadata', {})
+                if 'pixelSize' in orig_r_meta:
+                    grid_requests.append({
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': actual_row_i,
+                                'endIndex': actual_row_i + 1
+                            },
+                            'properties': {
+                                'pixelSize': orig_r_meta['pixelSize']
+                            },
+                            'fields': 'pixelSize'
+                        }
+                    })
 
             if directive in directive_merges and directive_merges[directive]:
                 for start_c, end_c in directive_merges[directive]:
