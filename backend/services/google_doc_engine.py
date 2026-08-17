@@ -712,6 +712,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
 
+            # If row is a SPACER row, explicitly wipe ALL cell text across columns 0-30
+            if ctx and ctx.get('_is_spacer'):
+                grid_requests.append({
+                    'updateCells': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'startRowIndex': actual_row_i,
+                            'endRowIndex': actual_row_i + 1,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': 30
+                        },
+                        'rows': [{
+                            'values': [{'userEnteredValue': {'stringValue': ''}} for _ in range(30)]
+                        }],
+                        'fields': 'userEnteredValue'
+                    }
+                })
+
         # STEP 4: Update token values on generated dynamic rows with userEnteredFormat
         if dynamic_row_data:
             grid_requests.append({
