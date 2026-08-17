@@ -608,32 +608,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 2: Shift bottom fixed rows physically using insertDimension / deleteDimension
-        if net_inserted_rows > 0:
-            grid_requests.append({
-                'insertDimension': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'dimension': 'ROWS',
-                        'startIndex': len(top_fixed) + orig_dyn_count,
-                        'endIndex': len(top_fixed) + orig_dyn_count + net_inserted_rows
-                    },
-                    'inheritFromBefore': False
-                }
-            })
-        elif net_inserted_rows < 0:
-            grid_requests.append({
-                'deleteDimension': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'dimension': 'ROWS',
-                        'startIndex': len(top_fixed) + new_dyn_count,
-                        'endIndex': len(top_fixed) + orig_dyn_count
-                    }
-                }
-            })
-
-        # STEP 3: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
+        # STEP 2: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
@@ -658,6 +633,30 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'pasteOrientation': 'NORMAL'
                     }
                 })
+
+        # STEP 3: Issue copyPaste (PASTE_NORMAL) for EVERY bottom fixed row to shift the summary box as a complete block
+        for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
+            target_r_idx = orig_r_i + net_inserted_rows
+            grid_requests.append({
+                'copyPaste': {
+                    'source': {
+                        'sheetId': temp_tab_gid,
+                        'startRowIndex': orig_r_i,
+                        'endRowIndex': orig_r_i + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 30
+                    },
+                    'destination': {
+                        'sheetId': temp_tab_gid,
+                        'startRowIndex': target_r_idx,
+                        'endRowIndex': target_r_idx + 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 30
+                    },
+                    'pasteType': 'PASTE_NORMAL',
+                    'pasteOrientation': 'NORMAL'
+                }
+            })
 
         # STEP 4: Update token text values on dynamic rows while strictly preserving userEnteredFormat
         if dynamic_row_data:
