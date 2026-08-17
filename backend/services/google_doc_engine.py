@@ -255,12 +255,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     temp_tab_gid = dup_res['replies'][0]['duplicateSheet']['properties']['sheetId']
 
     try:
-        # Read full cell metadata AND exact row heights directly from template before hiding Column A
+        # Read full cell metadata WITH Column A BEFORE hiding Column A
         sp_data = sheets_service.spreadsheets().get(
             spreadsheetId=working_spreadsheet_id,
             ranges=[f"'{dup_title}'!A1:Z300"],
-            includeGridData=True,
-            fields='sheets(data(rowData(rowMetadata(pixelSize),values(userEnteredValue,formattedValue,userEnteredFormat,textFormatRuns))))'
+            includeGridData=True
         ).execute()
 
         # Hide Column A on temporary tab so PDF rendering excludes Column A
