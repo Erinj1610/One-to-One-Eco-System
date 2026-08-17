@@ -420,7 +420,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 u_val = safe_float(item_obj.get('unit_price') or item_obj.get('retail') or item_obj.get('rate') or item_obj.get('price'), 0.0)
                 tot_val = resolve_item_total(item_obj)
                 code_str = str(item_obj.get('code') or item_obj.get('make_code') or item_obj.get('one_one_code') or item_obj.get('sku') or '').strip()
-                is_spacer = (code_str.upper() == 'SPACER')
+                desc_str = str(item_obj.get('description') or item_obj.get('name') or '').strip()
+                
+                # Check if item is a SPACER item
+                is_spacer = (code_str.upper() == 'SPACER' or desc_str.upper() == 'SPACER' or 'SPACER' in code_str.upper() or 'SPACER' in desc_str.upper())
 
                 if is_spacer:
                     item_ctx = {
@@ -440,7 +443,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'item.qty': str(int(q_val)) if q_val.is_integer() else f"{q_val:.2f}",
                         'item.oneOneCode': code_str,
                         'item.type': str(item_obj.get('type') or item_obj.get('category') or item_obj.get('plan_code') or ''),
-                        'item.description': str(item_obj.get('description') or item_obj.get('name') or ''),
+                        'item.description': desc_str,
                         'item.floor': str(item_obj.get('floor') or ''),
                         'item.area': str(item_obj.get('area') or ''),
                         'item.eta': str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks'),
