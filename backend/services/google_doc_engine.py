@@ -773,21 +773,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         except Exception as export_err:
             logger.warn(f"PDF export attempt failed: {export_err}")
 
-    # Delete temporary sheet tab
-    try:
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=working_spreadsheet_id,
-            body={
-                'requests': [{
-                    'deleteSheet': {
-                        'sheetId': temp_tab_gid
-                    }
-                }]
-            }
-        ).execute()
-        logger.info(f"Cleaned up temporary sheet tab '{dup_title}' ({temp_tab_gid})")
-    except Exception as del_err:
-        logger.warn(f"Could not delete temporary sheet tab: {del_err}")
+    # KEEP TEMPORARY TAB FOR LIVE INSPECTION (do not delete)
+    logger.info(f"Preserving generated sheet tab '{dup_title}' ({temp_tab_gid}) for live inspection")
 
     if not pdf_bytes:
         raise RuntimeError(f"Failed to generate valid PDF from Google Sheet template tab '{dup_title}'")
