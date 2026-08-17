@@ -299,10 +299,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             
             fl = str(fl_raw).strip()
             ar = str(ar_raw).strip()
-            
-            # Only use fallbacks if the user provided no floor/area at all
-            if not fl and not ar:
-                continue
 
             if not fl:
                 fl = 'General'
