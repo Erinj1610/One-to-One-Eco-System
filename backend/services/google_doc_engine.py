@@ -374,11 +374,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         fl_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_FOOTER]'), None)
         item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[ITEM_ROW]'), None)
 
+        # Helper to compute exact line item total from BOQ item objects
+        def resolve_item_total(it):
+            for key in ['total_price', 'totalRetail', 'total_retail', 'line_total', 'totalPrice', 'total']:
+                val = it.get(key)
+                if val is not None and str(val).strip() != '':
+                    num = safe_float(val)
+                    if num > 0:
+                        return num
+            q = safe_float(it.get('qty') or it.get('quantity'), 1.0)
+            u = safe_float(it.get('unit_price') or it.get('retail') or it.get('rate') or it.get('price'), 0.0)
+            return q * u
+
         # Generate all dynamic rows required for the order
         generated_dynamic_rows = []
         for fl_name, areas in grouped_floors.items():
             fl_items = [it for ar_items in areas.values() for it in ar_items]
-            fl_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in fl_items)
+            fl_subtotal_num = sum(resolve_item_total(it) for it in fl_items)
             fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
             fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
@@ -388,7 +400,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
 
             for ar_name, ar_items in areas.items():
-                ar_subtotal_num = sum((safe_float(it.get('qty'), 1.0) * safe_float(it.get('totalRetail', it.get('retail', 0)))) for it in ar_items)
+                ar_subtotal_num = sum(resolve_item_total(it) for it in ar_items)
                 ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
                 ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
