@@ -617,21 +617,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 1: Unmerge all existing template merges in the dynamic region to clear pre-existing merges (like Row 12)
-        if orig_dyn_count > 0:
-            grid_requests.append({
-                'unmergeCells': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'startRowIndex': len(top_fixed),
-                        'endRowIndex': len(top_fixed) + orig_dyn_count + 10,
-                        'startColumnIndex': 0,
-                        'endColumnIndex': 30
-                    }
-                }
-            })
-
-        # STEP 2: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
+        # STEP 1: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
@@ -657,12 +643,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
 
-        # STEP 3: Update token text values on dynamic rows
+        # STEP 2: Update token text values on dynamic rows while strictly preserving userEnteredFormat
         if dynamic_row_data:
             grid_requests.append({
                 'updateCells': {
                     'rows': dynamic_row_data,
-                    'fields': 'userEnteredValue,textFormatRuns',
+                    'fields': 'userEnteredValue,textFormatRuns,userEnteredFormat',
                     'start': {
                         'sheetId': temp_tab_gid,
                         'rowIndex': len(top_fixed),
@@ -671,7 +657,61 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 4: Re-apply exact column merges and row heights strictly on generated rows
+        # STEP 3: Targeted token updates for top_fixed rows ONLY on cells containing tokens
+        for r_i, (norm_dir, cell_objs, _) in enumerate(top_fixed):
+            for c_i, c_obj in enumerate(cell_objs):
+                user_val = c_obj.get('userEnteredValue', {})
+                formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                    cell_str = clean_block_tags(str(formatted_val))
+                    new_str = cell_str
+                    for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                        raw_match = m.group(0)
+                        token_key = (m.group(1) or m.group(2) or '').strip()
+                        sub_val = str(tokens.get(token_key, tokens.get(token_key.lower(), '')))
+                        new_str = new_str.replace(raw_match, sub_val)
+                    cleaned_top = clean_block_tags(new_str)
+                    grid_requests.append({
+                        'updateCells': {
+                            'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_top}}]}],
+                            'fields': 'userEnteredValue',
+                            'start': {
+                                'sheetId': temp_tab_gid,
+                                'rowIndex': r_i,
+                                'columnIndex': c_i
+                            }
+                        }
+                    })
+
+        # STEP 4: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
+        start_bottom_idx = len(top_fixed) + len(generated_dynamic_rows)
+        for r_i, (norm_dir, cell_objs, _) in enumerate(bottom_fixed):
+            actual_r_idx = start_bottom_idx + r_i
+            for c_i, c_obj in enumerate(cell_objs):
+                user_val = c_obj.get('userEnteredValue', {})
+                formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                    cell_str = clean_block_tags(str(formatted_val))
+                    new_str = cell_str
+                    for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                        raw_match = m.group(0)
+                        token_key = (m.group(1) or m.group(2) or '').strip()
+                        sub_val = str(tokens.get(token_key, tokens.get(token_key.lower(), '')))
+                        new_str = new_str.replace(raw_match, sub_val)
+                    cleaned_bot = clean_block_tags(new_str)
+                    grid_requests.append({
+                        'updateCells': {
+                            'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_bot}}]}],
+                            'fields': 'userEnteredValue',
+                            'start': {
+                                'sheetId': temp_tab_gid,
+                                'rowIndex': actual_r_idx,
+                                'columnIndex': c_i
+                            }
+                        }
+                    })
+
+        # STEP 5: Re-apply exact column merges and row heights strictly on generated rows
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
 
