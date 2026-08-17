@@ -291,23 +291,35 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         items_list = tokens.get('items', [])
 
-        # Group items by floor and area space with robust subtotal calculation
+        # Group items by floor and area space strictly preserving explicit user declarations
         grouped_floors = {}
         for item in items_list:
-            fl = str(item.get('floor') or item.get('Floor') or 'Ground Floor').strip()
-            ar = str(item.get('area') or item.get('Area') or 'General Area').strip()
+            fl_raw = item.get('floor') or item.get('Floor') or ''
+            ar_raw = item.get('area') or item.get('Area') or ''
+            
+            fl = str(fl_raw).strip()
+            ar = str(ar_raw).strip()
+            
+            # Only use fallbacks if the user provided no floor/area at all
+            if not fl and not ar:
+                continue
+
             if not fl:
-                fl = 'Ground Floor'
+                fl = 'General'
             if not ar:
-                ar = 'General Area'
+                ar = 'General'
+
             if fl not in grouped_floors:
                 grouped_floors[fl] = {}
             if ar not in grouped_floors[fl]:
                 grouped_floors[fl][ar] = []
             grouped_floors[fl][ar].append(item)
 
+        # Fallback ONLY if no items had any declared floors/areas
         if not grouped_floors:
-            grouped_floors['Ground Floor'] = {'General Area': []}
+            fallback_items = [it for it in items_list]
+            if fallback_items:
+                grouped_floors['General'] = {'General': fallback_items}
 
         # Parse Column A directives across template rows
         parsed_rows = []
