@@ -588,6 +588,34 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
+        # Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
+        start_bottom_idx = len(top_fixed) + len(generated_dynamic_rows)
+        for r_i, (norm_dir, cell_objs, _) in enumerate(bottom_fixed):
+            actual_r_idx = start_bottom_idx + r_i
+            for c_i, c_obj in enumerate(cell_objs):
+                user_val = c_obj.get('userEnteredValue', {})
+                formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                    cell_str = clean_block_tags(str(formatted_val))
+                    new_str = cell_str
+                    for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                        raw_match = m.group(0)
+                        token_key = (m.group(1) or m.group(2) or '').strip()
+                        sub_val = str(tokens.get(token_key, tokens.get(token_key.lower(), '')))
+                        new_str = new_str.replace(raw_match, sub_val)
+                    cleaned_bot = clean_block_tags(new_str)
+                    grid_requests.append({
+                        'updateCells': {
+                            'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_bot}}]}],
+                            'fields': 'userEnteredValue',
+                            'start': {
+                                'sheetId': temp_tab_gid,
+                                'rowIndex': actual_r_idx,
+                                'columnIndex': c_i
+                            }
+                        }
+                    })
+
         # Extract cell merges from ROOT sheet object (sp_data['sheets'][0]), NOT data[0]
         sheet_obj = sp_data['sheets'][0]
         orig_merges = sheet_obj.get('merges', [])
@@ -616,16 +644,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # Generate mergeCells requests for every expanded dynamic row based on its template directive merge spans
-        for r_idx, (directive, cell_objs, ctx) in enumerate(expanded_rows):
+        # Generate mergeCells requests for every generated dynamic row using its absolute sheet row index
+        for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
+            actual_row_i = len(top_fixed) + r_idx
             if directive in directive_merges:
                 for start_c, end_c in directive_merges[directive]:
                     grid_requests.append({
                         'mergeCells': {
                             'range': {
                                 'sheetId': temp_tab_gid,
-                                'startRowIndex': r_idx,
-                                'endRowIndex': r_idx + 1,
+                                'startRowIndex': actual_row_i,
+                                'endRowIndex': actual_row_i + 1,
                                 'startColumnIndex': start_c,
                                 'endColumnIndex': end_c
                             },
