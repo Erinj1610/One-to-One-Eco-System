@@ -4371,22 +4371,24 @@ export default function OrdersPage() {
                                 </div>
                                 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
-                                  {Object.entries(areaTotals).map(([areaName, totals]) => {
-                                    const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
-                                    return (
-                                      <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                          <span>Billed Retail:</span>
-                                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
+                                  {Object.entries(areaTotals)
+                                    .filter(([_, totals]) => totals.retail > 0 || totals.cost > 0)
+                                    .map(([areaName, totals]) => {
+                                      const areaMargin = totals.retail > 0 ? Math.round(((totals.retail - totals.cost) / totals.retail) * 100) : 0;
+                                      return (
+                                        <div key={areaName} style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                                          <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600, display: 'block' }}>{areaName}</span>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                            <span>Billed Retail:</span>
+                                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>R {Math.round(totals.retail).toLocaleString()}</span>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                            <span>Margin:</span>
+                                            <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
+                                          </div>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                          <span>Margin:</span>
-                                          <span style={{ fontWeight: 700, color: areaMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>{areaMargin}%</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
+                                      );
+                                    })}
                                 </div>
                                 
                                 <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '10px', fontSize: '10px', color: 'var(--text-tertiary)' }}>
