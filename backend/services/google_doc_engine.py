@@ -377,11 +377,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     in_dynamic_block = False
                     bottom_fixed.append((norm_dir, cell_objs, {}))
 
-        # Extract template cell definitions for dynamic rows
-        fl_header_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_HEADER]'), None)
-        fl_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_TABLE_HEAD]'), None)
-        area_header_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_HEADER]'), None)
-        area_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_TABLE_HEAD]'), None)
+        # Extract template cell definitions using exact directive names from Column A of the template
+        fl_header_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[FLOOR_HEADER]', '[FLOOR_HEAD]')), None)
+        fl_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[FLOOR_TABLE_HEADER]', '[FLOOR_TABLE_HEAD]')), None)
+        area_row_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[AREA_ROW]', '[AREA_HEADER]', '[AREA_HEAD]')), None)
+        area_table_head_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[AREA_TABLE_HEADER]', '[AREA_TABLE_HEAD]')), None)
         area_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[AREA_FOOTER]'), None)
         fl_footer_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[FLOOR_FOOTER]'), None)
         item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[ITEM_ROW]'), None)
@@ -416,8 +416,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
                 ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
-                if area_header_cells:
-                    generated_dynamic_rows.append(('[AREA_HEADER]', area_header_cells, ar_ctx))
+                if area_row_cells:
+                    generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
                 if area_table_head_cells:
                     generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
 
