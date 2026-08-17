@@ -428,8 +428,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 code_str = str(item_obj.get('code') or item_obj.get('make_code') or item_obj.get('one_one_code') or item_obj.get('sku') or '').strip()
                 desc_str = str(item_obj.get('description') or item_obj.get('name') or '').strip()
                 
-                # Check if item is a SPACER item
-                is_spacer = (code_str.upper() == 'SPACER' or desc_str.upper() == 'SPACER' or 'SPACER' in code_str.upper() or 'SPACER' in desc_str.upper())
+                # Check if ANY field in item_obj contains 'SPACER'
+                is_spacer = any(v is not None and 'SPACER' in str(v).strip().upper() for v in item_obj.values())
 
                 if is_spacer:
                     return {
