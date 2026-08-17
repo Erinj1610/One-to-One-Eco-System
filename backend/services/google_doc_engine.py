@@ -434,46 +434,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             if fl_footer_cells:
                 generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
 
-        # Calculate row difference between generated dynamic block and original template block
-        orig_dyn_count = len(dynamic_template_rows)
-        new_dyn_count = len(generated_dynamic_rows)
-        row_diff = new_dyn_count - orig_dyn_count
-
-        start_insert_idx = len(top_fixed) + orig_dyn_count
-
-        # Physically insert or delete rows in Google Sheet so bottom fixed rows are pushed down cleanly
-        dimension_requests = []
-        if row_diff > 0:
-            dimension_requests.append({
-                'insertDimension': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'dimension': 'ROWS',
-                        'startIndex': start_insert_idx,
-                        'endIndex': start_insert_idx + row_diff
-                    },
-                    'inheritFromBefore': True
-                }
-            })
-        elif row_diff < 0:
-            delete_count = abs(row_diff)
-            dimension_requests.append({
-                'deleteDimension': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'dimension': 'ROWS',
-                        'startIndex': start_insert_idx - delete_count,
-                        'endIndex': start_insert_idx
-                    }
-                }
-            })
-
-        if dimension_requests:
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=working_spreadsheet_id,
-                body={'requests': dimension_requests}
-            ).execute()
-
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
         # Construct rowData strictly for generated dynamic rows (starting at len(top_fixed))
