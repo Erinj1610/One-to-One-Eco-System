@@ -608,7 +608,32 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 }
             })
 
-        # STEP 2: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
+        # STEP 2: Physically expand or contract the sheet grid using insertDimension / deleteDimension
+        if net_inserted_rows > 0:
+            grid_requests.append({
+                'insertDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': len(top_fixed) + orig_dyn_count,
+                        'endIndex': len(top_fixed) + orig_dyn_count + net_inserted_rows
+                    },
+                    'inheritFromBefore': False
+                }
+            })
+        elif net_inserted_rows < 0:
+            grid_requests.append({
+                'deleteDimension': {
+                    'range': {
+                        'sheetId': temp_tab_gid,
+                        'dimension': 'ROWS',
+                        'startIndex': len(top_fixed) + new_dyn_count,
+                        'endIndex': len(top_fixed) + orig_dyn_count
+                    }
+                }
+            })
+
+        # STEP 3: Issue copyPaste (PASTE_NORMAL) for EVERY generated dynamic row from its original template row
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
@@ -634,7 +659,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
 
-        # STEP 3: Issue copyPaste (PASTE_NORMAL) for EVERY bottom fixed row to shift the summary box as a complete block
+        # STEP 4: Issue copyPaste (PASTE_NORMAL) for EVERY bottom fixed row onto its shifted row index
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             target_r_idx = orig_r_i + net_inserted_rows
             grid_requests.append({
