@@ -654,9 +654,35 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
 
-        # ONLY unmerge and re-merge rows whose template directives actually contained merged cells
+        # Extract original row heights (pixelSize) for template dynamic rows
+        template_row_heights = {}
+        for orig_r_i, orig_dir, _ in dynamic_template_rows:
+            if orig_r_i < len(row_data):
+                r_meta = row_data[orig_r_i].get('rowMetadata', {})
+                if 'pixelSize' in r_meta:
+                    template_row_heights[orig_dir] = r_meta['pixelSize']
+
+        # ONLY unmerge and re-merge rows whose template directives actually contained merged cells, and apply row heights
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
+
+            # Copy exact row height (pixelSize) from template row directive if defined
+            if directive in template_row_heights:
+                grid_requests.append({
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': actual_row_i,
+                            'endIndex': actual_row_i + 1
+                        },
+                        'properties': {
+                            'pixelSize': template_row_heights[directive]
+                        },
+                        'fields': 'pixelSize'
+                    }
+                })
+
             if directive in directive_merges and directive_merges[directive]:
                 for start_c, end_c in directive_merges[directive]:
                     # Unmerge first on this specific row to prevent API conflicts
