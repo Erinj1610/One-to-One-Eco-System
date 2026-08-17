@@ -539,13 +539,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
 
-        # Extract original row heights (pixelSize) for template dynamic rows
+        # Extract original row heights (pixelSize) by exact template row index
+        exact_row_height_by_index = {}
+        for r_i_idx, r_obj in enumerate(row_data):
+            r_meta = r_obj.get('rowMetadata', {})
+            if 'pixelSize' in r_meta:
+                exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
+
         template_row_heights = {}
         for orig_r_i, orig_dir, _ in dynamic_template_rows:
-            if orig_r_i < len(row_data):
-                r_meta = row_data[orig_r_i].get('rowMetadata', {})
-                if 'pixelSize' in r_meta:
-                    template_row_heights[orig_dir] = r_meta['pixelSize']
+            if orig_r_i in exact_row_height_by_index:
+                template_row_heights[orig_dir] = exact_row_height_by_index[orig_r_i]
 
         # STEP 1: Physically expand or contract the grid at the end of the dynamic block
         orig_dyn_count = len(dynamic_template_rows)
@@ -685,11 +689,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
-        # STEP 7: Re-apply exact column merges and row heights strictly on generated dynamic rows
+        # STEP 7: Re-apply exact column merges and row heights strictly on generated dynamic rows AND bottom fixed rows
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
+            orig_src_r = directive_orig_row.get(directive)
 
-            if directive in template_row_heights:
+            if orig_src_r is not None and orig_src_r in exact_row_height_by_index:
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -699,7 +704,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': template_row_heights[directive]
+                            'pixelSize': exact_row_height_by_index[orig_src_r]
                         },
                         'fields': 'pixelSize'
                     }
@@ -719,6 +724,25 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'mergeType': 'MERGE_ALL'
                         }
                     })
+
+        # Ensure all bottom fixed rows (including Row 13 blank spacer) maintain their exact original row height
+        for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
+            actual_r_idx = orig_r_i + extra_rows
+            if orig_r_i in exact_row_height_by_index:
+                grid_requests.append({
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': actual_r_idx,
+                            'endIndex': actual_r_idx + 1
+                        },
+                        'properties': {
+                            'pixelSize': exact_row_height_by_index[orig_r_i]
+                        },
+                        'fields': 'pixelSize'
+                    }
+                })
 
         # Submit single batchUpdate to expand dimension, write grid, unmerge, and apply exact cell merges
         sheets_service.spreadsheets().batchUpdate(
