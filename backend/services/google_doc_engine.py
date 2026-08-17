@@ -712,7 +712,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
 
-            # If row is a SPACER row, explicitly wipe ALL cell text across columns 0-30
+            # If row is a SPACER row, explicitly wipe ALL cell text across columns 0-12
             if ctx and ctx.get('_is_spacer'):
                 grid_requests.append({
                     'updateCells': {
@@ -721,10 +721,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'startRowIndex': actual_row_i,
                             'endRowIndex': actual_row_i + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 30
+                            'endColumnIndex': 12
                         },
                         'rows': [{
-                            'values': [{'userEnteredValue': {'stringValue': ''}} for _ in range(30)]
+                            'values': [{'userEnteredValue': {'stringValue': ''}} for _ in range(12)]
                         }],
                         'fields': 'userEnteredValue'
                     }
@@ -826,7 +826,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'startRowIndex': actual_row_i,
                             'endRowIndex': actual_row_i + 1,
                             'startColumnIndex': 0,
-                            'endColumnIndex': 30
+                            'endColumnIndex': 12
                         },
                         'cell': {
                             'userEnteredValue': {'stringValue': ''},
