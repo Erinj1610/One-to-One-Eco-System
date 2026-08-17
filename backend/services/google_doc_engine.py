@@ -412,32 +412,62 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
         if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
-            if table_head_cells:
-                generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
-            
-            if item_row_cells:
-                for item_obj in items_list:
-                    q_val = safe_float(item_obj.get('qty') or item_obj.get('quantity'), 1.0)
-                    u_val = safe_float(item_obj.get('unit_price') or item_obj.get('retail') or item_obj.get('rate') or item_obj.get('price'), 0.0)
-                    tot_val = resolve_item_total(item_obj)
-                    
+            main_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) >= 0]
+            credit_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) < 0]
+
+            def build_item_ctx(item_obj):
+                q_val = safe_float(item_obj.get('qty') or item_obj.get('quantity'), 1.0)
+                u_val = safe_float(item_obj.get('unit_price') or item_obj.get('retail') or item_obj.get('rate') or item_obj.get('price'), 0.0)
+                tot_val = resolve_item_total(item_obj)
+                code_str = str(item_obj.get('code') or item_obj.get('make_code') or item_obj.get('one_one_code') or item_obj.get('sku') or '').strip()
+                is_spacer = (code_str.upper() == 'SPACER')
+
+                if is_spacer:
+                    item_ctx = {
+                        'item.qty': '',
+                        'item.oneOneCode': '',
+                        'item.type': '',
+                        'item.description': '',
+                        'item.floor': '',
+                        'item.area': '',
+                        'item.eta': '',
+                        'item.retail': '',
+                        'item.totalRetail': '',
+                        '_is_spacer': True
+                    }
+                else:
                     item_ctx = {
                         'item.qty': str(int(q_val)) if q_val.is_integer() else f"{q_val:.2f}",
-                        'item.oneOneCode': str(item_obj.get('code') or item_obj.get('make_code') or item_obj.get('one_one_code') or item_obj.get('sku') or ''),
+                        'item.oneOneCode': code_str,
                         'item.type': str(item_obj.get('type') or item_obj.get('category') or item_obj.get('plan_code') or ''),
                         'item.description': str(item_obj.get('description') or item_obj.get('name') or ''),
                         'item.floor': str(item_obj.get('floor') or ''),
                         'item.area': str(item_obj.get('area') or ''),
                         'item.eta': str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks'),
                         'item.retail': f"R {u_val:,.2f}",
-                        'item.totalRetail': f"R {tot_val:,.2f}"
+                        'item.totalRetail': f"R {tot_val:,.2f}",
+                        '_is_spacer': False
                     }
-                    for k, v in item_obj.items():
-                        if k not in item_ctx and v is not None:
-                            item_ctx[f"item.{k}"] = str(v)
-                            item_ctx[k] = str(v)
+                for k, v in item_obj.items():
+                    if k not in item_ctx and v is not None:
+                        item_ctx[f"item.{k}"] = str(v)
+                        item_ctx[k] = str(v)
+                return item_ctx
 
-                    generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
+            if table_head_cells:
+                generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
+            
+            if item_row_cells:
+                for item_obj in main_items:
+                    generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
+
+            if credit_items and (credit_head_cells or credit_item_cells):
+                if credit_head_cells:
+                    generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
+                target_credit_cell = credit_item_cells or item_row_cells
+                if target_credit_cell:
+                    for item_obj in credit_items:
+                        generated_dynamic_rows.append(('[CREDIT_ITEM_ROW]', target_credit_cell, build_item_ctx(item_obj)))
         else:
             # Grouped Floor / Area template (like Quotation)
             for fl_name, areas in grouped_floors.items():
@@ -734,24 +764,59 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             actual_row_i = len(top_fixed) + r_idx
             orig_src_r = directive_orig_row.get(directive)
 
-            # Re-apply exact template row height from template source row
-            if orig_src_r is not None and orig_src_r < len(row_data):
-                orig_r_meta = row_data[orig_src_r].get('rowMetadata', {})
-                if 'pixelSize' in orig_r_meta:
-                    grid_requests.append({
-                        'updateDimensionProperties': {
-                            'range': {
-                                'sheetId': temp_tab_gid,
-                                'dimension': 'ROWS',
-                                'startIndex': actual_row_i,
-                                'endIndex': actual_row_i + 1
-                            },
-                            'properties': {
-                                'pixelSize': orig_r_meta['pixelSize']
-                            },
-                            'fields': 'pixelSize'
-                        }
-                    })
+            # Check if this row is a SPACER row
+            if ctx and ctx.get('_is_spacer'):
+                grid_requests.append({
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': actual_row_i,
+                            'endIndex': actual_row_i + 1
+                        },
+                        'properties': {
+                            'pixelSize': 5
+                        },
+                        'fields': 'pixelSize'
+                    }
+                })
+                # Apply light grey background across all columns for SPACER bar
+                grid_requests.append({
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'startRowIndex': actual_row_i,
+                            'endRowIndex': actual_row_i + 1,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': 30
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'backgroundColor': {'red': 0.88, 'green': 0.88, 'blue': 0.88}
+                            }
+                        },
+                        'fields': 'userEnteredFormat.backgroundColor'
+                    }
+                })
+            else:
+                # Re-apply exact template row height from template source row
+                if orig_src_r is not None and orig_src_r < len(row_data):
+                    orig_r_meta = row_data[orig_src_r].get('rowMetadata', {})
+                    if 'pixelSize' in orig_r_meta:
+                        grid_requests.append({
+                            'updateDimensionProperties': {
+                                'range': {
+                                    'sheetId': temp_tab_gid,
+                                    'dimension': 'ROWS',
+                                    'startIndex': actual_row_i,
+                                    'endIndex': actual_row_i + 1
+                                },
+                                'properties': {
+                                    'pixelSize': orig_r_meta['pixelSize']
+                                },
+                                'fields': 'pixelSize'
+                            }
+                        })
 
             if directive in directive_merges and directive_merges[directive]:
                 for start_c, end_c in directive_merges[directive]:
