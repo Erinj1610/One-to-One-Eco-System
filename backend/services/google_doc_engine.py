@@ -162,20 +162,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     target_gid = 0
     
     if sheet_name:
-        clean_name = str(sheet_name).strip().lower().replace('_', ' ')
-        alias_list = [clean_name]
-        if clean_name in ('quotation', 'quote'):
-            alias_list.extend(['quotation', 'quote', 'quotes', 'summarized quotation'])
-        elif clean_name in ('boq', 'boq doc'):
-            alias_list.extend(['boq', 'boq doc', 'detailed boq', 'bill of quantities'])
-        elif clean_name in ('schedule', 'lighting schedule'):
-            alias_list.extend(['schedule', 'lighting schedule'])
-        elif clean_name in ('deposit invoice', 'deposit_invoice'):
-            alias_list.extend(['deposit invoice', 'deposit_invoice'])
+        raw_target = str(sheet_name).strip().lower()
+        clean_target = ''.join(c for c in raw_target if c.isalnum())
+
+        alias_set = {clean_target}
+        if clean_target in ('quotation', 'quote'):
+            alias_set.update(['quotation', 'quote', 'quotes', 'summarizedquotation'])
+        elif clean_target in ('boq', 'boqdoc'):
+            alias_set.update(['boq', 'boqdoc', 'detailedboq', 'billofquantities'])
+        elif clean_target in ('schedule', 'lightingschedule'):
+            alias_set.update(['schedule', 'lightingschedule'])
+        elif 'proforma' in clean_target or 'proform' in clean_target:
+            alias_set.update(['proformainvoice', 'proforma', 'proformainv'])
 
         for s in sheets:
-            s_title = s['properties']['title'].strip().lower().replace('_', ' ')
-            if any(alias in s_title or s_title in alias for alias in alias_list):
+            raw_s = s['properties']['title'].strip().lower()
+            clean_s = ''.join(c for c in raw_s if c.isalnum())
+            if clean_s in alias_set or any(a in clean_s for a in alias_set):
                 target_sheet = s
                 target_gid = s['properties']['sheetId']
                 logger.info(f"Matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
