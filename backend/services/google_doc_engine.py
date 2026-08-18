@@ -364,10 +364,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 norm_dir = '[TABLE_HEADER]'
             elif col_a_val in ('[CREDIT_HEAD]', '[CREDIT_HEADER]'):
                 norm_dir = '[CREDIT_HEADER]'
-            elif col_a_val == '[ITEM_SUMMARY]':
-                norm_dir = '[ITEM_ROW]'
-            elif col_a_val == '[CREDIT_ITEM_SUMMARY]':
-                norm_dir = '[CREDIT_ITEM_ROW]'
+            elif col_a_val in ('[ITEM_SUMMARY]', '[ITEM_ROW]'):
+                norm_dir = col_a_val
+            elif col_a_val in ('[CREDIT_ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]'):
+                norm_dir = col_a_val
             else:
                 norm_dir = col_a_val
 
