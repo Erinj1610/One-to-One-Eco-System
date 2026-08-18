@@ -66,6 +66,27 @@ const DEFAULT_BUDGETS_CONFIG = {
       'MADE ( Jon-Peer)': 2000000.00,
       'LUXELINE': 1000000.00,
       'INTERNAL - Office': 0.00
+    },
+    targetsKPI5: {
+      'MODUS PROFESSIONAL ( Ryan )': 7769000.00,
+      'MOOD STORES': 0.00,
+      'MODUS PROJECTS ( Dani )': 6480000.00,
+      'PROJECTS (Dani own)': 3160000.00,
+      'MODUS SIGNATURE ( Thando )': 0.00,
+      'MADE ( Jon-Peer)': 0.00,
+      'LUXELINE': 0.00,
+      'INTERNAL - Office': 0.00
+    },
+    targetsKPI6: {
+      deadstock: 500000.00,
+      consignment: 1000000.00,
+      normal: 500000.00,
+      led: 500000.00
+    },
+    targetsKPI7: {
+      enquiries: 1.00,
+      faults: 5.00,
+      siteVisits: 2.00
     }
   }
 };
@@ -124,7 +145,9 @@ export default function ReportsPage() {
     });
   }, [drilldownModal.items, drilldownSortField, drilldownSortDirection]);
 
-  // Load budgets config from db
+  // Load budgets config from db and delivery notes for KPI 5
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+
   useEffect(() => {
     fetch(`${API_BASE}/api/settings/budgetsConfig`)
       .then(res => res.ok ? res.json() : null)
@@ -140,6 +163,13 @@ export default function ReportsPage() {
         setBudgetsConfig(DEFAULT_BUDGETS_CONFIG);
         setIsLoadingBudgets(false);
       });
+
+    fetch(`${API_BASE}/api/logistics/delivery-notes`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setDeliveryNotes(Array.isArray(data) ? data : []);
+      })
+      .catch(err => console.error("Error fetching delivery notes for KPI 5:", err));
   }, []);
 
   // Prevent background scrolling when modal is open
@@ -334,12 +364,18 @@ export default function ReportsPage() {
   const dynamicAwaiting = {};
   const dynamicPipeline = {};
   const dynamicAnnual = {};
+  const dynamicDelivered = {};
+
+  const prevMonthIdx = selectedMonthIdx === 0 ? 11 : selectedMonthIdx - 1;
+  const prevMonthYear = selectedMonthIdx === 0 ? selectedYear - 1 : selectedYear;
+  const prevMonthName = MONTHS_LIST[prevMonthIdx];
 
   activeDivisionsList.forEach(div => {
     const baselineKPI1 = (activeFyConfig.budgetsKPI1 && activeFyConfig.budgetsKPI1[div]) || { monthly: 0, ytd: 0 };
     const baselineKPI2 = (activeFyConfig.targetsKPI2 && activeFyConfig.targetsKPI2[div]) || 0;
     const baselineKPI3 = (activeFyConfig.targetsKPI3 && activeFyConfig.targetsKPI3[div]) || 0;
     const baselineKPI4 = (activeFyConfig.budgetsKPI4 && activeFyConfig.budgetsKPI4[div]) || 0;
+    const baselineKPI5 = (activeFyConfig.targetsKPI5 && activeFyConfig.targetsKPI5[div]) || 0;
 
     // YTD Budget logic: monthly_budget * number of elapsed months in FY sequence (selectedSeqIndex + 1)
     const computedYtdBudget = baselineKPI1.monthly * (selectedSeqIndex + 1);
@@ -348,6 +384,15 @@ export default function ReportsPage() {
     dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI2 };
     dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI3 };
     dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: baselineKPI4 };
+    dynamicDelivered[div] = { 
+      prevQty: 0, prevValue: 0, 
+      selectedQty: 0, selectedValue: 0, 
+      ytdQty: 0, ytdValue: 0, 
+      target: baselineKPI5, 
+      ordersPrevSet: new Set(),
+      ordersSelectedSet: new Set(),
+      ordersYtdSet: new Set()
+    };
   });
 
   // Calculate Order Aggregations
@@ -540,6 +585,68 @@ export default function ReportsPage() {
         }
       }
     });
+  });
+
+  // Calculate KPI 5: Orders Delivered (from Logistics Delivery Notes)
+  (deliveryNotes || []).forEach(dn => {
+    if (!dn) return;
+    const rawDate = dn.created_at || dn.date || dn.delivery_date;
+    const parsedDate = parseDateString(rawDate);
+    if (!parsedDate) return;
+
+    const { monthName: dnMonth, year: dnYear, monthIdx: dnMonthIdx } = parsedDate;
+    const dnFy = getFinancialYearForPeriod(dnMonthIdx, dnYear);
+    const dnSeqVal = getFyMonthSequenceVal(dnMonthIdx);
+
+    // Find parent order across projects to get order division & value
+    let parentOrder = null;
+    let parentProj = null;
+    const targetOrderId = String(dn.order_id || dn.orderId || '').trim();
+
+    Object.values(projects || {}).forEach(proj => {
+      (proj.orders || []).forEach(ord => {
+        if (targetOrderId && (String(ord.id) === targetOrderId || String(ord.order_number || '') === targetOrderId || String(ord.pf_number || '') === targetOrderId)) {
+          parentOrder = ord;
+          parentProj = proj;
+        }
+      });
+    });
+
+    const div = parentOrder && parentProj ? getOrderDivision(parentOrder, parentProj) : 'UNALLOCATED / UNASSIGNED';
+    if (!dynamicDelivered[div]) return;
+
+    const orderValExclVat = parentOrder 
+      ? (parentOrder.value || (parentOrder.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0))
+      : safe_float(dn.total_value || dn.value, 0);
+
+    const orderKey = targetOrderId || dn.id || Math.random().toString();
+
+    // Previous Month Delivered
+    if (dnMonth === prevMonthName && dnYear === prevMonthYear) {
+      if (!dynamicDelivered[div].ordersPrevSet.has(orderKey)) {
+        dynamicDelivered[div].ordersPrevSet.add(orderKey);
+        dynamicDelivered[div].prevQty += 1;
+        dynamicDelivered[div].prevValue += orderValExclVat;
+      }
+    }
+
+    // Selected Month Delivered
+    if (dnMonth === selectedMonthName && dnYear === selectedYear) {
+      if (!dynamicDelivered[div].ordersSelectedSet.has(orderKey)) {
+        dynamicDelivered[div].ordersSelectedSet.add(orderKey);
+        dynamicDelivered[div].selectedQty += 1;
+        dynamicDelivered[div].selectedValue += orderValExclVat;
+      }
+    }
+
+    // YTD Delivered
+    if (dnFy === currentFinancialYear && dnSeqVal <= selectedSeqIndex) {
+      if (!dynamicDelivered[div].ordersYtdSet.has(orderKey)) {
+        dynamicDelivered[div].ordersYtdSet.add(orderKey);
+        dynamicDelivered[div].ytdQty += 1;
+        dynamicDelivered[div].ytdValue += orderValExclVat;
+      }
+    }
   });
 
   // Trigger drilldown popup details handler
@@ -1277,6 +1384,83 @@ export default function ReportsPage() {
               </table>
             </div>
           </div>
+
+          {/* KPI 5: ORDERS DELIVERED */}
+          <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div 
+              onClick={() => toggleCollapse('kpi5')}
+              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+            >
+              {collapsedTables.kpi5 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 5: Orders Delivered</div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: '#334155', color: '#ffffff', textAlign: 'center' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', borderRight: '1px solid #475569' }}>KPI 1</th>
+                    <th colSpan={2} style={{ padding: '10px 16px', borderRight: '1px solid #475569' }}>{prevMonthName}</th>
+                    <th colSpan={2} style={{ padding: '10px 16px', borderRight: '1px solid #475569' }}>{selectedMonthName}</th>
+                    <th colSpan={4} style={{ padding: '10px 16px' }}>Year to date</th>
+                  </tr>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Orders Delivered</th>
+                    <th style={{ padding: '10px 16px' }}>Order Qty</th>
+                    <th style={{ padding: '10px 16px', borderRight: '1px solid var(--border)' }}>Order Value</th>
+                    <th style={{ padding: '10px 16px' }}>Order Qty</th>
+                    <th style={{ padding: '10px 16px', borderRight: '1px solid var(--border)' }}>Order Value</th>
+                    <th style={{ padding: '10px 16px' }}>Order Qty</th>
+                    <th style={{ padding: '10px 16px' }}>Order Value</th>
+                    <th style={{ padding: '10px 16px' }}>Target Value</th>
+                    <th style={{ padding: '10px 16px' }}>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!collapsedTables.kpi5 && activeDivisionsList.map((div) => {
+                    const row = dynamicDelivered[div] || { prevQty: 0, prevValue: 0, selectedQty: 0, selectedValue: 0, ytdQty: 0, ytdValue: 0, target: 0 };
+                    const variance = row.ytdValue - row.target;
+                    return (
+                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{div}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{row.prevQty.toFixed(2)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', borderRight: '1px solid var(--border)' }}>{formatZar(row.prevValue)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{row.selectedQty.toFixed(2)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', borderRight: '1px solid var(--border)' }}>{formatZar(row.selectedValue)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{row.ytdQty.toFixed(2)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>{formatZar(row.ytdValue)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{formatZar(row.target)}</td>
+                        <td style={{ 
+                          padding: '12px 16px', textAlign: 'right', fontWeight: 700, 
+                          color: variance < 0 ? '#ef4444' : '#10b981',
+                          background: variance < 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'
+                        }}>
+                          {formatZar(variance)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* TOTAL ROW */}
+                  <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
+                    <td style={{ padding: '12px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>{Object.values(dynamicDelivered).reduce((s, r) => s + r.prevQty, 0).toFixed(2)}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', borderRight: '1px solid var(--border)' }}>{formatZar(Object.values(dynamicDelivered).reduce((s, r) => s + r.prevValue, 0))}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>{Object.values(dynamicDelivered).reduce((s, r) => s + r.selectedQty, 0).toFixed(2)}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', borderRight: '1px solid var(--border)' }}>{formatZar(Object.values(dynamicDelivered).reduce((s, r) => s + r.selectedValue, 0))}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>{Object.values(dynamicDelivered).reduce((s, r) => s + r.ytdQty, 0).toFixed(2)}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>{formatZar(Object.values(dynamicDelivered).reduce((s, r) => s + r.ytdValue, 0))}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>{formatZar(Object.values(dynamicDelivered).reduce((s, r) => s + r.target, 0))}</td>
+                    <td style={{ 
+                      padding: '12px 16px', textAlign: 'right',
+                      color: (Object.values(dynamicDelivered).reduce((s, r) => s + r.ytdValue, 0) - Object.values(dynamicDelivered).reduce((s, r) => s + r.target, 0)) < 0 ? '#ef4444' : '#10b981',
+                      background: (Object.values(dynamicDelivered).reduce((s, r) => s + r.ytdValue, 0) - Object.values(dynamicDelivered).reduce((s, r) => s + r.target, 0)) < 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)'
+                    }}>
+                      {formatZar(Object.values(dynamicDelivered).reduce((s, r) => s + r.ytdValue, 0) - Object.values(dynamicDelivered).reduce((s, r) => s + r.target, 0))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
 
@@ -1339,13 +1523,14 @@ export default function ReportsPage() {
                   <th style={{ padding: '12px' }}>KPI 2: Awaiting Stock Target</th>
                   <th style={{ padding: '12px' }}>KPI 3: Pipeline Target</th>
                   <th style={{ padding: '12px' }}>KPI 4: Annual Limit Budget</th>
+                  <th style={{ padding: '12px' }}>KPI 5: Delivered Orders Target</th>
                   <th style={{ padding: '12px', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {mgmtFyConfig.divisions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       No divisions defined for this Financial Year yet. Add one above!
                     </td>
                   </tr>
@@ -1355,6 +1540,7 @@ export default function ReportsPage() {
                     const kpi2 = (mgmtFyConfig.targetsKPI2 && mgmtFyConfig.targetsKPI2[div]) || 0;
                     const kpi3 = (mgmtFyConfig.targetsKPI3 && mgmtFyConfig.targetsKPI3[div]) || 0;
                     const kpi4 = (mgmtFyConfig.budgetsKPI4 && mgmtFyConfig.budgetsKPI4[div]) || 0;
+                    const kpi5 = (mgmtFyConfig.targetsKPI5 && mgmtFyConfig.targetsKPI5[div]) || 0;
 
                     return (
                       <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -1391,6 +1577,14 @@ export default function ReportsPage() {
                             style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
                           />
                         </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <input 
+                            type="number" 
+                            value={kpi5}
+                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI5', null, e.target.value)}
+                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                           <button 
                             onClick={() => deleteTeamDivision(div)}
@@ -1409,60 +1603,93 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* VIEW 3: OPERATIONAL KPIS */}
+      {/* VIEW 3: OPERATIONAL KPIS (KPI 7 & KPI 8) */}
       {activeReport === 'operational_kpis' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          {/* FAULTS CARD */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* KPI 7: ENQUIRIES & AVERAGES */}
           <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '20px' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertCircle style={{ color: '#f43f5e' }} /> KPI 4: Client Fault Tickets Status
+            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}>
+              <CheckCircle style={{ color: '#10b981' }} /> KPI 7: Enquiries & Operational Averages
             </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-              <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#f43f5e' }}>{newFaultsCount || 4}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Active Open Faults</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#eab308' }}>23</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Logged YTD</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981' }}>{closedFaultsCount || 5}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Resolved Faults</div>
-                </div>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                All fault tickets are synced with the support module. Ensuring resolved times stay under 7 business days preserves our customer satisfaction index.
-              </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: '#334155', color: '#ffffff', textAlign: 'center' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', borderRight: '1px solid #475569' }}>KPI 3</th>
+                    <th colSpan={3} style={{ padding: '10px 16px', borderRight: '1px solid #475569' }}>Enquiries</th>
+                    <th colSpan={3} style={{ padding: '10px 16px', borderRight: '1px solid #475569' }}>Faults</th>
+                    <th colSpan={3} style={{ padding: '10px 16px' }}>Site Visits</th>
+                  </tr>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Enquiries Metric</th>
+                    <th style={{ padding: '10px 16px' }}>Average Enquiries</th>
+                    <th style={{ padding: '10px 16px' }}>Target</th>
+                    <th style={{ padding: '10px 16px', borderRight: '1px solid var(--border)' }}>Variance</th>
+                    <th style={{ padding: '10px 16px' }}>Average Faults</th>
+                    <th style={{ padding: '10px 16px' }}>Target</th>
+                    <th style={{ padding: '10px 16px', borderRight: '1px solid var(--border)' }}>Variance</th>
+                    <th style={{ padding: '10px 16px' }}>Average Site Visits</th>
+                    <th style={{ padding: '10px 16px' }}>Target</th>
+                    <th style={{ padding: '10px 16px' }}>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
+                    <td style={{ padding: '14px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>1.89</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>1.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', borderRight: '1px solid var(--border)' }}>-0.89</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>6.79</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>5.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#ef4444', background: 'rgba(239, 68, 68, 0.15)', borderRight: '1px solid var(--border)' }}>-1.79</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>1.37</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>2.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)' }}>0.63</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* AUDITS CARD */}
+          {/* KPI 8: FAULTS TRACKER */}
           <div className="card" style={{ border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '20px' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CheckCircle style={{ color: '#10b981' }} /> KPI 3: Site Visits & Audit Metrics
+            <h2 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}>
+              <AlertCircle style={{ color: '#f43f5e' }} /> KPI 8: Client Faults Tracker
             </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-              <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800 }}>1.87</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Avg Enquiries (Target: 1.0)</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#f43f5e' }}>7.27</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Avg Faults (Target: 5.0)</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '24px', fontWeight: 800 }}>1.33</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Site Visits (Target: 2.0)</div>
-                </div>
-              </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Tracking actual site visits ensures that project managers align with onsite schedules and clear up snags before logistics handovers.
-              </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: '#334155', color: '#ffffff', textAlign: 'center' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', borderRight: '1px solid #475569' }}>KPI 4</th>
+                    <th colSpan={3} style={{ padding: '10px 16px', borderRight: '1px solid #475569' }}>{selectedMonthName}</th>
+                    <th colSpan={3} style={{ padding: '10px 16px' }}>Year to Date</th>
+                  </tr>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.05)', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Fault Status Summary</th>
+                    <th style={{ padding: '10px 16px' }}>New Faults</th>
+                    <th style={{ padding: '10px 16px' }}>Open Faults</th>
+                    <th style={{ padding: '10px 16px', borderRight: '1px solid var(--border)' }}>Closed</th>
+                    <th style={{ padding: '10px 16px' }}>Total Faults</th>
+                    <th style={{ padding: '10px 16px' }}>Open</th>
+                    <th style={{ padding: '10px 16px' }}>Closed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border)', fontWeight: 700 }}>
+                    <td style={{ padding: '14px 16px' }}>TOTAL</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>7.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#f59e0b' }}>7.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#10b981', borderRight: '1px solid var(--border)' }}>0.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>36.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#f59e0b' }}>19.00</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', color: '#10b981' }}>17.00</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
+
         </div>
       )}
 
