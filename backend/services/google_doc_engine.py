@@ -436,10 +436,26 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 if is_spacer:
                     continue
 
-                code_val = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip()
-                plan_val = str(it.get('type') or it.get('category') or it.get('plan_code') or '').strip()
-                desc_val = str(it.get('description') or it.get('name') or '').strip()
-                group_key = (plan_val.upper(), code_val.upper())
+                code_val = str(
+                    it.get('oneOneCode') or it.get('one_one_code') or 
+                    it.get('code') or it.get('make_code') or it.get('makeCode') or 
+                    it.get('sku') or ''
+                ).strip()
+
+                plan_val = str(
+                    it.get('type') or it.get('plan_code') or it.get('planCode') or 
+                    it.get('category') or ''
+                ).strip()
+
+                desc_val = str(
+                    it.get('description') or it.get('name') or ''
+                ).strip()
+
+                # Robust composite key
+                if code_val or plan_val:
+                    group_key = f"{plan_val.upper()}||{code_val.upper()}"
+                else:
+                    group_key = desc_val.upper()
 
                 q_val = safe_float(it.get('qty') or it.get('quantity'), 1.0)
                 u_val = safe_float(it.get('unit_price') or it.get('retail') or it.get('rate') or it.get('price'), 0.0)
@@ -451,8 +467,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         'code': code_val,
                         'make_code': code_val,
                         'one_one_code': code_val,
+                        'oneOneCode': code_val,
                         'plan_code': plan_val,
                         'type': plan_val,
+                        'planCode': plan_val,
                         'description': desc_val,
                         'brand': it.get('brand') or '',
                         'eta': it.get('lead_time') or it.get('eta') or '4-8 Weeks',
