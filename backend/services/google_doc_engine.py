@@ -420,6 +420,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             u = safe_float(it.get('unit_price') or it.get('retail') or it.get('rate') or it.get('price'), 0.0)
             return q * u
 
+        # Generate all dynamic rows required for the order
+        generated_dynamic_rows = []
+
         # Check if template uses Summary Directives ([ITEM_SUMMARY] or [CREDIT_ITEM_SUMMARY])
         is_summary_mode = any(d in ('[ITEM_SUMMARY]', '[CREDIT_ITEM_SUMMARY]') for _, d, _ in dynamic_template_rows)
 
