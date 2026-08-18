@@ -608,6 +608,70 @@ export default function ProductsPage() {
   const [editingStock, setEditingStock] = useState(0);
   const [formFields, setFormFields] = useState({});
 
+  // Operational Role Mode: 'staff' (Visual Cards & Picking) vs 'manager' (Full Excel Spreadsheet Command Center)
+  const [operationalMode, setOperationalMode] = useState('staff');
+  
+  // Product Manager Live Grid Edits State (track dirty cells before committing to Cloud SQL)
+  const [gridEdits, setGridEdits] = useState({}); // { [productId]: { field: newValue } }
+
+  const handleGridCellChange = (productId, field, value) => {
+    setGridEdits(prev => ({
+      ...prev,
+      [productId]: {
+        ...(prev[productId] || {}),
+        [field]: value
+      }
+    }));
+  };
+
+  const handleCommitGridEdits = async () => {
+    const dirtyIds = Object.keys(gridEdits);
+    if (dirtyIds.length === 0) {
+      triggerToast("No pending grid edits to commit.");
+      return;
+    }
+
+    try {
+      triggerToast(`Committing edits for ${dirtyIds.length} product(s) to Cloud SQL...`);
+      
+      const payloadRows = dirtyIds.map(id => {
+        const prod = products.find(p => String(p.id) === String(id)) || {};
+        const changes = gridEdits[id];
+        return {
+          sku: prod.sku,
+          name: changes.name !== undefined ? changes.name : prod.name,
+          cost_price: changes.cost_price !== undefined ? parseFloat(changes.cost_price) || 0 : (prod.cost_price || prod.unitCost || 0),
+          trade_price: changes.trade_price !== undefined ? parseFloat(changes.trade_price) || 0 : (prod.trade_price || prod.tradePrice || 0),
+          retail_price: changes.retail_price !== undefined ? parseFloat(changes.retail_price) || 0 : (prod.retail_price || prod.retailPrice || 0),
+          stock_level: changes.stock_level !== undefined ? parseInt(changes.stock_level) || 0 : (prod.stock_level || prod.stock || 0),
+          internal_cost: changes.internal_cost !== undefined ? parseFloat(changes.internal_cost) || 0 : (prod.internal_cost || 0),
+          supplier_name: changes.supplier_name !== undefined ? changes.supplier_name : (prod.supplier_name || prod.supplier || ''),
+          lead_time: changes.lead_time !== undefined ? changes.lead_time : (prod.lead_time || prod.leadTime || ''),
+          status: changes.status !== undefined ? changes.status : prod.status
+        };
+      });
+
+      const res = await fetch(`${API_BASE}/api/products/reconcile-products-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadRows)
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setGridEdits({});
+        triggerToast(`Successfully committed ${result.updated || dirtyIds.length} product(s) to Cloud SQL!`);
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchSummary();
+      } else {
+        const err = await res.json();
+        alert("Batch commit failed: " + (err.detail || "Server error"));
+      }
+    } catch (e) {
+      alert("Network error during commit: " + e.message);
+    }
+  };
+
   // Master Catalog View Presets ('commercial', 'technical', 'inventory', 'full')
   const [viewMode, setViewMode] = useState('commercial');
 
@@ -1267,7 +1331,7 @@ export default function ProductsPage() {
           {/* SCREEN 1: PRODUCT MASTER DATABASE (LIST VIEW)              */}
           {/* ========================================================= */}
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
@@ -1277,7 +1341,35 @@ export default function ProductsPage() {
                   📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
+
+              {/* OPERATIONAL MODE ROLE SWITCHER */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-strong)' }}>
+                <button
+                  onClick={() => setOperationalMode('staff')}
+                  className={`btn btn-sm ${operationalMode === 'staff' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600 }}
+                >
+                  👤 Staff & Sales View
+                </button>
+                <button
+                  onClick={() => setOperationalMode('manager')}
+                  className={`btn btn-sm ${operationalMode === 'manager' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600, color: operationalMode === 'manager' ? '#fff' : 'var(--text-info)' }}
+                >
+                  ⚡ Product Manager Mode (Excel Grid)
+                </button>
+              </div>
+
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {operationalMode === 'manager' && Object.keys(gridEdits).length > 0 && (
+                  <button 
+                    onClick={handleCommitGridEdits} 
+                    className="btn btn-success" 
+                    style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', animation: 'pulse 2s infinite' }}
+                  >
+                    💾 Commit {Object.keys(gridEdits).length} Edit(s) to Cloud SQL
+                  </button>
+                )}
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
                   <Download size={14} /> Download Template / Export
                 </button>
@@ -1285,9 +1377,6 @@ export default function ProductsPage() {
                   <FileText size={14} /> Bulk Import (Excel)
                   <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleBulkImportExcel} />
                 </label>
-                <button className="btn btn-ghost" onClick={() => triggerToast("Sales order builder initiated in background.")} style={{ border: '1px solid var(--border)' }}>
-                  + Create Sales Order
-                </button>
                 <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
                   <Plus size={15} /> Create Product SKU
                 </button>
@@ -1572,12 +1661,67 @@ export default function ProductsPage() {
 
                       {viewMode === 'commercial' && (
                         <>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600, color: 'var(--text-info)' }}>R {(p.internal_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                            {operationalMode === 'manager' ? (
+                              <input 
+                                type="number" 
+                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.cost_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.cost_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
+                                value={gridEdits[p.id]?.cost_price !== undefined ? gridEdits[p.id].cost_price : (p.unitCost || p.cost_price || 0)}
+                                onChange={e => handleGridCellChange(p.id, 'cost_price', e.target.value)}
+                              />
+                            ) : (
+                              `R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            )}
+                          </td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
+                            {operationalMode === 'manager' ? (
+                              <input 
+                                type="number" 
+                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.internal_cost !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.internal_cost !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
+                                value={gridEdits[p.id]?.internal_cost !== undefined ? gridEdits[p.id].internal_cost : (p.internal_cost || 0)}
+                                onChange={e => handleGridCellChange(p.id, 'internal_cost', e.target.value)}
+                              />
+                            ) : (
+                              `R ${(p.internal_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            )}
+                          </td>
                           <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.markup || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.tradePrice || p.trade_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>R {(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                            {operationalMode === 'manager' ? (
+                              <input 
+                                type="number" 
+                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.trade_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.trade_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
+                                value={gridEdits[p.id]?.trade_price !== undefined ? gridEdits[p.id].trade_price : (p.tradePrice || p.trade_price || 0)}
+                                onChange={e => handleGridCellChange(p.id, 'trade_price', e.target.value)}
+                              />
+                            ) : (
+                              `R ${(p.tradePrice || p.trade_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            )}
+                          </td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                            {operationalMode === 'manager' ? (
+                              <input 
+                                type="number" 
+                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.retail_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.retail_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
+                                value={gridEdits[p.id]?.retail_price !== undefined ? gridEdits[p.id].retail_price : (p.retailPrice || p.retail_price || p.recommended_retail_price || 0)}
+                                onChange={e => handleGridCellChange(p.id, 'retail_price', e.target.value)}
+                              />
+                            ) : (
+                              `R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                            )}
+                          </td>
+                          <td style={{ verticalAlign: 'middle' }} onClick={e => e.stopPropagation()}>
+                            {operationalMode === 'manager' ? (
+                              <input 
+                                type="text" 
+                                style={{ width: '100px', height: '26px', fontSize: '11.5px', background: gridEdits[p.id]?.supplier_name !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.supplier_name !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
+                                value={gridEdits[p.id]?.supplier_name !== undefined ? gridEdits[p.id].supplier_name : (p.supplier_name || p.supplier || '')}
+                                onChange={e => handleGridCellChange(p.id, 'supplier_name', e.target.value)}
+                              />
+                            ) : (
+                              p.supplier_name || p.supplier || '-'
+                            )}
+                          </td>
                         </>
                       )}
 
