@@ -381,6 +381,95 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_s
         print(f"Master Google Sheet Merge Error: {gsheet_err}")
         raise HTTPException(status_code=500, detail=f"Google Sheets PDF Generation Error: {gsheet_err}")
 
+
+@router.post("/generate-batch")
+def generate_batch_documents(request_body: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Generates multiple document types sequentially and merges them into a single PDF download stream.
+    """
+    doc_types = request_body.get('doc_types', [])
+    data = request_body.get('data', {})
+    is_save_action = request_body.get('is_save_action', False)
+
+    if not doc_types:
+        raise HTTPException(status_code=400, detail="No document types specified for batch PDF generation.")
+
+    service_account_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "GOOGLE_SERVICE_ACCOUNT_JSON").first()
+    credentials_json = (service_account_config.config_json or {}) if service_account_config else None
+
+    from services.google_doc_engine import merge_google_sheet
+    generated_pdf_paths = []
+
+    for dt in doc_types:
+        target_key = "MASTER_DESIGN_FEE_SHEET" if dt == "DESIGN_FEE_PROPOSAL" else "MASTER_ORDERS_SHEET"
+        specific_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == target_key).first()
+        master_gsheet_url = (specific_config.config_json or {}).get("url", "").strip() if specific_config else ""
+        if not master_gsheet_url:
+            fallback_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "MASTER_GOOGLE_SHEET").first()
+            master_gsheet_url = (fallback_config.config_json or {}).get("url", "").strip() if fallback_config else ""
+
+        if not master_gsheet_url:
+            continue
+
+        try:
+            pdf_p, _, _ = merge_google_sheet(
+                template_source=master_gsheet_url,
+                tokens=data,
+                sheet_name=dt,
+                output_pdf_name=f"{dt.lower()}.pdf",
+                credentials_json=credentials_json,
+                is_save_action=is_save_action
+            )
+            if pdf_p and os.path.exists(pdf_p):
+                generated_pdf_paths.append(pdf_p)
+        except Exception as err:
+            print(f"Error generating {dt} for batch PDF: {err}")
+
+    if not generated_pdf_paths:
+        raise HTTPException(status_code=500, detail="Failed to generate any of the selected document PDFs.")
+
+    if len(generated_pdf_paths) == 1:
+        return FileResponse(
+            generated_pdf_paths[0],
+            media_type='application/pdf',
+            filename="Combined_Documents.pdf"
+        )
+
+    # Merge multiple PDFs into a single file
+    try:
+        import pypdf
+        merger = pypdf.PdfWriter()
+    except ImportError:
+        try:
+            import PyPDF2 as pypdf
+            merger = pypdf.PdfMerger()
+        except ImportError:
+            raise HTTPException(status_code=500, detail="PDF merger library (pypdf) is missing on server.")
+
+    merged_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    merged_path = merged_temp.name
+    merged_temp.close()
+
+    try:
+        for p in generated_pdf_paths:
+            merger.append(p)
+        merger.write(merged_path)
+        merger.close()
+
+        return FileResponse(
+            merged_path,
+            media_type='application/pdf',
+            filename="Combined_Documents.pdf"
+        )
+    except Exception as merge_err:
+        print(f"Error merging PDFs: {merge_err}")
+        # Fallback to returning first PDF
+        return FileResponse(
+            generated_pdf_paths[0],
+            media_type='application/pdf',
+            filename="Combined_Documents.pdf"
+        )
+
     # 2. Check if a direct docx template exists (either in DB or on disk)
     from services.docx_engine import merge_docx_template
     

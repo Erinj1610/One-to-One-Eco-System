@@ -568,6 +568,7 @@ export default function OrdersPage() {
     qty: 1
   });
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
+  const [checkedDocTypes, setCheckedDocTypes] = useState(['quote']);
   const [showRegForm, setShowRegForm] = useState(true);
   
   // Product Catalogue Tab & Filter States
@@ -796,11 +797,28 @@ export default function OrdersPage() {
         })()
       };
 
-      const res = await fetch(`${API_BASE}/admin/generate/${docType}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tokens)
-      });
+      let res;
+      let targetDocTypes = checkedDocTypes.length > 0 
+        ? checkedDocTypes.map(d => d === 'boq_doc' ? 'BOQ' : d === 'quote' ? 'QUOTATION' : d.toUpperCase())
+        : [docType];
+
+      if (targetDocTypes.length > 1) {
+        res = await fetch(`${API_BASE}/admin/generate-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            doc_types: targetDocTypes,
+            data: tokens
+          })
+        });
+      } else {
+        const singleDoc = targetDocTypes[0] || docType;
+        res = await fetch(`${API_BASE}/admin/generate/${singleDoc}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tokens)
+        });
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -811,7 +829,7 @@ export default function OrdersPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${docType.toLowerCase()}_${selectedOrderId}.pdf`;
+      a.download = targetDocTypes.length > 1 ? `Combined_Documents_${selectedOrderId}.pdf` : `${targetDocTypes[0].toLowerCase()}_${selectedOrderId}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -4543,9 +4561,13 @@ export default function OrdersPage() {
                 {/* DOCUMENT SIDEBAR UTILITIES */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   
-                  {/* DOCUMENT SELECTION */}
+                  {/* DOCUMENT SELECTION WITH CHECKBOXES */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Select Document</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Select Documents</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 600 }}>{checkedDocTypes.length} Selected</span>
+                    </div>
+
                     {(() => {
                       const baseDocs = [
                         { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
@@ -4572,26 +4594,55 @@ export default function OrdersPage() {
 
                       return baseDocs.map(doc => {
                         const isSelected = selectedDocType === doc.id;
+                        const isChecked = checkedDocTypes.includes(doc.id);
                         return (
-                          <button
+                          <div
                             key={doc.id}
-                            type="button"
-                            className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px',
-                              justifyContent: 'flex-start',
                               width: '100%',
-                              padding: '8px 12px',
-                              textAlign: 'left',
-                              borderRadius: '6px'
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                              border: '1px solid',
+                              borderColor: isSelected ? 'var(--border-info)' : 'transparent'
                             }}
-                            onClick={() => setSelectedDocType(doc.id)}
                           >
-                            {doc.icon}
-                            <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
-                          </button>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.checked) {
+                                  setCheckedDocTypes(prev => [...prev, doc.id]);
+                                } else {
+                                  setCheckedDocTypes(prev => prev.filter(id => id !== doc.id));
+                                }
+                              }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                justifyContent: 'flex-start',
+                                flex: 1,
+                                padding: '4px 6px',
+                                textAlign: 'left',
+                                border: 'none',
+                                background: 'transparent'
+                              }}
+                              onClick={() => setSelectedDocType(doc.id)}
+                            >
+                              {doc.icon}
+                              <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
+                            </button>
+                          </div>
                         );
                       });
                     })()}
@@ -4602,9 +4653,9 @@ export default function OrdersPage() {
                     className="btn btn-success"
                     style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff', width: '100%', fontWeight: 600 }}
                     onClick={handleExportXlsxTemplate}
-                    disabled={exportingXlsx}
+                    disabled={exportingXlsx || checkedDocTypes.length === 0}
                   >
-                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF...' : 'Download PDF 📄'}
+                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF Batch...' : `Download ${checkedDocTypes.length > 1 ? `Selected (${checkedDocTypes.length}) PDFs 📄` : 'PDF 📄'}`}
                   </button>
                 </div>
 

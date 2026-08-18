@@ -1034,30 +1034,96 @@ export default function TemplateHub() {
           <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Document Types</span>
           </div>
-          {Object.values(docTypesList).map(doc => (
-            <button
+          {Object.values(docTypesList).map((doc, index) => (
+            <div
               key={doc.id}
-              onClick={() => setSelectedDoc(doc.id)}
-              className="btn btn-ghost"
+              draggable
+              onDragStart={(e) => {
+                dragItem.current = index;
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnter={(e) => {
+                dragOverItem.current = index;
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                if (dragItem.current === null || dragOverItem.current === null || dragItem.current === dragOverItem.current) return;
+                const itemsArr = Object.values(docTypesList);
+                const draggedItemContent = itemsArr[dragItem.current];
+                itemsArr.splice(dragItem.current, 1);
+                itemsArr.splice(dragOverItem.current, 0, draggedItemContent);
+                dragItem.current = null;
+                dragOverItem.current = null;
+
+                const reorderedObj = {};
+                itemsArr.forEach(item => {
+                  reorderedObj[item.id] = item;
+                });
+                setDocTypesList(reorderedObj);
+                await saveCustomDocsToDatabase(reorderedObj);
+              }}
               style={{
-                textAlign: 'left', padding: '10px 12px', borderRadius: '6px',
-                width: '100%', justifyContent: 'flex-start', fontSize: '12.5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                width: '100%',
+                padding: '2px 4px',
+                borderRadius: '6px',
+                background: selectedDoc === doc.id ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
                 border: '1px solid',
                 borderColor: selectedDoc === doc.id ? 'var(--border-info)' : 'transparent',
-                background: selectedDoc === doc.id ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                color: selectedDoc === doc.id ? 'var(--text-info)' : 'var(--text-secondary)',
-                fontWeight: selectedDoc === doc.id ? 600 : 500
+                cursor: 'grab'
               }}
             >
-              {doc.name}
-            </button>
+              <div style={{ cursor: 'grab', opacity: 0.5, padding: '4px' }} title="Drag to re-order">
+                <Move size={13} />
+              </div>
+
+              <button
+                onClick={() => setSelectedDoc(doc.id)}
+                className="btn btn-ghost"
+                style={{
+                  textAlign: 'left', padding: '8px 6px', borderRadius: '4px',
+                  flex: 1, justifyContent: 'flex-start', fontSize: '12.5px',
+                  border: 'none', background: 'transparent',
+                  color: selectedDoc === doc.id ? 'var(--text-info)' : 'var(--text-secondary)',
+                  fontWeight: selectedDoc === doc.id ? 600 : 500
+                }}
+              >
+                {doc.name}
+              </button>
+
+              {/* Delete Custom Document */}
+              {!DOCUMENT_TYPES[doc.id] && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Are you sure you want to delete '${doc.name}' template?`)) {
+                      const newList = { ...docTypesList };
+                      delete newList[doc.id];
+                      setDocTypesList(newList);
+                      if (selectedDoc === doc.id) {
+                        setSelectedDoc(Object.keys(newList)[0] || 'QUOTATION');
+                      }
+                      await saveCustomDocsToDatabase(newList);
+                    }
+                  }}
+                  className="btn btn-ghost text-error"
+                  style={{ padding: '4px', height: '24px', width: '24px', opacity: 0.7 }}
+                  title="Delete Template"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
           ))}
 
           <button
             onClick={async () => {
               const name = prompt("Enter new Document Type name (e.g. Proforma Invoice, Work Order):");
               if (!name || !name.trim()) return;
-              const key = name.toUpperCase().replace(/[^A_Z0-9]/g, '_').replace(/_+/g, '_');
+              const key = name.toUpperCase().replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_');
               const newDoc = {
                 id: key,
                 name: `📄 ${name.trim()}`,
