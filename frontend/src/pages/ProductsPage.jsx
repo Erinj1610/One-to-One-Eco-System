@@ -1331,7 +1331,7 @@ export default function ProductsPage() {
           {/* SCREEN 1: PRODUCT MASTER DATABASE (LIST VIEW)              */}
           {/* ========================================================= */}
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
@@ -1341,35 +1341,7 @@ export default function ProductsPage() {
                   📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
-
-              {/* OPERATIONAL MODE ROLE SWITCHER */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-strong)' }}>
-                <button
-                  onClick={() => setOperationalMode('staff')}
-                  className={`btn btn-sm ${operationalMode === 'staff' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600 }}
-                >
-                  👤 Staff & Sales View
-                </button>
-                <button
-                  onClick={() => setOperationalMode('manager')}
-                  className={`btn btn-sm ${operationalMode === 'manager' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600, color: operationalMode === 'manager' ? '#fff' : 'var(--text-info)' }}
-                >
-                  ⚡ Product Manager Mode (Excel Grid)
-                </button>
-              </div>
-
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {operationalMode === 'manager' && Object.keys(gridEdits).length > 0 && (
-                  <button 
-                    onClick={handleCommitGridEdits} 
-                    className="btn btn-success" 
-                    style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', animation: 'pulse 2s infinite' }}
-                  >
-                    💾 Commit {Object.keys(gridEdits).length} Edit(s) to Cloud SQL
-                  </button>
-                )}
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
                   <Download size={14} /> Download Template / Export
                 </button>
@@ -1479,44 +1451,6 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          {/* VIEW PRESET CONTROL SWITCHER */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-              {[
-                { id: 'commercial', label: '🏷️ Commercial View' },
-                { id: 'technical', label: '⚡ Technical & Specs' },
-                { id: 'inventory', label: '📦 Stock & Logistics' },
-                { id: 'full', label: '👁️ Full Database View' }
-              ].map(vm => (
-                <button
-                  key={vm.id}
-                  onClick={() => setViewMode(vm.id)}
-                  className={`btn btn-sm ${viewMode === vm.id ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600 }}
-                >
-                  {vm.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* BULK ACTIONS BAR */}
-          {selectedProductIds.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(24,95,165,0.08)', border: '1px solid var(--border-strong)', padding: '10px 18px', borderRadius: '10px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                ⚡ <strong>{selectedProductIds.length}</strong> product(s) selected
-              </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={handleBulkArchive} className="btn btn-sm btn-danger" style={{ fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  🛡️ Bulk Archive as Discontinued
-                </button>
-                <button onClick={() => setSelectedProductIds([])} className="btn btn-sm btn-ghost" style={{ fontSize: '12px' }}>
-                  Deselect All
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* FILTER CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1582,53 +1516,13 @@ export default function ProductsPage() {
                     <th style={{ width: '60px', textAlign: 'center' }}>IMAGE</th>
                     <th style={{ width: '120px' }}>SKU</th>
                     <th>DESCRIPTION / PRODUCT</th>
-                    
-                    {viewMode === 'commercial' && (
-                      <>
-                        <th style={{ textAlign: 'right', width: '100px' }}>COST (R)</th>
-                        <th style={{ textAlign: 'right', width: '110px' }}>INT. COST (R)</th>
-                        <th style={{ textAlign: 'center', width: '90px' }}>MARK-UP</th>
-                        <th style={{ textAlign: 'right', width: '100px' }}>TRADE (R)</th>
-                        <th style={{ textAlign: 'right', width: '100px' }}>RETAIL (R)</th>
-                        <th style={{ width: '110px' }}>SUPPLIER</th>
-                      </>
-                    )}
-
-                    {viewMode === 'technical' && (
-                      <>
-                        <th style={{ textAlign: 'center', width: '80px' }}>POWER</th>
-                        <th style={{ textAlign: 'center', width: '80px' }}>KELVIN</th>
-                        <th style={{ textAlign: 'center', width: '60px' }}>CRI</th>
-                        <th style={{ textAlign: 'center', width: '70px' }}>IP</th>
-                        <th style={{ textAlign: 'center', width: '90px' }}>CUTOUT</th>
-                        <th style={{ width: '130px' }}>DRIVER SPEC</th>
-                        <th style={{ textAlign: 'center', width: '80px' }}>DIMMABLE</th>
-                      </>
-                    )}
-
-                    {viewMode === 'inventory' && (
-                      <>
-                        <th style={{ textAlign: 'center', width: '80px' }}>STOCK</th>
-                        <th style={{ textAlign: 'center', width: '90px' }}>REORDER</th>
-                        <th style={{ width: '110px' }}>LEAD TIME</th>
-                        <th style={{ textAlign: 'center', width: '100px' }}>CONSIGNMENT</th>
-                        <th style={{ textAlign: 'center', width: '100px' }}>LOCAL/IMPORT</th>
-                        <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
-                      </>
-                    )}
-
-                    {viewMode === 'full' && (
-                      <>
-                        <th style={{ width: '100px' }}>BRAND</th>
-                        <th style={{ width: '100px' }}>SUPPLIER</th>
-                        <th style={{ textAlign: 'right', width: '90px' }}>COST</th>
-                        <th style={{ textAlign: 'right', width: '90px' }}>RETAIL</th>
-                        <th style={{ textAlign: 'center', width: '70px' }}>POWER</th>
-                        <th style={{ textAlign: 'center', width: '70px' }}>IP</th>
-                        <th style={{ textAlign: 'center', width: '70px' }}>STOCK</th>
-                        <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
-                      </>
-                    )}
+                    <th style={{ width: '120px' }}>FAMILY</th>
+                    <th style={{ width: '100px' }}>BRAND</th>
+                    <th style={{ width: '100px' }}>SUPPLIER</th>
+                    <th style={{ textAlign: 'right', width: '100px' }}>UNIT COST</th>
+                    <th style={{ textAlign: 'right', width: '100px' }}>RRP PRICE</th>
+                    <th style={{ textAlign: 'center', width: '90px' }}>STOCK</th>
+                    <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1658,116 +1552,21 @@ export default function ProductsPage() {
                       </td>
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                       <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
-
-                      {viewMode === 'commercial' && (
-                        <>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                            {operationalMode === 'manager' ? (
-                              <input 
-                                type="number" 
-                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.cost_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.cost_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
-                                value={gridEdits[p.id]?.cost_price !== undefined ? gridEdits[p.id].cost_price : (p.unitCost || p.cost_price || 0)}
-                                onChange={e => handleGridCellChange(p.id, 'cost_price', e.target.value)}
-                              />
-                            ) : (
-                              `R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            )}
-                          </td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
-                            {operationalMode === 'manager' ? (
-                              <input 
-                                type="number" 
-                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.internal_cost !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.internal_cost !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
-                                value={gridEdits[p.id]?.internal_cost !== undefined ? gridEdits[p.id].internal_cost : (p.internal_cost || 0)}
-                                onChange={e => handleGridCellChange(p.id, 'internal_cost', e.target.value)}
-                              />
-                            ) : (
-                              `R ${(p.internal_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            )}
-                          </td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.markup || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                            {operationalMode === 'manager' ? (
-                              <input 
-                                type="number" 
-                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.trade_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.trade_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
-                                value={gridEdits[p.id]?.trade_price !== undefined ? gridEdits[p.id].trade_price : (p.tradePrice || p.trade_price || 0)}
-                                onChange={e => handleGridCellChange(p.id, 'trade_price', e.target.value)}
-                              />
-                            ) : (
-                              `R ${(p.tradePrice || p.trade_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            )}
-                          </td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                            {operationalMode === 'manager' ? (
-                              <input 
-                                type="number" 
-                                style={{ width: '85px', height: '26px', fontSize: '11.5px', textAlign: 'right', background: gridEdits[p.id]?.retail_price !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.retail_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
-                                value={gridEdits[p.id]?.retail_price !== undefined ? gridEdits[p.id].retail_price : (p.retailPrice || p.retail_price || p.recommended_retail_price || 0)}
-                                onChange={e => handleGridCellChange(p.id, 'retail_price', e.target.value)}
-                              />
-                            ) : (
-                              `R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                            )}
-                          </td>
-                          <td style={{ verticalAlign: 'middle' }} onClick={e => e.stopPropagation()}>
-                            {operationalMode === 'manager' ? (
-                              <input 
-                                type="text" 
-                                style={{ width: '100px', height: '26px', fontSize: '11.5px', background: gridEdits[p.id]?.supplier_name !== undefined ? '#fffbeb' : '#fff', border: gridEdits[p.id]?.supplier_name !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)' }}
-                                value={gridEdits[p.id]?.supplier_name !== undefined ? gridEdits[p.id].supplier_name : (p.supplier_name || p.supplier || '')}
-                                onChange={e => handleGridCellChange(p.id, 'supplier_name', e.target.value)}
-                              />
-                            ) : (
-                              p.supplier_name || p.supplier || '-'
-                            )}
-                          </td>
-                        </>
-                      )}
-
-                      {viewMode === 'technical' && (
-                        <>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.systemPower || p.system_power ? `${p.systemPower || p.system_power}W` : '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.kelvin || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.cri || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.ipRating || p.ip_rating || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.cutout || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', fontSize: '11px', color: 'var(--text-secondary)' }}>{p.driver_spec || p.driverSpec || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.dimmable || 'No'}</td>
-                        </>
-                      )}
-
-                      {viewMode === 'inventory' && (
-                        <>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.reorderLevel || p.reorder_level || 100}</td>
-                          <td style={{ verticalAlign: 'middle' }}>{p.leadTime || p.lead_time || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.consignment || 'No'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.local_or_import || p.origin || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                            <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
-                              {p.status}
-                            </span>
-                          </td>
-                        </>
-                      )}
-
-                      {viewMode === 'full' && (
-                        <>
-                          <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
-                          <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>R {(p.retailPrice || p.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.systemPower || p.system_power ? `${p.systemPower || p.system_power}W` : '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.ipRating || p.ip_rating || '-'}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
-                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                            <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
-                              {p.status}
-                            </span>
-                          </td>
-                        </>
-                      )}
+                      <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>
+                        R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                        R {(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
+                        <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
+                          {p.status}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                   {filteredProducts.length === 0 && (
