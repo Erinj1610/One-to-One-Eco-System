@@ -947,8 +947,21 @@ export default function ProductsPage() {
     }
   };
 
-  const handleExportTemplateExcel = () => {
+  const handleExportTemplateExcel = async () => {
     try {
+      triggerToast("Fetching full database from server for Excel export...");
+      
+      let allProducts = products;
+      try {
+        const res = await fetch(`${API_BASE}/api/products?limit=10000`);
+        if (res.ok) {
+          const data = await res.json();
+          allProducts = Array.isArray(data) ? data : (data.items || data.products || products);
+        }
+      } catch (fErr) {
+        console.warn("Could not fetch unlimited products list, using current page state", fErr);
+      }
+
       const headers = [
         "sku", "Description", "Client Description", "Fitting Type", "Lighting Type",
         "Family/Range", "Cost", "Mark-Up", "Trade", "Retail", "Internal Cost",
@@ -1002,7 +1015,7 @@ export default function ProductsPage() {
         "Selection/Non-Selection": "Primary Selection"
       };
 
-      const rows = products.length > 0 ? products.map(p => ({
+      const rows = allProducts.length > 0 ? allProducts.map(p => ({
         "sku": p.sku,
         "Description": p.name,
         "Client Description": p.client_description || "",
@@ -1047,7 +1060,7 @@ export default function ProductsPage() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Product_Database");
       XLSX.writeFile(workbook, `Product_Database_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
-      triggerToast("Product database template successfully exported!");
+      triggerToast(`Export complete! Exported ${rows.length} product(s).`);
     } catch (err) {
       console.error(err);
       alert("Failed to export product template: " + err.message);
