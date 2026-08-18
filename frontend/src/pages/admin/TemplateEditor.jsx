@@ -415,29 +415,37 @@ export default function TemplateHub() {
   const [docTypesList, setDocTypesList] = useState(DOCUMENT_TYPES);
 
   useEffect(() => {
-    fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+    fetch(`${API_BASE}/admin/configs/MASTER_TEMPLATE_ORDER`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (data && data.config_json && Object.keys(data.config_json).length > 0) {
-          setDocTypesList({ ...DOCUMENT_TYPES, ...data.config_json });
+        if (data && data.config_json && data.config_json.templates) {
+          setDocTypesList(data.config_json.templates);
+        } else {
+          // Fallback legacy custom doc fetch
+          fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+            .then(res => res.ok ? res.json() : null)
+            .then(legacy => {
+              if (legacy && legacy.config_json) {
+                setDocTypesList({ ...DOCUMENT_TYPES, ...legacy.config_json });
+              }
+            }).catch(() => {});
         }
       })
-      .catch(err => console.error("Error loading live custom document types:", err));
+      .catch(err => console.error("Error loading master template order:", err));
   }, []);
 
   const saveCustomDocsToDatabase = async (updatedList) => {
-    const customOnly = {};
-    Object.keys(updatedList).forEach(k => {
-      if (!DOCUMENT_TYPES[k]) customOnly[k] = updatedList[k];
-    });
     try {
-      await fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`, {
+      await fetch(`${API_BASE}/admin/configs/MASTER_TEMPLATE_ORDER`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customOnly)
+        body: JSON.stringify({
+          templates: updatedList,
+          order_keys: Object.keys(updatedList)
+        })
       });
     } catch (e) {
-      console.error("Error saving custom doc types to DB:", e);
+      console.error("Error saving master template order to DB:", e);
     }
   };
 
@@ -1094,28 +1102,27 @@ export default function TemplateHub() {
                 {doc.name}
               </button>
 
-              {/* Delete Custom Document */}
-              {!DOCUMENT_TYPES[doc.id] && (
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Are you sure you want to delete '${doc.name}' template?`)) {
-                      const newList = { ...docTypesList };
-                      delete newList[doc.id];
-                      setDocTypesList(newList);
-                      if (selectedDoc === doc.id) {
-                        setSelectedDoc(Object.keys(newList)[0] || 'QUOTATION');
-                      }
-                      await saveCustomDocsToDatabase(newList);
+              {/* Delete Document Template with Safety Measure */}
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const input = prompt(`⚠️ DELETE TEMPLATE SAFETY WARNING:\n\nAre you sure you want to delete '${doc.name}'?\nThis will remove it from the document generator.\n\nType DELETE to confirm:`);
+                  if (input && input.trim().toUpperCase() === 'DELETE') {
+                    const newList = { ...docTypesList };
+                    delete newList[doc.id];
+                    setDocTypesList(newList);
+                    if (selectedDoc === doc.id) {
+                      setSelectedDoc(Object.keys(newList)[0] || 'QUOTATION');
                     }
-                  }}
-                  className="btn btn-ghost text-error"
-                  style={{ padding: '4px', height: '24px', width: '24px', opacity: 0.7 }}
-                  title="Delete Template"
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
+                    await saveCustomDocsToDatabase(newList);
+                  }
+                }}
+                className="btn btn-ghost text-error"
+                style={{ padding: '4px', height: '24px', width: '24px', opacity: 0.7 }}
+                title="Delete Template (Requires Confirmation)"
+              >
+                <Trash2 size={13} />
+              </button>
             </div>
           ))}
 

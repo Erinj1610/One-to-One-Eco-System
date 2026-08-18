@@ -626,14 +626,20 @@ export default function OrdersPage() {
   const [liveCustomDocs, setLiveCustomDocs] = useState({});
 
   useEffect(() => {
-    fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+    fetch(`${API_BASE}/admin/configs/MASTER_TEMPLATE_ORDER`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (data && data.config_json) {
-          setLiveCustomDocs(data.config_json);
+        if (data && data.config_json && data.config_json.templates) {
+          setLiveCustomDocs(data.config_json.templates);
+        } else {
+          fetch(`${API_BASE}/admin/configs/CUSTOM_DOC_TYPES`)
+            .then(res => res.ok ? res.json() : null)
+            .then(legacy => {
+              if (legacy && legacy.config_json) setLiveCustomDocs(legacy.config_json);
+            }).catch(() => {});
         }
       })
-      .catch(err => console.error("Error loading live custom docs in Orders:", err));
+      .catch(err => console.error("Error loading master template order in Orders:", err));
   }, []);
 
   // Dynamically fetch the selected document's active template engine mode configuration
@@ -4569,30 +4575,26 @@ export default function OrdersPage() {
                     </div>
 
                     {(() => {
-                      const baseDocs = [
-                        { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
-                        { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
-                        { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
-                        { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
-                        { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
-                        { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
-                        { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
-                      ];
-                      
-                      Object.values(liveCustomDocs || {}).forEach(cd => {
-                        if (cd && cd.id && typeof cd.id === 'string') {
-                          const lowerId = cd.id.toLowerCase();
-                          if (!baseDocs.some(b => b.id === lowerId)) {
-                            baseDocs.push({
-                              id: lowerId,
-                              name: cd.name || cd.id,
-                              icon: <FileText size={14} />
-                            });
-                          }
-                        }
-                      });
+                      let docsList = [];
+                      if (liveCustomDocs && Object.keys(liveCustomDocs).length > 0) {
+                        docsList = Object.values(liveCustomDocs).map(cd => ({
+                          id: cd.id.toLowerCase() === 'quotation' ? 'quote' : cd.id.toLowerCase() === 'boq' ? 'boq_doc' : cd.id.toLowerCase(),
+                          name: cd.name || cd.id,
+                          icon: <FileText size={14} />
+                        }));
+                      } else {
+                        docsList = [
+                          { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                          { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
+                          { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
+                          { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
+                          { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
+                          { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
+                          { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
+                        ];
+                      }
 
-                      return baseDocs.map(doc => {
+                      return docsList.map(doc => {
                         const isSelected = selectedDocType === doc.id;
                         const isChecked = checkedDocTypes.includes(doc.id);
                         return (
