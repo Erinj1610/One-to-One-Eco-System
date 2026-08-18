@@ -611,6 +611,42 @@ export default function ProductsPage() {
   // Master Catalog View Presets ('commercial', 'technical', 'inventory', 'full')
   const [viewMode, setViewMode] = useState('commercial');
 
+  // Bulk Selection State & Actions
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+
+  const handleToggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelectedProductIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedProductIds(products.map(p => p.id));
+    } else {
+      setSelectedProductIds([]);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedProductIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to safely archive ${selectedProductIds.length} selected product(s) as Discontinued?`)) return;
+
+    try {
+      triggerToast(`Archiving ${selectedProductIds.length} products...`);
+      for (const id of selectedProductIds) {
+        await fetch(`${API_BASE}/api/products/${id}`, { method: 'DELETE' });
+      }
+      setSelectedProductIds([]);
+      triggerToast(`Bulk operation complete! Selected products set to Discontinued.`);
+      fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+      fetchSummary();
+    } catch (err) {
+      alert("Bulk archive error: " + err.message);
+    }
+  };
+
   // Filters State — changes trigger a new server fetch
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
@@ -1375,6 +1411,23 @@ export default function ProductsPage() {
             </div>
           </div>
 
+          {/* BULK ACTIONS BAR */}
+          {selectedProductIds.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(24,95,165,0.08)', border: '1px solid var(--border-strong)', padding: '10px 18px', borderRadius: '10px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                ⚡ <strong>{selectedProductIds.length}</strong> product(s) selected
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={handleBulkArchive} className="btn btn-sm btn-danger" style={{ fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  🛡️ Bulk Archive as Discontinued
+                </button>
+                <button onClick={() => setSelectedProductIds([])} className="btn btn-sm btn-ghost" style={{ fontSize: '12px' }}>
+                  Deselect All
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* FILTER CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1430,6 +1483,13 @@ export default function ProductsPage() {
               <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-strong)' }}>
+                    <th style={{ width: '38px', textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        onChange={handleSelectAll} 
+                        checked={products.length > 0 && selectedProductIds.length === products.length} 
+                      />
+                    </th>
                     <th style={{ width: '60px', textAlign: 'center' }}>IMAGE</th>
                     <th style={{ width: '120px' }}>SKU</th>
                     <th>DESCRIPTION / PRODUCT</th>
@@ -1485,6 +1545,13 @@ export default function ProductsPage() {
                 <tbody>
                   {filteredProducts.map(p => (
                     <tr key={p.id} className="clickable" style={{ cursor: 'pointer' }} onClick={() => setSelectedSku(p.sku)}>
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedProductIds.includes(p.id)} 
+                          onChange={e => handleToggleSelect(p.id, e)} 
+                        />
+                      </td>
                       <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
                         <div style={{ width: '44px', height: '44px', position: 'relative', margin: '0 auto', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                           {p.image_url ? (
