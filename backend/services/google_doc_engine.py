@@ -420,13 +420,62 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             u = safe_float(it.get('unit_price') or it.get('retail') or it.get('rate') or it.get('price'), 0.0)
             return q * u
 
-        # Generate all dynamic rows required for the order
-        generated_dynamic_rows = []
+        # Check if template uses Summary Directives ([ITEM_SUMMARY] or [CREDIT_ITEM_SUMMARY])
+        is_summary_mode = any(d in ('[ITEM_SUMMARY]', '[CREDIT_ITEM_SUMMARY]') for _, d, _ in dynamic_template_rows)
+
+        # Helper function to aggregate items by (plan_code, code) for summary mode
+        def aggregate_summary_items(raw_items):
+            grouped = {}
+            order_keys = []
+            for it in raw_items:
+                # Exclude SPACER items from summaries completely
+                is_spacer = any(v is not None and 'SPACER' in str(v).strip().upper() for v in it.values())
+                if is_spacer:
+                    continue
+
+                code_val = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip()
+                plan_val = str(it.get('type') or it.get('category') or it.get('plan_code') or '').strip()
+                desc_val = str(it.get('description') or it.get('name') or '').strip()
+                group_key = (plan_val.upper(), code_val.upper())
+
+                q_val = safe_float(it.get('qty') or it.get('quantity'), 1.0)
+                u_val = safe_float(it.get('unit_price') or it.get('retail') or it.get('rate') or it.get('price'), 0.0)
+
+                if group_key not in grouped:
+                    grouped[group_key] = {
+                        'qty': q_val,
+                        'unit_price': u_val,
+                        'code': code_val,
+                        'make_code': code_val,
+                        'one_one_code': code_val,
+                        'plan_code': plan_val,
+                        'type': plan_val,
+                        'description': desc_val,
+                        'brand': it.get('brand') or '',
+                        'eta': it.get('lead_time') or it.get('eta') or '4-8 Weeks',
+                        'floor': '',
+                        'area': ''
+                    }
+                    order_keys.append(group_key)
+                else:
+                    grouped[group_key]['qty'] += q_val
+
+            out_list = []
+            for k in order_keys:
+                item_dict = grouped[k]
+                item_dict['total_price'] = item_dict['qty'] * item_dict['unit_price']
+                item_dict['totalRetail'] = f"R {(item_dict['qty'] * item_dict['unit_price']):,.2f}"
+                out_list.append(item_dict)
+            return out_list
 
         # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
         if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
             main_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) >= 0]
             credit_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) < 0]
+
+            if is_summary_mode:
+                main_items = aggregate_summary_items(main_items)
+                credit_items = aggregate_summary_items(credit_items)
 
             def build_item_ctx(item_obj):
                 q_val = safe_float(item_obj.get('qty') or item_obj.get('quantity'), 1.0)
