@@ -203,10 +203,37 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    from models.orm_models import BOQItem, Order
+    
+    # Check if SKU or one_to_one_code is referenced in BOQ items
+    sku = product.sku
+    code = product.one_to_one_code
+
+    is_in_boq = False
+    if sku or code:
+        query = db.query(BOQItem)
+        filters = []
+        if sku:
+            filters.append(BOQItem.product_code == sku)
+        if code:
+            filters.append(BOQItem.product_code == code)
+        from sqlalchemy import or_
+        is_in_boq = db.query(query.filter(or_(*filters)).exists()).scalar()
+
+    if is_in_boq:
+        # Soft-Archive protection: Set status to Discontinued
+        product.reorder_level = 0
+        setattr(product, 'status', 'Discontinued')
+        db.commit()
+        return {
+            "message": f"Product '{sku}' is referenced on project BOQs/orders. It has been safely archived as 'Discontinued' to protect your historical records.",
+            "archived": True
+        }
         
     db.delete(product)
     db.commit()
-    return {"message": "Product deleted successfully"}
+    return {"message": "Product deleted successfully", "archived": False}
 
 # File uploading support
 @router.post("/{product_id}/upload")

@@ -608,6 +608,9 @@ export default function ProductsPage() {
   const [editingStock, setEditingStock] = useState(0);
   const [formFields, setFormFields] = useState({});
 
+  // Master Catalog View Presets ('commercial', 'technical', 'inventory', 'full')
+  const [viewMode, setViewMode] = useState('commercial');
+
   // Filters State — changes trigger a new server fetch
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
@@ -1203,13 +1206,13 @@ export default function ProductsPage() {
   };
 
   const stockBadgeClass = (statusStr) => {
-    switch (statusStr) {
-      case 'In Stock': return 'b-success';
-      case 'Low Stock': return 'b-warning';
-      case 'Out of Stock': return 'b-danger';
-      case 'In transit': return 'b-info';
-      default: return 'b-default';
-    }
+    if (!statusStr) return 'b-default';
+    const s = statusStr.toLowerCase();
+    if (s.includes('in stock')) return 'b-success';
+    if (s.includes('low')) return 'b-warning';
+    if (s.includes('out of stock')) return 'b-danger';
+    if (s.includes('discontinued') || s.includes('archived')) return 'b-secondary';
+    return 'b-default';
   };
 
   return (
@@ -1351,6 +1354,27 @@ export default function ProductsPage() {
             </div>
           </div>
 
+          {/* VIEW PRESET CONTROL SWITCHER */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+              {[
+                { id: 'commercial', label: '🏷️ Commercial View' },
+                { id: 'technical', label: '⚡ Technical & Specs' },
+                { id: 'inventory', label: '📦 Stock & Logistics' },
+                { id: 'full', label: '👁️ Full Database View' }
+              ].map(vm => (
+                <button
+                  key={vm.id}
+                  onClick={() => setViewMode(vm.id)}
+                  className={`btn btn-sm ${viewMode === vm.id ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', fontWeight: 600 }}
+                >
+                  {vm.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* FILTER CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1409,13 +1433,53 @@ export default function ProductsPage() {
                     <th style={{ width: '60px', textAlign: 'center' }}>IMAGE</th>
                     <th style={{ width: '120px' }}>SKU</th>
                     <th>DESCRIPTION / PRODUCT</th>
-                    <th style={{ width: '120px' }}>FAMILY</th>
-                    <th style={{ width: '100px' }}>BRAND</th>
-                    <th style={{ width: '100px' }}>SUPPLIER</th>
-                    <th style={{ textAlign: 'right', width: '100px' }}>UNIT COST</th>
-                    <th style={{ textAlign: 'right', width: '100px' }}>RRP PRICE</th>
-                    <th style={{ textAlign: 'center', width: '90px' }}>STOCK</th>
-                    <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
+                    
+                    {viewMode === 'commercial' && (
+                      <>
+                        <th style={{ textAlign: 'right', width: '100px' }}>COST (R)</th>
+                        <th style={{ textAlign: 'right', width: '110px' }}>INT. COST (R)</th>
+                        <th style={{ textAlign: 'center', width: '90px' }}>MARK-UP</th>
+                        <th style={{ textAlign: 'right', width: '100px' }}>TRADE (R)</th>
+                        <th style={{ textAlign: 'right', width: '100px' }}>RETAIL (R)</th>
+                        <th style={{ width: '110px' }}>SUPPLIER</th>
+                      </>
+                    )}
+
+                    {viewMode === 'technical' && (
+                      <>
+                        <th style={{ textAlign: 'center', width: '80px' }}>POWER</th>
+                        <th style={{ textAlign: 'center', width: '80px' }}>KELVIN</th>
+                        <th style={{ textAlign: 'center', width: '60px' }}>CRI</th>
+                        <th style={{ textAlign: 'center', width: '70px' }}>IP</th>
+                        <th style={{ textAlign: 'center', width: '90px' }}>CUTOUT</th>
+                        <th style={{ width: '130px' }}>DRIVER SPEC</th>
+                        <th style={{ textAlign: 'center', width: '80px' }}>DIMMABLE</th>
+                      </>
+                    )}
+
+                    {viewMode === 'inventory' && (
+                      <>
+                        <th style={{ textAlign: 'center', width: '80px' }}>STOCK</th>
+                        <th style={{ textAlign: 'center', width: '90px' }}>REORDER</th>
+                        <th style={{ width: '110px' }}>LEAD TIME</th>
+                        <th style={{ textAlign: 'center', width: '100px' }}>CONSIGNMENT</th>
+                        <th style={{ textAlign: 'center', width: '100px' }}>LOCAL/IMPORT</th>
+                        <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
+                      </>
+                    )}
+
+                    {viewMode === 'full' && (
+                      <>
+                        <th style={{ width: '100px' }}>BRAND</th>
+                        <th style={{ width: '100px' }}>SUPPLIER</th>
+                        <th style={{ textAlign: 'right', width: '90px' }}>COST</th>
+                        <th style={{ textAlign: 'right', width: '90px' }}>RETAIL</th>
+                        <th style={{ textAlign: 'center', width: '70px' }}>POWER</th>
+                        <th style={{ textAlign: 'center', width: '70px' }}>IP</th>
+                        <th style={{ textAlign: 'center', width: '70px' }}>STOCK</th>
+                        <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1437,24 +1501,62 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>
-                        {p.name}
-                      </td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.family}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.brand}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.supplier}</td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>
-                        R {p.unitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
-                        R {p.retailPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock}</td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                        <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
-                          {p.status}
-                        </span>
-                      </td>
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
+
+                      {viewMode === 'commercial' && (
+                        <>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600, color: 'var(--text-info)' }}>R {(p.internal_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.markup || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.tradePrice || p.trade_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>R {(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                        </>
+                      )}
+
+                      {viewMode === 'technical' && (
+                        <>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.systemPower || p.system_power ? `${p.systemPower || p.system_power}W` : '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.kelvin || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.cri || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.ipRating || p.ip_rating || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.cutout || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', fontSize: '11px', color: 'var(--text-secondary)' }}>{p.driver_spec || p.driverSpec || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.dimmable || 'No'}</td>
+                        </>
+                      )}
+
+                      {viewMode === 'inventory' && (
+                        <>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.reorderLevel || p.reorder_level || 100}</td>
+                          <td style={{ verticalAlign: 'middle' }}>{p.leadTime || p.lead_time || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.consignment || 'No'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.local_or_import || p.origin || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
+                            <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
+                              {p.status}
+                            </span>
+                          </td>
+                        </>
+                      )}
+
+                      {viewMode === 'full' && (
+                        <>
+                          <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
+                          <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>R {(p.retailPrice || p.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.systemPower || p.system_power ? `${p.systemPower || p.system_power}W` : '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>{p.ipRating || p.ip_rating || '-'}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
+                          <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
+                            <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
+                              {p.status}
+                            </span>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                   {filteredProducts.length === 0 && (
