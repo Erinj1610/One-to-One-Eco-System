@@ -221,6 +221,53 @@ def init_db():
                         print("Database migration: ensured 'pm_name' column exists on 'orders' table.")
                 except Exception as alter_err:
                     print(f"Database migration pm_name (info/critical): {alter_err}")
+
+                # Migrate products table to ensure is_active exists
+                try:
+                    product_cols = [c['name'] for c in inspector.get_columns('products')]
+                    if 'is_active' not in product_cols:
+                        conn.execute(text("ALTER TABLE products ADD COLUMN is_active BOOLEAN DEFAULT TRUE;"))
+                        conn.commit()
+                        print("Database migration: ensured 'is_active' column exists on 'products' table.")
+                except Exception as alter_err:
+                    print(f"Database migration is_active (info): {alter_err}")
+                
+                # Ensure product_audit_logs table exists with ON DELETE RESTRICT constraint
+                try:
+                    if 'product_audit_logs' not in inspector.get_table_names():
+                        db_type = engine.name
+                        if db_type == 'sqlite':
+                            conn.execute(text("""
+                                CREATE TABLE product_audit_logs (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+                                    sku VARCHAR NOT NULL,
+                                    field_changed VARCHAR NOT NULL,
+                                    old_value TEXT,
+                                    new_value TEXT,
+                                    updated_by_user_id INTEGER,
+                                    updated_by_name VARCHAR,
+                                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                                );
+                            """))
+                        else:
+                            conn.execute(text("""
+                                CREATE TABLE IF NOT EXISTS product_audit_logs (
+                                    id SERIAL PRIMARY KEY,
+                                    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+                                    sku VARCHAR(255) NOT NULL,
+                                    field_changed VARCHAR(100) NOT NULL,
+                                    old_value TEXT,
+                                    new_value TEXT,
+                                    updated_by_user_id INTEGER,
+                                    updated_by_name VARCHAR(255),
+                                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                                );
+                            """))
+                        conn.commit()
+                        print("Database migration: created 'product_audit_logs' table with ON DELETE RESTRICT.")
+                except Exception as audit_err:
+                    print(f"Database migration product_audit_logs (info): {audit_err}")
                 
                 # Migrate products table
                 inspector = inspect(engine)

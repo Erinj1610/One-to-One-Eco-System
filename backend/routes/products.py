@@ -595,3 +595,139 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
         db.rollback()
         print(f"Reconcile error: {e}")
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+# Enterprise Batch Update Payload Schemas
+class BatchItemUpdate(BaseModel):
+    id: int
+    sku: Optional[str] = None
+    changes: dict
+
+class BatchUpdatePayload(BaseModel):
+    updated_by_user_id: Optional[int] = None
+    updated_by_name: Optional[str] = "Product Manager"
+    updates: List[BatchItemUpdate]
+
+@router.post("/batch-update")
+def batch_update_products(
+    payload: BatchUpdatePayload,
+    db: Session = Depends(get_db)
+):
+    """
+    Enterprise Batch Update Endpoint:
+    - Atomically updates multiple products inside a single SQL Transaction.
+    - Validates values (non-negative prices/stock, SKU uniqueness).
+    - If ANY validation fails, ROLLBACKS the entire batch.
+    - Records field-level changes to `product_audit_logs` table (ON DELETE RESTRICT).
+    """
+    from models.orm_models import ProductAuditLog
+    from sqlalchemy import inspect as sa_inspect
+    
+    if not payload.updates:
+        return {"message": "No updates provided", "updated_count": 0, "logs_count": 0}
+
+    valid_cols = set(c.key for c in sa_inspect(Product).column_attrs)
+    
+    audit_logs = []
+    updated_products = 0
+
+    try:
+        # Begin explicit SQL Transaction (FastAPI get_db handles session transaction)
+        for item in payload.updates:
+            prod = db.query(Product).filter(Product.id == item.id).first()
+            if not prod:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Batch Rollback: Product ID {item.id} not found in database."
+                )
+
+            changes = item.changes or {}
+            
+            # Validation Step
+            for field, new_val in changes.items():
+                if field not in valid_cols:
+                    continue
+
+                # 1. Price non-negative check
+                if field in ("cost_price", "trade_price", "retail_price", "recommended_retail_price", "internal_cost"):
+                    try:
+                        val_num = float(new_val) if new_val is not None else 0.0
+                        if val_num < 0:
+                            db.rollback()
+                            raise HTTPException(
+                                status_code=400, 
+                                detail=f"Batch Rollback Validation Error: Field '{field}' on SKU '{prod.sku}' cannot be negative (got {new_val})."
+                            )
+                    except (ValueError, TypeError):
+                        db.rollback()
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"Batch Rollback Validation Error: Invalid numeric price '{new_val}' for '{field}' on SKU '{prod.sku}'."
+                        )
+
+                # 2. Stock non-negative check
+                if field in ("stock_level", "reorder_level"):
+                    try:
+                        val_int = int(new_val) if new_val is not None else 0
+                        if val_int < 0:
+                            db.rollback()
+                            raise HTTPException(
+                                status_code=400, 
+                                detail=f"Batch Rollback Validation Error: '{field}' on SKU '{prod.sku}' cannot be negative."
+                            )
+                    except (ValueError, TypeError):
+                        db.rollback()
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"Batch Rollback Validation Error: Invalid integer value for '{field}' on SKU '{prod.sku}'."
+                        )
+
+                # 3. SKU Uniqueness check if SKU modified
+                if field == "sku" and new_val != prod.sku:
+                    existing_sku = db.query(Product).filter(Product.sku == new_val, Product.id != prod.id).first()
+                    if existing_sku:
+                        db.rollback()
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"Batch Rollback Validation Error: SKU '{new_val}' already exists on another product."
+                        )
+
+                # Track Audit Log entry if value actually changed
+                old_val = getattr(prod, field, None)
+                old_val_str = str(old_val) if old_val is not None else ""
+                new_val_str = str(new_val) if new_val is not None else ""
+
+                if old_val_str != new_val_str:
+                    audit_entry = ProductAuditLog(
+                        product_id=prod.id,
+                        sku=prod.sku,
+                        field_changed=field,
+                        old_value=old_val_str,
+                        new_value=new_val_str,
+                        updated_by_user_id=payload.updated_by_user_id,
+                        updated_by_name=payload.updated_by_name
+                    )
+                    audit_logs.append(audit_entry)
+                    setattr(prod, field, new_val)
+
+            updated_products += 1
+
+        # Add all audit log records to DB session
+        for log in audit_logs:
+            db.add(log)
+
+        # Commit entire transaction atomically
+        db.commit()
+        return {
+            "message": f"Successfully updated {updated_products} product(s) in a single atomic transaction.",
+            "updated_count": updated_products,
+            "audit_logs_written": len(audit_logs)
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as err:
+        db.rollback()
+        print(f"Batch update error: {err}")
+        raise HTTPException(status_code=500, detail=f"Batch Transaction Failed & Rolled Back: {str(err)}")

@@ -608,9 +608,9 @@ export default function ProductsPage() {
   const [editingStock, setEditingStock] = useState(0);
   const [formFields, setFormFields] = useState({});
 
-  // Operational Role Mode: 'staff' (Visual Cards & Picking) vs 'manager' (Full Excel Spreadsheet Command Center)
-  const [operationalMode, setOperationalMode] = useState('staff');
-  
+  // Product Manager Bulk Edit Grid Mode toggle
+  const [isBulkGridMode, setIsBulkGridMode] = useState(false);
+
   // Product Manager Live Grid Edits State (track dirty cells before committing to Cloud SQL)
   const [gridEdits, setGridEdits] = useState({}); // { [productId]: { field: newValue } }
 
@@ -632,43 +632,40 @@ export default function ProductsPage() {
     }
 
     try {
-      triggerToast(`Committing edits for ${dirtyIds.length} product(s) to Cloud SQL...`);
+      triggerToast(`Submitting atomic batch transaction for ${dirtyIds.length} product(s)...`);
       
-      const payloadRows = dirtyIds.map(id => {
+      const updates = dirtyIds.map(id => {
         const prod = products.find(p => String(p.id) === String(id)) || {};
-        const changes = gridEdits[id];
         return {
+          id: parseInt(id),
           sku: prod.sku,
-          name: changes.name !== undefined ? changes.name : prod.name,
-          cost_price: changes.cost_price !== undefined ? parseFloat(changes.cost_price) || 0 : (prod.cost_price || prod.unitCost || 0),
-          trade_price: changes.trade_price !== undefined ? parseFloat(changes.trade_price) || 0 : (prod.trade_price || prod.tradePrice || 0),
-          retail_price: changes.retail_price !== undefined ? parseFloat(changes.retail_price) || 0 : (prod.retail_price || prod.retailPrice || 0),
-          stock_level: changes.stock_level !== undefined ? parseInt(changes.stock_level) || 0 : (prod.stock_level || prod.stock || 0),
-          internal_cost: changes.internal_cost !== undefined ? parseFloat(changes.internal_cost) || 0 : (prod.internal_cost || 0),
-          supplier_name: changes.supplier_name !== undefined ? changes.supplier_name : (prod.supplier_name || prod.supplier || ''),
-          lead_time: changes.lead_time !== undefined ? changes.lead_time : (prod.lead_time || prod.leadTime || ''),
-          status: changes.status !== undefined ? changes.status : prod.status
+          changes: gridEdits[id] || {}
         };
       });
 
-      const res = await fetch(`${API_BASE}/api/products/reconcile-products-bulk`, {
+      const payload = {
+        updated_by_name: currentUser?.name || "Product Manager",
+        updates: updates
+      };
+
+      const res = await fetch(`${API_BASE}/api/products/batch-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadRows)
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
         const result = await res.json();
         setGridEdits({});
-        triggerToast(`Successfully committed ${result.updated || dirtyIds.length} product(s) to Cloud SQL!`);
+        triggerToast(`Batch Success: Updated ${result.updated_count} product(s) & wrote ${result.audit_logs_written} audit log entries.`);
         fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
         fetchSummary();
       } else {
         const err = await res.json();
-        alert("Batch commit failed: " + (err.detail || "Server error"));
+        alert(`❌ BATCH TRANSACTION ROLLED BACK:\n\n${err.detail || "Validation or database error"}`);
       }
     } catch (e) {
-      alert("Network error during commit: " + e.message);
+      alert("Network error during batch commit: " + e.message);
     }
   };
 
@@ -1342,6 +1339,24 @@ export default function ProductsPage() {
                 </h1>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => setIsBulkGridMode(!isBulkGridMode)}
+                  className={`btn ${isBulkGridMode ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
+                >
+                  ⚡ {isBulkGridMode ? 'Exit Bulk Grid' : 'Product Manager Bulk Grid'}
+                </button>
+
+                {isBulkGridMode && Object.keys(gridEdits).length > 0 && (
+                  <button 
+                    onClick={handleCommitGridEdits} 
+                    className="btn btn-success" 
+                    style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
+                  >
+                    💾 Save All Changes ({Object.keys(gridEdits).length} Row(s))
+                  </button>
+                )}
+
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
                   <Download size={14} /> Download Template / Export
                 </button>
@@ -1527,7 +1542,16 @@ export default function ProductsPage() {
                 </thead>
                 <tbody>
                   {filteredProducts.map(p => (
-                    <tr key={p.id} className="clickable" style={{ cursor: 'pointer' }} onClick={() => setSelectedSku(p.sku)}>
+                    <tr 
+                      key={p.id} 
+                      className="clickable" 
+                      style={{ 
+                        cursor: 'pointer',
+                        background: gridEdits[p.id] ? 'rgba(245, 158, 11, 0.06)' : undefined,
+                        borderLeft: gridEdits[p.id] ? '3px solid #f59e0b' : undefined
+                      }} 
+                      onClick={() => !isBulkGridMode && setSelectedSku(p.sku)}
+                    >
                       <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         <input 
                           type="checkbox" 
@@ -1551,21 +1575,132 @@ export default function ProductsPage() {
                         </div>
                       </td>
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
+                      
+                      {/* DESCRIPTION / NAME */}
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }} onClick={e => e.stopPropagation()}>
+                        {isBulkGridMode ? (
+                          <input 
+                            type="text" 
+                            style={{ 
+                              width: '100%', 
+                              height: '28px', 
+                              fontSize: '12px', 
+                              background: gridEdits[p.id]?.name !== undefined ? '#fffbeb' : '#fff',
+                              border: gridEdits[p.id]?.name !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '2px 6px'
+                            }}
+                            value={gridEdits[p.id]?.name !== undefined ? gridEdits[p.id].name : p.name}
+                            onChange={e => handleGridCellChange(p.id, 'name', e.target.value)}
+                          />
+                        ) : (
+                          p.name
+                        )}
+                      </td>
+
                       <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }}>
-                        R {(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      
+                      {/* UNIT COST */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                        {isBulkGridMode ? (
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            style={{ 
+                              width: '85px', 
+                              height: '28px', 
+                              fontSize: '12px', 
+                              textAlign: 'right',
+                              background: gridEdits[p.id]?.cost_price !== undefined ? '#fffbeb' : '#fff',
+                              border: gridEdits[p.id]?.cost_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '2px 6px'
+                            }}
+                            value={gridEdits[p.id]?.cost_price !== undefined ? gridEdits[p.id].cost_price : (p.unitCost || p.cost_price || 0)}
+                            onChange={e => handleGridCellChange(p.id, 'cost_price', e.target.value)}
+                          />
+                        ) : (
+                          `R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        )}
                       </td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
-                        R {(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+                      {/* RRP RETAIL PRICE */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                        {isBulkGridMode ? (
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            style={{ 
+                              width: '85px', 
+                              height: '28px', 
+                              fontSize: '12px', 
+                              textAlign: 'right',
+                              fontWeight: 600,
+                              background: gridEdits[p.id]?.retail_price !== undefined ? '#fffbeb' : '#fff',
+                              border: gridEdits[p.id]?.retail_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '2px 6px'
+                            }}
+                            value={gridEdits[p.id]?.retail_price !== undefined ? gridEdits[p.id].retail_price : (p.retailPrice || p.retail_price || p.recommended_retail_price || 0)}
+                            onChange={e => handleGridCellChange(p.id, 'retail_price', e.target.value)}
+                          />
+                        ) : (
+                          `R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        )}
                       </td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>{p.stock || p.stock_level || 0}</td>
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                        <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
-                          {p.status}
-                        </span>
+
+                      {/* STOCK LEVEL */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                        {isBulkGridMode ? (
+                          <input 
+                            type="number" 
+                            style={{ 
+                              width: '65px', 
+                              height: '28px', 
+                              fontSize: '12px', 
+                              textAlign: 'center',
+                              fontWeight: 600,
+                              background: gridEdits[p.id]?.stock_level !== undefined ? '#fffbeb' : '#fff',
+                              border: gridEdits[p.id]?.stock_level !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '2px 6px'
+                            }}
+                            value={gridEdits[p.id]?.stock_level !== undefined ? gridEdits[p.id].stock_level : (p.stock || p.stock_level || 0)}
+                            onChange={e => handleGridCellChange(p.id, 'stock_level', e.target.value)}
+                          />
+                        ) : (
+                          p.stock || p.stock_level || 0
+                        )}
+                      </td>
+
+                      {/* STATUS */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        {isBulkGridMode ? (
+                          <select
+                            style={{
+                              height: '28px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: gridEdits[p.id]?.status !== undefined ? '#fffbeb' : '#fff',
+                              border: gridEdits[p.id]?.status !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
+                              borderRadius: '4px',
+                              padding: '2px 4px'
+                            }}
+                            value={gridEdits[p.id]?.status !== undefined ? gridEdits[p.id].status : p.status}
+                            onChange={e => handleGridCellChange(p.id, 'status', e.target.value)}
+                          >
+                            <option value="In Stock">In Stock</option>
+                            <option value="Low Stock">Low Stock</option>
+                            <option value="Out of Stock">Out of Stock</option>
+                            <option value="Discontinued">Discontinued</option>
+                          </select>
+                        ) : (
+                          <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
+                            {p.status}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

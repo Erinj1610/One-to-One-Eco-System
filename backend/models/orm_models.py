@@ -390,10 +390,27 @@ class Product(Base):
     client_code = Column(String, nullable=True)
     image_url = Column(String, nullable=True)        # Main product photo URL
     technical_image_url = Column(String, nullable=True)  # Technical drawing/spec image URL
+    is_active = Column(Boolean, default=True)  # Enterprise soft-delete flag
     
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")
+    audit_logs = relationship("ProductAuditLog", back_populates="product")
+
+class ProductAuditLog(Base):
+    __tablename__ = "product_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    sku = Column(String, nullable=False)
+    field_changed = Column(String, nullable=False)
+    old_value = Column(String, nullable=True)
+    new_value = Column(String, nullable=True)
+    updated_by_user_id = Column(Integer, nullable=True)
+    updated_by_name = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    product = relationship("Product", back_populates="audit_logs")
 
 class ProductFile(Base):
     __tablename__ = "product_files"
