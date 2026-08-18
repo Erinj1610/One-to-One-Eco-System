@@ -54,6 +54,13 @@ class ProductBase(BaseModel):
     red_list: Optional[str] = None
     markup: Optional[str] = None
     recommended_retail_price: Optional[float] = 0.0
+    internal_cost: Optional[float] = 0.0
+    supplier_name: Optional[str] = None
+    local_or_import: Optional[str] = None
+    driver_location: Optional[str] = None
+    fittings_per_driver: Optional[str] = None
+    driver_connection_type: Optional[str] = None
+    driver_max_cable: Optional[str] = None
     qr: Optional[str] = None
     qr_link: Optional[str] = None
     client_code: Optional[str] = None
@@ -125,6 +132,13 @@ def serialize_product(product: Product):
         "red_list": product.red_list,
         "markup": product.markup,
         "recommended_retail_price": product.recommended_retail_price,
+        "internal_cost": product.internal_cost,
+        "supplier_name": product.supplier_name,
+        "local_or_import": product.local_or_import,
+        "driver_location": product.driver_location,
+        "fittings_per_driver": product.fittings_per_driver,
+        "driver_connection_type": product.driver_connection_type,
+        "driver_max_cable": product.driver_max_cable,
         "qr": product.qr,
         "qr_link": product.qr_link,
         "client_code": product.client_code,
@@ -524,9 +538,10 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
                 reorder = int(row.get("reorder_level", 100) or 100)
                 power = float(row.get("system_power", 0) or 0)
                 rrp = float(row.get("recommended_retail_price", 0) or 0)
+                internal_cost = float(row.get("internal_cost", 0) or 0)
             except (ValueError, TypeError):
                 cost = 0.0; trade = 0.0; retail = 0.0
-                stock = 0; reorder = 100; power = 0.0; rrp = 0.0
+                stock = 0; reorder = 100; power = 0.0; rrp = 0.0; internal_cost = 0.0
 
             prod_data = {
                 "name": name,
@@ -565,6 +580,13 @@ def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depe
                 "red_list": row.get("red_list"),
                 "markup": row.get("markup"),
                 "recommended_retail_price": rrp,
+                "internal_cost": internal_cost,
+                "supplier_name": row.get("supplier_name") or row.get("supplier"),
+                "local_or_import": row.get("local_or_import") or row.get("origin"),
+                "driver_location": row.get("driver_location"),
+                "fittings_per_driver": row.get("fittings_per_driver"),
+                "driver_connection_type": row.get("driver_connection_type"),
+                "driver_max_cable": row.get("driver_max_cable"),
                 "qr": row.get("qr"),
                 "qr_link": row.get("qr_link"),
                 "client_code": row.get("client_code"),
