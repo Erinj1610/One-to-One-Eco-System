@@ -1987,10 +1987,50 @@ export default function ProductsPage() {
                               </select>
                             </div>
                             <div className="form-row">
+                              <label className="form-label">Driver Location</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.driver_location || ''} 
+                                onChange={e => setFormFields({ ...formFields, driver_location: e.target.value })} 
+                                placeholder="e.g. Remote / External"
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Qty of Fittings per Driver</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.fittings_per_driver || ''} 
+                                onChange={e => setFormFields({ ...formFields, fittings_per_driver: e.target.value })} 
+                                placeholder="e.g. 1 Fitting per Driver"
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Series or Parallel Connection</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.driver_connection_type || ''} 
+                                onChange={e => setFormFields({ ...formFields, driver_connection_type: e.target.value })} 
+                                placeholder="e.g. Series"
+                              />
+                            </div>
+                            <div className="form-row">
+                              <label className="form-label">Max Cable Length & Gauge</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={formFields.driver_max_cable || ''} 
+                                onChange={e => setFormFields({ ...formFields, driver_max_cable: e.target.value })} 
+                                placeholder="e.g. 1m away using 0.5mm cable"
+                              />
+                            </div>
+                            <div className="form-row">
                               <label className="form-label">Driver Specification</label>
                               <textarea 
                                 className="form-control" 
-                                style={{ height: '70px', fontSize: '11.5px', fontFamily: 'monospace' }}
+                                style={{ height: '50px', fontSize: '11.5px', fontFamily: 'monospace' }}
                                 value={formFields.driver_spec || ''} 
                                 onChange={e => setFormFields({ ...formFields, driver_spec: e.target.value })} 
                               />
@@ -2113,6 +2153,7 @@ export default function ProductsPage() {
                             <th>Supplier</th>
                             <th>Brand</th>
                             <th style={{ textAlign: 'right' }}>Cost Price (R)</th>
+                            <th style={{ textAlign: 'right' }}>Internal Cost (R)</th>
                             <th style={{ textAlign: 'center' }}>Mark-Up %</th>
                             <th style={{ textAlign: 'right' }}>Landed Cost (R)</th>
                             <th style={{ textAlign: 'center' }}>Last Updated</th>
@@ -2130,6 +2171,17 @@ export default function ProductsPage() {
                                 onChange={e => {
                                   const cost = parseFloat(e.target.value) || 0;
                                   setFormFields({ ...formFields, cost_price: cost });
+                                }}
+                              />
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                              <input 
+                                type="number" 
+                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
+                                value={formFields.internal_cost || ''}
+                                onChange={e => {
+                                  const ic = parseFloat(e.target.value) || 0;
+                                  setFormFields({ ...formFields, internal_cost: ic });
                                 }}
                               />
                             </td>
