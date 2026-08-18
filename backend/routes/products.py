@@ -75,6 +75,7 @@ class ProductUpdate(ProductBase):
 
 # Helper to serialize product with files and supplier
 def serialize_product(product: Product):
+    from sqlalchemy import inspect as sa_inspect
     files_list = []
     for f in product.files:
         files_list.append({
@@ -93,60 +94,12 @@ def serialize_product(product: Product):
             "contact_details": product.supplier.contact_details
         }
         
-    return {
-        "id": product.id,
-        "name": product.name,
-        "brand": product.brand,
-        "sku": product.sku,
-        "cost_price": product.cost_price,
-        "trade_price": product.trade_price,
-        "retail_price": product.retail_price,
-        "stock_level": product.stock_level,
-        "supplier_id": product.supplier_id,
-        "family": product.family,
-        "category": product.category,
-        "reorder_level": product.reorder_level,
-        "lead_time": product.lead_time,
-        "origin": product.origin,
-        "color": product.color,
-        "dimmable": product.dimmable,
-        "dimming_protocol": product.dimming_protocol,
-        "driver_incl": product.driver_incl,
-        "light_source_incl": product.light_source_incl,
-        "light_source_type": product.light_source_type,
-        "kelvin": product.kelvin,
-        "beam_angle": product.beam_angle,
-        "cri": product.cri,
-        "ip_rating": product.ip_rating,
-        "system_power": product.system_power,
-        "lighting_type": product.lighting_type,
-        "cutout": product.cutout,
-        "driver_spec": product.driver_spec,
-        "one_to_one_code": product.one_to_one_code,
-        "foh_code_description": product.foh_code_description,
-        "client_description": product.client_description,
-        "fitting_type": product.fitting_type,
-        "consignment": product.consignment,
-        "selection": product.selection,
-        "first_fix": product.first_fix,
-        "red_list": product.red_list,
-        "markup": product.markup,
-        "recommended_retail_price": product.recommended_retail_price,
-        "internal_cost": product.internal_cost,
-        "supplier_name": product.supplier_name,
-        "local_or_import": product.local_or_import,
-        "driver_location": product.driver_location,
-        "fittings_per_driver": product.fittings_per_driver,
-        "driver_connection_type": product.driver_connection_type,
-        "driver_max_cable": product.driver_max_cable,
-        "qr": product.qr,
-        "qr_link": product.qr_link,
-        "client_code": product.client_code,
-        "image_url": product.image_url,
-        "technical_image_url": product.technical_image_url,
-        "files": files_list,
-        "supplier": supplier_info
-    }
+    # Dynamically extract ALL table columns so future DB schema changes auto-serialize
+    mapper = sa_inspect(product.__class__)
+    out = {col.key: getattr(product, col.key) for col in mapper.column_attrs}
+    out["files"] = files_list
+    out["supplier"] = supplier_info
+    return out
 
 @router.get("/summary")
 def products_summary(db: Session = Depends(get_db)):

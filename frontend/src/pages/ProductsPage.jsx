@@ -962,20 +962,6 @@ export default function ProductsPage() {
         console.warn("Could not fetch unlimited products list, using current page state", fErr);
       }
 
-      const headers = [
-        "id", "name", "brand", "sku", "cost_price", "trade_price", "retail_price",
-        "stock_level", "supplier_id", "family", "category", "reorder_level",
-        "lead_time", "origin", "color", "dimmable", "dimming_protocol",
-        "driver_incl", "light_source_incl", "light_source_type", "kelvin",
-        "beam_angle", "cri", "ip_rating", "system_power", "lighting_type",
-        "cutout", "driver_spec", "one_to_one_code", "foh_code_description",
-        "client_description", "fitting_type", "consignment", "selection",
-        "first_fix", "red_list", "markup", "recommended_retail_price",
-        "qr", "qr_link", "client_code", "image_url", "technical_image_url",
-        "internal_cost", "supplier_name", "local_or_import", "driver_location",
-        "fittings_per_driver", "driver_connection_type", "driver_max_cable"
-      ];
-      
       const sampleRow = {
         "id": 1,
         "name": "Downlight - Entero RD-S 14W 2700K 30° IP20 White",
@@ -1029,58 +1015,19 @@ export default function ProductsPage() {
         "driver_max_cable": "1m away using 0.5mm cable"
       };
 
-      const rows = allProducts.length > 0 ? allProducts.map(p => ({
-        "id": p.id || "",
-        "name": p.name || "",
-        "brand": p.brand || "",
-        "sku": p.sku || "",
-        "cost_price": p.cost_price || p.unitCost || 0,
-        "trade_price": p.trade_price || p.tradePrice || 0,
-        "retail_price": p.retail_price || p.retailPrice || 0,
-        "stock_level": p.stock_level || p.stock || 0,
-        "supplier_id": p.supplier_id || (p.supplier && p.supplier.id) || "",
-        "family": p.family || "",
-        "category": p.category || "",
-        "reorder_level": p.reorder_level || p.reorderLevel || 100,
-        "lead_time": p.lead_time || p.leadTime || "",
-        "origin": p.origin || "",
-        "color": p.color || "",
-        "dimmable": p.dimmable || "",
-        "dimming_protocol": p.dimming_protocol || p.dimmingProtocol || "",
-        "driver_incl": p.driver_incl || p.driverIncl || "",
-        "light_source_incl": p.light_source_incl || p.lightSourceIncl || "",
-        "light_source_type": p.light_source_type || p.lightSourceType || "",
-        "kelvin": p.kelvin || "",
-        "beam_angle": p.beam_angle || p.beamAngle || "",
-        "cri": p.cri || "",
-        "ip_rating": p.ip_rating || p.ipRating || "",
-        "system_power": p.system_power || p.systemPower || 0,
-        "lighting_type": p.lighting_type || p.lightingType || "",
-        "cutout": p.cutout || "",
-        "driver_spec": p.driver_spec || p.driverSpec || "",
-        "one_to_one_code": p.one_to_one_code || "",
-        "foh_code_description": p.foh_code_description || "",
-        "client_description": p.client_description || "",
-        "fitting_type": p.fitting_type || "",
-        "consignment": p.consignment || "",
-        "selection": p.selection || "",
-        "first_fix": p.first_fix || "",
-        "red_list": p.red_list || "",
-        "markup": p.markup || "",
-        "recommended_retail_price": p.recommended_retail_price || 0,
-        "qr": p.qr || "",
-        "qr_link": p.qr_link || "",
-        "client_code": p.client_code || "",
-        "image_url": p.image_url || "",
-        "technical_image_url": p.technical_image_url || "",
-        "internal_cost": p.internal_cost || 0,
-        "supplier_name": p.supplier_name || (p.supplier && p.supplier.name) || p.supplier || "",
-        "local_or_import": p.local_or_import || p.origin || "",
-        "driver_location": p.driver_location || "",
-        "fittings_per_driver": p.fittings_per_driver || "",
-        "driver_connection_type": p.driver_connection_type || "",
-        "driver_max_cable": p.driver_max_cable || ""
-      })) : [sampleRow];
+      // Dynamically extract ALL keys present across products returned by SQL
+      const dynamicHeaderSet = new Set();
+      const rows = allProducts.length > 0 ? allProducts.map(p => {
+        const rowObj = {};
+        for (const [k, v] of Object.entries(p)) {
+          if (k === 'files' || k === 'supplier') continue;
+          dynamicHeaderSet.add(k);
+          rowObj[k] = v !== null && v !== undefined ? v : "";
+        }
+        return rowObj;
+      }) : [sampleRow];
+
+      const headers = dynamicHeaderSet.size > 0 ? Array.from(dynamicHeaderSet) : Object.keys(sampleRow);
 
       const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
       const workbook = XLSX.utils.book_new();
