@@ -644,7 +644,7 @@ export default function ProductsPage() {
       });
 
       const payload = {
-        updated_by_name: currentUser?.name || "Product Manager",
+        updated_by_name: (typeof currentUser !== 'undefined' && currentUser?.name) ? currentUser.name : "Product Manager",
         updates: updates
       };
 
