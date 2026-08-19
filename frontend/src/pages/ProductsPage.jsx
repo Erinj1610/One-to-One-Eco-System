@@ -1536,9 +1536,7 @@ export default function ProductsPage() {
                     <th style={{ width: '100px' }}>SUPPLIER</th>
                     <th style={{ textAlign: 'right', width: '100px' }}>UNIT COST</th>
                     <th style={{ textAlign: 'right', width: '100px' }}>RRP PRICE</th>
-                    <th style={{ textAlign: 'center', width: '90px' }}>STOCK</th>
-                    <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
-                    <th style={{ textAlign: 'center', width: '90px' }}>ACTIONS</th>
+                    <th style={{ textAlign: 'center', width: '90px' }}>STOCK QTY</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1652,7 +1650,7 @@ export default function ProductsPage() {
                         )}
                       </td>
 
-                      {/* STOCK LEVEL */}
+                      {/* STOCK LEVEL (CLEAN NUMERIC DISPLAY) */}
                       <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
                         {isBulkGridMode ? (
                           <input 
@@ -1674,62 +1672,6 @@ export default function ProductsPage() {
                         ) : (
                           p.stock || p.stock_level || 0
                         )}
-                      </td>
-
-                      {/* STATUS */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <select
-                            style={{
-                              height: '28px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              background: gridEdits[p.id]?.status !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.status !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 4px'
-                            }}
-                            value={gridEdits[p.id]?.status !== undefined ? gridEdits[p.id].status : p.status}
-                            onChange={e => handleGridCellChange(p.id, 'status', e.target.value)}
-                          >
-                            <option value="In Stock">In Stock</option>
-                            <option value="Low Stock">Low Stock</option>
-                            <option value="Out of Stock">Out of Stock</option>
-                            <option value="Discontinued">Discontinued</option>
-                          </select>
-                        ) : (
-                          <span className={`badge ${stockBadgeClass(p.status)}`} style={{ minWidth: '78px', textAlign: 'center' }}>
-                            {p.status}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* ACTIONS: SOFT-ARCHIVE OR SAFELY DELETE */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          title="Safely Archive or Delete Product"
-                          style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-danger)' }}
-                          onClick={async () => {
-                            if (!window.confirm(`Are you sure you want to remove product SKU '${p.sku}'? If it is referenced on past BOQs or orders, it will be safely soft-archived as 'Discontinued' to protect your history.`)) return;
-                            try {
-                              const res = await fetch(`${API_BASE}/api/products/${p.id}`, { method: 'DELETE' });
-                              if (res.ok) {
-                                const data = await res.json();
-                                triggerToast(data.message);
-                                fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
-                                fetchSummary();
-                              } else {
-                                const err = await res.json();
-                                alert(err.detail || "Could not remove product.");
-                              }
-                            } catch (e) {
-                              alert("Network error: " + e.message);
-                            }
-                          }}
-                        >
-                          🗑️
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1815,14 +1757,16 @@ export default function ProductsPage() {
                         <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status:</span>
                         <select
                           className="form-control"
-                          style={{ width: '120px', height: '30px', padding: '2px 6px', fontSize: '12px' }}
+                          style={{ width: '130px', height: '30px', padding: '2px 6px', fontSize: '12px', fontWeight: 600 }}
                           value={editingStatus}
                           onChange={e => setEditingStatus(e.target.value)}
                         >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
                           <option value="In Stock">In Stock</option>
                           <option value="Low Stock">Low Stock</option>
                           <option value="Out of Stock">Out of Stock</option>
-                          <option value="In transit">In transit</option>
+                          <option value="Discontinued">Discontinued (Archived)</option>
                         </select>
                       </div>
 
@@ -1855,13 +1799,45 @@ export default function ProductsPage() {
                       </div>
                     </>
                   ) : (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      style={{ height: '30px', fontSize: '11.5px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => setIsEditing(true)}
-                    >
-                      ✏️ Edit Product
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`badge ${stockBadgeClass(activeProduct.status)}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                        Status: {activeProduct.status || 'Active'}
+                      </span>
+                      
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={() => setIsEditing(true)}
+                      >
+                        ✏️ Edit Item
+                      </button>
+
+                      <button
+                        className="btn btn-danger btn-sm"
+                        style={{ height: '30px', fontSize: '11.5px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Safely Archive or Delete Product"
+                        onClick={async () => {
+                          if (!window.confirm(`Are you sure you want to remove product SKU '${activeProduct.sku}'? If referenced on past BOQs or orders, it will be safely archived as 'Discontinued'.`)) return;
+                          try {
+                            const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, { method: 'DELETE' });
+                            if (res.ok) {
+                              const data = await res.json();
+                              triggerToast(data.message);
+                              setSelectedSku(null);
+                              fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+                              fetchSummary();
+                            } else {
+                              const err = await res.json();
+                              alert(err.detail || "Could not remove product.");
+                            }
+                          } catch (e) {
+                            alert("Network error: " + e.message);
+                          }
+                        }}
+                      >
+                        🗑️ Delete / Archive
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
