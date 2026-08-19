@@ -204,36 +204,33 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    from models.orm_models import BOQItem, Order
+    from models.orm_models import BOQItem, ProductAuditLog
+    from sqlalchemy import or_
     
-    # Check if SKU or one_to_one_code is referenced in BOQ items
     sku = product.sku
     code = product.one_to_one_code
 
-    is_in_boq = False
+    is_referenced = False
     if sku or code:
-        query = db.query(BOQItem)
         filters = []
         if sku:
             filters.append(BOQItem.product_code == sku)
         if code:
             filters.append(BOQItem.product_code == code)
-        from sqlalchemy import or_
-        is_in_boq = db.query(query.filter(or_(*filters)).exists()).scalar()
+        is_referenced = db.query(db.query(BOQItem).filter(or_(*filters)).exists()).scalar()
 
-    if is_in_boq:
-        # Soft-Archive protection: Set status to Discontinued
-        product.reorder_level = 0
-        setattr(product, 'status', 'Discontinued')
-        db.commit()
-        return {
-            "message": f"Product '{sku}' is referenced on project BOQs/orders. It has been safely archived as 'Discontinued' to protect your historical records.",
-            "archived": True
-        }
+    if is_referenced:
+        # STRICT BLOCK: Item exists on a project order/BOQ and CANNOT be deleted
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete product '{sku}': It is referenced on active project BOQs/orders. Please set the item to 'Inactive' instead so it cannot be added to future orders."
+        )
         
+    # If not referenced anywhere, delete audit logs first then delete product
+    db.query(ProductAuditLog).filter(ProductAuditLog.product_id == product.id).delete()
     db.delete(product)
     db.commit()
-    return {"message": "Product deleted successfully", "archived": False}
+    return {"message": f"Product '{sku}' deleted successfully.", "deleted": True}
 
 # File uploading support
 @router.post("/{product_id}/upload")

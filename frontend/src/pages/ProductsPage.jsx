@@ -1754,19 +1754,15 @@ export default function ProductsPage() {
                   {isEditing ? (
                     <>
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status:</span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Item Availability:</span>
                         <select
                           className="form-control"
-                          style={{ width: '130px', height: '30px', padding: '2px 6px', fontSize: '12px', fontWeight: 600 }}
+                          style={{ width: '150px', height: '30px', padding: '2px 6px', fontSize: '12px', fontWeight: 600 }}
                           value={editingStatus}
                           onChange={e => setEditingStatus(e.target.value)}
                         >
-                          <option value="Active">Active</option>
-                          <option value="Inactive">Inactive</option>
-                          <option value="In Stock">In Stock</option>
-                          <option value="Low Stock">Low Stock</option>
-                          <option value="Out of Stock">Out of Stock</option>
-                          <option value="Discontinued">Discontinued (Archived)</option>
+                          <option value="Active">Active (Can be ordered)</option>
+                          <option value="Inactive">Inactive (Blocked from orders)</option>
                         </select>
                       </div>
 
@@ -1800,8 +1796,8 @@ export default function ProductsPage() {
                     </>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge ${stockBadgeClass(activeProduct.status)}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
-                        Status: {activeProduct.status || 'Active'}
+                      <span className={`badge ${activeProduct.status === 'Inactive' ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                        {activeProduct.status === 'Inactive' ? '🔴 Inactive (Blocked from orders)' : '🟢 Active (Can be ordered)'}
                       </span>
                       
                       <button
@@ -1815,9 +1811,9 @@ export default function ProductsPage() {
                       <button
                         className="btn btn-danger btn-sm"
                         style={{ height: '30px', fontSize: '11.5px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        title="Safely Archive or Delete Product"
+                        title="Delete Product"
                         onClick={async () => {
-                          if (!window.confirm(`Are you sure you want to remove product SKU '${activeProduct.sku}'? If referenced on past BOQs or orders, it will be safely archived as 'Discontinued'.`)) return;
+                          if (!window.confirm(`Are you sure you want to delete product SKU '${activeProduct.sku}'? Note: If this product exists on an active order or BOQ, deletion will be blocked and you must set it to 'Inactive' instead.`)) return;
                           try {
                             const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, { method: 'DELETE' });
                             if (res.ok) {
@@ -1828,14 +1824,14 @@ export default function ProductsPage() {
                               fetchSummary();
                             } else {
                               const err = await res.json();
-                              alert(err.detail || "Could not remove product.");
+                              alert(`❌ CANNOT DELETE PRODUCT:\n\n${err.detail || "Could not remove product."}`);
                             }
                           } catch (e) {
                             alert("Network error: " + e.message);
                           }
                         }}
                       >
-                        🗑️ Delete / Archive
+                        🗑️ Delete Product
                       </button>
                     </div>
                   )}
