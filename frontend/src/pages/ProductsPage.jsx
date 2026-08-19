@@ -536,7 +536,8 @@ export default function ProductsPage() {
       tradePrice: p.trade_price || 0.0,
       stock: p.stock_level || 0,
       reorderLevel: p.reorder_level || 100,
-      status: p.stock_level === 0 ? 'Out of Stock' : p.stock_level <= (p.reorder_level || 100) ? 'Low Stock' : 'In Stock',
+      status: p.status || (p.is_active === false ? 'Inactive' : 'Active'),
+      is_active: p.is_active !== undefined ? p.is_active : p.status !== 'Inactive',
       costing: p.costing || {
         supplierSku: p.sku,
         supplierUnitCost: p.cost_price || 0.0,
