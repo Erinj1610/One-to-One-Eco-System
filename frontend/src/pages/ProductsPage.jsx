@@ -1809,29 +1809,31 @@ export default function ProductsPage() {
                       </button>
 
                       <button
-                        className="btn btn-danger btn-sm"
-                        style={{ height: '30px', fontSize: '11.5px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        title="Delete Product"
+                        className={`btn btn-sm ${activeProduct.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
+                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title={activeProduct.status === 'Inactive' ? 'Make item Active for new orders' : 'Mark item Inactive (Block from new orders)'}
                         onClick={async () => {
-                          if (!window.confirm(`Are you sure you want to delete product SKU '${activeProduct.sku}'? Note: If this product exists on an active order or BOQ, deletion will be blocked and you must set it to 'Inactive' instead.`)) return;
+                          const nextStatus = activeProduct.status === 'Inactive' ? 'Active' : 'Inactive';
+                          if (!window.confirm(`Set SKU '${activeProduct.sku}' to '${nextStatus}'? (Inactive items cannot be added to new orders while keeping past order history intact).`)) return;
                           try {
-                            const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, { method: 'DELETE' });
+                            const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ ...activeProduct, status: nextStatus, is_active: nextStatus === 'Active' })
+                            });
                             if (res.ok) {
-                              const data = await res.json();
-                              triggerToast(data.message);
-                              setSelectedSku(null);
+                              triggerToast(`Product SKU '${activeProduct.sku}' is now ${nextStatus}.`);
                               fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
                               fetchSummary();
                             } else {
-                              const err = await res.json();
-                              alert(`❌ CANNOT DELETE PRODUCT:\n\n${err.detail || "Could not remove product."}`);
+                              alert("Could not update item status.");
                             }
                           } catch (e) {
                             alert("Network error: " + e.message);
                           }
                         }}
                       >
-                        🗑️ Delete Product
+                        {activeProduct.status === 'Inactive' ? '✅ Set to Active' : '🚫 Set to Inactive'}
                       </button>
                     </div>
                   )}

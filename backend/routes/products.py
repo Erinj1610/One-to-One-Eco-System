@@ -204,33 +204,16 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    from models.orm_models import BOQItem, ProductAuditLog
-    from sqlalchemy import or_
-    
     sku = product.sku
-    code = product.one_to_one_code
-
-    is_referenced = False
-    if sku or code:
-        filters = []
-        if sku:
-            filters.append(BOQItem.product_code == sku)
-        if code:
-            filters.append(BOQItem.product_code == code)
-        is_referenced = db.query(db.query(BOQItem).filter(or_(*filters)).exists()).scalar()
-
-    if is_referenced:
-        # STRICT BLOCK: Item exists on a project order/BOQ and CANNOT be deleted
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot delete product '{sku}': It is referenced on active project BOQs/orders. Please set the item to 'Inactive' instead so it cannot be added to future orders."
-        )
-        
-    # If not referenced anywhere, delete audit logs first then delete product
-    db.query(ProductAuditLog).filter(ProductAuditLog.product_id == product.id).delete()
-    db.delete(product)
+    # PERMANENT ERP GUARD: Product deletion is completely disabled to protect order/quote history.
+    # Automatically convert status to 'Inactive' instead.
+    setattr(product, 'is_active', False)
+    setattr(product, 'status', 'Inactive')
     db.commit()
-    return {"message": f"Product '{sku}' deleted successfully.", "deleted": True}
+    return {
+        "message": f"Product deletion is disabled. SKU '{sku}' has been marked as 'Inactive' so it cannot be used on new orders, while preserving all historical records.",
+        "archived": True
+    }
 
 # File uploading support
 @router.post("/{product_id}/upload")
