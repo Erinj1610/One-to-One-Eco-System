@@ -1822,11 +1822,14 @@ export default function ProductsPage() {
                               body: JSON.stringify({ ...activeProduct, status: nextStatus, is_active: nextStatus === 'Active' })
                             });
                             if (res.ok) {
+                              const updatedData = await res.json();
                               triggerToast(`Product SKU '${activeProduct.sku}' is now ${nextStatus}.`);
+                              setProducts(prev => prev.map(item => item.id === activeProduct.id ? { ...item, status: nextStatus, is_active: nextStatus === 'Active' } : item));
                               fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
                               fetchSummary();
                             } else {
-                              alert("Could not update item status.");
+                              const errData = await res.json().catch(() => ({}));
+                              alert("Could not update item status: " + (errData.detail || "Server error"));
                             }
                           } catch (e) {
                             alert("Network error: " + e.message);

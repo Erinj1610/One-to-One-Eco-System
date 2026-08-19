@@ -66,6 +66,8 @@ class ProductBase(BaseModel):
     client_code: Optional[str] = None
     image_url: Optional[str] = None
     technical_image_url: Optional[str] = None
+    is_active: Optional[bool] = True
+    status: Optional[str] = 'Active'
 
 class ProductCreate(ProductBase):
     pass
