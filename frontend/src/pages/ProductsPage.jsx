@@ -1538,6 +1538,7 @@ export default function ProductsPage() {
                     <th style={{ textAlign: 'right', width: '100px' }}>RRP PRICE</th>
                     <th style={{ textAlign: 'center', width: '90px' }}>STOCK</th>
                     <th style={{ textAlign: 'center', width: '110px' }}>STATUS</th>
+                    <th style={{ textAlign: 'center', width: '90px' }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1701,6 +1702,34 @@ export default function ProductsPage() {
                             {p.status}
                           </span>
                         )}
+                      </td>
+
+                      {/* ACTIONS: SOFT-ARCHIVE OR SAFELY DELETE */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          title="Safely Archive or Delete Product"
+                          style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-danger)' }}
+                          onClick={async () => {
+                            if (!window.confirm(`Are you sure you want to remove product SKU '${p.sku}'? If it is referenced on past BOQs or orders, it will be safely soft-archived as 'Discontinued' to protect your history.`)) return;
+                            try {
+                              const res = await fetch(`${API_BASE}/api/products/${p.id}`, { method: 'DELETE' });
+                              if (res.ok) {
+                                const data = await res.json();
+                                triggerToast(data.message);
+                                fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+                                fetchSummary();
+                              } else {
+                                const err = await res.json();
+                                alert(err.detail || "Could not remove product.");
+                              }
+                            } catch (e) {
+                              alert("Network error: " + e.message);
+                            }
+                          }}
+                        >
+                          🗑️
+                        </button>
                       </td>
                     </tr>
                   ))}
