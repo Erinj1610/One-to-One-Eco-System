@@ -695,17 +695,17 @@ def batch_update_products(
                 new_val_str = str(new_val) if new_val is not None else ""
 
                 if old_val_str != new_val_str:
+                    setattr(prod, field, new_val)
                     audit_entry = ProductAuditLog(
-                        product_id=prod.id,
-                        sku=prod.sku,
-                        field_changed=field,
+                        product_id=int(prod.id),
+                        sku=str(prod.sku),
+                        field_changed=str(field),
                         old_value=old_val_str,
                         new_value=new_val_str,
                         updated_by_user_id=payload.updated_by_user_id,
                         updated_by_name=payload.updated_by_name
                     )
                     audit_logs.append(audit_entry)
-                    setattr(prod, field, new_val)
 
             updated_products += 1
 
