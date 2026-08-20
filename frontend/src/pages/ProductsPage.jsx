@@ -1414,7 +1414,8 @@ export default function ProductsPage() {
 
         if (!failed) {
           triggerToast(`Import complete! Added: ${totalAdded}, Updated: ${totalUpdated}`);
-          fetchProducts();
+          fetchPage({ page: 1, q: searchQuery, cat: categoryFilter });
+          fetchSummary();
         }
 
       } catch (err) {
