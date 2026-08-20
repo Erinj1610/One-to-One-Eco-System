@@ -245,6 +245,23 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             working_spreadsheet_id = copied_file.get('id')
             sheet_url = copied_file.get('webViewLink')
 
+        # Re-fetch working spreadsheet metadata so target_gid matches tab GID in working_spreadsheet_id
+        try:
+            working_sp = sheets_service.spreadsheets().get(spreadsheetId=working_spreadsheet_id).execute()
+            working_sheets = working_sp.get('sheets', [])
+            if sheet_name:
+                raw_t = str(sheet_name).strip().lower()
+                clean_t = ''.join(c for c in raw_t if c.isalnum())
+                for ws in working_sheets:
+                    clean_ws = ''.join(c for c in ws['properties']['title'].strip().lower() if c.isalnum())
+                    if clean_ws in alias_set or any(a in clean_ws for a in alias_set):
+                        target_gid = ws['properties']['sheetId']
+                        break
+            if not target_gid and working_sheets:
+                target_gid = working_sheets[0]['properties']['sheetId']
+        except Exception as working_err:
+            logger.warn(f"Re-fetch GID from working sheet notice: {working_err}")
+
     # Duplicate target tab into a temporary working tab for PDF rendering
     dup_title = f"PDF_Render_{int(time.time() * 1000)}"
     dup_res = sheets_service.spreadsheets().batchUpdate(
