@@ -36,11 +36,12 @@ function buildTokens({
   return {
     // Header & Meta
     FEE_NAME: feeName || 'Design Fee Proposal',
+    ORDER_NAME: feeName || 'Design Fee Proposal',
     PROJECT_NAME: projectName || 'Project',
     PROJECT_NAME_LOCATION: projectName || 'Project',
-    CLIENT_NAME: companyName || contactPerson || 'Client',
-    COMPANY_NAME: companyName || '',
-    CONTACT_PERSON: contactPerson || '',
+    CLIENT_NAME: companyName || contactPerson || 'Client Name',
+    COMPANY_NAME: companyName || contactPerson || 'Client Name',
+    CONTACT_PERSON: contactPerson || companyName || 'Client Name',
     QUOTE_BY: quoteBy || '',
     DATE: today,
     PROPOSAL_NUMBER: proposalNum,
