@@ -239,6 +239,8 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
 
+  const [isSavingVault, setIsSavingVault] = useState(false);
+
   // --- Handlers ---
   const handleSigConsultChange = (checked) => {
     setSigConsult(checked);
@@ -947,7 +949,9 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
               </button>
               <button
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#ecfdf5', border: '1.5px solid #059669', color: '#059669', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}
+                disabled={isSavingVault}
                 onClick={async () => {
+                  setIsSavingVault(true);
                   if (updateFee) {
                     updateFee({
                       feeName,
@@ -983,7 +987,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       fittings: archSubtotalRaw
                     });
                   }
-                  // Trigger background Drive vault save & revision creation
+                  // Trigger Drive vault save & revision creation
                   try {
                     const tokens = buildTokens({
                       feeName, projectName, companyName, contactPerson, proposalType, quoteBy,
@@ -996,17 +1000,26 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       depositValue, archSubtotalRaw, siteSupportCost, commissioningCost,
                       absoluteProjectBudget, usdConv,
                     });
-                    fetch(`${API_BASE}/admin/generate/DESIGN_FEE_PROPOSAL?is_save_action=true`, {
+                    const res = await fetch(`${API_BASE}/admin/generate/DESIGN_FEE_PROPOSAL?is_save_action=true`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(tokens)
-                    }).catch(e => console.warn('Background Drive Vault Save warning:', e));
+                    });
+                    if (res.ok) {
+                      alert(`🚀 Design Fee Proposal saved successfully to Google Drive Vault!\n\nFolder Path: ${companyName || contactPerson || 'Client'} > ${projectName || 'Project'} > Design Fee Proposal > Latest`);
+                    } else {
+                      const errData = await res.json().catch(() => ({}));
+                      alert(`Notice: Saved project financials locally, but Drive Vault notice: ${errData.detail || res.statusText}`);
+                    }
                   } catch (err) {
                     console.warn('Drive Vault Save preparation warning:', err);
+                    alert(`Project financials synced locally! Vault note: ${err.message}`);
+                  } finally {
+                    setIsSavingVault(false);
                   }
                 }}
               >
-                💾 Save & Sync Project Financials
+                {isSavingVault ? '⏳ Saving & Archiving to Drive...' : '💾 Save & Sync Project Financials'}
               </button>
             </div>
           </div>
