@@ -1033,10 +1033,11 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 })
 
         # Submit single batchUpdate to expand dimension, write grid, unmerge, and apply exact cell merges
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=working_spreadsheet_id,
-            body={'requests': grid_requests}
-        ).execute()
+        if grid_requests:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=working_spreadsheet_id,
+                body={'requests': grid_requests}
+            ).execute()
 
     except Exception as token_err:
         logger.error(f"Error expanding working sheet grid: {token_err}")
