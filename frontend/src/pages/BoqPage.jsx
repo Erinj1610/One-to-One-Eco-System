@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE } from '../api_config';
 
 const initialLines = [
   { id: 1, description: 'Recessed LED Downlight 10W', qty: 24, unit: 'R 890',   total: 21360 },
@@ -25,6 +26,58 @@ export default function BoqPage() {
   const total = subtotal + vat;
   const fmt = (n) => 'R ' + n.toLocaleString('en-ZA', { minimumFractionDigits: 2 });
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const tokens = {
+        PROJECT_NAME: project,
+        CLIENT_NAME: 'Private Client',
+        DATE: new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: `BOQ-${Date.now().toString().slice(-6)}`,
+        ORDER_STATUS: 'Approved',
+        SUBTOTAL: fmt(subtotal),
+        VAT_AMOUNT: fmt(vat),
+        TOTAL_RETAIL: fmt(total),
+        items: lines.map((l, idx) => ({
+          index: (idx + 1).toString(),
+          description: l.description,
+          qty: l.qty.toString(),
+          unitCost: l.unit,
+          retail: l.unit,
+          totalRetail: fmt(l.total)
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/admin/generate/BOQ`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate BOQ PDF.');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BOQ_${project.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error("BOQ Export PDF Error:", err);
+      alert(`Error exporting PDF: ${err.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="animation-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -36,7 +89,9 @@ export default function BoqPage() {
           <select className="form-control" style={{ width: 180 }} value={project} onChange={e => setProject(e.target.value)}>
             {['Upper Primrose','Villa Z','Tambor 9','Singita Elela','House Sissou'].map(p => <option key={p}>{p}</option>)}
           </select>
-          <button className="btn btn-primary">Export PDF</button>
+          <button className="btn btn-primary" onClick={handleExportPdf} disabled={isExporting}>
+            {isExporting ? 'Generating PDF...' : '📄 Export PDF'}
+          </button>
         </div>
       </div>
 
