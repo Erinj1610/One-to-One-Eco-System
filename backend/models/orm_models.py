@@ -397,7 +397,7 @@ class Product(Base):
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")
     audit_logs = relationship("ProductAuditLog", back_populates="product")
-    accessories = relationship("ProductAccessory", foreign_keys="[ProductAccessory.parent_product_id]", back_populates="parent_product")
+    accessories = relationship("ProductAccessory", foreign_keys="ProductAccessory.parent_product_id", back_populates="parent_product")
 
 class ProductAuditLog(Base):
     __tablename__ = "product_audit_logs"

@@ -265,6 +265,10 @@ def init_db():
                                 );
                             """))
                         conn.commit()
+                        print("Database migration: created 'product_audit_logs' table with ON DELETE RESTRICT.")
+                except Exception as audit_err:
+                    print(f"Database migration product_audit_logs (info): {audit_err}")
+
                 # Ensure product_accessories table exists
                 try:
                     if 'product_accessories' not in inspector.get_table_names():
