@@ -200,7 +200,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     if is_save_action:
         client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
         project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
-        doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, project_folder_id)
+        
+        # Design Fee proposals go directly under Project; Orders go inside an "Orders" parent folder under Project
+        if sheet_name == 'DESIGN_FEE_PROPOSAL':
+            doc_parent_folder_id = project_folder_id
+        else:
+            orders_parent_id = get_or_create_folder(drive_service, "Orders", project_folder_id)
+            doc_parent_folder_id = orders_parent_id
+
+        doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, doc_parent_folder_id)
         latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
         history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
 
