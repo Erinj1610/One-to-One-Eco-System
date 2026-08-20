@@ -918,29 +918,28 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
             else:
-                # Re-apply exact template row height from template source row UNLESS description is long and needs auto-expansion
+                # Re-apply exact template row height from template source row
                 desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
-                has_wrapped_text = len(desc_text) > 45 or '\n' in desc_text
+                is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')
+                has_wrapped_text = is_item_row and (len(desc_text) > 45 or '\n' in desc_text)
 
-                if not has_wrapped_text and orig_src_r is not None and orig_src_r < len(row_data):
-                    orig_r_meta = row_data[orig_src_r].get('rowMetadata', {})
-                    if 'pixelSize' in orig_r_meta and orig_r_meta['pixelSize']:
-                        grid_requests.append({
-                            'updateDimensionProperties': {
-                                'range': {
-                                    'sheetId': temp_tab_gid,
-                                    'dimension': 'ROWS',
-                                    'startIndex': actual_row_i,
-                                    'endIndex': actual_row_i + 1
-                                },
-                                'properties': {
-                                    'pixelSize': orig_r_meta['pixelSize']
-                                },
-                                'fields': 'pixelSize'
-                            }
-                        })
+                if orig_src_r is not None and orig_src_r in exact_row_height_by_index and not has_wrapped_text:
+                    grid_requests.append({
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': actual_row_i,
+                                'endIndex': actual_row_i + 1
+                            },
+                            'properties': {
+                                'pixelSize': exact_row_height_by_index[orig_src_r]
+                            },
+                            'fields': 'pixelSize'
+                        }
+                    })
                 elif has_wrapped_text:
-                    # Let long wrapped text auto-fit row height dynamically so descriptions are never clipped
+                    # Let long wrapped item text auto-fit row height dynamically so descriptions are never clipped
                     grid_requests.append({
                         'autoResizeDimensions': {
                             'dimensions': {
