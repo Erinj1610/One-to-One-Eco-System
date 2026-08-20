@@ -918,10 +918,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     }
                 })
             else:
-                # Re-apply exact template row height from template source row
-                if orig_src_r is not None and orig_src_r < len(row_data):
+                # Re-apply exact template row height from template source row UNLESS description is long and needs auto-expansion
+                desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
+                has_wrapped_text = len(desc_text) > 45 or '\n' in desc_text
+
+                if not has_wrapped_text and orig_src_r is not None and orig_src_r < len(row_data):
                     orig_r_meta = row_data[orig_src_r].get('rowMetadata', {})
-                    if 'pixelSize' in orig_r_meta:
+                    if 'pixelSize' in orig_r_meta and orig_r_meta['pixelSize']:
                         grid_requests.append({
                             'updateDimensionProperties': {
                                 'range': {
@@ -936,6 +939,18 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                                 'fields': 'pixelSize'
                             }
                         })
+                elif has_wrapped_text:
+                    # Let long wrapped text auto-fit row height dynamically so descriptions are never clipped
+                    grid_requests.append({
+                        'autoResizeDimensions': {
+                            'dimensions': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': actual_row_i,
+                                'endIndex': actual_row_i + 1
+                            }
+                        }
+                    })
 
             if directive in directive_merges and directive_merges[directive]:
                 for start_c, end_c in directive_merges[directive]:
@@ -951,6 +966,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'mergeType': 'MERGE_ALL'
                         }
                     })
+
+        # Ensure all top fixed header rows maintain their exact original row height
+        for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
+            if orig_r_i in exact_row_height_by_index:
+                grid_requests.append({
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': orig_r_i,
+                            'endIndex': orig_r_i + 1
+                        },
+                        'properties': {
+                            'pixelSize': exact_row_height_by_index[orig_r_i]
+                        },
+                        'fields': 'pixelSize'
+                    }
+                })
 
         # Ensure all bottom fixed rows maintain their exact original row height AFTER copyPaste
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
