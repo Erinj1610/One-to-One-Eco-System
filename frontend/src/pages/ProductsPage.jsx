@@ -615,6 +615,128 @@ export default function ProductsPage() {
   // Product Manager Live Grid Edits State (track dirty cells before committing to Cloud SQL)
   const [gridEdits, setGridEdits] = useState({}); // { [productId]: { field: newValue } }
 
+  // 1. Bulk Re-Pricing Modal State
+  const [showBulkRepricingModal, setShowBulkRepricingModal] = useState(false);
+  const [bulkSupplier, setBulkSupplier] = useState('All Suppliers');
+  const [bulkCategory, setBulkCategory] = useState('All Categories');
+  const [bulkCostShift, setBulkCostShift] = useState(0.0);
+  const [bulkRetailShift, setBulkRetailShift] = useState(0.0);
+
+  // 2. Audit Trail State
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
+
+  // 3. Product Accessories State
+  const [accessoriesList, setAccessoriesList] = useState([]);
+  const [isLoadingAccessories, setIsLoadingAccessories] = useState(false);
+  const [newAccessoryId, setNewAccessoryId] = useState('');
+  const [newAccessoryType, setNewAccessoryType] = useState('Required Driver');
+
+  const fetchAuditLogs = async (prodId) => {
+    if (!prodId) return;
+    setIsLoadingAuditLogs(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${prodId}/audit-logs`);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data);
+      }
+    } catch (e) {
+      console.error('Error fetching audit logs:', e);
+    } finally {
+      setIsLoadingAuditLogs(false);
+    }
+  };
+
+  const fetchAccessories = async (prodId) => {
+    if (!prodId) return;
+    setIsLoadingAccessories(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${prodId}/accessories`);
+      if (res.ok) {
+        const data = await res.json();
+        setAccessoriesList(data);
+      }
+    } catch (e) {
+      console.error('Error fetching accessories:', e);
+    } finally {
+      setIsLoadingAccessories(false);
+    }
+  };
+
+  const handleAddAccessory = async (parentProdId) => {
+    if (!newAccessoryId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${parentProdId}/accessories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessory_product_id: parseInt(newAccessoryId),
+          relationship_type: newAccessoryType
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(data.message);
+        setNewAccessoryId('');
+        fetchAccessories(parentProdId);
+      } else {
+        alert('Could not link accessory.');
+      }
+    } catch (e) {
+      alert('Error adding accessory: ' + e.message);
+    }
+  };
+
+  const handleRemoveAccessory = async (parentProdId, linkId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${parentProdId}/accessories/${linkId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        triggerToast('Unlinked accessory successfully.');
+        fetchAccessories(parentProdId);
+      }
+    } catch (e) {
+      alert('Error unlinking accessory: ' + e.message);
+    }
+  };
+
+  const handleExecuteBulkRepricing = async () => {
+    if (bulkCostShift === 0 && bulkRetailShift === 0) {
+      alert("Please enter a percentage shift for cost or retail price.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to apply a ${bulkCostShift}% cost shift and ${bulkRetailShift}% retail shift for '${bulkSupplier}' / '${bulkCategory}'? This will update all matching products in Cloud SQL.`)) return;
+
+    try {
+      triggerToast("Executing bulk re-pricing in Cloud SQL...");
+      const res = await fetch(`${API_BASE}/api/products/bulk-repricing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_name: bulkSupplier,
+          category: bulkCategory,
+          cost_percent_shift: parseFloat(bulkCostShift) || 0.0,
+          retail_percent_shift: parseFloat(bulkRetailShift) || 0.0,
+          updated_by_name: (typeof currentUser !== 'undefined' && currentUser?.name) ? currentUser.name : "Product Manager"
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(data.message);
+        setShowBulkRepricingModal(false);
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchSummary();
+      } else {
+        const err = await res.json();
+        alert("Bulk re-pricing failed: " + (err.detail || "Server error"));
+      }
+    } catch (e) {
+      alert("Network error: " + e.message);
+    }
+  };
+
   const handleGridCellChange = (productId, field, value) => {
     setGridEdits(prev => ({
       ...prev,
@@ -1341,6 +1463,14 @@ export default function ProductsPage() {
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
+                  onClick={() => setShowBulkRepricingModal(true)}
+                  className="btn btn-ghost"
+                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
+                >
+                  🏷️ Bulk Re-Pricing (% Shift)
+                </button>
+
+                <button
                   onClick={() => setIsBulkGridMode(!isBulkGridMode)}
                   className={`btn ${isBulkGridMode ? 'btn-primary' : 'btn-ghost'}`}
                   style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
@@ -1845,12 +1975,14 @@ export default function ProductsPage() {
               </div>
 
               {/* TABS CONTROLLER */}
-              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '0px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '0px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {[
                   { id: 'specs', label: 'Specifications' },
                   { id: 'costing', label: 'Costing' },
                   { id: 'supplier', label: 'Supplier Details' },
-                  { id: 'history', label: 'Stock History' }
+                  { id: 'history', label: 'Stock History' },
+                  { id: 'audit', label: '📜 Audit Trail & History' },
+                  { id: 'accessories', label: '⚡ Linked Drivers & Accessories' }
                 ].map(t => (
                   <button
                     key={t.id}
@@ -1863,7 +1995,11 @@ export default function ProductsPage() {
                       fontWeight: 600,
                       height: '38px'
                     }}
-                    onClick={() => setActiveTab(t.id)}
+                    onClick={() => {
+                      setActiveTab(t.id);
+                      if (t.id === 'audit' && activeProduct?.id) fetchAuditLogs(activeProduct.id);
+                      if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
+                    }}
                   >
                     {t.label}
                   </button>
@@ -2673,11 +2809,228 @@ export default function ProductsPage() {
                   </div>
                 )}
 
+                {/* 5. AUDIT TRAIL VIEW */}
+                {activeTab === 'audit' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>📜 Product Modification Audit Trail (Cloud SQL Log)</h4>
+                        <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }} onClick={() => fetchAuditLogs(activeProduct.id)}>🔄 Refresh Log</button>
+                      </div>
+
+                      {isLoadingAuditLogs ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading database audit history...</div>
+                      ) : auditLogs.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                          No audit log entries recorded for this SKU yet. Any cell edits made in Bulk Grid or Workspace will log here permanently.
+                        </div>
+                      ) : (
+                        <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-secondary)' }}>
+                              <th>Timestamp</th>
+                              <th>Field Changed</th>
+                              <th>Old Value</th>
+                              <th>New Value</th>
+                              <th>Modified By</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {auditLogs.map((log) => (
+                              <tr key={log.id}>
+                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{log.timestamp}</td>
+                                <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{log.field_changed}</td>
+                                <td style={{ color: 'var(--text-danger)', fontFamily: 'monospace' }}>{log.old_value || '(empty)'}</td>
+                                <td style={{ color: 'var(--text-success)', fontFamily: 'monospace', fontWeight: 600 }}>{log.new_value}</td>
+                                <td>{log.updated_by_name}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. LINKED ACCESSORIES & DRIVERS VIEW */}
+                {activeTab === 'accessories' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
+                      <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 600 }}>⚡ Link Compatible Accessories, Drivers & Bezels</h4>
+                      
+                      {/* ADD ACCESSORY ROW */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Product to Link:</label>
+                          <select 
+                            className="form-control" 
+                            style={{ height: '32px', fontSize: '12px' }}
+                            value={newAccessoryId}
+                            onChange={e => setNewAccessoryId(e.target.value)}
+                          >
+                            <option value="">-- Choose Driver or Accessory SKU --</option>
+                            {products.filter(p => p.id !== activeProduct.id).map(p => (
+                              <option key={p.id} value={p.id}>[{p.sku}] — {p.name} (R {p.retail_price || p.unitCost || 0})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div style={{ width: '180px' }}>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Relationship Type:</label>
+                          <select 
+                            className="form-control" 
+                            style={{ height: '32px', fontSize: '12px' }}
+                            value={newAccessoryType}
+                            onChange={e => setNewAccessoryType(e.target.value)}
+                          >
+                            <option value="Required Driver">Required Driver</option>
+                            <option value="Optional Bezel / Trim">Optional Bezel / Trim</option>
+                            <option value="Emergency Battery Pack">Emergency Battery Pack</option>
+                            <option value="Dimmer Controller">Dimmer Controller</option>
+                          </select>
+                        </div>
+
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          style={{ height: '32px', marginTop: '18px', padding: '0 16px', fontSize: '12px' }}
+                          onClick={() => handleAddAccessory(activeProduct.id)}
+                        >
+                          ➕ Link Accessory
+                        </button>
+                      </div>
+
+                      {/* ACCESSORIES TABLE */}
+                      {isLoadingAccessories ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading linked accessories...</div>
+                      ) : accessoriesList.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                          No drivers or accessories linked to this fitting yet.
+                        </div>
+                      ) : (
+                        <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-secondary)' }}>
+                              <th>Relationship</th>
+                              <th>Accessory SKU</th>
+                              <th>Description / Name</th>
+                              <th style={{ textAlign: 'right' }}>RRP Price</th>
+                              <th style={{ textAlign: 'center' }}>Stock Qty</th>
+                              <th style={{ textAlign: 'center' }}>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {accessoriesList.map((acc) => (
+                              <tr key={acc.id}>
+                                <td>
+                                  <span className="badge b-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
+                                    {acc.relationship_type}
+                                  </span>
+                                </td>
+                                <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{acc.sku}</td>
+                                <td>{acc.name}</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600 }}>R {(acc.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{acc.stock || 0}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button 
+                                    className="btn btn-ghost btn-sm" 
+                                    style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '11px' }}
+                                    onClick={() => handleRemoveAccessory(activeProduct.id, acc.id)}
+                                  >
+                                    🗑️ Unlink
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
             </div>
           </div>
         </>
+      )}
+
+      {/* BULK SUPPLIER RE-PRICING MODAL */}
+      {showBulkRepricingModal && (
+        <div className="modal-bg active" style={{ display: 'flex' }}>
+          <div className="modal" style={{ maxWidth: '480px', padding: '20px' }}>
+            <div className="modal-head" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>🏷️ Bulk Supplier Re-Pricing (% Shift)</h3>
+              <button className="modal-close" onClick={() => setShowBulkRepricingModal(false)}>×</button>
+            </div>
+            
+            <div className="modal-body" style={{ padding: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="form-row">
+                  <label className="form-label">Target Supplier:</label>
+                  <select 
+                    className="form-control" 
+                    value={bulkSupplier} 
+                    onChange={e => setBulkSupplier(e.target.value)}
+                  >
+                    <option value="All Suppliers">All Suppliers</option>
+                    {[...new Set(products.map(p => p.supplier_name || p.supplier).filter(Boolean))].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <label className="form-label">Target Category:</label>
+                  <select 
+                    className="form-control" 
+                    value={bulkCategory} 
+                    onChange={e => setBulkCategory(e.target.value)}
+                  >
+                    <option value="All Categories">All Categories</option>
+                    {[...new Set(products.map(p => p.category).filter(Boolean))].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label">Cost Price Shift (%):</label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      className="form-control" 
+                      placeholder="e.g. 5.0 for +5%"
+                      value={bulkCostShift} 
+                      onChange={e => setBulkCostShift(e.target.value)} 
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label className="form-label">Retail Price Shift (%):</label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      className="form-control" 
+                      placeholder="e.g. 5.0 for +5%"
+                      value={bulkRetailShift} 
+                      onChange={e => setBulkRetailShift(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                  💡 <strong>ERP Audit Impact:</strong> This action will update all matching products inside Cloud SQL inside an atomic transaction and log an audit trail entry for every modified price.
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-foot" style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkRepricingModal(false)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={handleExecuteBulkRepricing}>⚡ Execute Re-Pricing</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CREATE NEW PRODUCT SKU MODAL */}

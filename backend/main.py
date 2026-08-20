@@ -265,9 +265,34 @@ def init_db():
                                 );
                             """))
                         conn.commit()
-                        print("Database migration: created 'product_audit_logs' table with ON DELETE RESTRICT.")
-                except Exception as audit_err:
-                    print(f"Database migration product_audit_logs (info): {audit_err}")
+                # Ensure product_accessories table exists
+                try:
+                    if 'product_accessories' not in inspector.get_table_names():
+                        db_type = engine.name
+                        if db_type == 'sqlite':
+                            conn.execute(text("""
+                                CREATE TABLE product_accessories (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    parent_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                                    accessory_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                                    relationship_type VARCHAR DEFAULT 'Required Driver',
+                                    notes TEXT
+                                );
+                            """))
+                        else:
+                            conn.execute(text("""
+                                CREATE TABLE IF NOT EXISTS product_accessories (
+                                    id SERIAL PRIMARY KEY,
+                                    parent_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                                    accessory_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                                    relationship_type VARCHAR(100) DEFAULT 'Required Driver',
+                                    notes TEXT
+                                );
+                            """))
+                        conn.commit()
+                        print("Database migration: created 'product_accessories' table.")
+                except Exception as acc_err:
+                    print(f"Database migration product_accessories (info): {acc_err}")
                 
                 # Migrate products table
                 inspector = inspect(engine)

@@ -397,6 +397,7 @@ class Product(Base):
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")
     audit_logs = relationship("ProductAuditLog", back_populates="product")
+    accessories = relationship("ProductAccessory", foreign_keys="[ProductAccessory.parent_product_id]", back_populates="parent_product")
 
 class ProductAuditLog(Base):
     __tablename__ = "product_audit_logs"
@@ -412,6 +413,18 @@ class ProductAuditLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     
     product = relationship("Product", back_populates="audit_logs")
+
+class ProductAccessory(Base):
+    __tablename__ = "product_accessories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    parent_product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    accessory_product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String, default="Required Driver") # e.g. "Required Driver", "Optional Bezel", "Emergency Pack"
+    notes = Column(String, nullable=True)
+    
+    parent_product = relationship("Product", foreign_keys=[parent_product_id], back_populates="accessories")
+    accessory_product = relationship("Product", foreign_keys=[accessory_product_id])
 
 class ProductFile(Base):
     __tablename__ = "product_files"

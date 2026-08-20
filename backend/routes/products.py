@@ -713,3 +713,144 @@ def batch_update_products(
         db.rollback()
         print(f"Batch update error: {err}")
         raise HTTPException(status_code=500, detail=f"Batch Transaction Failed & Rolled Back: {str(err)}")
+
+# 1. Fetch Audit Logs for a specific Product
+@router.get("/{product_id}/audit-logs")
+def get_product_audit_logs(product_id: int, db: Session = Depends(get_db)):
+    from models.orm_models import ProductAuditLog
+    logs = db.query(ProductAuditLog).filter(ProductAuditLog.product_id == product_id).order_by(ProductAuditLog.timestamp.desc()).all()
+    return [
+        {
+            "id": l.id,
+            "product_id": l.product_id,
+            "sku": l.sku,
+            "field_changed": l.field_changed,
+            "old_value": l.old_value,
+            "new_value": l.new_value,
+            "updated_by_name": l.updated_by_name or "Product Manager",
+            "timestamp": l.timestamp.strftime("%d %b %Y, %H:%M:%S") if l.timestamp else ""
+        }
+        for l in logs
+    ]
+
+# 2. Bulk Supplier Re-Pricing Endpoint (Apply % Shift)
+class BulkRepricingPayload(BaseModel):
+    supplier_name: Optional[str] = None
+    category: Optional[str] = None
+    cost_percent_shift: float = 0.0   # e.g. 5.0 for +5%
+    retail_percent_shift: float = 0.0 # e.g. 5.0 for +5%
+    updated_by_name: Optional[str] = "Product Manager"
+
+@router.post("/bulk-repricing")
+def bulk_repricing_shift(payload: BulkRepricingPayload, db: Session = Depends(get_db)):
+    from models.orm_models import ProductAuditLog
+    
+    query = db.query(Product).filter(Product.is_active == True)
+    if payload.supplier_name and payload.supplier_name != "All Suppliers":
+        query = query.filter(Product.supplier_name == payload.supplier_name)
+    if payload.category and payload.category != "All Categories":
+        query = query.filter(Product.category == payload.category)
+
+    target_products = query.all()
+    if not target_products:
+        return {"message": "No products matched the bulk re-pricing criteria.", "updated_count": 0}
+
+    audit_logs = []
+    updated_count = 0
+
+    try:
+        for p in target_products:
+            # Shift Cost Price
+            if payload.cost_percent_shift != 0.0:
+                old_cost = p.cost_price or 0.0
+                new_cost = round(old_cost * (1.0 + (payload.cost_percent_shift / 100.0)), 2)
+                if old_cost != new_cost:
+                    audit_logs.append(ProductAuditLog(
+                        product_id=p.id, sku=p.sku, field_changed="cost_price",
+                        old_value=str(old_cost), new_value=str(new_cost),
+                        updated_by_name=payload.updated_by_name
+                    ))
+                    p.cost_price = new_cost
+
+            # Shift Retail Price
+            if payload.retail_percent_shift != 0.0:
+                old_retail = p.retail_price or 0.0
+                new_retail = round(old_retail * (1.0 + (payload.retail_percent_shift / 100.0)), 2)
+                if old_retail != new_retail:
+                    audit_logs.append(ProductAuditLog(
+                        product_id=p.id, sku=p.sku, field_changed="retail_price",
+                        old_value=str(old_retail), new_value=str(new_retail),
+                        updated_by_name=payload.updated_by_name
+                    ))
+                    p.retail_price = new_retail
+                    p.recommended_retail_price = new_retail
+
+            updated_count += 1
+
+        for log in audit_logs:
+            db.add(log)
+
+        db.commit()
+        return {
+            "message": f"Successfully re-priced {updated_count} product(s) by {payload.cost_percent_shift}% cost / {payload.retail_percent_shift}% retail.",
+            "updated_count": updated_count,
+            "audit_logs_written": len(audit_logs)
+        }
+    except Exception as err:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Bulk Re-pricing Failed: {str(err)}")
+
+# 3. Product Accessories & Linking Endpoints
+class AddAccessoryPayload(BaseModel):
+    accessory_product_id: int
+    relationship_type: str = "Required Driver"
+    notes: Optional[str] = None
+
+@router.get("/{product_id}/accessories")
+def get_product_accessories(product_id: int, db: Session = Depends(get_db)):
+    from models.orm_models import ProductAccessory
+    accs = db.query(ProductAccessory).filter(ProductAccessory.parent_product_id == product_id).all()
+    out = []
+    for a in accs:
+        if a.accessory_product:
+            out.append({
+                "id": a.id,
+                "parent_product_id": a.parent_product_id,
+                "accessory_product_id": a.accessory_product_id,
+                "relationship_type": a.relationship_type,
+                "notes": a.notes,
+                "sku": a.accessory_product.sku,
+                "name": a.accessory_product.name,
+                "cost_price": a.accessory_product.cost_price,
+                "retail_price": a.accessory_product.retail_price,
+                "stock": a.accessory_product.stock_level
+            })
+    return out
+
+@router.post("/{product_id}/accessories")
+def add_product_accessory(product_id: int, payload: AddAccessoryPayload, db: Session = Depends(get_db)):
+    from models.orm_models import ProductAccessory
+    acc_prod = db.query(Product).filter(Product.id == payload.accessory_product_id).first()
+    if not acc_prod:
+        raise HTTPException(status_code=404, detail="Accessory product not found")
+        
+    new_acc = ProductAccessory(
+        parent_product_id=product_id,
+        accessory_product_id=payload.accessory_product_id,
+        relationship_type=payload.relationship_type,
+        notes=payload.notes
+    )
+    db.add(new_acc)
+    db.commit()
+    db.refresh(new_acc)
+    return {"message": f"Linked accessory '{acc_prod.sku}' successfully.", "id": new_acc.id}
+
+@router.delete("/{product_id}/accessories/{accessory_link_id}")
+def delete_product_accessory(product_id: int, accessory_link_id: int, db: Session = Depends(get_db)):
+    from models.orm_models import ProductAccessory
+    acc = db.query(ProductAccessory).filter(ProductAccessory.id == accessory_link_id, ProductAccessory.parent_product_id == product_id).first()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Linked accessory relationship not found")
+    db.delete(acc)
+    db.commit()
+    return {"message": "Unlinked accessory successfully."}
