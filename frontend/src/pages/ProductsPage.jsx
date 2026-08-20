@@ -626,11 +626,14 @@ export default function ProductsPage() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
 
-  // 3. Product Accessories State
-  const [accessoriesList, setAccessoriesList] = useState([]);
-  const [isLoadingAccessories, setIsLoadingAccessories] = useState(false);
-  const [newAccessoryId, setNewAccessoryId] = useState('');
-  const [newAccessoryType, setNewAccessoryType] = useState('Required Driver');
+  // 4. Excel Import Progress Modal State
+  const [importProgress, setImportProgress] = useState({
+    isImporting: false,
+    totalRows: 0,
+    processedRows: 0,
+    added: 0,
+    updated: 0
+  });
 
   const fetchAuditLogs = async (prodId) => {
     if (!prodId) return;
@@ -1378,6 +1381,14 @@ export default function ProductsPage() {
 
         triggerToast(`Importing ${rows.length} product(s)...`);
 
+        setImportProgress({
+          isImporting: true,
+          totalRows: rows.length,
+          processedRows: 0,
+          added: 0,
+          updated: 0
+        });
+
         // Send each row in chunks of 50 to avoid large payload / timeout issues
         const CHUNK = 50;
         let totalAdded = 0;
@@ -1397,6 +1408,14 @@ export default function ProductsPage() {
               const result = await res.json();
               totalAdded += result.added || 0;
               totalUpdated += result.updated || 0;
+              
+              setImportProgress({
+                isImporting: true,
+                totalRows: rows.length,
+                processedRows: Math.min(i + CHUNK, rows.length),
+                added: totalAdded,
+                updated: totalUpdated
+              });
             } else {
               let detail = 'Server error';
               try { const errData = await res.json(); detail = errData.detail || detail; } catch (_) {}
@@ -1411,6 +1430,8 @@ export default function ProductsPage() {
             break;
           }
         }
+
+        setImportProgress(prev => ({ ...prev, isImporting: false }));
 
         if (!failed) {
           triggerToast(`Import complete! Added: ${totalAdded}, Updated: ${totalUpdated}`);
@@ -3029,6 +3050,40 @@ export default function ProductsPage() {
             <div className="modal-foot" style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkRepricingModal(false)}>Cancel</button>
               <button className="btn btn-primary btn-sm" onClick={handleExecuteBulkRepricing}>⚡ Execute Re-Pricing</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* EXCEL IMPORT PROGRESS MODAL */}
+      {importProgress.isImporting && (
+        <div className="modal-bg active" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+          <div className="modal" style={{ maxWidth: '420px', padding: '24px', textAlign: 'center', borderRadius: '16px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '10px' }}>📦</div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: 700 }}>Importing Product Database...</h3>
+            <p style={{ margin: '0 0 18px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Reconciling products in Cloud SQL. Please keep this tab open.
+            </p>
+
+            {/* PROGRESS BAR */}
+            <div style={{ background: 'var(--bg-secondary)', height: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', marginBottom: '14px' }}>
+              <div 
+                style={{ 
+                  height: '100%', 
+                  background: 'linear-gradient(90deg, #3b82f6, #10b981)', 
+                  width: `${importProgress.totalRows > 0 ? Math.round((importProgress.processedRows / importProgress.totalRows) * 100) : 0}%`,
+                  transition: 'width 0.3s ease'
+                }} 
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '14px' }}>
+              <span>{Math.round((importProgress.processedRows / (importProgress.totalRows || 1)) * 100)}% Complete</span>
+              <span>{importProgress.processedRows} / {importProgress.totalRows} Rows</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px' }}>
+              <div style={{ color: 'var(--text-success)', fontWeight: 600 }}>🟢 Added: {importProgress.added}</div>
+              <div style={{ color: 'var(--text-info)', fontWeight: 600 }}>🔵 Updated: {importProgress.updated}</div>
             </div>
           </div>
         </div>
