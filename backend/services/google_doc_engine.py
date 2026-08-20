@@ -139,14 +139,18 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     # Extract client, project, and document info for folder vaulting
     client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
     project_name = str(tokens.get('PROJECT_NAME') or tokens.get('PROJECT_NAME_LOCATION') or 'Project').strip()
+    
+    order_name = tokens.get('ORDER_NAME') or tokens.get('QUOTE_NAME') or tokens.get('ORDER_TITLE') or tokens.get('FEE_NAME')
     order_num = tokens.get('ORDER_NUMBER') or tokens.get('DOCUMENT_NUMBER') or tokens.get('PROPOSAL_NUMBER')
     
     if sheet_name == 'DESIGN_FEE_PROPOSAL':
         doc_folder_name = "Design Fee Proposal"
+    elif order_name and str(order_name).strip():
+        doc_folder_name = str(order_name).strip()
     elif order_num and not str(order_num).endswith('XXX'):
         doc_folder_name = f"Order {order_num}"
     else:
-        doc_folder_name = str(tokens.get('FEE_NAME') or sheet_name or 'Document').replace('_', ' ').strip()
+        doc_folder_name = str(sheet_name or 'Document').replace('_', ' ').strip()
 
     doc_label = str(sheet_name or 'Document').replace('_', ' ').title()
 
@@ -1053,7 +1057,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             latest_query = f"'{latest_folder_id}' in parents and trashed=false"
             latest_res = drive_service.files().list(
                 q=latest_query,
-                fields="files(id, name)",
+                fields="files(id, name, createdTime)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
             ).execute()
@@ -1061,8 +1065,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             existing_latest = latest_res.get('files', [])
             for ef in existing_latest:
                 if ef['name'].startswith(clean_type_title) or clean_type_title in ef['name']:
-                    # Archive older revision into History
-                    history_filename = f"{clean_type_title} - {doc_folder_name} (Archived {int(time.time())}).pdf"
+                    # Extract original creation date of the file being moved into History
+                    created_date_str = str(tokens.get('DATE') or '').strip()
+                    if not created_date_str and ef.get('createdTime'):
+                        created_date_str = ef['createdTime'][:10]  # Format: YYYY-MM-DD
+                    if not created_date_str:
+                        created_date_str = time.strftime('%Y-%m-%d')
+
+                    # Format archived name: Revision - Date Created
+                    history_filename = f"{clean_type_title} - {doc_folder_name} (Revision - {created_date_str}).pdf"
                     drive_service.files().update(
                         fileId=ef['id'],
                         body={'name': history_filename},
