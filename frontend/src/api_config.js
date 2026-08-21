@@ -1,4 +1,5 @@
-const isStagingHost = typeof window !== 'undefined' && window.location.hostname.includes('staging');
+const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
+const isStagingHost = hostname.includes('staging') || hostname.includes('erinj1610s-projects');
 export const API_BASE = isStagingHost 
   ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
   : 'https://one-to-one-backend-858977785048.us-central1.run.app';
