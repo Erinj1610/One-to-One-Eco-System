@@ -1,4 +1,7 @@
-export const API_BASE = 'https://one-to-one-backend-858977785048.us-central1.run.app';
+const isStagingHost = typeof window !== 'undefined' && window.location.hostname.includes('staging');
+export const API_BASE = isStagingHost 
+  ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
+  : 'https://one-to-one-backend-858977785048.us-central1.run.app';
 
 import { auth } from './firebase';
 
