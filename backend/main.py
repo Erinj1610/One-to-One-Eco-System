@@ -18,6 +18,7 @@ from routes.users import router as users_router
 from routes.products import router as products_router, public_router as products_public_router
 from routes.lookups import router as lookups_router
 from routes.orders import router as orders_router
+from routes.deployments import router as deployments_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -70,6 +71,7 @@ app.include_router(users_router, prefix="/admin/users", tags=["users"])
 app.include_router(products_router, prefix="/api/products", tags=["products"])
 app.include_router(products_public_router, prefix="/api/products", tags=["products"])
 app.include_router(lookups_router, prefix="/api/lookups", tags=["lookups"])
+app.include_router(deployments_router, prefix="/api/admin", tags=["deployments"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles

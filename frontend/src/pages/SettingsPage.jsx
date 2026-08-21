@@ -369,6 +369,274 @@ function MasterGoogleSheetManager() {
   );
 }
 
+function ReleasesDeploymentManager() {
+  const { user } = useAuth();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [promoteForm, setPromoteForm] = useState({ version_tag: '', release_name: '', release_notes: '' });
+  const [actionMsg, setActionMsg] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchDeploymentStatus = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/deployments`);
+      if (res.ok) {
+        const statusData = await res.json();
+        setData(statusData);
+      }
+    } catch (err) {
+      console.error("Error fetching deployments status:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeploymentStatus();
+  }, []);
+
+  const handlePromote = async () => {
+    if (!promoteForm.release_name.trim()) {
+      alert("Please enter a custom release name.");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/deployments/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version_tag: promoteForm.version_tag || `v1.${Date.now().toString().slice(-4)}`,
+          release_name: promoteForm.release_name,
+          release_notes: promoteForm.release_notes,
+          admin_email: user?.email || 'admin@1-to-1.world'
+        })
+      });
+      if (res.ok) {
+        setActionMsg({ type: 'success', text: `🚀 Successfully promoted release '${promoteForm.release_name}' to Live Production!` });
+        setShowPromoteModal(false);
+        setPromoteForm({ version_tag: '', release_name: '', release_notes: '' });
+        fetchDeploymentStatus();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(`Error promoting release: ${errData.detail || 'Failed'}`);
+      }
+    } catch (err) {
+      alert(`Error promoting release: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRollback = async (rev) => {
+    if (!window.confirm(`Are you sure you want to rollback live Production traffic to revision ${rev.version_tag} (${rev.release_name})?`)) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/deployments/rollback/${rev.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        setActionMsg({ type: 'success', text: `⏪ Successfully rolled back Production live traffic to revision ${rev.version_tag}!` });
+        fetchDeploymentStatus();
+      } else {
+        alert("Rollback failed.");
+      }
+    } catch (err) {
+      alert(`Rollback error: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ padding: '30px', color: 'var(--text-secondary)' }}>⏳ Loading live deployment architecture details...</div>;
+  }
+
+  const currentProd = data?.current_production;
+
+  return (
+    <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
+      <div className="section-label">🚀 Releases & Deployment Management Dashboard</div>
+      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '18px' }}>
+        Manage Staging vs. Production releases, deploy tested Staging builds live, log custom release titles, and execute 1-click revision rollbacks with zero data loss.
+      </div>
+
+      {actionMsg && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '8px', marginBottom: '16px',
+          background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)',
+          color: '#10b981', fontSize: '13px', fontWeight: 600
+        }}>
+          {actionMsg.text}
+        </div>
+      )}
+
+      {/* ACTIVE PRODUCTION & STAGING CARDS GRID */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+        
+        {/* PRODUCTION CARD */}
+        <div style={{ background: 'var(--bg-card)', border: '1.5px solid #10b981', borderRadius: '10px', padding: '18px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.08)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+              🟢 ACTIVE PRODUCTION LIVE
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>ejportal.vercel.app</span>
+          </div>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
+            {currentProd?.version_tag || 'v1.5.0'} — {currentProd?.release_name || 'Live Production'}
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            Deployed by {currentProd?.deployed_by || 'Admin'} on {currentProd?.created_at || 'Recently'}
+          </div>
+          <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '6px', color: 'var(--text-secondary)' }}>
+            🛡️ Production Cloud SQL Database (<code style={{ color: '#60a5fa' }}>one_to_one_db_prod</code>) is active and protected.
+          </div>
+        </div>
+
+        {/* STAGING CARD */}
+        <div style={{ background: 'var(--bg-card)', border: '1.5px solid #3b82f6', borderRadius: '10px', padding: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+              🧪 STAGING LIVE PLAYGROUND
+            </span>
+            <a href="https://staging-ejportal.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 600, textDecoration: 'none' }}>
+              staging-ejportal.vercel.app ↗
+            </a>
+          </div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+            Live Staging Build Ready
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+            Isolated Staging Database (<code style={{ color: '#60a5fa' }}>one_to_one_db_staging</code>) active for live UI tests.
+          </div>
+          <button 
+            onClick={() => setShowPromoteModal(true)}
+            className="glow-btn"
+            style={{ width: '100%', padding: '9px', background: '#2563eb', border: 'none', borderRadius: '6px', color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+          >
+            🚀 Promote Staging to Live Production
+          </button>
+        </div>
+
+      </div>
+
+      {/* HISTORICAL DEPLOYMENT AUDIT LOG TABLE */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '18px' }}>
+        <h4 style={{ margin: '0 0 14px 0', fontSize: '14px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          📜 Deployment History & Revision Audit Trail
+        </h4>
+        <table className="modern-table" style={{ width: '100%', fontSize: '12.5px' }}>
+          <thead>
+            <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
+              <th style={{ padding: '8px' }}>Version</th>
+              <th style={{ padding: '8px' }}>Release Title</th>
+              <th style={{ padding: '8px' }}>Deployed By</th>
+              <th style={{ padding: '8px' }}>Date & Time</th>
+              <th style={{ padding: '8px' }}>Status</th>
+              <th style={{ padding: '8px', textAlign: 'right' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.history || []).map((rev) => (
+              <tr key={rev.id} style={{ opacity: rev.is_active_prod ? 1 : 0.85 }}>
+                <td style={{ fontWeight: 800, color: rev.is_active_prod ? '#10b981' : 'var(--text-primary)' }}>
+                  {rev.version_tag}
+                </td>
+                <td style={{ fontWeight: 600 }}>{rev.release_name}</td>
+                <td>{rev.deployed_by}</td>
+                <td>{rev.created_at}</td>
+                <td>
+                  {rev.is_active_prod ? (
+                    <span style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
+                      Active Live
+                    </span>
+                  ) : (
+                    <span style={{ padding: '2px 6px', background: 'rgba(156, 163, 175, 0.15)', color: '#9ca3af', border: '1px solid rgba(156, 163, 175, 0.3)', borderRadius: '4px', fontSize: '11px' }}>
+                      Archived
+                    </span>
+                  )}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  {!rev.is_active_prod && (
+                    <button
+                      onClick={() => handleRollback(rev)}
+                      disabled={actionLoading}
+                      style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
+                    >
+                      ⏪ Rollback to this Revision
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* PROMOTE STAGING TO PRODUCTION MODAL */}
+      {showPromoteModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{ width: '100%', maxWidth: '500px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: 'var(--text-primary)' }}>🚀 Promote Staging to Production</h3>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Publish your tested Staging changes to the live portal. Enter a custom version tag and release title for your audit log.
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Version Tag</label>
+              <input 
+                type="text" 
+                placeholder="e.g. v1.5.1" 
+                value={promoteForm.version_tag} 
+                onChange={e => setPromoteForm({ ...promoteForm, version_tag: e.target.value })} 
+                className="form-control"
+              />
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Release Title / Name *</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Custom Order Naming & Google Drive Vault" 
+                value={promoteForm.release_name} 
+                onChange={e => setPromoteForm({ ...promoteForm, release_name: e.target.value })} 
+                className="form-control"
+              />
+            </div>
+
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Release Notes (Optional)</label>
+              <textarea 
+                rows="3" 
+                placeholder="Summary of fixes, new features, or updates included in this release..." 
+                value={promoteForm.release_notes} 
+                onChange={e => setPromoteForm({ ...promoteForm, release_notes: e.target.value })} 
+                className="form-control"
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button className="btn btn-secondary" onClick={() => setShowPromoteModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handlePromote} disabled={actionLoading}>
+                {actionLoading ? 'Publishing Release...' : '🚀 Confirm & Publish Live'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -387,7 +655,7 @@ export default function SettingsPage() {
 
 
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? ['General', 'Users', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
@@ -2455,6 +2723,10 @@ export default function SettingsPage() {
 
       {activeTab === 'Templates' && isAdmin && (
         <MasterGoogleSheetManager />
+      )}
+
+      {activeTab === 'Releases & Deployments' && isAdmin && (
+        <ReleasesDeploymentManager />
       )}
 
 
