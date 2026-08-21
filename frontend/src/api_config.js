@@ -14,6 +14,7 @@ window.fetch = async (url, options = {}) => {
   // Explicitly check if the target destination matches the backend host URL
   const isBackendRequest = 
     urlStr.startsWith(API_BASE) || 
+    urlStr.includes('one-to-one-backend-staging') ||
     urlStr.includes('one-to-one-backend-858977785048.us-central1.run.app') ||
     urlStr.includes('one-to-one-backend') || 
     urlStr.startsWith('/') ||
