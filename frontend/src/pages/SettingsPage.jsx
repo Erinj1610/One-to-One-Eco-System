@@ -503,8 +503,8 @@ function ReleasesDeploymentManager() {
             <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
               🧪 STAGING LIVE PLAYGROUND
             </span>
-            <a href="https://staging-ejportal.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 600, textDecoration: 'none' }}>
-              staging-ejportal.vercel.app ↗
+            <a href="https://frontend-git-staging-erinj1610s-projects.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 600, textDecoration: 'none' }}>
+              staging.ejportal ↗
             </a>
           </div>
           <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
