@@ -20,33 +20,12 @@ router = APIRouter()
 from google.oauth2 import service_account
 
 def get_google_services():
-    """Initializes Google Sheets and Drive API services using Service Account with domain impersonation or ADC."""
+    """Initializes Google Sheets and Drive API services using Cloud Run Compute Service Account."""
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
     ]
-    creds = None
-    try:
-        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if creds_path and os.path.exists(creds_path):
-            creds = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
-            try:
-                creds = creds.with_subject('erin.jones@1-to-1.world')
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    if not creds:
-        try:
-            creds, _ = google.auth.default(scopes=scopes)
-            try:
-                creds = creds.with_subject('erin.jones@1-to-1.world')
-            except Exception:
-                pass
-        except Exception:
-            pass
-
+    creds, _ = google.auth.default(scopes=scopes)
     sheets_service = build('sheets', 'v4', credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
     return sheets_service, drive_service
