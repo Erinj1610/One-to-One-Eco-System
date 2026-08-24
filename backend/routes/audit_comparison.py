@@ -10,12 +10,25 @@ from googleapiclient.discovery import build
 
 router = APIRouter()
 
+from google.oauth2 import service_account
+
 def get_google_services():
-    """Initializes Google Sheets and Drive API services using default service account or environment credentials."""
-    creds, _ = google.auth.default(scopes=[
+    """Initializes Google Sheets and Drive API services using Service Account or Application Default Credentials."""
+    scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
-    ])
+    ]
+    try:
+        creds, _ = google.auth.default(scopes=scopes)
+    except Exception:
+        creds = None
+
+    if not creds:
+        # Fallback if service account file path env exists
+        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_path and os.path.exists(creds_path):
+            creds = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
+
     sheets_service = build('sheets', 'v4', credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
     return sheets_service, drive_service
@@ -49,22 +62,19 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Read raw values from the legacy current system Google Sheet
+    # Step 1: Read raw values from the legacy current system Google Sheet directly
     try:
-        source_metadata = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
-        sheets = source_metadata.get('sheets', [])
-        if not sheets:
-            raise HTTPException(status_code=400, detail="Provided Google Sheet has no readable tabs.")
-        
-        first_sheet_title = sheets[0]['properties']['title']
-        range_name = f"'{first_sheet_title}'!A1:Z5000"
-        
+        # Fetch directly from range A1:Z5000 to avoid metadata overhead timeouts
         result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=source_sheet_id, range=range_name
+            spreadsheetId=source_sheet_id, 
+            range="A1:Z5000"
         ).execute()
         source_rows = result.get('values', [])
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet. Ensure it is shared with service account. Error: {str(e)}")
+        err_msg = str(e)
+        if "timed out" in err_msg.lower() or "read operation" in err_msg.lower():
+            err_msg = "Google API read timed out. The target Google Sheet might be very large or restricted."
+        raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet. Ensure it is shared with service account. Error: {err_msg}")
 
     if not source_rows or len(source_rows) < 2:
         raise HTTPException(status_code=400, detail="Legacy Google Sheet appears to be empty or missing data rows.")
