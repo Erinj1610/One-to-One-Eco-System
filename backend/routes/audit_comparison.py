@@ -71,10 +71,15 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
     # Step 1: Read raw values from the legacy current system Google Sheet directly
     try:
-        # Fetch directly from range A1:Z5000 to avoid metadata overhead timeouts
+        # Get target sheet's first tab title
+        sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
+        sheets = sheet_meta.get('sheets', [])
+        tab_name = sheets[0]['properties']['title'] if sheets else "Sheet1"
+        target_range = f"'{tab_name}'!A1:Z5000"
+
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=source_sheet_id, 
-            range="A1:Z5000"
+            range=target_range
         ).execute()
         source_rows = result.get('values', [])
     except Exception as e:
