@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 import os
 import re
 import socket
+import datetime
 import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -51,10 +52,46 @@ def safe_int(val, default=0):
     return int(f)
 
 def normalize_key(s: str) -> str:
-    """Normalizes any string to alphanumeric-only lowercase for collision-free matching."""
+    """Normalizes any string to alphanumeric-only lowercase for 100% collision-free matching."""
     if not s:
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
+
+def col_letter_to_index(col_letters: str) -> int:
+    """Converts column letter (A, B, ..., Z, AA, AB, AC) to 0-indexed column integer."""
+    col = 0
+    for char in col_letters.strip().upper():
+        col = col * 26 + (ord(char) - ord('A') + 1)
+    return col - 1
+
+def parse_excel_date(val: Any) -> str:
+    """Parses Excel serial dates or date strings into standardized YYYY-MM-DD format."""
+    if not val:
+        return ""
+    val_str = str(val).strip()
+    if not val_str:
+        return ""
+    
+    # Check if numeric Excel serial date (e.g., 45230)
+    try:
+        f = float(val_str)
+        if f > 30000 and f < 70000:
+            base = datetime.date(1899, 12, 30)
+            return (base + datetime.timedelta(days=int(f))).isoformat()
+    except Exception:
+        pass
+
+    # Standardize string date YYYY-MM-DD
+    match_iso = re.search(r'(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})', val_str)
+    if match_iso:
+        return f"{match_iso.group(1)}-{int(match_iso.group(2)):02d}-{int(match_iso.group(3)):02d}"
+
+    # Standardize string date DD/MM/YYYY or MM/DD/YYYY
+    match_dmy = re.search(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})', val_str)
+    if match_dmy:
+        return f"{match_dmy.group(3)}-{int(match_dmy.group(2)):02d}-{int(match_dmy.group(1)):02d}"
+
+    return val_str
 
 RECONCILIATION_COLUMNS = [
     "Project Key", "Project Name", "Client Company", "Order ID", "Quote Name",
@@ -72,7 +109,10 @@ RECONCILIATION_COLUMNS = [
 def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
     """
     Read-only live audit comparison generator.
-    1. Extracts live master system Google Sheet using the exact cell mappings (D2, D3, F5, D6, F1, J2, B9:AC89, G90-G99).
+    1. Extracts live master system Google Sheet using the exact 1-to-1 clone of '1. Extract Reconciliation Template':
+       - Only processes sheet tabs that appear AFTER the 'Template' sheet in workbook order.
+       - Maps D2, D3, F5, D6, F1, G98, D90, D95, D96, G95, G96.
+       - Iterates rows 9 to 89: B (Qty), C (1:1), D (Item Code), E (Desc), F (Retail), I (Cost), L (Brand), M (Supplier), N (Type), Q (PO Ref), R (PO Supp), S (Date Ord), T (ETA), U (Date Rec), V (Qty Rec), Y (Qty Inv), Z (Inv Ref), AA (Date Inv), AC (Del Ref).
     2. Queries Cloud SQL database (Orders, Projects, Items) formatted in the exact same 41 columns.
     3. Employs robust normalized matching to prevent false mismatch/duplicate entries.
     4. Builds comparison heatmap with red highlighting for true mismatches.
@@ -91,7 +131,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Read all tabs from user's live Google Sheet
+    # Step 1: Read spreadsheet metadata to get tab order
     try:
         # Pre-check drive access
         try:
@@ -122,179 +162,181 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             err_msg = "Google API read timed out. The target Google Sheet might be very large or restricted."
         raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet: {err_msg}")
 
+    # IDENTIFY TARGET TABS: Exactly like handleGenerateReconciliationTemplate:
+    # Only take tabs that appear AFTER the 'Template' sheet in workbook order
+    found_template = False
+    target_sheets = []
+    for s in all_sheets:
+        name = s.get('properties', {}).get('title', '').strip()
+        if name.lower() == 'template':
+            found_template = True
+            continue
+        if found_template:
+            target_sheets.append(name)
+
+    # Fallback if no sheet is explicitly named 'Template'
+    if not target_sheets:
+        skip_tab_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
+        target_sheets = [s.get('properties', {}).get('title', '').strip() for s in all_sheets if s.get('properties', {}).get('title', '').strip().lower() not in skip_tab_names]
+
+    if not target_sheets:
+        raise HTTPException(status_code=400, detail="No order/project tabs found after the 'Template' sheet in the provided Google Sheet.")
+
+    # Batch read all target sheets A1:AC100
+    batch_ranges = [f"'{title}'!A1:AC100" for title in target_sheets]
+    batch_res = sheets_service.spreadsheets().values().batchGet(
+        spreadsheetId=source_sheet_id,
+        ranges=batch_ranges
+    ).execute()
+    value_ranges = batch_res.get('valueRanges', [])
+
     legacy_flat_rows = []
-    skip_tab_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
-    order_tabs = [s['properties']['title'] for s in all_sheets if s['properties']['title'].strip().lower() not in skip_tab_names]
 
-    if len(order_tabs) >= 1 and any(s['properties']['title'].strip().lower() == 'template' for s in all_sheets):
-        # Multi-tab extraction with exact cell coordinates
-        batch_ranges = [f"'{title}'!A1:AC100" for title in order_tabs]
-        batch_res = sheets_service.spreadsheets().values().batchGet(
-            spreadsheetId=source_sheet_id,
-            ranges=batch_ranges
-        ).execute()
-        value_ranges = batch_res.get('valueRanges', [])
+    for idx, vr in enumerate(value_ranges):
+        sheet_name = target_sheets[idx] if idx < len(target_sheets) else "Order"
+        grid = vr.get('values', [])
+        if not grid or len(grid) < 2:
+            continue
 
-        for vr in value_ranges:
-            range_str = vr.get('range', '')
-            matched_tab = ""
-            for ot in order_tabs:
-                if ot in range_str:
-                    matched_tab = ot
-                    break
-            if not matched_tab:
-                matched_tab = order_tabs[0] if order_tabs else "Order"
+        def get_val(cell_ref: str) -> str:
+            m = re.match(r'([A-Za-z]+)(\d+)', cell_ref.strip())
+            if not m:
+                return ""
+            col_idx = col_letter_to_index(m.group(1))
+            row_idx = int(m.group(2)) - 1
+            if row_idx < len(grid) and col_idx < len(grid[row_idx]):
+                return str(grid[row_idx][col_idx]).strip()
+            return ""
 
-            grid = vr.get('values', [])
-            if not grid or len(grid) < 2:
+        def get_row_val(col_letter: str, row_num: int) -> Any:
+            col_idx = col_letter_to_index(col_letter)
+            row_idx = row_num - 1
+            if row_idx < len(grid) and col_idx < len(grid[row_idx]):
+                return grid[row_idx][col_idx]
+            return None
+
+        client_company = get_val('D2')
+        order_name = get_val('D3') or sheet_name
+        project_f5 = get_val('F5') or 'General Project'
+        delivery_address = get_val('D6')
+        sales_rep = get_val('F1')
+        order_status_g98 = get_val('G98') or "Processing"
+
+        # Safe order reference: exactly orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
+        safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower()
+
+        deposit_invoice_sent = get_val('D90') or 'No'
+        deposit_payment_date = parse_excel_date(get_val('D95'))
+        balance_payment_date = parse_excel_date(get_val('D96'))
+        deposit_value = safe_float(get_val('G95'))
+        balance_value = safe_float(get_val('G96'))
+
+        amount_paid = 0.0
+        if deposit_payment_date or deposit_value > 0:
+            amount_paid += deposit_value
+        if balance_payment_date or balance_value > 0:
+            amount_paid += balance_value
+
+        # Parse rows 9 to 89
+        for r in range(9, 90):
+            qty_raw = get_row_val('B', r)
+            qty = safe_int(qty_raw)
+            if qty <= 0:
                 continue
 
-            def get_cell(row_idx, col_idx):
-                if row_idx < len(grid) and col_idx < len(grid[row_idx]):
-                    return str(grid[row_idx][col_idx]).strip()
-                return ""
+            one_one_code = str(get_row_val('C', r) or '').strip()
+            item_code = str(get_row_val('D', r) or '').strip()
+            description = str(get_row_val('E', r) or '').strip()
+            unit_retail = safe_float(get_row_val('F', r))
+            unit_cost = safe_float(get_row_val('I', r))
+            brand = str(get_row_val('L', r) or '').strip()
+            supplier = str(get_row_val('M', r) or '').strip()
+            product_type = str(get_row_val('N', r) or '').strip() or "Hardware"
 
-            # Exact Cell Header Mappings
-            # F1: Sale Rep Name (0, 5)
-            # D2: Client (1, 3) | J2: Company Name (1, 9)
-            # D3: Order Name (2, 3)
-            # F5: Project Name (4, 5)
-            # D6: Delivery Address (5, 3)
-            # G98: Status (97, 6)
-            sales_rep = get_cell(0, 5) # F1
-            client_company = get_cell(1, 9) or get_cell(1, 3) # J2 (Company Name) or D2 (Client)
-            raw_order_name = get_cell(2, 3) # D3
-            project_f5 = get_cell(4, 5) or get_cell(4, 3) or 'General Project' # F5
-            delivery_address = get_cell(5, 3) # D6
-            order_status_g98 = get_cell(97, 6) or get_cell(97, 3) or "Processing" # G98
+            po_ref_from_sheet = str(get_row_val('Q', r) or '').strip()
+            po_supplier = str(get_row_val('R', r) or supplier or 'Warehouse Inventory').strip()
+            date_ordered_raw = get_row_val('S', r)
+            date_ordered = parse_excel_date(date_ordered_raw)
+            eta_raw = get_row_val('T', r)
+            eta = parse_excel_date(eta_raw)
 
-            # If D3 is generic placeholder (e.g. 'Portfolio' or empty), use matched tab title as true order name
-            if not raw_order_name or raw_order_name.lower().strip() in ['portfolio', 'general spec', 'template', 'order', '']:
-                order_name = matched_tab
-            else:
-                order_name = raw_order_name
+            date_rec_raw = get_row_val('U', r)
+            date_rec = parse_excel_date(date_rec_raw)
+            qty_rec = safe_int(get_row_val('V', r))
 
-            safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', matched_tab).lower()
+            qty_inv = safe_int(get_row_val('Y', r))
+            invoice_ref = str(get_row_val('Z', r) or '').strip()
+            date_inv_raw = get_row_val('AA', r)
+            date_inv = parse_excel_date(date_inv_raw)
 
-            # Totals and Payments:
-            # G90: SUBTOTAL (89, 6) | D90: DEPOSIT INVOICE SENT (89, 3)
-            # G92: TOTAL PRICE EXCL VAT (91, 6)
-            # G95: DEPOSIT PAYMENT (94, 6) | D95: DATE DEPOSIT PAID (94, 3)
-            # G96: BALANCE PAYMENT (95, 6) | D96: DATE BALANCE PAYMENT PAID (95, 3)
-            deposit_invoice_sent = get_cell(89, 3) or 'No' # D90
-            deposit_payment_date = get_cell(94, 3) # D95
-            balance_payment_date = get_cell(95, 3) # D96
-            deposit_value = safe_float(get_cell(94, 6)) # G95
-            balance_value = safe_float(get_cell(95, 6)) # G96
+            delivery_ref = str(get_row_val('AC', r) or '').strip()
 
-            amount_paid = 0.0
-            if deposit_payment_date or deposit_value > 0:
-                amount_paid += deposit_value
-            if balance_payment_date or balance_value > 0:
-                amount_paid += balance_value
+            po_ref = po_ref_from_sheet
+            if not po_ref and date_ordered:
+                clean_date = re.sub(r'[^0-9]', '', date_ordered)
+                clean_supp = re.sub(r'[^a-zA-Z0-9]', '', po_supplier)[:8].lower()
+                po_ref = f"PO-{safe_order_ref}-{clean_supp}-{clean_date}"
 
-            # Parse Line Items B9:AC89 (indices 8 to 88)
-            for r_idx in range(8, min(len(grid), 89)):
-                row = grid[r_idx]
-                qty = safe_int(row[1] if len(row) > 1 else 0) # B
-                if qty <= 0:
-                    continue
+            grn_ref = ""
+            if date_rec and qty_rec > 0:
+                clean_date = re.sub(r'[^0-9]', '', date_rec)
+                grn_ref = f"GRN-{safe_order_ref}-{clean_date}"
 
-                one_one_code = str(row[2] if len(row) > 2 else '').strip() # C: 1:1 CODE
-                item_code = str(row[3] if len(row) > 3 else '').strip() # D: ITEM CODE
-                description = str(row[4] if len(row) > 4 else '').strip() # E: DESCRIPTION
-                unit_retail = safe_float(row[5] if len(row) > 5 else 0) # F: UNIT PRICE EX VAT
-                unit_cost = safe_float(row[8] if len(row) > 8 else 0) # I: COST EX VAT
-                brand = str(row[11] if len(row) > 11 else '').strip() # L: BRAND
-                supplier = str(row[12] if len(row) > 12 else '').strip() # M: SUPPLIER
-                product_type = str(row[13] if len(row) > 13 else '').strip() or "Hardware" # N: PRODUCT TYPE
-                stock_status = str(row[13] if len(row) > 13 else '').strip()
-                stock_on_hand = safe_int(row[14] if len(row) > 14 else 0) # O: INTERNAL COST / STOCK
+            date_del = date_rec if delivery_ref else ""
+            qty_del = qty_rec if delivery_ref else 0
 
-                po_qty_ordered = safe_int(row[16] if len(row) > 16 else 0) # Q: QTY ORDERED
-                po_supplier = str(row[17] if len(row) > 17 else supplier or 'Warehouse Inventory').strip() # R: SUPPLIER ORDERED
-                date_ordered = str(row[18] if len(row) > 18 else '').strip() # S: DATE ORDERED
-                eta = str(row[19] if len(row) > 19 else '').strip() # T: ETA
-                date_rec = str(row[20] if len(row) > 20 else '').strip() # U: DATE RECEIVED
-                qty_rec = safe_int(row[21] if len(row) > 21 else 0) # V: QTY RECEIVED
+            inv_ref_value = invoice_ref
+            if not inv_ref_value and date_inv and qty_inv > 0:
+                clean_date = re.sub(r'[^0-9]', '', date_inv)
+                inv_ref_value = f"INV-{safe_order_ref}-{clean_date}"
 
-                qty_inv = safe_int(row[24] if len(row) > 24 else 0) # Y: INVOICED QTY
-                invoice_ref = str(row[25] if len(row) > 25 else '').strip() # Z: INVOICE REFERENCE
-                date_inv = str(row[26] if len(row) > 26 else '').strip() # AA: DATE INVOICED
-                delivery_ref = str(row[28] if len(row) > 28 else '').strip() # AC: COLLECT/DELIVERY
+            temp_item_id = f"ITEM-{safe_order_ref}-{one_one_code or item_code or 'FITTING'}-{r}"
+            stock_status = str(get_row_val('N', r) or '').strip()
+            stock_on_hand = safe_int(get_row_val('O', r))
 
-                po_ref = ""
-                if date_ordered:
-                    clean_date = re.sub(r'[^0-9]', '', date_ordered)
-                    clean_supp = re.sub(r'[^a-zA-Z0-9]', '', po_supplier)[:8].lower()
-                    po_ref = f"PO-{safe_order_ref}-{clean_supp}-{clean_date}"
-
-                grn_ref = f"GRN-{safe_order_ref}-{re.sub(r'[^0-9]', '', date_rec)}" if (date_rec and qty_rec > 0) else ""
-                date_del = date_rec if delivery_ref else ""
-                qty_del = qty_rec if delivery_ref else 0
-                inv_ref_val = invoice_ref or (f"INV-{safe_order_ref}-{re.sub(r'[^0-9]', '', date_inv)}" if (date_inv and qty_inv > 0) else "")
-                temp_item_id = f"ITEM-{safe_order_ref}-{one_one_code or item_code or 'FITTING'}-{r_idx + 1}"
-
-                legacy_flat_rows.append({
-                    "Project Key": re.sub(r'[^a-zA-Z0-9]', '-', project_f5).lower().strip('-'),
-                    "Project Name": project_f5,
-                    "Client Company": client_company,
-                    "Order ID": safe_order_ref,
-                    "Quote Name": order_name,
-                    "Sales Rep": sales_rep,
-                    "Delivery Address": delivery_address,
-                    "Item ID": temp_item_id,
-                    "Qty": qty,
-                    "1:1 Code": one_one_code,
-                    "Item Code": item_code,
-                    "Description": description,
-                    "Unit Cost Ex VAT": unit_cost,
-                    "Unit Retail Price Ex VAT": unit_retail,
-                    "Brand": brand,
-                    "Supplier": supplier,
-                    "Item Type": product_type,
-                    "Stock Status": stock_status,
-                    "Stock on Hand": stock_on_hand,
-                    "Qty Ordered (PO)": po_qty_ordered,
-                    "PO Supplier": po_supplier,
-                    "Date Ordered": date_ordered,
-                    "PO Reference": po_ref,
-                    "Delivery ETA": eta,
-                    "Qty REC": qty_rec,
-                    "Date REC": date_rec,
-                    "GRN Reference": grn_ref,
-                    "Qty INV": qty_inv,
-                    "Invoice Reference": inv_ref_val,
-                    "Date INV": date_inv,
-                    "Qty DEL": qty_del,
-                    "Date DEL": date_del,
-                    "Delivery Reference": delivery_ref,
-                    "Delivery Comments": "",
-                    "Sheet Order Status": order_status_g98,
-                    "Deposit Value": deposit_value,
-                    "Deposit Invoice Sent": deposit_invoice_sent,
-                    "Deposit Payment Date": deposit_payment_date,
-                    "Balance Value": balance_value,
-                    "Balance Payment Date": balance_payment_date,
-                    "Amount Paid": amount_paid
-                })
-
-    else:
-        # Single flat table extraction
-        target_tab = order_tabs[0] if order_tabs else all_sheets[0]['properties']['title']
-        res = sheets_service.spreadsheets().values().get(
-            spreadsheetId=source_sheet_id,
-            range=f"'{target_tab}'!A1:AO5000"
-        ).execute()
-        source_rows = res.get('values', [])
-        if source_rows and len(source_rows) > 1:
-            header = [str(c).strip() for c in source_rows[0]]
-            for r in source_rows[1:]:
-                if not r: continue
-                row_dict = {}
-                for idx, col_name in enumerate(header):
-                    row_dict[col_name] = r[idx] if idx < len(r) else ""
-                legacy_flat_rows.append(row_dict)
+            legacy_flat_rows.append({
+                "Project Key": re.sub(r'[^a-zA-Z0-9]', '-', project_f5).lower(),
+                "Project Name": project_f5,
+                "Client Company": client_company,
+                "Order ID": safe_order_ref,
+                "Quote Name": order_name,
+                "Sales Rep": sales_rep,
+                "Delivery Address": delivery_address,
+                "Item ID": temp_item_id,
+                "Qty": qty,
+                "1:1 Code": one_one_code,
+                "Item Code": item_code,
+                "Description": description,
+                "Unit Cost Ex VAT": unit_cost,
+                "Unit Retail Price Ex VAT": unit_retail,
+                "Brand": brand,
+                "Supplier": supplier,
+                "Item Type": product_type,
+                "Stock Status": stock_status,
+                "Stock on Hand": stock_on_hand,
+                "Qty Ordered (PO)": 0,
+                "PO Supplier": po_supplier,
+                "Date Ordered": date_ordered,
+                "PO Reference": po_ref,
+                "Delivery ETA": eta,
+                "Qty REC": qty_rec,
+                "Date REC": date_rec,
+                "GRN Reference": grn_ref,
+                "Qty INV": qty_inv,
+                "Invoice Reference": inv_ref_value,
+                "Date INV": date_inv,
+                "Qty DEL": qty_del,
+                "Date DEL": date_del,
+                "Delivery Reference": delivery_ref,
+                "Delivery Comments": "",
+                "Sheet Order Status": order_status_g98,
+                "Deposit Value": deposit_value,
+                "Deposit Invoice Sent": deposit_invoice_sent,
+                "Deposit Payment Date": deposit_payment_date,
+                "Balance Value": balance_value,
+                "Balance Payment Date": balance_payment_date,
+                "Amount Paid": amount_paid
+            })
 
     # Step 2: Query Cloud SQL Database items in identical 41-column format
     db_orders = db.query(Order).all()
