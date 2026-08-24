@@ -11,7 +11,7 @@ import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# Set HTTP socket timeout to 120s for large Google Sheets API transfers
+# Set HTTP socket timeout to 120s
 socket.setdefaulttimeout(120)
 
 ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
@@ -109,14 +109,10 @@ RECONCILIATION_COLUMNS = [
 def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
     """
     Read-only live audit comparison generator.
-    1. Extracts live master system Google Sheet using the exact 1-to-1 clone of '1. Extract Reconciliation Template':
-       - Only processes sheet tabs that appear AFTER the 'Template' sheet in workbook order.
-       - Maps D2, D3, F5, D6, F1, G98, D90, D95, D96, G95, G96.
-       - Iterates rows 9 to 89: B (Qty), C (1:1), D (Item Code), E (Desc), F (Retail), I (Cost), L (Brand), M (Supplier), N (Type), Q (PO Ref), R (PO Supp), S (Date Ord), T (ETA), U (Date Rec), V (Qty Rec), Y (Qty Inv), Z (Inv Ref), AA (Date Inv), AC (Del Ref).
-    2. Queries Cloud SQL database (Orders, Projects, Items) formatted in the exact same 41 columns.
-    3. Employs robust normalized matching to prevent false mismatch/duplicate entries.
-    4. Builds comparison heatmap with red highlighting for true mismatches.
-    5. Generates a 3-tab Google Sheet in Drive Vault and returns structured JSON for instant Excel download.
+    1. Downloads live Google Sheet workbook in a single fast call with includeGridData=True.
+    2. Identifies all project tabs appearing AFTER 'Template'.
+    3. Extracts rows 9-89 with exact cell references and formats in 41 reconciliation columns.
+    4. Queries Cloud SQL database and generates 3-tab heatmap spreadsheet.
     """
     raw_sheet_input = payload.get("current_system_sheet_url")
     user_email = payload.get("user_email", "erin.jones@1-to-1.world").strip()
@@ -131,7 +127,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Read spreadsheet metadata to get tab order
+    # Step 1: Read entire workbook grid data in 1 single fast API call
     try:
         # Pre-check drive access
         try:
@@ -149,8 +145,12 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 )
             raise drive_err
 
-        sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
-        all_sheets = sheet_meta.get('sheets', [])
+        # Fetch spreadsheet with all grid data in 1 request
+        spreadsheet_obj = sheets_service.spreadsheets().get(
+            spreadsheetId=source_sheet_id,
+            includeGridData=True
+        ).execute()
+        all_sheets = spreadsheet_obj.get('sheets', [])
         if not all_sheets:
             raise HTTPException(status_code=400, detail="Provided Google Sheet contains no worksheets.")
 
@@ -162,65 +162,44 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             err_msg = "Google API read timed out. The target Google Sheet might be very large or restricted."
         raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet: {err_msg}")
 
-    # IDENTIFY TARGET TABS: Exactly like handleGenerateReconciliationTemplate:
-    # Only take tabs that appear AFTER the 'Template' sheet in workbook order
+    # Process sheets that appear AFTER 'Template' (matching handleGenerateReconciliationTemplate)
+    has_template_tab = any(s.get('properties', {}).get('title', '').strip().lower() == 'template' for s in all_sheets)
     found_template = False
-    target_sheets = []
-    for s in all_sheets:
-        name = s.get('properties', {}).get('title', '').strip()
-        if name.lower() == 'template':
-            found_template = True
-            continue
-        if found_template:
-            target_sheets.append(name)
-
-    # Fallback if no sheet is explicitly named 'Template'
-    if not target_sheets:
-        skip_tab_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
-        target_sheets = [s.get('properties', {}).get('title', '').strip() for s in all_sheets if s.get('properties', {}).get('title', '').strip().lower() not in skip_tab_names]
-
-    if not target_sheets:
-        raise HTTPException(status_code=400, detail="No order/project tabs found after the 'Template' sheet in the provided Google Sheet.")
-
-    # Safe title escaping and fetching
-    def escape_sheet_title(t: str) -> str:
-        clean = t.replace("'", "''")
-        return f"'{clean}'!A1:AC100"
-
-    value_ranges_map = {}
-    chunk_size = 20
-    for i in range(0, len(target_sheets), chunk_size):
-        chunk_sheets = target_sheets[i:i + chunk_size]
-        chunk_ranges = [escape_sheet_title(t) for t in chunk_sheets]
-        try:
-            batch_res = sheets_service.spreadsheets().values().batchGet(
-                spreadsheetId=source_sheet_id,
-                ranges=chunk_ranges,
-                valueRenderOption='FORMATTED_VALUE'
-            ).execute()
-            v_ranges = batch_res.get('valueRanges', [])
-            for s_idx, vr in enumerate(v_ranges):
-                sheet_t = chunk_sheets[s_idx] if s_idx < len(chunk_sheets) else target_sheets[0]
-                value_ranges_map[sheet_t] = vr.get('values', [])
-        except Exception as chunk_err:
-            # Fallback to individual sheet get if a chunk contains an invalid sheet title
-            for t in chunk_sheets:
-                try:
-                    res = sheets_service.spreadsheets().values().get(
-                        spreadsheetId=source_sheet_id,
-                        range=escape_sheet_title(t),
-                        valueRenderOption='FORMATTED_VALUE'
-                    ).execute()
-                    value_ranges_map[t] = res.get('values', [])
-                except Exception as single_err:
-                    print(f"Skipping tab '{t}' due to range parse notice: {single_err}")
-
     legacy_flat_rows = []
 
-    for sheet_name in target_sheets:
-        grid = value_ranges_map.get(sheet_name, [])
-        if not grid or len(grid) < 2:
+    for s in all_sheets:
+        props = s.get('properties', {})
+        sheet_name = props.get('title', '').strip()
+        
+        if sheet_name.lower() == 'template':
+            found_template = True
             continue
+
+        if has_template_tab and not found_template:
+            continue
+
+        # Extract 2D grid from rowData
+        data_blocks = s.get('data', [])
+        if not data_blocks:
+            continue
+
+        row_data_list = data_blocks[0].get('rowData', [])
+        if not row_data_list or len(row_data_list) < 2:
+            continue
+
+        grid = []
+        for r_obj in row_data_list:
+            row_vals = []
+            for cell in r_obj.get('values', []):
+                val = ""
+                if cell:
+                    if 'formattedValue' in cell:
+                        val = str(cell['formattedValue']).strip()
+                    elif 'effectiveValue' in cell:
+                        ev = cell['effectiveValue']
+                        val = str(ev.get('stringValue') or ev.get('numberValue') or ev.get('boolValue') or '').strip()
+                row_vals.append(val)
+            grid.append(row_vals)
 
         def get_val(cell_ref: str) -> str:
             m = re.match(r'([A-Za-z]+)(\d+)', cell_ref.strip())
@@ -246,7 +225,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         sales_rep = get_val('F1')
         order_status_g98 = get_val('G98') or "Processing"
 
-        # Safe order reference: exactly orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
         safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower()
 
         deposit_invoice_sent = get_val('D90') or 'No'
@@ -361,6 +339,9 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Balance Payment Date": balance_payment_date,
                 "Amount Paid": amount_paid
             })
+
+    if not legacy_flat_rows:
+        raise HTTPException(status_code=400, detail="No order items found in the target worksheets.")
 
     # Step 2: Query Cloud SQL Database items in identical 41-column format
     db_orders = db.query(Order).all()
@@ -700,7 +681,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 body={'requests': requests}
             ).execute()
 
-            # Populate all 3 tabs
+            # Populate all 3 tabs in parallel batch update
             data_payload = [
                 {
                     'range': "'🚨 AUDIT & DISCREPANCY HEATMAP'!A1",
