@@ -152,7 +152,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         
         # Calculate total retail from OrderItems
         items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
-        calc_retail = sum((item.retail or 0.0) * (item.qty or 1) for item in items) if items else (o.order_value or 0.0)
+        calc_retail = sum((getattr(item, 'unit_retail', 0.0) or 0.0) * (item.qty or 1) for item in items) if items else (o.order_value or 0.0)
         
         db_map[o.po_number] = {
             "po_number": o.po_number,
