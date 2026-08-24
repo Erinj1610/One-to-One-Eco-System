@@ -5,8 +5,15 @@ from models.orm_models import Order, Project, OrderItem
 from typing import Optional, List, Dict, Any
 import os
 import re
+import socket
 import google.auth
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
+
+# Set HTTP socket timeout to 120s for large Google Sheets API transfers
+socket.setdefaulttimeout(120)
+
+ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 
 router = APIRouter()
 
@@ -172,6 +179,17 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     
     audit_sheet = sheets_service.spreadsheets().create(body=spreadsheet_body).execute()
     audit_sheet_id = audit_sheet['spreadsheetId']
+
+    # Place spreadsheet inside Google Drive Shared Vault root folder
+    try:
+        drive_service.files().update(
+            fileId=audit_sheet_id,
+            addParents=ROOT_DRIVE_FOLDER_ID,
+            supportsAllDrives=True,
+            fields='id, parents'
+        ).execute()
+    except Exception as drive_err:
+        print(f"Notice: Drive folder move notice: {drive_err}")
 
     # Step 4: Share audit sheet with user email
     try:
