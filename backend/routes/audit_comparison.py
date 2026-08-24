@@ -46,17 +46,30 @@ def safe_float(val_str, default=0.0):
     except:
         return default
 
+def safe_int(val, default=0):
+    f = safe_float(val, default=float(default))
+    return int(f)
+
+RECONCILIATION_COLUMNS = [
+    "Project Key", "Project Name", "Client Company", "Order ID", "Quote Name",
+    "Sales Rep", "Delivery Address", "Item ID", "Qty", "1:1 Code",
+    "Item Code", "Description", "Unit Cost Ex VAT", "Unit Retail Price Ex VAT",
+    "Brand", "Supplier", "Item Type", "Stock Status", "Stock on Hand",
+    "Qty Ordered (PO)", "PO Supplier", "Date Ordered", "PO Reference", "Delivery ETA",
+    "Qty REC", "Date REC", "GRN Reference", "Qty INV", "Invoice Reference", "Date INV",
+    "Qty DEL", "Date DEL", "Delivery Reference", "Delivery Comments", "Sheet Order Status",
+    "Deposit Value", "Deposit Invoice Sent", "Deposit Payment Date",
+    "Balance Value", "Balance Payment Date", "Amount Paid"
+]
+
 @router.post("/audit-comparison/generate")
 def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
     """
-    Read-only audit generator.
-    1. Reads live data from user's current system Google Sheet (supporting multi-tab workbook and flat tables).
-    2. Queries Cloud SQL database (Orders, Projects, Items).
-    3. Creates a new Google Sheet comparison workbook with 3 tabs:
-       - Tab 1: 🚨 AUDIT & DISCREPANCY HEATMAP (with red cell highlighting)
-       - Tab 2: Current Live System Data
-       - Tab 3: Portal Cloud SQL Database
-    4. Shares sheet with user and returns structured datasets for instant Excel download.
+    Read-only live audit comparison generator.
+    1. Extracts items from user's live Google Sheet using the exact same structure as '1. Extract Reconciliation Template'.
+    2. Queries Cloud SQL database (Orders, Projects, Items) formatted in the exact same 41 columns.
+    3. Builds comparison heatmap with red highlighting for mismatches.
+    4. Generates a 3-tab Google Sheet in Drive Vault and returns structured JSON for instant Excel download.
     """
     raw_sheet_input = payload.get("current_system_sheet_url")
     user_email = payload.get("user_email", "erin.jones@1-to-1.world").strip()
@@ -71,11 +84,11 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Read raw values from the legacy current system Google Sheet
+    # Step 1: Extract Live Google Sheet data using the exact Reconciliation Template layout
     try:
-        # First verify Drive permission access with supportsAllDrives=True
+        # Pre-check drive access
         try:
-            drive_file = drive_service.files().get(
+            drive_service.files().get(
                 fileId=source_sheet_id, 
                 fields="id, name", 
                 supportsAllDrives=True
@@ -89,7 +102,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 )
             raise drive_err
 
-        # Fetch spreadsheet metadata to inspect all tabs
+        # Fetch spreadsheet tabs metadata
         sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
         all_sheets = sheet_meta.get('sheets', [])
         if not all_sheets:
@@ -103,19 +116,13 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             err_msg = "Google API read timed out. The target Google Sheet might be very large or restricted."
         raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet: {err_msg}")
 
-    # Determine if this is a Multi-Tab workbook (Sales Tracker format) or Single Flat Table
-    legacy_map = {}
-    legacy_tab_rows = [
-        ["Order ID / PO #", "Project Name", "Client Name", "Quote Name", "Supplier", "Retail Value", "Amount Paid", "Status", "Source Tab"]
-    ]
-
+    legacy_flat_rows = []
     skip_tab_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
     order_tabs = [s['properties']['title'] for s in all_sheets if s['properties']['title'].strip().lower() not in skip_tab_names]
 
     if len(order_tabs) >= 1 and any(s['properties']['title'].strip().lower() == 'template' for s in all_sheets):
-        # MULTI-TAB WORKBOOK EXTRACTION (Matches Sales Tracker template extraction engine)
-        # Fetch all tab data in batch
-        batch_ranges = [f"'{title}'!A1:Z100" for title in order_tabs]
+        # Multi-tab extraction (rows 9-89 of each order tab)
+        batch_ranges = [f"'{title}'!A1:AC100" for title in order_tabs]
         batch_res = sheets_service.spreadsheets().values().batchGet(
             spreadsheetId=source_sheet_id,
             ranges=batch_ranges
@@ -123,7 +130,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         value_ranges = batch_res.get('valueRanges', [])
 
         for vr in value_ranges:
-            # Extract tab name from range (e.g. "'1 Stern Close'!A1:Z100")
             range_str = vr.get('range', '')
             matched_tab = ""
             for ot in order_tabs:
@@ -142,163 +148,278 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     return str(grid[row_idx][col_idx]).strip()
                 return ""
 
-            client_company = get_cell(1, 3) # D2 (index 1, 3)
-            order_name = get_cell(2, 3) or matched_tab # D3 (index 2, 3)
-            project_name = get_cell(4, 5) or get_cell(4, 3) or 'General Project' # F5 (index 4, 5)
-            order_status = get_cell(97, 6) or get_cell(97, 3) or "Active" # G98 (index 97, 6)
-
-            # Sum items across rows 9 to 89 (indices 8 to 88)
-            total_retail = 0.0
-            main_supplier = ""
-            for r_idx in range(8, min(len(grid), 89)):
-                row = grid[r_idx]
-                qty = safe_float(row[1] if len(row) > 1 else 0)
-                if qty <= 0:
-                    continue
-                unit_retail = safe_float(row[5] if len(row) > 5 else 0)
-                supplier = str(row[12] if len(row) > 12 else '').strip()
-                if supplier and not main_supplier:
-                    main_supplier = supplier
-                total_retail += qty * unit_retail
-
-            # Payments
-            deposit_val = safe_float(get_cell(94, 6) or get_cell(94, 3)) # G95 (index 94, 6)
-            balance_val = safe_float(get_cell(95, 6) or get_cell(95, 3)) # G96 (index 95, 6)
-            deposit_date = get_cell(94, 3) # D95
-            balance_date = get_cell(95, 3) # D96
-
-            amount_paid = 0.0
-            if deposit_date or deposit_val > 0:
-                amount_paid += deposit_val
-            if balance_date or balance_val > 0:
-                amount_paid += balance_val
+            client_company = get_cell(1, 3) # D2
+            order_name = get_cell(2, 3) or matched_tab # D3
+            project_f5 = get_cell(4, 5) or get_cell(4, 3) or 'General Project' # F5
+            delivery_address = get_cell(5, 3) # D6
+            sales_rep = get_cell(0, 5) # F1
+            order_status_g98 = get_cell(97, 6) or get_cell(97, 3) or "Active" # G98
 
             safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower().strip('-')
-            
-            record = {
-                "po_number": safe_order_ref,
-                "project_name": project_name,
-                "client_name": client_company,
-                "quote_name": order_name,
-                "supplier": main_supplier,
-                "retail_value": total_retail,
-                "amount_paid": amount_paid,
-                "status": order_status,
-                "source_tab": matched_tab
-            }
 
-            # Map under slug, original order name, and tab title for seamless lookup
-            legacy_map[safe_order_ref] = record
-            legacy_map[order_name.lower().strip()] = record
-            legacy_map[matched_tab.lower().strip()] = record
+            deposit_invoice_sent = get_cell(89, 3) or 'No' # D90
+            deposit_payment_date = get_cell(94, 3) # D95
+            balance_payment_date = get_cell(95, 3) # D96
+            deposit_value = safe_float(get_cell(94, 6)) # G95
+            balance_value = safe_float(get_cell(95, 6)) # G96
 
-            legacy_tab_rows.append([
-                safe_order_ref, project_name, client_company, order_name,
-                main_supplier, f"R {total_retail:,.2f}", f"R {amount_paid:,.2f}", order_status, matched_tab
-            ])
+            amount_paid = 0.0
+            if deposit_payment_date or deposit_value > 0:
+                amount_paid += deposit_value
+            if balance_payment_date or balance_value > 0:
+                amount_paid += balance_value
+
+            for r_idx in range(8, min(len(grid), 89)):
+                row = grid[r_idx]
+                qty = safe_int(row[1] if len(row) > 1 else 0)
+                if qty <= 0:
+                    continue
+
+                one_one_code = str(row[2] if len(row) > 2 else '').strip()
+                item_code = str(row[3] if len(row) > 3 else '').strip()
+                description = str(row[4] if len(row) > 4 else '').strip()
+                unit_retail = safe_float(row[5] if len(row) > 5 else 0)
+                unit_cost = safe_float(row[8] if len(row) > 8 else 0)
+                brand = str(row[11] if len(row) > 11 else '').strip()
+                supplier = str(row[12] if len(row) > 12 else '').strip()
+                product_type = str(row[13] if len(row) > 13 else '').strip() or "Hardware"
+                stock_status = str(row[13] if len(row) > 13 else '').strip()
+                stock_on_hand = safe_int(row[14] if len(row) > 14 else 0)
+
+                po_ref_from_sheet = str(row[16] if len(row) > 16 else '').strip()
+                po_supplier = str(row[17] if len(row) > 17 else supplier or 'Warehouse Inventory').strip()
+                date_ordered = str(row[18] if len(row) > 18 else '').strip()
+                eta = str(row[19] if len(row) > 19 else '').strip()
+                date_rec = str(row[20] if len(row) > 20 else '').strip()
+                qty_rec = safe_int(row[21] if len(row) > 21 else 0)
+
+                qty_inv = safe_int(row[24] if len(row) > 24 else 0)
+                invoice_ref = str(row[25] if len(row) > 25 else '').strip()
+                date_inv = str(row[26] if len(row) > 26 else '').strip()
+                delivery_ref = str(row[28] if len(row) > 28 else '').strip()
+
+                po_ref = po_ref_from_sheet
+                if not po_ref and date_ordered:
+                    clean_date = re.sub(r'[^0-9]', '', date_ordered)
+                    clean_supp = re.sub(r'[^a-zA-Z0-9]', '', po_supplier)[:8].lower()
+                    po_ref = f"PO-{safe_order_ref}-{clean_supp}-{clean_date}"
+
+                grn_ref = f"GRN-{safe_order_ref}-{re.sub(r'[^0-9]', '', date_rec)}" if (date_rec and qty_rec > 0) else ""
+                date_del = date_rec if delivery_ref else ""
+                qty_del = qty_rec if delivery_ref else 0
+                inv_ref_val = invoice_ref or (f"INV-{safe_order_ref}-{re.sub(r'[^0-9]', '', date_inv)}" if (date_inv and qty_inv > 0) else "")
+                temp_item_id = f"ITEM-{safe_order_ref}-{one_one_code or item_code or 'FITTING'}-{r_idx + 1}"
+
+                legacy_flat_rows.append({
+                    "Project Key": re.sub(r'[^a-zA-Z0-9]', '-', project_f5).lower().strip('-'),
+                    "Project Name": project_f5,
+                    "Client Company": client_company,
+                    "Order ID": safe_order_ref,
+                    "Quote Name": order_name,
+                    "Sales Rep": sales_rep,
+                    "Delivery Address": delivery_address,
+                    "Item ID": temp_item_id,
+                    "Qty": qty,
+                    "1:1 Code": one_one_code,
+                    "Item Code": item_code,
+                    "Description": description,
+                    "Unit Cost Ex VAT": unit_cost,
+                    "Unit Retail Price Ex VAT": unit_retail,
+                    "Brand": brand,
+                    "Supplier": supplier,
+                    "Item Type": product_type,
+                    "Stock Status": stock_status,
+                    "Stock on Hand": stock_on_hand,
+                    "Qty Ordered (PO)": 0,
+                    "PO Supplier": po_supplier,
+                    "Date Ordered": date_ordered,
+                    "PO Reference": po_ref,
+                    "Delivery ETA": eta,
+                    "Qty REC": qty_rec,
+                    "Date REC": date_rec,
+                    "GRN Reference": grn_ref,
+                    "Qty INV": qty_inv,
+                    "Invoice Reference": inv_ref_val,
+                    "Date INV": date_inv,
+                    "Qty DEL": qty_del,
+                    "Date DEL": date_del,
+                    "Delivery Reference": delivery_ref,
+                    "Delivery Comments": "",
+                    "Sheet Order Status": order_status_g98,
+                    "Deposit Value": deposit_value,
+                    "Deposit Invoice Sent": deposit_invoice_sent,
+                    "Deposit Payment Date": deposit_payment_date,
+                    "Balance Value": balance_value,
+                    "Balance Payment Date": balance_payment_date,
+                    "Amount Paid": amount_paid
+                })
 
     else:
-        # SINGLE FLAT TABLE EXTRACTION
+        # Single flat table extraction
         target_tab = order_tabs[0] if order_tabs else all_sheets[0]['properties']['title']
         res = sheets_service.spreadsheets().values().get(
             spreadsheetId=source_sheet_id,
-            range=f"'{target_tab}'!A1:Z5000"
+            range=f"'{target_tab}'!A1:AO5000"
         ).execute()
         source_rows = res.get('values', [])
-        if not source_rows or len(source_rows) < 2:
-            raise HTTPException(status_code=400, detail="Google Sheet data table appears to be empty.")
+        if source_rows and len(source_rows) > 1:
+            header = [str(c).strip() for c in source_rows[0]]
+            for r in source_rows[1:]:
+                if not r: continue
+                row_dict = {}
+                for idx, col_name in enumerate(header):
+                    row_dict[col_name] = r[idx] if idx < len(r) else ""
+                legacy_flat_rows.append(row_dict)
 
-        header = [str(c).strip().lower() for c in source_rows[0]]
-        def find_col_idx(possible_names):
-            for name in possible_names:
-                for i, h in enumerate(header):
-                    if name in h: return i
-            return -1
-
-        po_idx = find_col_idx(['order id', 'po number', 'po_number', 'order_id', 'po #', 'order #'])
-        proj_idx = find_col_idx(['project name', 'project_name', 'project key', 'project'])
-        client_idx = find_col_idx(['client company', 'client name', 'client_name', 'client'])
-        quote_name_idx = find_col_idx(['quote name', 'order name', 'quote_name', 'order_name', 'quote'])
-        supplier_idx = find_col_idx(['supplier', 'brand'])
-        retail_idx = find_col_idx(['retail value', 'unit retail price', 'retail_value', 'total retail', 'amount'])
-        paid_idx = find_col_idx(['amount paid', 'paid_amount', 'paid'])
-        status_idx = find_col_idx(['sheet order status', 'order status', 'status'])
-
-        for r in source_rows[1:]:
-            if not r: continue
-            raw_po = r[po_idx].strip() if po_idx != -1 and po_idx < len(r) else ""
-            if not raw_po: continue
-            
-            proj_val = r[proj_idx].strip() if proj_idx != -1 and proj_idx < len(r) else ""
-            client_val = r[client_idx].strip() if client_idx != -1 and client_idx < len(r) else ""
-            quote_val = r[quote_name_idx].strip() if quote_name_idx != -1 and quote_name_idx < len(r) else raw_po
-            supplier_val = r[supplier_idx].strip() if supplier_idx != -1 and supplier_idx < len(r) else ""
-            retail_val = safe_float(r[retail_idx] if retail_idx != -1 and retail_idx < len(r) else 0)
-            paid_val = safe_float(r[paid_idx] if paid_idx != -1 and paid_idx < len(r) else 0)
-            status_val = r[status_idx].strip() if status_idx != -1 and status_idx < len(r) else "Active"
-
-            safe_po = re.sub(r'[^a-zA-Z0-9]', '-', raw_po).lower().strip('-')
-
-            record = {
-                "po_number": safe_po,
-                "project_name": proj_val,
-                "client_name": client_val,
-                "quote_name": quote_val,
-                "supplier": supplier_val,
-                "retail_value": retail_val,
-                "amount_paid": paid_val,
-                "status": status_val,
-                "source_tab": target_tab
-            }
-            legacy_map[safe_po] = record
-            legacy_map[raw_po.lower().strip()] = record
-            legacy_tab_rows.append([
-                safe_po, proj_val, client_val, quote_val,
-                supplier_val, f"R {retail_val:,.2f}", f"R {paid_val:,.2f}", status_val, target_tab
-            ])
-
-    # Step 2: Fetch Cloud SQL Database Orders
+    # Step 2: Query Cloud SQL Database items in identical 41-column format
     db_orders = db.query(Order).all()
     all_projects = db.query(Project).all()
     db_projects_map = {p.project_key: p.name for p in all_projects}
     db_projects_client_map = {p.project_key: (p.client_name or "") for p in all_projects}
 
-    db_map = {}
-    portal_tab_rows = [
-        ["Order ID / PO #", "Project Name", "Client Name", "Quote Name", "Supplier", "Retail Value", "Amount Paid", "Status"]
-    ]
-
+    portal_flat_rows = []
     for o in db_orders:
-        proj_name = db_projects_map.get(o.project_key, o.project_key or "")
+        proj_name = db_projects_map.get(o.project_key, o.project_key or "General Project")
         client_name = getattr(o, 'client_name', None) or db_projects_client_map.get(o.project_key, "")
-        supplier_name = getattr(o, 'supplier_name', None) or getattr(o, 'supplier', None) or ""
-        paid_val = getattr(o, 'paid', None) or getattr(o, 'paid_amount', None) or 0.0
-        
-        # Calculate total retail from OrderItems
         items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
-        calc_retail = sum((getattr(item, 'unit_retail', 0.0) or 0.0) * (item.qty or 1) for item in items) if items else (getattr(o, 'value', 0.0) or getattr(o, 'order_value', 0.0) or 0.0)
-        
-        db_map[o.po_number] = {
-            "po_number": o.po_number,
-            "project_name": proj_name,
-            "client_name": client_name,
-            "quote_name": getattr(o, 'quote_name', None) or o.po_number,
-            "supplier": supplier_name,
-            "retail_value": float(calc_retail),
-            "amount_paid": float(paid_val),
-            "status": getattr(o, 'status', None) or "Active"
-        }
 
-        portal_tab_rows.append([
-            o.po_number, proj_name, client_name, getattr(o, 'quote_name', None) or o.po_number,
-            supplier_name, f"R {float(calc_retail):,.2f}", f"R {float(paid_val):,.2f}", getattr(o, 'status', None) or "Active"
-        ])
+        if items:
+            for item in items:
+                portal_flat_rows.append({
+                    "Project Key": o.project_key or "",
+                    "Project Name": proj_name,
+                    "Client Company": client_name,
+                    "Order ID": o.po_number or "",
+                    "Quote Name": getattr(o, 'quote_name', None) or o.po_number or "",
+                    "Sales Rep": getattr(o, 'pm_name', None) or "",
+                    "Delivery Address": getattr(o, 'notes', None) or "",
+                    "Item ID": item.id or "",
+                    "Qty": item.qty or 0,
+                    "1:1 Code": getattr(item, 'one_one_code', None) or "",
+                    "Item Code": getattr(item, 'code', None) or "",
+                    "Description": getattr(item, 'description', None) or "",
+                    "Unit Cost Ex VAT": getattr(item, 'unit_cost', 0.0) or 0.0,
+                    "Unit Retail Price Ex VAT": getattr(item, 'unit_retail', 0.0) or 0.0,
+                    "Brand": getattr(item, 'brand', None) or "",
+                    "Supplier": getattr(item, 'supplier', None) or "",
+                    "Item Type": getattr(item, 'type', None) or "Hardware",
+                    "Stock Status": getattr(item, 'stock_status', None) or "",
+                    "Stock on Hand": 0,
+                    "Qty Ordered (PO)": getattr(item, 'po_qty_ordered', 0) or 0,
+                    "PO Supplier": getattr(item, 'po_supplier', None) or "",
+                    "Date Ordered": getattr(item, 'po_date', None) or "",
+                    "PO Reference": getattr(item, 'po_ref', None) or "",
+                    "Delivery ETA": getattr(item, 'eta', None) or "",
+                    "Qty REC": getattr(item, 'received_qty', 0) or 0,
+                    "Date REC": getattr(item, 'received_date', None) or "",
+                    "GRN Reference": "",
+                    "Qty INV": getattr(item, 'invoice_qty', 0) or 0,
+                    "Invoice Reference": getattr(item, 'invoice_ref', None) or "",
+                    "Date INV": getattr(item, 'invoice_date', None) or "",
+                    "Qty DEL": getattr(item, 'delivery_qty', 0) or 0,
+                    "Date DEL": getattr(item, 'delivery_date', None) or "",
+                    "Delivery Reference": getattr(item, 'delivery_status', None) or "",
+                    "Delivery Comments": "",
+                    "Sheet Order Status": getattr(o, 'status', None) or "Active",
+                    "Deposit Value": getattr(o, 'deposit_value', 0.0) or 0.0,
+                    "Deposit Invoice Sent": getattr(o, 'deposit_invoice_sent', None) or "No",
+                    "Deposit Payment Date": getattr(o, 'deposit_payment_date', None) or "",
+                    "Balance Value": getattr(o, 'balance_value', 0.0) or 0.0,
+                    "Balance Payment Date": getattr(o, 'balance_payment_date', None) or "",
+                    "Amount Paid": getattr(o, 'paid', 0.0) or getattr(o, 'paid_amount', 0.0) or 0.0
+                })
+        else:
+            # Order with no items
+            portal_flat_rows.append({
+                "Project Key": o.project_key or "",
+                "Project Name": proj_name,
+                "Client Company": client_name,
+                "Order ID": o.po_number or "",
+                "Quote Name": getattr(o, 'quote_name', None) or o.po_number or "",
+                "Sales Rep": getattr(o, 'pm_name', None) or "",
+                "Delivery Address": getattr(o, 'notes', None) or "",
+                "Item ID": f"ORDER-{o.po_number}",
+                "Qty": 1,
+                "1:1 Code": "",
+                "Item Code": "",
+                "Description": getattr(o, 'quote_name', None) or o.po_number or "General Order",
+                "Unit Cost Ex VAT": 0.0,
+                "Unit Retail Price Ex VAT": getattr(o, 'value', 0.0) or 0.0,
+                "Brand": "",
+                "Supplier": getattr(o, 'supplier_name', None) or getattr(o, 'supplier', None) or "",
+                "Item Type": "Order",
+                "Stock Status": "",
+                "Stock on Hand": 0,
+                "Qty Ordered (PO)": 0,
+                "PO Supplier": "",
+                "Date Ordered": getattr(o, 'order_date', None) or "",
+                "PO Reference": o.po_number or "",
+                "Delivery ETA": getattr(o, 'eta', None) or "",
+                "Qty REC": 0,
+                "Date REC": "",
+                "GRN Reference": "",
+                "Qty INV": 0,
+                "Invoice Reference": "",
+                "Date INV": "",
+                "Qty DEL": 0,
+                "Date DEL": "",
+                "Delivery Reference": "",
+                "Delivery Comments": "",
+                "Sheet Order Status": getattr(o, 'status', None) or "Active",
+                "Deposit Value": getattr(o, 'deposit_value', 0.0) or 0.0,
+                "Deposit Invoice Sent": getattr(o, 'deposit_invoice_sent', None) or "No",
+                "Deposit Payment Date": getattr(o, 'deposit_payment_date', None) or "",
+                "Balance Value": getattr(o, 'balance_value', 0.0) or 0.0,
+                "Balance Payment Date": getattr(o, 'balance_payment_date', None) or "",
+                "Amount Paid": getattr(o, 'paid', 0.0) or getattr(o, 'paid_amount', 0.0) or 0.0
+            })
 
-    # Step 3: Construct Comparison Heatmap (Tab 1)
+    # Step 3: Construct Tab 1 Comparison Heatmap (Order & Item Level Matching)
+    # Aggregate order totals for legacy and portal
+    legacy_order_totals = {}
+    for row in legacy_flat_rows:
+        order_id = str(row.get("Order ID") or "").strip()
+        if not order_id: continue
+        if order_id not in legacy_order_totals:
+            legacy_order_totals[order_id] = {
+                "project_name": row.get("Project Name", ""),
+                "client_name": row.get("Client Company", ""),
+                "quote_name": row.get("Quote Name", order_id),
+                "total_retail": 0.0,
+                "amount_paid": safe_float(row.get("Amount Paid", 0)),
+                "status": row.get("Sheet Order Status", "Active"),
+                "items_count": 0
+            }
+        qty = safe_int(row.get("Qty", 0))
+        unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
+        legacy_order_totals[order_id]["total_retail"] += qty * unit_retail
+        legacy_order_totals[order_id]["items_count"] += 1
+
+    portal_order_totals = {}
+    for row in portal_flat_rows:
+        order_id = str(row.get("Order ID") or "").strip()
+        if not order_id: continue
+        if order_id not in portal_order_totals:
+            portal_order_totals[order_id] = {
+                "project_name": row.get("Project Name", ""),
+                "client_name": row.get("Client Company", ""),
+                "quote_name": row.get("Quote Name", order_id),
+                "total_retail": 0.0,
+                "amount_paid": safe_float(row.get("Amount Paid", 0)),
+                "status": row.get("Sheet Order Status", "Active"),
+                "items_count": 0
+            }
+        qty = safe_int(row.get("Qty", 0))
+        unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
+        portal_order_totals[order_id]["total_retail"] += qty * unit_retail
+        portal_order_totals[order_id]["items_count"] += 1
+
+    # Heatmap Headers
     heatmap_headers = [
-        "Order ID / PO #", "Project Name", "Client Name", "Quote Name", 
-        "Retail Value (Legacy)", "Retail Value (Portal)", 
-        "Amount Paid (Legacy)", "Amount Paid (Portal)", 
+        "Order ID / PO #", "Project Name", "Client Company", "Quote Name",
+        "Legacy Items Count", "Portal Items Count",
+        "Retail Value (Legacy)", "Retail Value (Portal)",
+        "Amount Paid (Legacy)", "Amount Paid (Portal)",
         "Status (Legacy)", "Status (Portal)", "Audit Match Status"
     ]
     heatmap_rows = [heatmap_headers]
@@ -309,61 +430,56 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     new_in_portal_count = 0
     discrepancy_details = []
 
-    # Get distinct list of all unique POs
-    all_pos_keys = set()
-    for k, v in legacy_map.items():
-        all_pos_keys.add(v["po_number"])
-    for k in db_map.keys():
-        all_pos_keys.add(k)
+    all_order_ids = sorted(list(set(list(legacy_order_totals.keys()) + list(portal_order_totals.keys()))))
 
-    sorted_pos = sorted(list(all_pos_keys))
+    for oid in all_order_ids:
+        leg = legacy_order_totals.get(oid)
+        port = portal_order_totals.get(oid)
 
-    for po in sorted_pos:
-        # Resolve legacy item
-        leg = legacy_map.get(po) or legacy_map.get(po.lower().strip())
-        db_item = db_map.get(po) or db_map.get(re.sub(r'[^a-zA-Z0-9]', '-', po).lower().strip('-'))
+        if leg and port:
+            ret_match = abs(leg["total_retail"] - port["total_retail"]) < 1.0
+            paid_match = abs(leg["amount_paid"] - port["amount_paid"]) < 1.0
+            stat_match = leg["status"].lower().strip() == port["status"].lower().strip()
+            item_match = leg["items_count"] == port["items_count"]
 
-        if leg and db_item:
-            ret_match = abs(leg["retail_value"] - db_item["retail_value"]) < 1.0
-            paid_match = abs(leg["amount_paid"] - db_item["amount_paid"]) < 1.0
-            stat_match = leg["status"].lower().strip() == db_item["status"].lower().strip()
-
-            if ret_match and paid_match and stat_match:
+            if ret_match and paid_match and stat_match and item_match:
                 audit_status = "🟢 100% Match"
                 matches_count += 1
             else:
                 audit_status = "🔴 Mismatch Detected"
                 mismatches_count += 1
                 discrepancy_details.append({
-                    "po": po,
+                    "order_id": oid,
                     "type": "MISMATCH",
-                    "legacy_retail": leg["retail_value"],
-                    "portal_retail": db_item["retail_value"],
+                    "legacy_retail": leg["total_retail"],
+                    "portal_retail": port["total_retail"],
                     "legacy_paid": leg["amount_paid"],
-                    "portal_paid": db_item["amount_paid"],
+                    "portal_paid": port["amount_paid"],
                     "legacy_status": leg["status"],
-                    "portal_status": db_item["status"]
+                    "portal_status": port["status"]
                 })
 
             heatmap_rows.append([
-                po,
-                leg["project_name"] or db_item["project_name"],
-                leg["client_name"] or db_item["client_name"],
-                leg["quote_name"] or db_item["quote_name"],
-                f"R {leg['retail_value']:,.2f}",
-                f"R {db_item['retail_value']:,.2f}",
+                oid,
+                leg["project_name"] or port["project_name"],
+                leg["client_name"] or port["client_name"],
+                leg["quote_name"] or port["quote_name"],
+                leg["items_count"],
+                port["items_count"],
+                f"R {leg['total_retail']:,.2f}",
+                f"R {port['total_retail']:,.2f}",
                 f"R {leg['amount_paid']:,.2f}",
-                f"R {db_item['amount_paid']:,.2f}",
+                f"R {port['amount_paid']:,.2f}",
                 leg["status"],
-                db_item["status"],
+                port["status"],
                 audit_status
             ])
-        elif leg and not db_item:
+        elif leg and not port:
             missing_in_portal_count += 1
             discrepancy_details.append({
-                "po": po,
+                "order_id": oid,
                 "type": "MISSING_IN_PORTAL",
-                "legacy_retail": leg["retail_value"],
+                "legacy_retail": leg["total_retail"],
                 "portal_retail": 0.0,
                 "legacy_paid": leg["amount_paid"],
                 "portal_paid": 0.0,
@@ -371,28 +487,39 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "portal_status": "MISSING"
             })
             heatmap_rows.append([
-                po, leg["project_name"], leg["client_name"], leg["quote_name"],
-                f"R {leg['retail_value']:,.2f}", "MISSING IN PORTAL",
+                oid, leg["project_name"], leg["client_name"], leg["quote_name"],
+                leg["items_count"], 0,
+                f"R {leg['total_retail']:,.2f}", "MISSING IN PORTAL",
                 f"R {leg['amount_paid']:,.2f}", "MISSING IN PORTAL",
                 leg["status"], "MISSING IN PORTAL",
                 "🛑 MISSING IN PORTAL"
             ])
-        elif db_item and not leg:
+        elif port and not leg:
             new_in_portal_count += 1
             heatmap_rows.append([
-                po, db_item["project_name"], db_item["client_name"], db_item["quote_name"],
-                "NOT IN LEGACY", f"R {db_item['retail_value']:,.2f}",
-                "NOT IN LEGACY", f"R {db_item['amount_paid']:,.2f}",
-                "NOT IN LEGACY", db_item["status"],
+                oid, port["project_name"], port["client_name"], port["quote_name"],
+                0, port["items_count"],
+                "NOT IN LEGACY", f"R {port['total_retail']:,.2f}",
+                "NOT IN LEGACY", f"R {port['amount_paid']:,.2f}",
+                "NOT IN LEGACY", port["status"],
                 "⚠️ NEW IN PORTAL"
             ])
 
-    # Step 4: Create new Google Spreadsheet inside Shared Drive Vault using Drive API
+    # Convert legacy_flat_rows and portal_flat_rows into 2D arrays for Google Sheets / Excel
+    legacy_tab_2d = [RECONCILIATION_COLUMNS]
+    for r in legacy_flat_rows:
+        legacy_tab_2d.append([r.get(col, "") for col in RECONCILIATION_COLUMNS])
+
+    portal_tab_2d = [RECONCILIATION_COLUMNS]
+    for r in portal_flat_rows:
+        portal_tab_2d.append([r.get(col, "") for col in RECONCILIATION_COLUMNS])
+
+    # Step 4: Create new 3-Tab Google Spreadsheet inside Shared Drive Vault using Drive API
     audit_sheet_id = None
     audit_sheet_url = None
     try:
         file_metadata = {
-            'name': '1-to-1 World - Live System Comparison & Audit Heatmap',
+            'name': '1-to-1 World - Live System Comparison & Reconciliation Audit',
             'mimeType': 'application/vnd.google-apps.spreadsheet',
             'parents': [ROOT_DRIVE_FOLDER_ID]
         }
@@ -407,7 +534,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         print(f"Notice: Direct Drive Vault sheet creation fallback: {create_err}")
         try:
             created_file = drive_service.files().create(
-                body={'name': '1-to-1 World - Live System Comparison & Audit Heatmap', 'mimeType': 'application/vnd.google-apps.spreadsheet'},
+                body={'name': '1-to-1 World - Live System Comparison & Reconciliation Audit', 'mimeType': 'application/vnd.google-apps.spreadsheet'},
                 supportsAllDrives=True,
                 fields='id, webViewLink'
             ).execute()
@@ -431,11 +558,9 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     # Step 6: Create 3 Tabs & Populate Data in Google Sheet
     if audit_sheet_id:
         try:
-            # 1. Fetch created sheet properties to get initial sheetId
             meta = sheets_service.spreadsheets().get(spreadsheetId=audit_sheet_id).execute()
             initial_sheet_id = meta.get('sheets', [{}])[0].get('properties', {}).get('sheetId', 0)
 
-            # 2. Add the 3 tabs and delete initial sheet
             requests = [
                 {
                     'addSheet': {
@@ -474,7 +599,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 body={'requests': requests}
             ).execute()
 
-            # 3. Populate all 3 tabs in parallel batch update
+            # Populate all 3 tabs
             data_payload = [
                 {
                     'range': "'🚨 AUDIT & DISCREPANCY HEATMAP'!A1",
@@ -482,11 +607,11 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 },
                 {
                     'range': "'Current Live System Data'!A1",
-                    'values': legacy_tab_rows
+                    'values': legacy_tab_2d
                 },
                 {
                     'range': "'Portal Cloud SQL Database'!A1",
-                    'values': portal_tab_rows
+                    'values': portal_tab_2d
                 }
             ]
 
@@ -495,7 +620,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 body={'valueInputOption': 'USER_ENTERED', 'data': data_payload}
             ).execute()
 
-            # 4. Add red highlighting conditional formatting rule on Tab 1
+            # Add Red conditional formatting on Tab 1
             cond_requests = [
                 {
                     'addConditionalFormatRule': {
@@ -505,7 +630,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                                 'startRowIndex': 1,
                                 'endRowIndex': len(heatmap_rows),
                                 'startColumnIndex': 0,
-                                'endColumnIndex': 11
+                                'endColumnIndex': 13
                             }],
                             'booleanRule': {
                                 'condition': {
@@ -529,7 +654,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                                 'startRowIndex': 1,
                                 'endRowIndex': len(heatmap_rows),
                                 'startColumnIndex': 0,
-                                'endColumnIndex': 11
+                                'endColumnIndex': 13
                             }],
                             'booleanRule': {
                                 'condition': {
@@ -560,7 +685,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         "spreadsheet_id": audit_sheet_id,
         "spreadsheet_url": audit_sheet_url,
         "stats": {
-            "total_orders_audited": len(sorted_pos),
+            "total_orders_audited": len(all_order_ids),
             "matches_count": matches_count,
             "mismatches_count": mismatches_count,
             "missing_in_portal_count": missing_in_portal_count,
@@ -568,7 +693,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         },
         "discrepancies": discrepancy_details,
         "heatmap_rows": heatmap_rows,
-        "legacy_rows": legacy_tab_rows,
-        "portal_rows": portal_tab_rows,
-        "message": f"Successfully completed live comparison! {len(sorted_pos)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
+        "legacy_rows": legacy_tab_2d,
+        "portal_rows": portal_tab_2d,
+        "message": f"Successfully completed live comparison! {len(all_order_ids)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
     }
