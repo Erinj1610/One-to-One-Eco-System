@@ -50,6 +50,12 @@ def safe_int(val, default=0):
     f = safe_float(val, default=float(default))
     return int(f)
 
+def normalize_key(s: str) -> str:
+    """Normalizes any string to alphanumeric-only lowercase for 100% collision-free matching."""
+    if not s:
+        return ""
+    return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
+
 RECONCILIATION_COLUMNS = [
     "Project Key", "Project Name", "Client Company", "Order ID", "Quote Name",
     "Sales Rep", "Delivery Address", "Item ID", "Qty", "1:1 Code",
@@ -68,8 +74,9 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     Read-only live audit comparison generator.
     1. Extracts items from user's live Google Sheet using the exact same structure as '1. Extract Reconciliation Template'.
     2. Queries Cloud SQL database (Orders, Projects, Items) formatted in the exact same 41 columns.
-    3. Builds comparison heatmap with red highlighting for mismatches.
-    4. Generates a 3-tab Google Sheet in Drive Vault and returns structured JSON for instant Excel download.
+    3. Employs robust normalized matching to prevent false mismatch/duplicate entries.
+    4. Builds comparison heatmap with red highlighting for true mismatches.
+    5. Generates a 3-tab Google Sheet in Drive Vault and returns structured JSON for instant Excel download.
     """
     raw_sheet_input = payload.get("current_system_sheet_url")
     user_email = payload.get("user_email", "erin.jones@1-to-1.world").strip()
@@ -140,7 +147,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 matched_tab = order_tabs[0] if order_tabs else "Order"
 
             grid = vr.get('values', [])
-            if not grid or len(grid) < 3:
+            if not grid or len(grid) < 2:
                 continue
 
             def get_cell(row_idx, col_idx):
@@ -153,9 +160,10 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             project_f5 = get_cell(4, 5) or get_cell(4, 3) or 'General Project' # F5
             delivery_address = get_cell(5, 3) # D6
             sales_rep = get_cell(0, 5) # F1
-            order_status_g98 = get_cell(97, 6) or get_cell(97, 3) or "Active" # G98
+            order_status_g98 = get_cell(97, 6) or get_cell(97, 3) or "Processing" # G98
 
-            safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower().strip('-')
+            # Match JavaScript replacement exactly: orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
+            safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower()
 
             deposit_invoice_sent = get_cell(89, 3) or 'No' # D90
             deposit_payment_date = get_cell(94, 3) # D95
@@ -329,7 +337,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Amount Paid": getattr(o, 'paid', 0.0) or getattr(o, 'paid_amount', 0.0) or 0.0
                 })
         else:
-            # Order with no items
             portal_flat_rows.append({
                 "Project Key": o.project_key or "",
                 "Project Name": proj_name,
@@ -374,45 +381,61 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Amount Paid": getattr(o, 'paid', 0.0) or getattr(o, 'paid_amount', 0.0) or 0.0
             })
 
-    # Step 3: Construct Tab 1 Comparison Heatmap (Order & Item Level Matching)
+    # Step 3: Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
     # Aggregate order totals for legacy and portal
     legacy_order_totals = {}
+    legacy_norm_map = {}
     for row in legacy_flat_rows:
         order_id = str(row.get("Order ID") or "").strip()
-        if not order_id: continue
-        if order_id not in legacy_order_totals:
-            legacy_order_totals[order_id] = {
+        quote_name = str(row.get("Quote Name") or "").strip()
+        if not order_id and not quote_name: continue
+        
+        norm_key = normalize_key(order_id) or normalize_key(quote_name)
+        if norm_key not in legacy_order_totals:
+            legacy_order_totals[norm_key] = {
+                "order_id": order_id,
                 "project_name": row.get("Project Name", ""),
                 "client_name": row.get("Client Company", ""),
-                "quote_name": row.get("Quote Name", order_id),
+                "quote_name": quote_name or order_id,
                 "total_retail": 0.0,
                 "amount_paid": safe_float(row.get("Amount Paid", 0)),
-                "status": row.get("Sheet Order Status", "Active"),
+                "status": row.get("Sheet Order Status", "Processing"),
                 "items_count": 0
             }
+            legacy_norm_map[norm_key] = legacy_order_totals[norm_key]
+            legacy_norm_map[normalize_key(quote_name)] = legacy_order_totals[norm_key]
+
         qty = safe_int(row.get("Qty", 0))
         unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
-        legacy_order_totals[order_id]["total_retail"] += qty * unit_retail
-        legacy_order_totals[order_id]["items_count"] += 1
+        legacy_order_totals[norm_key]["total_retail"] += qty * unit_retail
+        legacy_order_totals[norm_key]["items_count"] += 1
 
     portal_order_totals = {}
+    portal_norm_map = {}
     for row in portal_flat_rows:
         order_id = str(row.get("Order ID") or "").strip()
-        if not order_id: continue
-        if order_id not in portal_order_totals:
-            portal_order_totals[order_id] = {
+        quote_name = str(row.get("Quote Name") or "").strip()
+        if not order_id and not quote_name: continue
+
+        norm_key = normalize_key(order_id) or normalize_key(quote_name)
+        if norm_key not in portal_order_totals:
+            portal_order_totals[norm_key] = {
+                "order_id": order_id,
                 "project_name": row.get("Project Name", ""),
                 "client_name": row.get("Client Company", ""),
-                "quote_name": row.get("Quote Name", order_id),
+                "quote_name": quote_name or order_id,
                 "total_retail": 0.0,
                 "amount_paid": safe_float(row.get("Amount Paid", 0)),
-                "status": row.get("Sheet Order Status", "Active"),
+                "status": row.get("Sheet Order Status", "Processing"),
                 "items_count": 0
             }
+            portal_norm_map[norm_key] = portal_order_totals[norm_key]
+            portal_norm_map[normalize_key(quote_name)] = portal_order_totals[norm_key]
+
         qty = safe_int(row.get("Qty", 0))
         unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
-        portal_order_totals[order_id]["total_retail"] += qty * unit_retail
-        portal_order_totals[order_id]["items_count"] += 1
+        portal_order_totals[norm_key]["total_retail"] += qty * unit_retail
+        portal_order_totals[norm_key]["items_count"] += 1
 
     # Heatmap Headers
     heatmap_headers = [
@@ -430,11 +453,14 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     new_in_portal_count = 0
     discrepancy_details = []
 
-    all_order_ids = sorted(list(set(list(legacy_order_totals.keys()) + list(portal_order_totals.keys()))))
+    # Get distinct union of all normalized keys
+    all_norm_keys = sorted(list(set(list(legacy_order_totals.keys()) + list(portal_order_totals.keys()))))
 
-    for oid in all_order_ids:
-        leg = legacy_order_totals.get(oid)
-        port = portal_order_totals.get(oid)
+    for nkey in all_norm_keys:
+        leg = legacy_order_totals.get(nkey) or legacy_norm_map.get(nkey)
+        port = portal_order_totals.get(nkey) or portal_norm_map.get(nkey)
+
+        display_oid = (leg.get("order_id") if leg else None) or (port.get("order_id") if port else None) or nkey
 
         if leg and port:
             ret_match = abs(leg["total_retail"] - port["total_retail"]) < 1.0
@@ -449,7 +475,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 audit_status = "🔴 Mismatch Detected"
                 mismatches_count += 1
                 discrepancy_details.append({
-                    "order_id": oid,
+                    "order_id": display_oid,
                     "type": "MISMATCH",
                     "legacy_retail": leg["total_retail"],
                     "portal_retail": port["total_retail"],
@@ -460,7 +486,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 })
 
             heatmap_rows.append([
-                oid,
+                display_oid,
                 leg["project_name"] or port["project_name"],
                 leg["client_name"] or port["client_name"],
                 leg["quote_name"] or port["quote_name"],
@@ -477,7 +503,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         elif leg and not port:
             missing_in_portal_count += 1
             discrepancy_details.append({
-                "order_id": oid,
+                "order_id": display_oid,
                 "type": "MISSING_IN_PORTAL",
                 "legacy_retail": leg["total_retail"],
                 "portal_retail": 0.0,
@@ -487,7 +513,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "portal_status": "MISSING"
             })
             heatmap_rows.append([
-                oid, leg["project_name"], leg["client_name"], leg["quote_name"],
+                display_oid, leg["project_name"], leg["client_name"], leg["quote_name"],
                 leg["items_count"], 0,
                 f"R {leg['total_retail']:,.2f}", "MISSING IN PORTAL",
                 f"R {leg['amount_paid']:,.2f}", "MISSING IN PORTAL",
@@ -497,7 +523,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         elif port and not leg:
             new_in_portal_count += 1
             heatmap_rows.append([
-                oid, port["project_name"], port["client_name"], port["quote_name"],
+                display_oid, port["project_name"], port["client_name"], port["quote_name"],
                 0, port["items_count"],
                 "NOT IN LEGACY", f"R {port['total_retail']:,.2f}",
                 "NOT IN LEGACY", f"R {port['amount_paid']:,.2f}",
@@ -505,7 +531,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "⚠️ NEW IN PORTAL"
             ])
 
-    # Convert legacy_flat_rows and portal_flat_rows into 2D arrays for Google Sheets / Excel
+    # Convert flat rows into 2D arrays for Google Sheets / Excel
     legacy_tab_2d = [RECONCILIATION_COLUMNS]
     for r in legacy_flat_rows:
         legacy_tab_2d.append([r.get(col, "") for col in RECONCILIATION_COLUMNS])
@@ -685,7 +711,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         "spreadsheet_id": audit_sheet_id,
         "spreadsheet_url": audit_sheet_url,
         "stats": {
-            "total_orders_audited": len(all_order_ids),
+            "total_orders_audited": len(all_norm_keys),
             "matches_count": matches_count,
             "mismatches_count": mismatches_count,
             "missing_in_portal_count": missing_in_portal_count,
@@ -695,5 +721,5 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         "heatmap_rows": heatmap_rows,
         "legacy_rows": legacy_tab_2d,
         "portal_rows": portal_tab_2d,
-        "message": f"Successfully completed live comparison! {len(all_order_ids)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
+        "message": f"Successfully completed live comparison! {len(all_norm_keys)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
     }

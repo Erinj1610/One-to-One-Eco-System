@@ -254,6 +254,7 @@ export default function SalesTracker() {
   const [auditSheetUrl, setAuditSheetUrl] = useState('');
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
+  const [auditProgress, setAuditProgress] = useState({ percent: 0, stage: '' });
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
   const [orderPayments, setOrderPayments] = useState([]);
   
@@ -5173,7 +5174,22 @@ export default function SalesTracker() {
               />
             </div>
 
-            {auditResult && (
+            {auditLoading && (
+              <div style={{ padding: '14px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 700, color: '#60a5fa' }}>{auditProgress.stage || 'Analyzing Live Data...'}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{auditProgress.percent}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${auditProgress.percent}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)', borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                  Extracting live project tabs, matching 41 columns with Cloud SQL, and generating discrepancy heatmap.
+                </div>
+              </div>
+            )}
+
+            {auditResult && !auditLoading && (
               <div style={{ padding: '14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
                 <div style={{ color: '#10b981', fontWeight: 700, fontSize: '13.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>✅ Audit Comparison Complete!</span>
@@ -5253,6 +5269,17 @@ export default function SalesTracker() {
                 onClick={async () => {
                   setAuditLoading(true);
                   setAuditResult(null);
+                  setAuditProgress({ percent: 15, stage: 'Connecting to Google Sheets API...' });
+
+                  const progressInterval = setInterval(() => {
+                    setAuditProgress(prev => {
+                      if (prev.percent < 40) return { percent: prev.percent + 10, stage: 'Reading live project tabs & items...' };
+                      if (prev.percent < 75) return { percent: prev.percent + 5, stage: 'Querying Cloud SQL & matching 41 columns...' };
+                      if (prev.percent < 90) return { percent: prev.percent + 2, stage: 'Building 3-tab heatmap spreadsheet in Drive Vault...' };
+                      return prev;
+                    });
+                  }, 1200);
+
                   try {
                     const res = await fetch(`${API_BASE}/api/admin/audit-comparison/generate`, {
                       method: 'POST',
@@ -5262,16 +5289,20 @@ export default function SalesTracker() {
                         user_email: 'erin.jones@1-to-1.world'
                       })
                     });
+                    clearInterval(progressInterval);
                     if (res.ok) {
                       const data = await res.json();
+                      setAuditProgress({ percent: 100, stage: 'Complete!' });
                       setAuditResult(data);
                     } else {
                       const errData = await res.json().catch(() => ({}));
                       alert(`Audit generation failed: ${errData.detail || 'Error'}`);
                     }
                   } catch (err) {
+                    clearInterval(progressInterval);
                     alert(`Error: ${err.message}`);
                   } finally {
+                    clearInterval(progressInterval);
                     setAuditLoading(false);
                   }
                 }}
