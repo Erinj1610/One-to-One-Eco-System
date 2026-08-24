@@ -2976,7 +2976,7 @@ export default function SalesTracker() {
                     <input 
                       type="file" 
                       accept=".xlsx, .xls" 
-                      onChange={handleUploadReconciledOverwriteSheet} 
+                      onChange={handleBulkExcelImport} 
                       style={{ display: 'none' }} 
                     />
                   </label>
