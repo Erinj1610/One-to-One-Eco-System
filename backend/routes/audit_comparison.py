@@ -51,7 +51,7 @@ def safe_int(val, default=0):
     return int(f)
 
 def normalize_key(s: str) -> str:
-    """Normalizes any string to alphanumeric-only lowercase for 100% collision-free matching."""
+    """Normalizes any string to alphanumeric-only lowercase for collision-free matching."""
     if not s:
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
@@ -72,7 +72,7 @@ RECONCILIATION_COLUMNS = [
 def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
     """
     Read-only live audit comparison generator.
-    1. Extracts items from user's live Google Sheet using the exact same structure as '1. Extract Reconciliation Template'.
+    1. Extracts live master system Google Sheet using the exact cell mappings (D2, D3, F5, D6, F1, J2, B9:AC89, G90-G99).
     2. Queries Cloud SQL database (Orders, Projects, Items) formatted in the exact same 41 columns.
     3. Employs robust normalized matching to prevent false mismatch/duplicate entries.
     4. Builds comparison heatmap with red highlighting for true mismatches.
@@ -91,7 +91,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Extract Live Google Sheet data using the exact Reconciliation Template layout
+    # Step 1: Read all tabs from user's live Google Sheet
     try:
         # Pre-check drive access
         try:
@@ -109,7 +109,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 )
             raise drive_err
 
-        # Fetch spreadsheet tabs metadata
         sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
         all_sheets = sheet_meta.get('sheets', [])
         if not all_sheets:
@@ -128,7 +127,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     order_tabs = [s['properties']['title'] for s in all_sheets if s['properties']['title'].strip().lower() not in skip_tab_names]
 
     if len(order_tabs) >= 1 and any(s['properties']['title'].strip().lower() == 'template' for s in all_sheets):
-        # Multi-tab extraction (rows 9-89 of each order tab)
+        # Multi-tab extraction with exact cell coordinates
         batch_ranges = [f"'{title}'!A1:AC100" for title in order_tabs]
         batch_res = sheets_service.spreadsheets().values().batchGet(
             spreadsheetId=source_sheet_id,
@@ -155,16 +154,33 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     return str(grid[row_idx][col_idx]).strip()
                 return ""
 
-            client_company = get_cell(1, 3) # D2
-            order_name = get_cell(2, 3) or matched_tab # D3
+            # Exact Cell Header Mappings
+            # F1: Sale Rep Name (0, 5)
+            # D2: Client (1, 3) | J2: Company Name (1, 9)
+            # D3: Order Name (2, 3)
+            # F5: Project Name (4, 5)
+            # D6: Delivery Address (5, 3)
+            # G98: Status (97, 6)
+            sales_rep = get_cell(0, 5) # F1
+            client_company = get_cell(1, 9) or get_cell(1, 3) # J2 (Company Name) or D2 (Client)
+            raw_order_name = get_cell(2, 3) # D3
             project_f5 = get_cell(4, 5) or get_cell(4, 3) or 'General Project' # F5
             delivery_address = get_cell(5, 3) # D6
-            sales_rep = get_cell(0, 5) # F1
             order_status_g98 = get_cell(97, 6) or get_cell(97, 3) or "Processing" # G98
 
-            # Match JavaScript replacement exactly: orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
-            safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower()
+            # If D3 is generic placeholder (e.g. 'Portfolio' or empty), use matched tab title as true order name
+            if not raw_order_name or raw_order_name.lower().strip() in ['portfolio', 'general spec', 'template', 'order', '']:
+                order_name = matched_tab
+            else:
+                order_name = raw_order_name
 
+            safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', matched_tab).lower()
+
+            # Totals and Payments:
+            # G90: SUBTOTAL (89, 6) | D90: DEPOSIT INVOICE SENT (89, 3)
+            # G92: TOTAL PRICE EXCL VAT (91, 6)
+            # G95: DEPOSIT PAYMENT (94, 6) | D95: DATE DEPOSIT PAID (94, 3)
+            # G96: BALANCE PAYMENT (95, 6) | D96: DATE BALANCE PAYMENT PAID (95, 3)
             deposit_invoice_sent = get_cell(89, 3) or 'No' # D90
             deposit_payment_date = get_cell(94, 3) # D95
             balance_payment_date = get_cell(95, 3) # D96
@@ -177,37 +193,38 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             if balance_payment_date or balance_value > 0:
                 amount_paid += balance_value
 
+            # Parse Line Items B9:AC89 (indices 8 to 88)
             for r_idx in range(8, min(len(grid), 89)):
                 row = grid[r_idx]
-                qty = safe_int(row[1] if len(row) > 1 else 0)
+                qty = safe_int(row[1] if len(row) > 1 else 0) # B
                 if qty <= 0:
                     continue
 
-                one_one_code = str(row[2] if len(row) > 2 else '').strip()
-                item_code = str(row[3] if len(row) > 3 else '').strip()
-                description = str(row[4] if len(row) > 4 else '').strip()
-                unit_retail = safe_float(row[5] if len(row) > 5 else 0)
-                unit_cost = safe_float(row[8] if len(row) > 8 else 0)
-                brand = str(row[11] if len(row) > 11 else '').strip()
-                supplier = str(row[12] if len(row) > 12 else '').strip()
-                product_type = str(row[13] if len(row) > 13 else '').strip() or "Hardware"
+                one_one_code = str(row[2] if len(row) > 2 else '').strip() # C: 1:1 CODE
+                item_code = str(row[3] if len(row) > 3 else '').strip() # D: ITEM CODE
+                description = str(row[4] if len(row) > 4 else '').strip() # E: DESCRIPTION
+                unit_retail = safe_float(row[5] if len(row) > 5 else 0) # F: UNIT PRICE EX VAT
+                unit_cost = safe_float(row[8] if len(row) > 8 else 0) # I: COST EX VAT
+                brand = str(row[11] if len(row) > 11 else '').strip() # L: BRAND
+                supplier = str(row[12] if len(row) > 12 else '').strip() # M: SUPPLIER
+                product_type = str(row[13] if len(row) > 13 else '').strip() or "Hardware" # N: PRODUCT TYPE
                 stock_status = str(row[13] if len(row) > 13 else '').strip()
-                stock_on_hand = safe_int(row[14] if len(row) > 14 else 0)
+                stock_on_hand = safe_int(row[14] if len(row) > 14 else 0) # O: INTERNAL COST / STOCK
 
-                po_ref_from_sheet = str(row[16] if len(row) > 16 else '').strip()
-                po_supplier = str(row[17] if len(row) > 17 else supplier or 'Warehouse Inventory').strip()
-                date_ordered = str(row[18] if len(row) > 18 else '').strip()
-                eta = str(row[19] if len(row) > 19 else '').strip()
-                date_rec = str(row[20] if len(row) > 20 else '').strip()
-                qty_rec = safe_int(row[21] if len(row) > 21 else 0)
+                po_qty_ordered = safe_int(row[16] if len(row) > 16 else 0) # Q: QTY ORDERED
+                po_supplier = str(row[17] if len(row) > 17 else supplier or 'Warehouse Inventory').strip() # R: SUPPLIER ORDERED
+                date_ordered = str(row[18] if len(row) > 18 else '').strip() # S: DATE ORDERED
+                eta = str(row[19] if len(row) > 19 else '').strip() # T: ETA
+                date_rec = str(row[20] if len(row) > 20 else '').strip() # U: DATE RECEIVED
+                qty_rec = safe_int(row[21] if len(row) > 21 else 0) # V: QTY RECEIVED
 
-                qty_inv = safe_int(row[24] if len(row) > 24 else 0)
-                invoice_ref = str(row[25] if len(row) > 25 else '').strip()
-                date_inv = str(row[26] if len(row) > 26 else '').strip()
-                delivery_ref = str(row[28] if len(row) > 28 else '').strip()
+                qty_inv = safe_int(row[24] if len(row) > 24 else 0) # Y: INVOICED QTY
+                invoice_ref = str(row[25] if len(row) > 25 else '').strip() # Z: INVOICE REFERENCE
+                date_inv = str(row[26] if len(row) > 26 else '').strip() # AA: DATE INVOICED
+                delivery_ref = str(row[28] if len(row) > 28 else '').strip() # AC: COLLECT/DELIVERY
 
-                po_ref = po_ref_from_sheet
-                if not po_ref and date_ordered:
+                po_ref = ""
+                if date_ordered:
                     clean_date = re.sub(r'[^0-9]', '', date_ordered)
                     clean_supp = re.sub(r'[^a-zA-Z0-9]', '', po_supplier)[:8].lower()
                     po_ref = f"PO-{safe_order_ref}-{clean_supp}-{clean_date}"
@@ -238,7 +255,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Item Type": product_type,
                     "Stock Status": stock_status,
                     "Stock on Hand": stock_on_hand,
-                    "Qty Ordered (PO)": 0,
+                    "Qty Ordered (PO)": po_qty_ordered,
                     "PO Supplier": po_supplier,
                     "Date Ordered": date_ordered,
                     "PO Reference": po_ref,
@@ -382,9 +399,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             })
 
     # Step 3: Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
-    # Aggregate order totals for legacy and portal
     legacy_order_totals = {}
-    legacy_norm_map = {}
     for row in legacy_flat_rows:
         order_id = str(row.get("Order ID") or "").strip()
         quote_name = str(row.get("Quote Name") or "").strip()
@@ -402,8 +417,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "status": row.get("Sheet Order Status", "Processing"),
                 "items_count": 0
             }
-            legacy_norm_map[norm_key] = legacy_order_totals[norm_key]
-            legacy_norm_map[normalize_key(quote_name)] = legacy_order_totals[norm_key]
 
         qty = safe_int(row.get("Qty", 0))
         unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
@@ -411,7 +424,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         legacy_order_totals[norm_key]["items_count"] += 1
 
     portal_order_totals = {}
-    portal_norm_map = {}
     for row in portal_flat_rows:
         order_id = str(row.get("Order ID") or "").strip()
         quote_name = str(row.get("Quote Name") or "").strip()
@@ -429,8 +441,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "status": row.get("Sheet Order Status", "Processing"),
                 "items_count": 0
             }
-            portal_norm_map[norm_key] = portal_order_totals[norm_key]
-            portal_norm_map[normalize_key(quote_name)] = portal_order_totals[norm_key]
 
         qty = safe_int(row.get("Qty", 0))
         unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
@@ -453,12 +463,11 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     new_in_portal_count = 0
     discrepancy_details = []
 
-    # Get distinct union of all normalized keys
     all_norm_keys = sorted(list(set(list(legacy_order_totals.keys()) + list(portal_order_totals.keys()))))
 
     for nkey in all_norm_keys:
-        leg = legacy_order_totals.get(nkey) or legacy_norm_map.get(nkey)
-        port = portal_order_totals.get(nkey) or portal_norm_map.get(nkey)
+        leg = legacy_order_totals.get(nkey)
+        port = portal_order_totals.get(nkey)
 
         display_oid = (leg.get("order_id") if leg else None) or (port.get("order_id") if port else None) or nkey
 
