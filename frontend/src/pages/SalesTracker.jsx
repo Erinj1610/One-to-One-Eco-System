@@ -5216,9 +5216,24 @@ export default function SalesTracker() {
                     <button
                       className="btn btn-sm btn-outline-secondary"
                       onClick={() => {
-                        const ws = XLSX.utils.aoa_to_sheet(auditResult.heatmap_rows);
                         const wb = XLSX.utils.book_new();
-                        XLSX.utils.book_append_sheet(wb, ws, "🚨 AUDIT & DISCREPANCY HEATMAP");
+                        
+                        // Tab 1: Audit Heatmap
+                        const ws1 = XLSX.utils.aoa_to_sheet(auditResult.heatmap_rows);
+                        XLSX.utils.book_append_sheet(wb, ws1, "🚨 AUDIT & DISCREPANCY HEATMAP");
+
+                        // Tab 2: Current Live System Data
+                        if (auditResult.legacy_rows && auditResult.legacy_rows.length > 0) {
+                          const ws2 = XLSX.utils.aoa_to_sheet(auditResult.legacy_rows);
+                          XLSX.utils.book_append_sheet(wb, ws2, "Current Live System Data");
+                        }
+
+                        // Tab 3: Portal Cloud SQL Database
+                        if (auditResult.portal_rows && auditResult.portal_rows.length > 0) {
+                          const ws3 = XLSX.utils.aoa_to_sheet(auditResult.portal_rows);
+                          XLSX.utils.book_append_sheet(wb, ws3, "Portal Cloud SQL Database");
+                        }
+
                         XLSX.writeFile(wb, `1-to-1_World_Live_System_Audit_Comparison_${new Date().toISOString().split('T')[0]}.xlsx`);
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '7px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
