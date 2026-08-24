@@ -144,25 +144,30 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
     # Step 2: Fetch Cloud SQL Database Orders
     db_orders = db.query(Order).all()
-    db_projects = {p.project_key: p.name for p in db.query(Project).all()}
+    all_projects = db.query(Project).all()
+    db_projects_map = {p.project_key: p.name for p in all_projects}
+    db_projects_client_map = {p.project_key: (p.client_name or "") for p in all_projects}
 
     db_map = {}
     for o in db_orders:
-        proj_name = db_projects.get(o.project_key, o.project_key or "")
+        proj_name = db_projects_map.get(o.project_key, o.project_key or "")
+        client_name = getattr(o, 'client_name', None) or db_projects_client_map.get(o.project_key, "")
+        supplier_name = getattr(o, 'supplier_name', None) or getattr(o, 'supplier', None) or ""
+        paid_val = getattr(o, 'paid', None) or getattr(o, 'paid_amount', None) or 0.0
         
         # Calculate total retail from OrderItems
         items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
-        calc_retail = sum((getattr(item, 'unit_retail', 0.0) or 0.0) * (item.qty or 1) for item in items) if items else (o.order_value or 0.0)
+        calc_retail = sum((getattr(item, 'unit_retail', 0.0) or 0.0) * (item.qty or 1) for item in items) if items else (getattr(o, 'value', 0.0) or getattr(o, 'order_value', 0.0) or 0.0)
         
         db_map[o.po_number] = {
             "po_number": o.po_number,
             "project_name": proj_name,
-            "client_name": o.client_name or "",
-            "quote_name": o.quote_name or o.po_number,
-            "supplier": o.supplier or "",
+            "client_name": client_name,
+            "quote_name": getattr(o, 'quote_name', None) or o.po_number,
+            "supplier": supplier_name,
             "retail_value": float(calc_retail),
-            "amount_paid": float(o.paid_amount or 0.0),
-            "status": o.status or "Active"
+            "amount_paid": float(paid_val),
+            "status": getattr(o, 'status', None) or "Active"
         }
 
     # Step 3: Build new Google Spreadsheet for Comparison Audit
