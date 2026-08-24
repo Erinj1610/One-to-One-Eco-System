@@ -61,22 +61,43 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
     # Step 1: Read raw values from the legacy current system Google Sheet directly
     try:
-        # Get target sheet's first tab title
-        sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
-        sheets = sheet_meta.get('sheets', [])
-        tab_name = sheets[0]['properties']['title'] if sheets else "Sheet1"
-        target_range = f"'{tab_name}'!A1:Z5000"
+        # First verify Drive permission access with supportsAllDrives=True
+        try:
+            drive_file = drive_service.files().get(
+                fileId=source_sheet_id, 
+                fields="id, name", 
+                supportsAllDrives=True
+            ).execute()
+        except Exception as drive_err:
+            err_str = str(drive_err)
+            if "403" in err_str or "permission" in err_str.lower():
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Permission Denied: Google Drive cannot access sheet ID '{source_sheet_id}'. Please verify you shared the Google Sheet with 858977785048-compute@developer.gserviceaccount.com and that 'Anyone with link' or domain permissions allow service account access."
+                )
+            raise drive_err
+
+        # Fetch values using first sheet tab or default A1:Z5000
+        try:
+            sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=source_sheet_id).execute()
+            sheets = sheet_meta.get('sheets', [])
+            tab_name = sheets[0]['properties']['title'] if sheets else "Sheet1"
+            target_range = f"'{tab_name}'!A1:Z5000"
+        except Exception:
+            target_range = "A1:Z5000"
 
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=source_sheet_id, 
             range=target_range
         ).execute()
         source_rows = result.get('values', [])
+    except HTTPException:
+        raise
     except Exception as e:
         err_msg = str(e)
         if "timed out" in err_msg.lower() or "read operation" in err_msg.lower():
             err_msg = "Google API read timed out. The target Google Sheet might be very large or restricted."
-        raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet. Ensure it is shared with service account. Error: {err_msg}")
+        raise HTTPException(status_code=400, detail=f"Could not read legacy Google Sheet: {err_msg}")
 
     if not source_rows or len(source_rows) < 2:
         raise HTTPException(status_code=400, detail="Legacy Google Sheet appears to be empty or missing data rows.")
