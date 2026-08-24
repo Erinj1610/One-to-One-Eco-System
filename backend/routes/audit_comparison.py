@@ -182,19 +182,43 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     if not target_sheets:
         raise HTTPException(status_code=400, detail="No order/project tabs found after the 'Template' sheet in the provided Google Sheet.")
 
-    # Batch read all target sheets A1:AC100
-    batch_ranges = [f"'{title}'!A1:AC100" for title in target_sheets]
-    batch_res = sheets_service.spreadsheets().values().batchGet(
-        spreadsheetId=source_sheet_id,
-        ranges=batch_ranges
-    ).execute()
-    value_ranges = batch_res.get('valueRanges', [])
+    # Safe title escaping and fetching
+    def escape_sheet_title(t: str) -> str:
+        clean = t.replace("'", "''")
+        return f"'{clean}'!A1:AC100"
+
+    value_ranges_map = {}
+    chunk_size = 20
+    for i in range(0, len(target_sheets), chunk_size):
+        chunk_sheets = target_sheets[i:i + chunk_size]
+        chunk_ranges = [escape_sheet_title(t) for t in chunk_sheets]
+        try:
+            batch_res = sheets_service.spreadsheets().values().batchGet(
+                spreadsheetId=source_sheet_id,
+                ranges=chunk_ranges,
+                valueRenderOption='FORMATTED_VALUE'
+            ).execute()
+            v_ranges = batch_res.get('valueRanges', [])
+            for s_idx, vr in enumerate(v_ranges):
+                sheet_t = chunk_sheets[s_idx] if s_idx < len(chunk_sheets) else target_sheets[0]
+                value_ranges_map[sheet_t] = vr.get('values', [])
+        except Exception as chunk_err:
+            # Fallback to individual sheet get if a chunk contains an invalid sheet title
+            for t in chunk_sheets:
+                try:
+                    res = sheets_service.spreadsheets().values().get(
+                        spreadsheetId=source_sheet_id,
+                        range=escape_sheet_title(t),
+                        valueRenderOption='FORMATTED_VALUE'
+                    ).execute()
+                    value_ranges_map[t] = res.get('values', [])
+                except Exception as single_err:
+                    print(f"Skipping tab '{t}' due to range parse notice: {single_err}")
 
     legacy_flat_rows = []
 
-    for idx, vr in enumerate(value_ranges):
-        sheet_name = target_sheets[idx] if idx < len(target_sheets) else "Order"
-        grid = vr.get('values', [])
+    for sheet_name in target_sheets:
+        grid = value_ranges_map.get(sheet_name, [])
         if not grid or len(grid) < 2:
             continue
 
