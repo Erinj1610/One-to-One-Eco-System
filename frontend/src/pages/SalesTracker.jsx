@@ -5151,6 +5151,10 @@ export default function SalesTracker() {
             <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
               Compare your <b>Current Live System Google Sheet</b> directly against the Portal database in real-time. Cell differences turn <span style={{ color: '#ef4444', fontWeight: 700 }}>red</span>.
               <br/><br/>
+              <div style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '8px 10px', borderRadius: '6px', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '11.5px', marginBottom: '8px' }}>
+                🔑 <b>Sharing Requirement</b>: Ensure your Google Sheet is shared with:<br/>
+                <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '3px', color: '#ffffff' }}>858977785048-compute@developer.gserviceaccount.com</code>
+              </div>
               <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11px', display: 'inline-block' }}>
                 🛡️ READ-ONLY: Your Portal database will NEVER be updated or overwritten.
               </span>
