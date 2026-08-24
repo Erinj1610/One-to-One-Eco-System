@@ -1,4 +1,8 @@
-export const API_BASE = 'https://one-to-one-backend-858977785048.us-central1.run.app';
+const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
+const isStagingHost = hostname.includes('staging') || hostname.includes('erinj1610s-projects');
+export const API_BASE = isStagingHost 
+  ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
+  : 'https://one-to-one-backend-858977785048.us-central1.run.app';
 
 import { auth } from './firebase';
 
@@ -10,6 +14,7 @@ window.fetch = async (url, options = {}) => {
   // Explicitly check if the target destination matches the backend host URL
   const isBackendRequest = 
     urlStr.startsWith(API_BASE) || 
+    urlStr.includes('one-to-one-backend-staging') ||
     urlStr.includes('one-to-one-backend-858977785048.us-central1.run.app') ||
     urlStr.includes('one-to-one-backend') || 
     urlStr.startsWith('/') ||

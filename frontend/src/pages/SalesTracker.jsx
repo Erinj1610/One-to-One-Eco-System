@@ -248,6 +248,12 @@ export default function SalesTracker() {
   };
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  
+  // Audit comparison modal state
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditSheetUrl, setAuditSheetUrl] = useState('');
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
   const [orderPayments, setOrderPayments] = useState([]);
   
@@ -2970,10 +2976,19 @@ export default function SalesTracker() {
                     <input 
                       type="file" 
                       accept=".xlsx, .xls" 
-                      onChange={handleBulkExcelImport} 
+                      onChange={handleUploadReconciledOverwriteSheet} 
                       style={{ display: 'none' }} 
                     />
                   </label>
+
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setShowAuditModal(true)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '30px', margin: 0, fontSize: '12px', background: '#7c3aed', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: 700 }}
+                  >
+                    🔍 3. Live Read-Only Audit Heatmap
+                  </button>
                 </div>
 
               </div>
@@ -5114,6 +5129,100 @@ export default function SalesTracker() {
             >
               🛑 Stop / Cancel Import
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* READ-ONLY AUDIT COMPARISON HEATMAP MODAL */}
+      {showAuditModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{ width: '100%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🔍 3. Live Read-Only Audit Heatmap
+              </h3>
+              <button onClick={() => { setShowAuditModal(false); setAuditResult(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
+              Compare your <b>Current Live System Google Sheet</b> directly against the Portal database in real-time. Cell differences turn <span style={{ color: '#ef4444', fontWeight: 700 }}>red</span>.
+              <br/><br/>
+              <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11px', display: 'inline-block' }}>
+                🛡️ READ-ONLY: Your Portal database will NEVER be updated or overwritten.
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>
+                Current Live System Google Sheet URL or ID *
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="https://docs.google.com/spreadsheets/d/1ABC.../edit"
+                value={auditSheetUrl}
+                onChange={e => setAuditSheetUrl(e.target.value)}
+              />
+            </div>
+
+            {auditResult && (
+              <div style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', marginBottom: '16px', fontSize: '12.5px' }}>
+                <div style={{ color: '#10b981', fontWeight: 700, marginBottom: '4px' }}>
+                  ✅ Audit Sheet Generated ({auditResult.total_orders_audited} orders analyzed)!
+                </div>
+                <div style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  Shared with <code>erin.jones@1-to-1.world</code>.
+                </div>
+                <a
+                  href={auditResult.spreadsheet_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: 'inline-block', background: '#2563eb', color: '#ffffff', padding: '6px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 700, fontSize: '12px' }}
+                >
+                  📊 Open Live Heatmap in Google Sheets ↗
+                </a>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button className="btn btn-secondary" onClick={() => { setShowAuditModal(false); setAuditResult(null); }}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                disabled={auditLoading || !auditSheetUrl.trim()}
+                onClick={async () => {
+                  setAuditLoading(true);
+                  setAuditResult(null);
+                  try {
+                    const res = await fetch(`${API_BASE}/api/admin/audit-comparison/generate`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        current_system_sheet_url: auditSheetUrl,
+                        user_email: 'erin.jones@1-to-1.world'
+                      })
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setAuditResult(data);
+                    } else {
+                      const errData = await res.json().catch(() => ({}));
+                      alert(`Audit generation failed: ${errData.detail || 'Error'}`);
+                    }
+                  } catch (err) {
+                    alert(`Error: ${err.message}`);
+                  } finally {
+                    setAuditLoading(false);
+                  }
+                }}
+                style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+              >
+                {auditLoading ? 'Generating Audit Heatmap...' : '🚀 Generate Audit Heatmap'}
+              </button>
+            </div>
           </div>
         </div>
       )}
