@@ -5174,21 +5174,59 @@ export default function SalesTracker() {
             </div>
 
             {auditResult && (
-              <div style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', marginBottom: '16px', fontSize: '12.5px' }}>
-                <div style={{ color: '#10b981', fontWeight: 700, marginBottom: '4px' }}>
-                  ✅ Audit Sheet Generated ({auditResult.total_orders_audited} orders analyzed)!
+              <div style={{ padding: '14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
+                <div style={{ color: '#10b981', fontWeight: 700, fontSize: '13.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>✅ Audit Comparison Complete!</span>
                 </div>
-                <div style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Shared with <code>erin.jones@1-to-1.world</code>.
+
+                {auditResult.stats && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>{auditResult.stats.total_orders_audited}</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Total Orders</div>
+                    </div>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#10b981' }}>{auditResult.stats.matches_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#10b981' }}>🟢 Matching</div>
+                    </div>
+                    <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#ef4444' }}>{auditResult.stats.mismatches_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#ef4444' }}>🔴 Mismatches</div>
+                    </div>
+                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>{auditResult.stats.missing_in_portal_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#f59e0b' }}>🛑 Missing in Portal</div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  {auditResult.spreadsheet_url && (
+                    <a
+                      href={auditResult.spreadsheet_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: '#ffffff', padding: '7px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 700, fontSize: '12px' }}
+                    >
+                      📊 Open Live Heatmap in Google Sheets ↗
+                    </a>
+                  )}
+
+                  {auditResult.heatmap_rows && (
+                    <button
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => {
+                        const ws = XLSX.utils.aoa_to_sheet(auditResult.heatmap_rows);
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, "🚨 AUDIT & DISCREPANCY HEATMAP");
+                        XLSX.writeFile(wb, `1-to-1_World_Live_System_Audit_Comparison_${new Date().toISOString().split('T')[0]}.xlsx`);
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '7px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+                    >
+                      📥 Download Audit Excel (.xlsx)
+                    </button>
+                  )}
                 </div>
-                <a
-                  href={auditResult.spreadsheet_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ display: 'inline-block', background: '#2563eb', color: '#ffffff', padding: '6px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 700, fontSize: '12px' }}
-                >
-                  📊 Open Live Heatmap in Google Sheets ↗
-                </a>
               </div>
             )}
 

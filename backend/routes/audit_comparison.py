@@ -186,43 +186,49 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             "status": getattr(o, 'status', None) or "Active"
         }
 
-    # Step 3: Build new Google Spreadsheet for Comparison Audit
-    spreadsheet_body = {
-        'properties': {
-            'title': '1-to-1 World - Live System Comparison & Audit Heatmap'
-        },
-        'sheets': [
-            {'properties': {'title': '🚨 AUDIT & DISCREPANCY HEATMAP', 'gridProperties': {'frozenRowCount': 1}}},
-            {'properties': {'title': 'Current Live System Data'}},
-            {'properties': {'title': 'Portal Cloud SQL Database'}}
-        ]
-    }
-    
-    audit_sheet = sheets_service.spreadsheets().create(body=spreadsheet_body).execute()
-    audit_sheet_id = audit_sheet['spreadsheetId']
-
-    # Place spreadsheet inside Google Drive Shared Vault root folder
+    # Step 3: Create new Google Spreadsheet directly inside Shared Drive Vault using Drive API
+    audit_sheet_id = None
+    audit_sheet_url = None
     try:
-        drive_service.files().update(
-            fileId=audit_sheet_id,
-            addParents=ROOT_DRIVE_FOLDER_ID,
+        file_metadata = {
+            'name': '1-to-1 World - Live System Comparison & Audit Heatmap',
+            'mimeType': 'application/vnd.google-apps.spreadsheet',
+            'parents': [ROOT_DRIVE_FOLDER_ID]
+        }
+        created_file = drive_service.files().create(
+            body=file_metadata,
             supportsAllDrives=True,
-            fields='id, parents'
+            fields='id, webViewLink'
         ).execute()
-    except Exception as drive_err:
-        print(f"Notice: Drive folder move notice: {drive_err}")
+        audit_sheet_id = created_file.get('id')
+        audit_sheet_url = created_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
+    except Exception as create_err:
+        print(f"Notice: Direct Drive Vault sheet creation fallback: {create_err}")
+        # If Shared Vault folder is full/restricted, try without parent folder
+        try:
+            created_file = drive_service.files().create(
+                body={'name': '1-to-1 World - Live System Comparison & Audit Heatmap', 'mimeType': 'application/vnd.google-apps.spreadsheet'},
+                supportsAllDrives=True,
+                fields='id, webViewLink'
+            ).execute()
+            audit_sheet_id = created_file.get('id')
+            audit_sheet_url = created_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
+        except Exception as e:
+            print(f"Warning: Could not create online Google Sheet file: {e}")
 
-    # Step 4: Share audit sheet with user email
-    try:
-        drive_service.permissions().create(
-            fileId=audit_sheet_id,
-            body={'type': 'user', 'role': 'writer', 'emailAddress': user_email},
-            fields='id'
-        ).execute()
-    except Exception as e:
-        print(f"Warning: Could not share audit sheet with {user_email}: {e}")
+    # Step 4: Share audit sheet with user email if sheet was created
+    if audit_sheet_id:
+        try:
+            drive_service.permissions().create(
+                fileId=audit_sheet_id,
+                body={'type': 'user', 'role': 'writer', 'emailAddress': user_email},
+                supportsAllDrives=True,
+                fields='id'
+            ).execute()
+        except Exception as e:
+            print(f"Notice: Google Drive share notice: {e}")
 
-    # Step 5: Construct Comparison Heatmap Rows
+    # Step 5: Construct Comparison Heatmap Rows & Stats
     heatmap_headers = [
         "Order ID / PO #", "Project Name", "Client Name", "Quote Name", 
         "Retail Value (Legacy)", "Retail Value (Portal)", 
@@ -231,6 +237,11 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     ]
 
     heatmap_rows = [heatmap_headers]
+    matches_count = 0
+    mismatches_count = 0
+    missing_in_portal_count = 0
+    new_in_portal_count = 0
+    discrepancy_details = []
 
     # Combine all PO numbers from legacy & DB
     all_pos = list(set(list(legacy_map.keys()) + list(db_map.keys())))
@@ -247,8 +258,20 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
             if ret_match and paid_match and stat_match:
                 audit_status = "🟢 100% Match"
+                matches_count += 1
             else:
                 audit_status = "🔴 Mismatch Detected"
+                mismatches_count += 1
+                discrepancy_details.append({
+                    "po": po,
+                    "type": "MISMATCH",
+                    "legacy_retail": leg["retail_value"],
+                    "portal_retail": db_item["retail_value"],
+                    "legacy_paid": leg["amount_paid"],
+                    "portal_paid": db_item["amount_paid"],
+                    "legacy_status": leg["status"],
+                    "portal_status": db_item["status"]
+                })
 
             heatmap_rows.append([
                 po,
@@ -264,6 +287,17 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 audit_status
             ])
         elif leg and not db_item:
+            missing_in_portal_count += 1
+            discrepancy_details.append({
+                "po": po,
+                "type": "MISSING_IN_PORTAL",
+                "legacy_retail": leg["retail_value"],
+                "portal_retail": 0.0,
+                "legacy_paid": leg["amount_paid"],
+                "portal_paid": 0.0,
+                "legacy_status": leg["status"],
+                "portal_status": "MISSING"
+            })
             heatmap_rows.append([
                 po, leg["project_name"], leg["client_name"], leg["quote_name"],
                 f"R {leg['retail_value']:,.2f}", "MISSING IN PORTAL",
@@ -272,6 +306,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "🛑 MISSING IN PORTAL"
             ])
         elif db_item and not leg:
+            new_in_portal_count += 1
             heatmap_rows.append([
                 po, db_item["project_name"], db_item["client_name"], db_item["quote_name"],
                 "NOT IN LEGACY", f"R {db_item['retail_value']:,.2f}",
@@ -280,18 +315,30 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "⚠️ NEW IN PORTAL"
             ])
 
-    # Populate Tab 1: Audit Heatmap
-    sheets_service.spreadsheets().values().update(
-        spreadsheetId=audit_sheet_id,
-        range="'🚨 AUDIT & DISCREPANCY HEATMAP'!A1",
-        valueInputOption="USER_ENTERED",
-        body={"values": heatmap_rows}
-    ).execute()
+    # Populate Sheet Tab if Google Sheet was created
+    if audit_sheet_id:
+        try:
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=audit_sheet_id,
+                range="A1",
+                valueInputOption="USER_ENTERED",
+                body={"values": heatmap_rows}
+            ).execute()
+        except Exception as update_err:
+            print(f"Notice: Sheet value update notice: {update_err}")
 
     return {
         "status": "success",
         "spreadsheet_id": audit_sheet_id,
-        "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit",
-        "total_orders_audited": len(all_pos),
-        "message": f"Successfully created Live System Audit Heatmap! Shared with {user_email}."
+        "spreadsheet_url": audit_sheet_url,
+        "stats": {
+            "total_orders_audited": len(all_pos),
+            "matches_count": matches_count,
+            "mismatches_count": mismatches_count,
+            "missing_in_portal_count": missing_in_portal_count,
+            "new_in_portal_count": new_in_portal_count
+        },
+        "discrepancies": discrepancy_details,
+        "heatmap_rows": heatmap_rows,
+        "message": f"Successfully completed live comparison! {len(all_pos)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
     }
