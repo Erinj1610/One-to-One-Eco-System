@@ -1908,164 +1908,241 @@ export default function SalesTracker() {
         const data = evt.target.result;
         const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
         
-        let foundTemplate = false;
-        const targetSheets = [];
-        workbook.SheetNames.forEach(name => {
-          if (name.trim().toLowerCase() === 'template') {
-            foundTemplate = true;
-            return;
-          }
-          if (foundTemplate) {
-            targetSheets.push(name);
-          }
-        });
+        let flatRows = [];
 
-        if (targetSheets.length === 0) {
-          const skipNames = new Set(['template', 'control', 'summary', 'instructions', 'readme', 'master']);
+        // Check if the uploaded file is ALREADY a pre-formatted 41-column Reconciliation Table / CSV / Sheet
+        const firstSheetName = workbook.SheetNames[0];
+        const firstSheet = workbook.Sheets[firstSheetName];
+        const rawJson = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+        const isReconciliationFile = rawJson.length > 0 && (
+          ('Project Name' in rawJson[0] || 'project_name' in rawJson[0] || 'Project Key' in rawJson[0]) &&
+          ('Order ID' in rawJson[0] || 'order_id' in rawJson[0] || 'PO Number' in rawJson[0] || 'po_number' in rawJson[0] || 'Quote Name' in rawJson[0]) &&
+          ('Description' in rawJson[0] || 'description' in rawJson[0] || 'Qty' in rawJson[0] || 'qty' in rawJson[0])
+        );
+
+        if (isReconciliationFile) {
+          setAuditProgress({ percent: 50, stage: `Reading direct Reconciliation Table (${rawJson.length} rows)...` });
+
+          flatRows = rawJson.map((row, idx) => {
+            const getVal = (key1, key2, key3) => {
+              if (row[key1] !== undefined && row[key1] !== '') return row[key1];
+              if (key2 && row[key2] !== undefined && row[key2] !== '') return row[key2];
+              if (key3 && row[key3] !== undefined && row[key3] !== '') return row[key3];
+              return '';
+            };
+
+            const safeOrderRef = String(getVal('Order ID', 'order_id', 'PO Number') || 'ORDER').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+            const projName = String(getVal('Project Name', 'project_name', 'Project') || 'General Project').trim();
+            const projKey = String(getVal('Project Key', 'project_key') || projName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()).trim();
+
+            const oneOneCode = String(getVal('1:1 Code', 'one_one_code', 'One One Code')).trim();
+            const itemCode = String(getVal('Item Code', 'item_code', 'Code')).trim();
+
+            return {
+              "Project Key": projKey,
+              "Project Name": projName,
+              "Client Company": String(getVal('Client Company', 'client_company', 'Client')).trim(),
+              "Order ID": safeOrderRef,
+              "Quote Name": String(getVal('Quote Name', 'quote_name', 'Order ID')).trim(),
+              "Sales Rep": String(getVal('Sales Rep', 'sales_rep', 'PM')).trim(),
+              "Delivery Address": String(getVal('Delivery Address', 'delivery_address')).trim(),
+              "Item ID": String(getVal('Item ID', 'item_id') || `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${idx + 1}`).trim(),
+              "Qty": Number(getVal('Qty', 'qty')) || 0,
+              "1:1 Code": oneOneCode,
+              "Item Code": itemCode,
+              "Description": String(getVal('Description', 'description')).trim(),
+              "Unit Cost Ex VAT": Number(getVal('Unit Cost Ex VAT', 'unit_cost', 'Unit Cost')) || 0,
+              "Unit Retail Price Ex VAT": Number(getVal('Unit Retail Price Ex VAT', 'unit_retail', 'Unit Retail')) || 0,
+              "Brand": String(getVal('Brand', 'brand')).trim(),
+              "Supplier": String(getVal('Supplier', 'supplier')).trim(),
+              "Item Type": String(getVal('Item Type', 'item_type') || 'Hardware').trim(),
+              "Stock Status": String(getVal('Stock Status', 'stock_status')).trim(),
+              "Stock on Hand": Number(getVal('Stock on Hand', 'stock_on_hand')) || 0,
+              "Qty Ordered (PO)": Number(getVal('Qty Ordered (PO)', 'qty_ordered')) || 0,
+              "PO Supplier": String(getVal('PO Supplier', 'po_supplier', 'Supplier')).trim(),
+              "Date Ordered": parseExcelDate(getVal('Date Ordered', 'date_ordered')),
+              "PO Reference": String(getVal('PO Reference', 'po_ref', 'Order ID')).trim(),
+              "Delivery ETA": parseExcelDate(getVal('Delivery ETA', 'eta', 'ETA')),
+              "Qty REC": Number(getVal('Qty REC', 'qty_rec', 'Received Qty')) || 0,
+              "Date REC": parseExcelDate(getVal('Date REC', 'date_rec', 'Received Date')),
+              "GRN Reference": String(getVal('GRN Reference', 'grn_ref')).trim(),
+              "Qty INV": Number(getVal('Qty INV', 'qty_inv', 'Invoiced Qty')) || 0,
+              "Invoice Reference": String(getVal('Invoice Reference', 'invoice_ref')).trim(),
+              "Date INV": parseExcelDate(getVal('Date INV', 'date_inv', 'Invoice Date')),
+              "Qty DEL": Number(getVal('Qty DEL', 'qty_del')) || 0,
+              "Date DEL": parseExcelDate(getVal('Date DEL', 'date_del')),
+              "Delivery Reference": String(getVal('Delivery Reference', 'delivery_ref')).trim(),
+              "Delivery Comments": String(getVal('Delivery Comments', 'delivery_comments')).trim(),
+              "Sheet Order Status": String(getVal('Sheet Order Status', 'order_status', 'status')).trim(),
+              "Deposit Value": Number(getVal('Deposit Value', 'deposit_value')) || 0,
+              "Deposit Invoice Sent": String(getVal('Deposit Invoice Sent', 'deposit_invoice_sent') || 'No').trim(),
+              "Deposit Payment Date": parseExcelDate(getVal('Deposit Payment Date', 'deposit_payment_date')),
+              "Balance Value": Number(getVal('Balance Value', 'balance_value')) || 0,
+              "Balance Payment Date": parseExcelDate(getVal('Balance Payment Date', 'balance_payment_date')),
+              "Amount Paid": Number(getVal('Amount Paid', 'amount_paid')) || 0
+            };
+          }).filter(r => r["Qty"] > 0 || r["Description"] || r["1:1 Code"] || r["Item Code"]);
+
+        } else {
+          // Multi-tab raw workbook extraction
+          let foundTemplate = false;
+          const targetSheets = [];
           workbook.SheetNames.forEach(name => {
-            if (!skipNames.has(name.trim().toLowerCase())) {
+            if (name.trim().toLowerCase() === 'template') {
+              foundTemplate = true;
+              return;
+            }
+            if (foundTemplate) {
               targetSheets.push(name);
             }
           });
-        }
 
-        if (targetSheets.length === 0) {
-          alert("No order/project tabs found in the Excel workbook.");
-          setAuditLoading(false);
-          return;
-        }
-
-        setAuditProgress({ percent: 45, stage: `Extracting ${targetSheets.length} project tabs...` });
-
-        const flatRows = [];
-
-        targetSheets.forEach(sheetName => {
-          const sheet = workbook.Sheets[sheetName];
-          if (!sheet) return;
-
-          const getVal = (cellRef) => (sheet[cellRef] ? String(sheet[cellRef].v || '').trim() : '');
-          
-          const clientCompany = getVal('D2');
-          const orderName = getVal('D3') || sheetName;
-          const projectF5 = getVal('F5') || 'General Project';
-          const deliveryAddress = getVal('D6');
-          const salesRep = getVal('F1');
-          const orderStatusG98 = getVal('G98') || 'Processing';
-          
-          const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
-
-          const depositInvoiceSent = getVal('D90') || 'No';
-          const depositPaymentDate = parseExcelDate(sheet['D95'] ? sheet['D95'].v : undefined);
-          const balancePaymentDate = parseExcelDate(sheet['D96'] ? sheet['D96'].v : undefined);
-          const depositValue = Number(sheet['G95'] ? sheet['G95'].v : 0) || 0;
-          const balanceValue = Number(sheet['G96'] ? sheet['G96'].v : 0) || 0;
-          let amountPaid = 0;
-          if (depositPaymentDate || depositValue > 0) amountPaid += depositValue;
-          if (balancePaymentDate || balanceValue > 0) amountPaid += balanceValue;
-
-          for (let r = 9; r <= 89; r++) {
-            const getRowVal = (col) => {
-              const cell = sheet[`${col}${r}`];
-              return cell ? cell.v : undefined;
-            };
-
-            const qty = Number(getRowVal('B'));
-            if (isNaN(qty) || qty === 0) continue;
-
-            const oneOneCode = String(getRowVal('C') || '').trim();
-            const itemCode = String(getRowVal('D') || '').trim();
-            const description = String(getRowVal('E') || '').trim();
-            const unitRetail = Number(getRowVal('F')) || 0;
-            const unitCost = Number(getRowVal('I')) || 0;
-            const brand = String(getRowVal('L') || '').trim();
-            const supplier = String(getRowVal('M') || '').trim();
-            const productType = String(getRowVal('N') || '').trim() || 'Hardware';
-
-            const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
-            const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
-            const dateOrderedRaw = getRowVal('S');
-            const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
-            const etaRaw = getRowVal('T');
-            const eta = etaRaw ? parseExcelDate(etaRaw) : '';
-
-            const dateRecRaw = getRowVal('U');
-            const dateRec = dateRecRaw ? parseExcelDate(dateRecRaw) : '';
-            const qtyRec = Number(getRowVal('V')) || 0;
-
-            const qtyInv = Number(getRowVal('Y')) || 0;
-            const invoiceRef = String(getRowVal('Z') || '').trim();
-            const dateInvRaw = getRowVal('AA');
-            const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
-
-            const deliveryComments = String(getRowVal('AC') || '').trim();
-
-            let poRef = poRefFromSheet;
-            if (!poRef && dateOrdered) {
-              const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
-              const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
-              poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
-            }
-
-            let grnRef = '';
-            if (dateRec && qtyRec > 0) {
-              const cleanDate = dateRec.replace(/[^0-9]/g, '');
-              grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
-            }
-
-            let invRefValue = invoiceRef;
-            if (!invRefValue && dateInv && qtyInv > 0) {
-              const cleanDate = dateInv.replace(/[^0-9]/g, '');
-              invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
-            }
-
-            const deliveryRef = deliveryComments ? `DEL-${safeOrderRef}` : '';
-            const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
-
-            flatRows.push({
-              "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
-              "Project Name": projectF5,
-              "Client Company": clientCompany,
-              "Order ID": safeOrderRef,
-              "Quote Name": orderName,
-              "Sales Rep": salesRep,
-              "Delivery Address": deliveryAddress,
-              "Item ID": tempItemId,
-              "Qty": qty,
-              "1:1 Code": oneOneCode,
-              "Item Code": itemCode,
-              "Description": description,
-              "Unit Cost Ex VAT": unitCost,
-              "Unit Retail Price Ex VAT": unitRetail,
-              "Brand": brand,
-              "Supplier": supplier,
-              "Item Type": productType,
-              "Stock Status": "",
-              "Stock on Hand": "",
-              "Qty Ordered (PO)": "",
-              "PO Supplier": poSupplier,
-              "Date Ordered": dateOrdered,
-              "PO Reference": poRef,
-              "Delivery ETA": eta,
-              "Qty REC": qtyRec > 0 ? qtyRec : "",
-              "Date REC": dateRec,
-              "GRN Reference": grnRef,
-              "Qty INV": qtyInv > 0 ? qtyInv : "",
-              "Invoice Reference": invRefValue,
-              "Date INV": dateInv,
-              "Qty DEL": "",
-              "Date DEL": "",
-              "Delivery Reference": deliveryRef,
-              "Delivery Comments": deliveryComments,
-              "Sheet Order Status": orderStatusG98,
-              "Deposit Value": depositValue,
-              "Deposit Invoice Sent": depositInvoiceSent,
-              "Deposit Payment Date": depositPaymentDate,
-              "Balance Value": balanceValue,
-              "Balance Payment Date": balancePaymentDate,
-              "Amount Paid": amountPaid
+          if (targetSheets.length === 0) {
+            const skipNames = new Set(['template', 'control', 'summary', 'instructions', 'readme', 'master']);
+            workbook.SheetNames.forEach(name => {
+              if (!skipNames.has(name.trim().toLowerCase())) {
+                targetSheets.push(name);
+              }
             });
           }
-        });
+
+          if (targetSheets.length === 0) {
+            alert("No order/project tabs or reconciliation table found in the uploaded file.");
+            setAuditLoading(false);
+            return;
+          }
+
+          setAuditProgress({ percent: 45, stage: `Extracting ${targetSheets.length} project tabs...` });
+
+          targetSheets.forEach(sheetName => {
+            const sheet = workbook.Sheets[sheetName];
+            if (!sheet) return;
+
+            const getVal = (cellRef) => (sheet[cellRef] ? String(sheet[cellRef].v || '').trim() : '');
+            
+            const clientCompany = getVal('D2');
+            const orderName = getVal('D3') || sheetName;
+            const projectF5 = getVal('F5') || 'General Project';
+            const deliveryAddress = getVal('D6');
+            const salesRep = getVal('F1');
+            const orderStatusG98 = getVal('G98') || 'Processing';
+            
+            const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+
+            const depositInvoiceSent = getVal('D90') || 'No';
+            const depositPaymentDate = parseExcelDate(sheet['D95'] ? sheet['D95'].v : undefined);
+            const balancePaymentDate = parseExcelDate(sheet['D96'] ? sheet['D96'].v : undefined);
+            const depositValue = Number(sheet['G95'] ? sheet['G95'].v : 0) || 0;
+            const balanceValue = Number(sheet['G96'] ? sheet['G96'].v : 0) || 0;
+            let amountPaid = 0;
+            if (depositPaymentDate || depositValue > 0) amountPaid += depositValue;
+            if (balancePaymentDate || balanceValue > 0) amountPaid += balanceValue;
+
+            for (let r = 9; r <= 89; r++) {
+              const getRowVal = (col) => {
+                const cell = sheet[`${col}${r}`];
+                return cell ? cell.v : undefined;
+              };
+
+              const qty = Number(getRowVal('B'));
+              if (isNaN(qty) || qty === 0) continue;
+
+              const oneOneCode = String(getRowVal('C') || '').trim();
+              const itemCode = String(getRowVal('D') || '').trim();
+              const description = String(getRowVal('E') || '').trim();
+              const unitRetail = Number(getRowVal('F')) || 0;
+              const unitCost = Number(getRowVal('I')) || 0;
+              const brand = String(getRowVal('L') || '').trim();
+              const supplier = String(getRowVal('M') || '').trim();
+              const productType = String(getRowVal('N') || '').trim() || 'Hardware';
+
+              const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
+              const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
+              const dateOrderedRaw = getRowVal('S');
+              const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
+              const etaRaw = getRowVal('T');
+              const eta = etaRaw ? parseExcelDate(etaRaw) : '';
+
+              const dateRecRaw = getRowVal('U');
+              const dateRec = dateRecRaw ? parseExcelDate(dateRecRaw) : '';
+              const qtyRec = Number(getRowVal('V')) || 0;
+
+              const qtyInv = Number(getRowVal('Y')) || 0;
+              const invoiceRef = String(getRowVal('Z') || '').trim();
+              const dateInvRaw = getRowVal('AA');
+              const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
+
+              const deliveryComments = String(getRowVal('AC') || '').trim();
+
+              let poRef = poRefFromSheet;
+              if (!poRef && dateOrdered) {
+                const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
+                const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
+                poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
+              }
+
+              let grnRef = '';
+              if (dateRec && qtyRec > 0) {
+                const cleanDate = dateRec.replace(/[^0-9]/g, '');
+                grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
+              }
+
+              let invRefValue = invoiceRef;
+              if (!invRefValue && dateInv && qtyInv > 0) {
+                const cleanDate = dateInv.replace(/[^0-9]/g, '');
+                invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
+              }
+
+              const deliveryRef = deliveryComments ? `DEL-${safeOrderRef}` : '';
+              const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
+
+              flatRows.push({
+                "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+                "Project Name": projectF5,
+                "Client Company": clientCompany,
+                "Order ID": safeOrderRef,
+                "Quote Name": orderName,
+                "Sales Rep": salesRep,
+                "Delivery Address": deliveryAddress,
+                "Item ID": tempItemId,
+                "Qty": qty,
+                "1:1 Code": oneOneCode,
+                "Item Code": itemCode,
+                "Description": description,
+                "Unit Cost Ex VAT": unitCost,
+                "Unit Retail Price Ex VAT": unitRetail,
+                "Brand": brand,
+                "Supplier": supplier,
+                "Item Type": productType,
+                "Stock Status": "",
+                "Stock on Hand": "",
+                "Qty Ordered (PO)": "",
+                "PO Supplier": poSupplier,
+                "Date Ordered": dateOrdered,
+                "PO Reference": poRef,
+                "Delivery ETA": eta,
+                "Qty REC": qtyRec > 0 ? qtyRec : "",
+                "Date REC": dateRec,
+                "GRN Reference": grnRef,
+                "Qty INV": qtyInv > 0 ? qtyInv : "",
+                "Invoice Reference": invRefValue,
+                "Date INV": dateInv,
+                "Qty DEL": "",
+                "Date DEL": "",
+                "Delivery Reference": deliveryRef,
+                "Delivery Comments": deliveryComments,
+                "Sheet Order Status": orderStatusG98,
+                "Deposit Value": depositValue,
+                "Deposit Invoice Sent": depositInvoiceSent,
+                "Deposit Payment Date": depositPaymentDate,
+                "Balance Value": balanceValue,
+                "Balance Payment Date": balancePaymentDate,
+                "Amount Paid": amountPaid
+              });
+            }
+          });
+        }
 
         setAuditProgress({ percent: 75, stage: `Cross-referencing Cloud SQL database & generating 3-tab heatmap (${flatRows.length} items)...` });
 
@@ -5230,17 +5307,17 @@ export default function SalesTracker() {
             </div>
 
             <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
-              Compare your <b>Master System Excel file (.xlsx)</b> directly against the Portal database in real-time. Discrepancies turn <span style={{ color: '#ef4444', fontWeight: 700 }}>red</span>.
+              Upload your <b>Master Reconciliation File (.xlsx / .csv)</b> or <b>Master Multi-Tab Excel (.xlsx)</b> to cross-reference directly against the live Cloud SQL database.
               <br/><br/>
               <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11px', display: 'inline-block' }}>
-                🛡️ 100% READ-ONLY: Your Portal database will NEVER be updated, modified, or overwritten.
+                🛡️ 100% READ-ONLY AUDIT: Your Portal database will NEVER be updated, modified, or overwritten.
               </span>
             </div>
 
             {/* UPLOAD FILE ZONE */}
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
-                📁 Select or Drop your Master Excel File (.xlsx)
+                📁 Select or Drop Reconciliation File (.xlsx / .csv) or Master Excel Workbook
               </label>
               <div
                 style={{
@@ -5262,15 +5339,15 @@ export default function SalesTracker() {
               >
                 <div style={{ fontSize: '28px', marginBottom: '8px' }}>📊</div>
                 <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  Click to browse or drag & drop Master Excel (.xlsx)
+                  Click to browse or drag & drop Reconciliation File (.xlsx / .csv)
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Parses all project tabs locally in 2 seconds without any Google timeouts or size limits.
+                  Supports both pre-formatted 41-column master tables and raw multi-tab project workbooks.
                 </div>
                 <input
                   id="audit-excel-file-input"
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.csv"
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
