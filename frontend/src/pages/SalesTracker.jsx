@@ -5269,46 +5269,94 @@ export default function SalesTracker() {
                 onClick={async () => {
                   setAuditLoading(true);
                   setAuditResult(null);
-                  setAuditProgress({ percent: 15, stage: 'Connecting to Google Sheets API...' });
-
-                  const progressInterval = setInterval(() => {
-                    setAuditProgress(prev => {
-                      if (prev.percent < 40) return { percent: prev.percent + 10, stage: 'Reading live project tabs & items...' };
-                      if (prev.percent < 75) return { percent: prev.percent + 5, stage: 'Querying Cloud SQL & matching 41 columns...' };
-                      if (prev.percent < 90) return { percent: prev.percent + 2, stage: 'Building 3-tab heatmap spreadsheet in Drive Vault...' };
-                      return prev;
-                    });
-                  }, 1200);
+                  setAuditProgress({ percent: 5, stage: 'Connecting to Google Sheets API & discovering project tabs...' });
 
                   try {
-                    const res = await fetch(`${API_BASE}/api/admin/audit-comparison/generate`, {
+                    // Step 1: Discover tabs
+                    const tabRes = await fetch(`${API_BASE}/api/admin/audit-comparison/get-tabs`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ current_system_sheet_url: auditSheetUrl })
+                    });
+                    if (!tabRes.ok) {
+                      const errData = await tabRes.json().catch(() => ({}));
+                      throw new Error(errData.detail || 'Failed to read sheet metadata');
+                    }
+                    const tabData = await tabRes.json();
+                    const allTabs = tabData.tabs || [];
+                    const totalTabsCount = allTabs.length;
+
+                    if (totalTabsCount === 0) {
+                      throw new Error("No project/order tabs found following 'Template' in your Google Sheet.");
+                    }
+
+                    // Step 2: Extract in batches of 5 tabs with real-time progress updates
+                    let allExtractedRows = [];
+                    const batchSize = 5;
+
+                    for (let i = 0; i < totalTabsCount; i += batchSize) {
+                      const batchTabs = allTabs.slice(i, i + batchSize);
+                      const currentProgressPercent = Math.round(5 + ((i + batchTabs.length) / totalTabsCount) * 80);
+                      const currentTabName = batchTabs[batchTabs.length - 1];
+
+                      setAuditProgress({
+                        percent: currentProgressPercent,
+                        stage: `Extracting Tab ${Math.min(i + batchTabs.length, totalTabsCount)} of ${totalTabsCount}: '${currentTabName}'...`
+                      });
+
+                      const batchRes = await fetch(`${API_BASE}/api/admin/audit-comparison/extract-tab-batch`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          current_system_sheet_url: auditSheetUrl,
+                          tab_names: batchTabs
+                        })
+                      });
+
+                      if (!batchRes.ok) {
+                        const errData = await batchRes.json().catch(() => ({}));
+                        throw new Error(errData.detail || `Failed to extract batch starting at tab ${batchTabs[0]}`);
+                      }
+
+                      const batchData = await batchRes.json();
+                      if (batchData.flat_rows && batchData.flat_rows.length > 0) {
+                        allExtractedRows = allExtractedRows.concat(batchData.flat_rows);
+                      }
+                    }
+
+                    // Step 3: Finalize and generate 3-tab heatmap
+                    setAuditProgress({
+                      percent: 92,
+                      stage: 'Cross-referencing Cloud SQL database & creating 3-tab heatmap spreadsheet...'
+                    });
+
+                    const finalRes = await fetch(`${API_BASE}/api/admin/audit-comparison/finalize`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        current_system_sheet_url: auditSheetUrl,
+                        legacy_rows: allExtractedRows,
                         user_email: 'erin.jones@1-to-1.world'
                       })
                     });
-                    clearInterval(progressInterval);
-                    if (res.ok) {
-                      const data = await res.json();
-                      setAuditProgress({ percent: 100, stage: 'Complete!' });
-                      setAuditResult(data);
-                    } else {
-                      const errData = await res.json().catch(() => ({}));
-                      alert(`Audit generation failed: ${errData.detail || 'Error'}`);
+
+                    if (!finalRes.ok) {
+                      const errData = await finalRes.json().catch(() => ({}));
+                      throw new Error(errData.detail || 'Finalization failed');
                     }
+
+                    const finalData = await finalRes.json();
+                    setAuditProgress({ percent: 100, stage: 'Complete!' });
+                    setAuditResult(finalData);
+
                   } catch (err) {
-                    clearInterval(progressInterval);
-                    alert(`Error: ${err.message}`);
+                    alert(`Audit error: ${err.message}`);
                   } finally {
-                    clearInterval(progressInterval);
                     setAuditLoading(false);
                   }
                 }}
                 style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
               >
-                {auditLoading ? 'Generating Audit Heatmap...' : '🚀 Generate Audit Heatmap'}
+                {auditLoading ? 'Processing Live System Audit...' : '🚀 Generate Audit Heatmap'}
               </button>
             </div>
           </div>

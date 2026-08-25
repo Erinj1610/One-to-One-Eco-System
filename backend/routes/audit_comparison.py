@@ -8,7 +8,7 @@ import os
 import re
 import socket
 import datetime
-import openpyxl
+import concurrent.futures
 import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -59,13 +59,17 @@ def normalize_key(s: str) -> str:
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower()
 
+def col_letter_to_index(col_letters: str) -> int:
+    """Converts column letter (A, B, ..., Z, AA, AB, AC) to 0-indexed column integer."""
+    col = 0
+    for char in col_letters.strip().upper():
+        col = col * 26 + (ord(char) - ord('A') + 1)
+    return col - 1
+
 def parse_excel_date(val: Any) -> str:
-    """Parses Excel serial dates or datetime objects into standardized YYYY-MM-DD format."""
+    """Parses Excel serial dates or datetime strings into standardized YYYY-MM-DD format."""
     if not val:
         return ""
-    if isinstance(val, (datetime.date, datetime.datetime)):
-        return val.strftime('%Y-%m-%d')
-    
     val_str = str(val).strip()
     if not val_str:
         return ""
@@ -103,18 +107,14 @@ RECONCILIATION_COLUMNS = [
     "Balance Value", "Balance Payment Date", "Amount Paid"
 ]
 
-@router.post("/audit-comparison/generate")
-def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
+@router.post("/audit-comparison/get-tabs")
+def get_audit_tabs(payload: dict = Body(...)):
     """
-    Read-only live audit comparison generator.
-    1. Downloads live Google Sheet directly as an XLSX workbook stream via Drive API export (completes in < 2s).
-    2. Identifies all project tabs appearing AFTER 'Template' using openpyxl (exact clone of handleGenerateReconciliationTemplate).
-    3. Extracts rows 9-89 with exact cell references and formats in 41 reconciliation columns.
-    4. Queries Cloud SQL database and generates 3-tab heatmap spreadsheet.
+    Step 1 of real-time audit:
+    Fetches the metadata of the Google Sheet and identifies all order/project tabs strictly appearing AFTER 'Template'.
+    Returns total count and list of tab names for live progress reporting.
     """
     raw_sheet_input = payload.get("current_system_sheet_url")
-    user_email = payload.get("user_email", "erin.jones@1-to-1.world").strip()
-
     if not raw_sheet_input:
         raise HTTPException(status_code=400, detail="Please provide a valid Google Sheet URL or ID.")
 
@@ -125,7 +125,6 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Step 1: Export Google Sheet to Excel binary stream via Google Drive API
     try:
         # Pre-check drive access
         try:
@@ -143,62 +142,113 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 )
             raise drive_err
 
-        # Direct XLSX export: fast, reliable, zero range errors
-        exported_bytes = drive_service.files().export(
-            fileId=source_sheet_id,
-            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        # Fetch spreadsheet tab list
+        meta = sheets_service.spreadsheets().get(
+            spreadsheetId=source_sheet_id,
+            fields="sheets(properties(sheetId,title,index))"
         ).execute()
 
-        wb = openpyxl.load_workbook(io.BytesIO(exported_bytes), data_only=True)
-        all_sheet_names = wb.sheetnames
+        all_sheets = meta.get('sheets', [])
+        if not all_sheets:
+            raise HTTPException(status_code=400, detail="Provided Google Sheet contains no worksheets.")
+
+        found_template = False
+        target_sheets = []
+        for s in all_sheets:
+            title = s.get('properties', {}).get('title', '').strip()
+            if title.lower() == 'template':
+                found_template = True
+                continue
+            if found_template:
+                target_sheets.append(title)
+
+        if not target_sheets:
+            skip_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
+            target_sheets = [s.get('properties', {}).get('title', '').strip() for s in all_sheets if s.get('properties', {}).get('title', '').strip().lower() not in skip_names]
+
+        return {
+            "status": "success",
+            "spreadsheet_id": source_sheet_id,
+            "total_tabs": len(target_sheets),
+            "tabs": target_sheets
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        err_msg = str(e)
-        raise HTTPException(status_code=400, detail=f"Could not export live Google Sheet: {err_msg}")
+        raise HTTPException(status_code=400, detail=f"Could not read spreadsheet metadata: {str(e)}")
 
-    # Process sheets that appear AFTER 'Template' (matching handleGenerateReconciliationTemplate)
-    has_template_tab = any(name.strip().lower() == 'template' for name in all_sheet_names)
-    found_template = False
-    target_sheets = []
+@router.post("/audit-comparison/extract-tab-batch")
+def extract_audit_tab_batch(payload: dict = Body(...)):
+    """
+    Step 2 of real-time audit:
+    Extracts a batch of 5-8 sheet tabs in parallel, parsing rows 9-89 with exact 41 columns.
+    Enables live percentage updates on the frontend.
+    """
+    raw_sheet_input = payload.get("current_system_sheet_url")
+    tab_names = payload.get("tab_names", [])
 
-    for name in all_sheet_names:
-        if name.strip().lower() == 'template':
-            found_template = True
+    if not raw_sheet_input or not tab_names:
+        return {"status": "success", "flat_rows": []}
+
+    source_sheet_id = extract_spreadsheet_id(raw_sheet_input)
+
+    try:
+        sheets_service, drive_service = get_google_services()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
+
+    def escape_range(name: str) -> str:
+        clean = name.replace("'", "''")
+        return f"'{clean}'!A1:AC98"
+
+    ranges = [escape_range(t) for t in tab_names]
+
+    try:
+        batch_res = sheets_service.spreadsheets().values().batchGet(
+            spreadsheetId=source_sheet_id,
+            ranges=ranges,
+            valueRenderOption='FORMATTED_VALUE'
+        ).execute()
+        value_ranges = batch_res.get('valueRanges', [])
+    except Exception:
+        # Fallback to individual gets if one range fails
+        value_ranges = []
+        for t in tab_names:
+            try:
+                res = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=source_sheet_id,
+                    range=escape_range(t),
+                    valueRenderOption='FORMATTED_VALUE'
+                ).execute()
+                value_ranges.append(res)
+            except Exception as single_err:
+                print(f"Skipping tab '{t}': {single_err}")
+
+    batch_flat_rows = []
+
+    for idx, vr in enumerate(value_ranges):
+        sheet_name = tab_names[idx] if idx < len(tab_names) else "Order"
+        grid = vr.get('values', [])
+        if not grid or len(grid) < 2:
             continue
-        if found_template:
-            target_sheets.append(name)
-
-    if not target_sheets:
-        skip_names = {'template', 'control', 'summary', 'instructions', 'readme', 'master'}
-        target_sheets = [name for name in all_sheet_names if name.strip().lower() not in skip_names]
-
-    if not target_sheets:
-        raise HTTPException(status_code=400, detail="No order/project tabs found after the 'Template' sheet in the workbook.")
-
-    legacy_flat_rows = []
-
-    for sheet_name in target_sheets:
-        if sheet_name not in wb.sheetnames:
-            continue
-        ws = wb[sheet_name]
 
         def get_val(cell_ref: str) -> str:
-            try:
-                c = ws[cell_ref]
-                if c.value is None:
-                    return ""
-                return str(c.value).strip()
-            except Exception:
+            m = re.match(r'([A-Za-z]+)(\d+)', cell_ref.strip())
+            if not m:
                 return ""
+            col_idx = col_letter_to_index(m.group(1))
+            row_idx = int(m.group(2)) - 1
+            if row_idx < len(grid) and col_idx < len(grid[row_idx]):
+                return str(grid[row_idx][col_idx]).strip()
+            return ""
 
         def get_row_val(col_letter: str, row_num: int) -> Any:
-            try:
-                c = ws[f"{col_letter}{row_num}"]
-                return c.value
-            except Exception:
-                return None
+            col_idx = col_letter_to_index(col_letter)
+            row_idx = row_num - 1
+            if row_idx < len(grid) and col_idx < len(grid[row_idx]):
+                return grid[row_idx][col_idx]
+            return None
 
         client_company = get_val('D2')
         order_name = get_val('D3') or sheet_name
@@ -210,10 +260,10 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         safe_order_ref = re.sub(r'[^a-zA-Z0-9]', '-', order_name).lower()
 
         deposit_invoice_sent = get_val('D90') or 'No'
-        deposit_payment_date = parse_excel_date(get_row_val('D', 95))
-        balance_payment_date = parse_excel_date(get_row_val('D', 96))
-        deposit_value = safe_float(get_row_val('G', 95))
-        balance_value = safe_float(get_row_val('G', 96))
+        deposit_payment_date = parse_excel_date(get_val('D95'))
+        balance_payment_date = parse_excel_date(get_val('D96'))
+        deposit_value = safe_float(get_val('G95'))
+        balance_value = safe_float(get_val('G96'))
 
         amount_paid = 0.0
         if deposit_payment_date or deposit_value > 0:
@@ -278,7 +328,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             stock_status = str(get_row_val('N', r) or '').strip()
             stock_on_hand = safe_int(get_row_val('O', r))
 
-            legacy_flat_rows.append({
+            batch_flat_rows.append({
                 "Project Key": re.sub(r'[^a-zA-Z0-9]', '-', project_f5).lower(),
                 "Project Name": project_f5,
                 "Client Company": client_company,
@@ -322,10 +372,29 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Amount Paid": amount_paid
             })
 
-    if not legacy_flat_rows:
-        raise HTTPException(status_code=400, detail="No order items found in the target worksheets.")
+    return {
+        "status": "success",
+        "processed_tabs": len(tab_names),
+        "flat_rows": batch_flat_rows
+    }
 
-    # Step 2: Query Cloud SQL Database items in identical 41-column format
+@router.post("/audit-comparison/finalize")
+def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Step 3 of real-time audit:
+    Receives all extracted legacy rows from the client.
+    Queries Cloud SQL database, cross-references each order, creates the 3-tab Google Spreadsheet,
+    applies red discrepancy formatting, and returns the full audit result payload.
+    """
+    legacy_flat_rows = payload.get("legacy_rows", [])
+    user_email = payload.get("user_email", "erin.jones@1-to-1.world").strip()
+
+    try:
+        sheets_service, drive_service = get_google_services()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
+
+    # Fetch Cloud SQL Database items in identical 41-column format
     db_orders = db.query(Order).all()
     all_projects = db.query(Project).all()
     db_projects_map = {p.project_key: p.name for p in all_projects}
@@ -427,7 +496,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Amount Paid": getattr(o, 'paid', 0.0) or getattr(o, 'paid_amount', 0.0) or 0.0
             })
 
-    # Step 3: Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
+    # Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
     legacy_order_totals = {}
     for row in legacy_flat_rows:
         order_id = str(row.get("Order ID") or "").strip()
@@ -578,7 +647,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     for r in portal_flat_rows:
         portal_tab_2d.append([r.get(col, "") for col in RECONCILIATION_COLUMNS])
 
-    # Step 4: Create new 3-Tab Google Spreadsheet inside Shared Drive Vault using Drive API
+    # Create new 3-Tab Google Spreadsheet inside Shared Drive Vault using Drive API
     audit_sheet_id = None
     audit_sheet_url = None
     try:
@@ -607,7 +676,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         except Exception as e:
             print(f"Warning: Could not create Google Sheet file: {e}")
 
-    # Step 5: Share audit sheet with user email
+    # Share audit sheet with user email
     if audit_sheet_id:
         try:
             drive_service.permissions().create(
@@ -619,7 +688,7 @@ def generate_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         except Exception as e:
             print(f"Notice: Google Drive share notice: {e}")
 
-    # Step 6: Create 3 Tabs & Populate Data in Google Sheet
+    # Populate 3 Tabs & Red Formatting
     if audit_sheet_id:
         try:
             meta = sheets_service.spreadsheets().get(spreadsheetId=audit_sheet_id).execute()
