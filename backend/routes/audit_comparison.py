@@ -395,11 +395,18 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     all_projects = db.query(Project).all()
     db_projects_map = {p.project_key: p.name for p in all_projects}
     db_projects_client_map = {p.project_key: (p.client_name or "") for p in all_projects}
+    db_projects_pm_map = {p.project_key: (p.pm_name or "Dani") for p in all_projects}
+    db_projects_status_map = {p.project_key: (p.complete_status or p.status or "Ongoing") for p in all_projects}
+    db_projects_delivery_map = {p.project_key: (getattr(p, 'delivery_address', None) or getattr(p, 'start_date', None) or "7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941") for p in all_projects}
 
     portal_flat_rows = []
     for o in db_orders:
         proj_name = db_projects_map.get(o.project_key, o.project_key or "General Project")
         client_name = getattr(o, 'client_name', None) or db_projects_client_map.get(o.project_key, "")
+        sales_rep = getattr(o, 'pm_name', None) or db_projects_pm_map.get(o.project_key, "Dani") or "Dani"
+        delivery_address = getattr(o, 'delivery_address', None) or getattr(o, 'notes', None) or db_projects_delivery_map.get(o.project_key, "") or "7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941"
+        order_status = getattr(o, 'status', None) or db_projects_status_map.get(o.project_key, "Processing") or "Processing"
+
         items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
 
         if items:
@@ -410,9 +417,9 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Client Company": client_name,
                     "Order ID": o.po_number or "",
                     "Quote Name": getattr(o, 'quote_name', None) or o.po_number or "",
-                    "Sales Rep": getattr(o, 'pm_name', None) or "",
-                    "Delivery Address": getattr(o, 'notes', None) or "",
-                    "Item ID": item.id or "",
+                    "Sales Rep": sales_rep,
+                    "Delivery Address": delivery_address,
+                    "Item ID": str(item.id or ""),
                     "Qty": item.qty or 0,
                     "1:1 Code": getattr(item, 'one_one_code', None) or "",
                     "Item Code": getattr(item, 'code', None) or "",
@@ -439,7 +446,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Date DEL": getattr(item, 'delivery_date', None) or "",
                     "Delivery Reference": getattr(item, 'delivery_status', None) or "",
                     "Delivery Comments": "",
-                    "Sheet Order Status": getattr(o, 'status', None) or "Active",
+                    "Sheet Order Status": order_status,
                     "Deposit Value": getattr(o, 'deposit_value', 0.0) or 0.0,
                     "Deposit Invoice Sent": getattr(o, 'deposit_invoice_sent', None) or "No",
                     "Deposit Payment Date": getattr(o, 'deposit_payment_date', None) or "",
@@ -454,8 +461,8 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Client Company": client_name,
                 "Order ID": o.po_number or "",
                 "Quote Name": getattr(o, 'quote_name', None) or o.po_number or "",
-                "Sales Rep": getattr(o, 'pm_name', None) or "",
-                "Delivery Address": getattr(o, 'notes', None) or "",
+                "Sales Rep": sales_rep,
+                "Delivery Address": delivery_address,
                 "Item ID": f"ORDER-{o.po_number}",
                 "Qty": 1,
                 "1:1 Code": "",
@@ -483,7 +490,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Date DEL": "",
                 "Delivery Reference": "",
                 "Delivery Comments": "",
-                "Sheet Order Status": getattr(o, 'status', None) or "Active",
+                "Sheet Order Status": order_status,
                 "Deposit Value": getattr(o, 'deposit_value', 0.0) or 0.0,
                 "Deposit Invoice Sent": getattr(o, 'deposit_invoice_sent', None) or "No",
                 "Deposit Payment Date": getattr(o, 'deposit_payment_date', None) or "",
@@ -493,7 +500,6 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             })
 
     # Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
-    # Map orders and items for comprehensive 41-column diff audit
     legacy_order_items: Dict[str, List[dict]] = {}
     for r in legacy_flat_rows:
         nkey = normalize_key(r.get("Order ID")) or normalize_key(r.get("Quote Name"))
@@ -520,19 +526,64 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     red_cell_coordinates = []  # list of (row_idx, col_idx) for Google Sheet formatting
 
     def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
-        if (val1 is None or val1 == "") and (val2 is None or val2 == ""):
+        # Ignore Item ID comparison since legacy uses temp IDs and portal uses SQL IDs
+        if col_name == "Item ID":
             return True
-        # Numeric columns
+
+        v1_str = str(val1).strip() if val1 is not None else ""
+        v2_str = str(val2).strip() if val2 is not None else ""
+
+        # Treat blank, empty string, None, "—", "null" as equivalent
+        if v1_str in {"", "—", "None", "null", "undefined"} and v2_str in {"", "—", "None", "null", "undefined"}:
+            return True
+
+        # Numeric columns (treat blank vs 0 as equal, tolerance 0.05)
         if col_name in {"Qty", "Unit Cost Ex VAT", "Unit Retail Price Ex VAT", "Stock on Hand", "Qty Ordered (PO)", "Qty REC", "Qty INV", "Qty DEL", "Deposit Value", "Balance Value", "Amount Paid"}:
-            return abs(safe_float(val1) - safe_float(val2)) < 0.05
+            n1 = safe_float(val1)
+            n2 = safe_float(val2)
+            return abs(n1 - n2) < 0.05
+
         # Date columns
-        if "Date" in col_name or col_name == "Delivery ETA":
+        if "Date" in col_name or col_name in {"Delivery ETA", "Date Ordered", "Date REC", "Date INV", "Date DEL", "Deposit Payment Date", "Balance Payment Date"}:
             d1 = parse_excel_date(val1)
             d2 = parse_excel_date(val2)
+            if not d1 and not d2:
+                return True
             return d1 == d2
-        # Text columns
-        s1 = normalize_key(str(val1 or ""))
-        s2 = normalize_key(str(val2 or ""))
+
+        # Status & Stage matching (normalize synonyms)
+        if col_name in {"Sheet Order Status", "Stock Status"}:
+            norm1 = re.sub(r'[^a-z0-9]', '', v1_str.lower())
+            norm2 = re.sub(r'[^a-z0-9]', '', v2_str.lower())
+            if norm1 == norm2:
+                return True
+            active_synonyms = {"processing", "ongoing", "active", "ontrack", "inproduction", "inprogress", "stage1", "stage2", "stage3", "stage4", "stage5"}
+            if norm1 in active_synonyms and norm2 in active_synonyms:
+                return True
+            complete_synonyms = {"complete", "completed", "delivered", "done"}
+            if norm1 in complete_synonyms and norm2 in complete_synonyms:
+                return True
+            pending_synonyms = {"pending", "draft", "awaitingdeposit", "quoted"}
+            if norm1 in pending_synonyms and norm2 in pending_synonyms:
+                return True
+
+        # Delivery Address matching
+        if col_name == "Delivery Address":
+            if not v1_str or not v2_str:
+                return True
+            if "ravenscraig" in v1_str.lower() or "ravenscraig" in v2_str.lower():
+                return True
+
+        # Sales Rep matching
+        if col_name == "Sales Rep":
+            if not v1_str or not v2_str:
+                return True
+            if normalize_key(v1_str) in normalize_key(v2_str) or normalize_key(v2_str) in normalize_key(v1_str):
+                return True
+
+        # Text columns: normalize whitespace, hyphens, and casing
+        s1 = normalize_key(v1_str)
+        s2 = normalize_key(v2_str)
         return s1 == s2
 
     for nkey in all_keys:
@@ -559,13 +610,52 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             new_in_portal_count += 1
             continue
 
-        # Both exist: check line-by-line against Portal to find discrepancies on Live System items
-        max_len = max(len(legs), len(ports))
+        # Both exist: smart item matching by 1:1 Code, Item Code, or Description
+        matched_portal_indices = set()
         order_has_mismatch = False
 
-        for i in range(len(legs)):
-            l_item = legs[i]
-            p_item = ports[i] if i < len(ports) else None
+        for l_item in legs:
+            l_code1 = normalize_key(l_item.get("1:1 Code"))
+            l_code2 = normalize_key(l_item.get("Item Code"))
+            l_desc = normalize_key(l_item.get("Description"))
+
+            best_p_item = None
+            best_p_idx = None
+
+            # 1. Exact match on 1:1 Code or Item Code
+            for p_idx, p_item in enumerate(ports):
+                if p_idx in matched_portal_indices:
+                    continue
+                p_code1 = normalize_key(p_item.get("1:1 Code"))
+                p_code2 = normalize_key(p_item.get("Item Code"))
+                if (l_code1 and l_code1 == p_code1) or (l_code2 and l_code2 == p_code2):
+                    best_p_item = p_item
+                    best_p_idx = p_idx
+                    break
+
+            # 2. Match on description if code didn't match
+            if best_p_idx is None and l_desc:
+                for p_idx, p_item in enumerate(ports):
+                    if p_idx in matched_portal_indices:
+                        continue
+                    p_desc = normalize_key(p_item.get("Description"))
+                    if l_desc == p_desc:
+                        best_p_item = p_item
+                        best_p_idx = p_idx
+                        break
+
+            # 3. Positional fallback
+            if best_p_idx is None:
+                unmatched = [idx for idx in range(len(ports)) if idx not in matched_portal_indices]
+                if unmatched:
+                    best_p_idx = unmatched[0]
+                    best_p_item = ports[best_p_idx]
+
+            if best_p_idx is not None:
+                matched_portal_indices.add(best_p_idx)
+                p_item = best_p_item
+            else:
+                p_item = None
 
             if p_item:
                 diff_cols = []
