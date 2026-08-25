@@ -497,62 +497,23 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             })
 
     # Construct Tab 1 Comparison Heatmap with Normalized Collision-Free Key Matching
-    legacy_order_totals = {}
-    for row in legacy_flat_rows:
-        order_id = str(row.get("Order ID") or "").strip()
-        quote_name = str(row.get("Quote Name") or "").strip()
-        if not order_id and not quote_name: continue
-        
-        norm_key = normalize_key(order_id) or normalize_key(quote_name)
-        if norm_key not in legacy_order_totals:
-            legacy_order_totals[norm_key] = {
-                "order_id": order_id,
-                "project_name": row.get("Project Name", ""),
-                "client_name": row.get("Client Company", ""),
-                "quote_name": quote_name or order_id,
-                "total_retail": 0.0,
-                "amount_paid": safe_float(row.get("Amount Paid", 0)),
-                "status": row.get("Sheet Order Status", "Processing"),
-                "items_count": 0
-            }
+    # Map orders and items for comprehensive 41-column diff audit
+    legacy_order_items: Dict[str, List[dict]] = {}
+    for r in legacy_flat_rows:
+        nkey = normalize_key(r.get("Order ID")) or normalize_key(r.get("Quote Name"))
+        if not nkey: continue
+        legacy_order_items.setdefault(nkey, []).append(r)
 
-        qty = safe_int(row.get("Qty", 0))
-        unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
-        legacy_order_totals[norm_key]["total_retail"] += qty * unit_retail
-        legacy_order_totals[norm_key]["items_count"] += 1
+    portal_order_items: Dict[str, List[dict]] = {}
+    for r in portal_flat_rows:
+        nkey = normalize_key(r.get("Order ID")) or normalize_key(r.get("Quote Name"))
+        if not nkey: continue
+        portal_order_items.setdefault(nkey, []).append(r)
 
-    portal_order_totals = {}
-    for row in portal_flat_rows:
-        order_id = str(row.get("Order ID") or "").strip()
-        quote_name = str(row.get("Quote Name") or "").strip()
-        if not order_id and not quote_name: continue
+    all_keys = sorted(list(set(list(legacy_order_items.keys()) + list(portal_order_items.keys()))))
 
-        norm_key = normalize_key(order_id) or normalize_key(quote_name)
-        if norm_key not in portal_order_totals:
-            portal_order_totals[norm_key] = {
-                "order_id": order_id,
-                "project_name": row.get("Project Name", ""),
-                "client_name": row.get("Client Company", ""),
-                "quote_name": quote_name or order_id,
-                "total_retail": 0.0,
-                "amount_paid": safe_float(row.get("Amount Paid", 0)),
-                "status": row.get("Sheet Order Status", "Processing"),
-                "items_count": 0
-            }
-
-        qty = safe_int(row.get("Qty", 0))
-        unit_retail = safe_float(row.get("Unit Retail Price Ex VAT", 0))
-        portal_order_totals[norm_key]["total_retail"] += qty * unit_retail
-        portal_order_totals[norm_key]["items_count"] += 1
-
-    # Heatmap Headers
-    heatmap_headers = [
-        "Order ID / PO #", "Project Name", "Client Company", "Quote Name",
-        "Legacy Items Count", "Portal Items Count",
-        "Retail Value (Legacy)", "Retail Value (Portal)",
-        "Amount Paid (Legacy)", "Amount Paid (Portal)",
-        "Status (Legacy)", "Status (Portal)", "Audit Match Status"
-    ]
+    # Heatmap Headers with all 41 reconciliation columns
+    heatmap_headers = ["Audit Diff Status", "System Source"] + RECONCILIATION_COLUMNS
     heatmap_rows = [heatmap_headers]
 
     matches_count = 0
@@ -560,83 +521,109 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     missing_in_portal_count = 0
     new_in_portal_count = 0
     discrepancy_details = []
+    red_cell_coordinates = []  # list of (row_idx, col_idx) for Google Sheet formatting
 
-    all_norm_keys = sorted(list(set(list(legacy_order_totals.keys()) + list(portal_order_totals.keys()))))
+    def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
+        if (val1 is None or val1 == "") and (val2 is None or val2 == ""):
+            return True
+        # Numeric columns
+        if col_name in {"Qty", "Unit Cost Ex VAT", "Unit Retail Price Ex VAT", "Stock on Hand", "Qty Ordered (PO)", "Qty REC", "Qty INV", "Qty DEL", "Deposit Value", "Balance Value", "Amount Paid"}:
+            return abs(safe_float(val1) - safe_float(val2)) < 0.05
+        # Date columns
+        if "Date" in col_name or col_name == "Delivery ETA":
+            d1 = parse_excel_date(val1)
+            d2 = parse_excel_date(val2)
+            return d1 == d2
+        # Text columns
+        s1 = normalize_key(str(val1 or ""))
+        s2 = normalize_key(str(val2 or ""))
+        return s1 == s2
 
-    for nkey in all_norm_keys:
-        leg = legacy_order_totals.get(nkey)
-        port = portal_order_totals.get(nkey)
+    for nkey in all_keys:
+        legs = legacy_order_items.get(nkey, [])
+        ports = portal_order_items.get(nkey, [])
 
-        display_oid = (leg.get("order_id") if leg else None) or (port.get("order_id") if port else None) or nkey
+        display_oid = (legs[0].get("Order ID") if legs else None) or (ports[0].get("Order ID") if ports else None) or nkey
 
-        if leg and port:
-            ret_match = abs(leg["total_retail"] - port["total_retail"]) < 1.0
-            paid_match = abs(leg["amount_paid"] - port["amount_paid"]) < 1.0
-            stat_match = leg["status"].lower().strip() == port["status"].lower().strip()
-            item_match = leg["items_count"] == port["items_count"]
-
-            if ret_match and paid_match and stat_match and item_match:
-                audit_status = "🟢 100% Match"
-                matches_count += 1
-            else:
-                audit_status = "🔴 Mismatch Detected"
-                mismatches_count += 1
-                discrepancy_details.append({
-                    "order_id": display_oid,
-                    "type": "MISMATCH",
-                    "legacy_retail": leg["total_retail"],
-                    "portal_retail": port["total_retail"],
-                    "legacy_paid": leg["amount_paid"],
-                    "portal_paid": port["amount_paid"],
-                    "legacy_status": leg["status"],
-                    "portal_status": port["status"]
-                })
-
-            heatmap_rows.append([
-                display_oid,
-                leg["project_name"] or port["project_name"],
-                leg["client_name"] or port["client_name"],
-                leg["quote_name"] or port["quote_name"],
-                leg["items_count"],
-                port["items_count"],
-                f"R {leg['total_retail']:,.2f}",
-                f"R {port['total_retail']:,.2f}",
-                f"R {leg['amount_paid']:,.2f}",
-                f"R {port['amount_paid']:,.2f}",
-                leg["status"],
-                port["status"],
-                audit_status
-            ])
-        elif leg and not port:
+        if legs and not ports:
             missing_in_portal_count += 1
             discrepancy_details.append({
                 "order_id": display_oid,
-                "type": "MISSING_IN_PORTAL",
-                "legacy_retail": leg["total_retail"],
-                "portal_retail": 0.0,
-                "legacy_paid": leg["amount_paid"],
-                "portal_paid": 0.0,
-                "legacy_status": leg["status"],
-                "portal_status": "MISSING"
+                "type": "MISSING_IN_PORTAL"
             })
-            heatmap_rows.append([
-                display_oid, leg["project_name"], leg["client_name"], leg["quote_name"],
-                leg["items_count"], 0,
-                f"R {leg['total_retail']:,.2f}", "MISSING IN PORTAL",
-                f"R {leg['amount_paid']:,.2f}", "MISSING IN PORTAL",
-                leg["status"], "MISSING IN PORTAL",
-                "🛑 MISSING IN PORTAL"
-            ])
-        elif port and not leg:
+            for l_item in legs:
+                row_idx = len(heatmap_rows)
+                row_vals = ["🛑 MISSING IN PORTAL", "Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                heatmap_rows.append(row_vals)
+                for c_i in range(len(row_vals)):
+                    red_cell_coordinates.append((row_idx, c_i))
+            continue
+
+        if ports and not legs:
             new_in_portal_count += 1
-            heatmap_rows.append([
-                display_oid, port["project_name"], port["client_name"], port["quote_name"],
-                0, port["items_count"],
-                "NOT IN LEGACY", f"R {port['total_retail']:,.2f}",
-                "NOT IN LEGACY", f"R {port['amount_paid']:,.2f}",
-                "NOT IN LEGACY", port["status"],
-                "⚠️ NEW IN PORTAL"
-            ])
+            for p_item in ports:
+                row_idx = len(heatmap_rows)
+                row_vals = ["⚠️ NEW IN PORTAL", "Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                heatmap_rows.append(row_vals)
+            continue
+
+        # Both exist in Legacy and Portal: compare item by item across 41 columns
+        max_len = max(len(legs), len(ports))
+        order_has_mismatch = False
+
+        for i in range(max_len):
+            l_item = legs[i] if i < len(legs) else None
+            p_item = ports[i] if i < len(ports) else None
+
+            if l_item and p_item:
+                diff_cols = []
+                diff_names = []
+                for c_idx, col_name in enumerate(RECONCILIATION_COLUMNS):
+                    v1 = l_item.get(col_name, "")
+                    v2 = p_item.get(col_name, "")
+                    if not are_values_equal(col_name, v1, v2):
+                        diff_cols.append(c_idx + 2)  # offset by 2 for Status and Source
+                        diff_names.append(col_name)
+
+                if diff_cols:
+                    order_has_mismatch = True
+                    diff_summary = f"🔴 MISMATCH ({len(diff_cols)} diffs: {', '.join(diff_names[:3])})"
+                    
+                    row_idx_l = len(heatmap_rows)
+                    heatmap_rows.append([diff_summary, "1. Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS])
+
+                    row_idx_p = len(heatmap_rows)
+                    heatmap_rows.append(["🔴 PORTAL MATCH", "2. Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS])
+
+                    # Mark exact diff coordinates
+                    for diff_c in diff_cols:
+                        red_cell_coordinates.append((row_idx_l, diff_c))
+                        red_cell_coordinates.append((row_idx_p, diff_c))
+                    red_cell_coordinates.append((row_idx_l, 0))
+                    red_cell_coordinates.append((row_idx_p, 0))
+
+            elif l_item and not p_item:
+                order_has_mismatch = True
+                row_idx = len(heatmap_rows)
+                row_vals = ["🛑 EXTRA ITEM IN LEGACY", "1. Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                heatmap_rows.append(row_vals)
+                for c_i in range(len(row_vals)):
+                    red_cell_coordinates.append((row_idx, c_i))
+
+            elif p_item and not l_item:
+                order_has_mismatch = True
+                row_idx = len(heatmap_rows)
+                row_vals = ["⚠️ EXTRA ITEM IN PORTAL", "2. Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                heatmap_rows.append(row_vals)
+
+        if order_has_mismatch:
+            mismatches_count += 1
+            discrepancy_details.append({
+                "order_id": display_oid,
+                "type": "MISMATCH"
+            })
+        else:
+            matches_count += 1
 
     # Convert flat rows into 2D arrays for Google Sheets / Excel
     legacy_tab_2d = [RECONCILIATION_COLUMNS]
@@ -745,7 +732,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 except Exception as b_err:
                     print(f"Sheet structure update note: {b_err}")
 
-            # Clear old content from the 3 tabs first so rows shrink/grow cleanly
+            # Clear old content and formatting from the 3 tabs first
             for title, _ in tab_names:
                 try:
                     sheets_service.spreadsheets().values().clear(
@@ -776,62 +763,55 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 body={'valueInputOption': 'USER_ENTERED', 'data': data_payload}
             ).execute()
 
-            # Add Red conditional formatting on Tab 1
-            cond_requests = [
-                {
-                    'addConditionalFormatRule': {
-                        'rule': {
-                            'ranges': [{
-                                'sheetId': 101,
-                                'startRowIndex': 1,
-                                'endRowIndex': len(heatmap_rows),
-                                'startColumnIndex': 0,
-                                'endColumnIndex': 13
-                            }],
-                            'booleanRule': {
-                                'condition': {
-                                    'type': 'TEXT_CONTAINS',
-                                    'values': [{'userEnteredValue': 'Mismatch'}]
-                                },
-                                'format': {
-                                    'backgroundColor': {'red': 1.0, 'green': 0.88, 'blue': 0.88},
-                                    'textFormat': {'foregroundColor': {'red': 0.86, 'green': 0.15, 'blue': 0.15}, 'bold': True}
-                                }
-                            }
-                        },
-                        'index': 0
-                    }
-                },
-                {
-                    'addConditionalFormatRule': {
-                        'rule': {
-                            'ranges': [{
-                                'sheetId': 101,
-                                'startRowIndex': 1,
-                                'endRowIndex': len(heatmap_rows),
-                                'startColumnIndex': 0,
-                                'endColumnIndex': 13
-                            }],
-                            'booleanRule': {
-                                'condition': {
-                                    'type': 'TEXT_CONTAINS',
-                                    'values': [{'userEnteredValue': 'MISSING IN PORTAL'}]
-                                },
-                                'format': {
-                                    'backgroundColor': {'red': 0.99, 'green': 0.80, 'blue': 0.80},
-                                    'textFormat': {'foregroundColor': {'red': 0.75, 'green': 0.10, 'blue': 0.10}, 'bold': True}
-                                }
-                            }
-                        },
-                        'index': 1
-                    }
+            # Apply cell-level red highlight formatting on Tab 1
+            cell_format_requests = []
+            
+            # Format header row
+            cell_format_requests.append({
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 101,
+                        'startRowIndex': 0,
+                        'endRowIndex': 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': len(heatmap_headers)
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'backgroundColor': {'red': 0.94, 'green': 0.96, 'blue': 0.98},
+                            'textFormat': {'bold': True, 'foregroundColor': {'red': 0.09, 'green': 0.13, 'blue': 0.24}}
+                        }
+                    },
+                    'fields': 'userEnteredFormat(backgroundColor,textFormat)'
                 }
-            ]
+            })
 
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=audit_sheet_id,
-                body={'requests': cond_requests}
-            ).execute()
+            # Highlight specific discrepancy coordinates in red
+            for r_idx, c_idx in red_cell_coordinates[:1500]:
+                cell_format_requests.append({
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': 101,
+                            'startRowIndex': r_idx,
+                            'endRowIndex': r_idx + 1,
+                            'startColumnIndex': c_idx,
+                            'endColumnIndex': c_idx + 1
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'backgroundColor': {'red': 1.0, 'green': 0.88, 'blue': 0.88},
+                                'textFormat': {'foregroundColor': {'red': 0.86, 'green': 0.15, 'blue': 0.15}, 'bold': True}
+                            }
+                        },
+                        'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                    }
+                })
+
+            if cell_format_requests:
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=audit_sheet_id,
+                    body={'requests': cell_format_requests}
+                ).execute()
 
         except Exception as sheet_err:
             print(f"Notice: Google Sheet tab batch update notice: {sheet_err}")
@@ -841,7 +821,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         "spreadsheet_id": audit_sheet_id,
         "spreadsheet_url": audit_sheet_url,
         "stats": {
-            "total_orders_audited": len(all_norm_keys),
+            "total_orders_audited": len(all_keys),
             "matches_count": matches_count,
             "mismatches_count": mismatches_count,
             "missing_in_portal_count": missing_in_portal_count,
@@ -851,5 +831,5 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         "heatmap_rows": heatmap_rows,
         "legacy_rows": legacy_tab_2d,
         "portal_rows": portal_tab_2d,
-        "message": f"Successfully completed live comparison! {len(all_norm_keys)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
+        "message": f"Successfully completed live comparison! {len(all_keys)} orders analyzed ({matches_count} matching, {mismatches_count} mismatches, {missing_in_portal_count} missing in portal)."
     }
