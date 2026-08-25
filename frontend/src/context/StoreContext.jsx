@@ -1656,6 +1656,8 @@ export function StoreProvider({ children }) {
     const newProj = { 
       ...project,
       key,
+      name: project.name || '',
+      client: project.client || '',
       projectType: project.projectType || 'Design & Orders',
       designFees: project.designFees || [],
       orders: project.orders || [],
@@ -1664,10 +1666,11 @@ export function StoreProvider({ children }) {
       targetMargin: project.targetMargin || alertSettings.defaultTargetMargin || 39,
       actualMargin: project.actualMargin || alertSettings.defaultTargetMargin || 39,
       delay: '—',
-      start: project.start || new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }),
+      start: project.start || new Date().toISOString().split('T')[0],
       deadline: project.deadline || 'TBD',
       daysLeft: '—',
       complete: 'Ongoing',
+      isDraft: project.isDraft !== undefined ? project.isDraft : true,
       s1:'',s2:'',s3:'',s4:'',s5:''
     };
 
@@ -1681,22 +1684,19 @@ export function StoreProvider({ children }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newProj.name,
+          name: newProj.name || key,
           project_key: key,
-          client_name: newProj.client,
-          pm_name: newProj.pm,
-          offering: newProj.offering,
-          sqm: newProj.sqm,
-          status: newProj.status,
-          deadline: newProj.deadline,
-          complete_status: newProj.complete,
-          target_margin: newProj.targetMargin,
-          actual_margin: newProj.actualMargin,
-          s1: newProj.s1,
-          s2: newProj.s2,
-          s3: newProj.s3,
-          s4: newProj.s4,
-          s5: newProj.s5
+          client_name: newProj.client || '',
+          pm_name: newProj.pm || 'Dani',
+          offering: newProj.offering || 'Signature',
+          sqm: String(newProj.sqm || ''),
+          status: newProj.status || 'On track',
+          start_date: newProj.start,
+          deadline: newProj.deadline || 'TBD',
+          complete_status: newProj.complete || 'Ongoing',
+          target_margin: Number(newProj.targetMargin) || 39.0,
+          actual_margin: Number(newProj.actualMargin) || 39.0,
+          s1: '', s2: '', s3: '', s4: '', s5: ''
         })
       });
     } catch (err) {
@@ -1706,8 +1706,9 @@ export function StoreProvider({ children }) {
   };
 
   const saveDraftProject = async (oldKey, projectData) => {
-    const baseKey = (projectData.name || 'unnamed-project').toLowerCase().trim().replace(/\s+/g, '-');
-    let finalKey = baseKey || 'unnamed-project';
+    const rawName = projectData.name || 'unnamed-project';
+    const baseKey = rawName.toLowerCase().trim().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
+    let finalKey = baseKey;
     
     let counter = 1;
     while (projects[finalKey] && finalKey !== oldKey) {
@@ -1719,10 +1720,12 @@ export function StoreProvider({ children }) {
     const updatedProj = {
       ...existingDraft,
       ...projectData,
+      name: rawName,
       key: finalKey,
       isDraft: false,
       stage: projectData.stage || existingDraft.stage || 'Pending',
-      status: projectData.status || existingDraft.status || 'On track'
+      status: projectData.status || existingDraft.status || 'On track',
+      start: projectData.start || existingDraft.start || new Date().toISOString().split('T')[0]
     };
 
     // Optimistically update React state
@@ -1742,27 +1745,30 @@ export function StoreProvider({ children }) {
       const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : "";
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
+      const payload = {
+        name: updatedProj.name,
+        project_key: finalKey,
+        client_name: updatedProj.client || '',
+        pm_name: updatedProj.pm || 'Dani',
+        offering: updatedProj.offering || 'Signature',
+        sqm: String(updatedProj.sqm || ''),
+        status: updatedProj.status || 'On track',
+        start_date: updatedProj.start || new Date().toISOString().split('T')[0],
+        deadline: updatedProj.deadline || 'TBD',
+        complete_status: 'Ongoing',
+        target_margin: Number(updatedProj.targetMargin) || 39.0,
+        actual_margin: Number(updatedProj.actualMargin) || 39.0,
+        s1: s1Val,
+        s2: s2Val,
+        s3: s3Val,
+        s4: s4Val,
+        s5: s5Val
+      };
+
       const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(oldKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: updatedProj.name,
-          project_key: finalKey,
-          client_name: updatedProj.client || '',
-          pm_name: updatedProj.pm || 'Dani',
-          offering: updatedProj.offering || 'Signature',
-          sqm: String(updatedProj.sqm || ''),
-          status: updatedProj.status || 'On track',
-          deadline: updatedProj.deadline || 'TBD',
-          complete_status: 'Ongoing',
-          target_margin: Number(updatedProj.targetMargin) || 39.0,
-          actual_margin: Number(updatedProj.actualMargin) || 39.0,
-          s1: s1Val,
-          s2: s2Val,
-          s3: s3Val,
-          s4: s4Val,
-          s5: s5Val
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
@@ -1770,24 +1776,7 @@ export function StoreProvider({ children }) {
         await fetch(`${API_BASE}/api/projects/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: updatedProj.name,
-            project_key: finalKey,
-            client_name: updatedProj.client || '',
-            pm_name: updatedProj.pm || 'Dani',
-            offering: updatedProj.offering || 'Signature',
-            sqm: String(updatedProj.sqm || ''),
-            status: updatedProj.status || 'On track',
-            deadline: updatedProj.deadline || 'TBD',
-            complete_status: 'Ongoing',
-            target_margin: Number(updatedProj.targetMargin) || 39.0,
-            actual_margin: Number(updatedProj.actualMargin) || 39.0,
-            s1: s1Val,
-            s2: s2Val,
-            s3: s3Val,
-            s4: s4Val,
-            s5: s5Val
-          })
+          body: JSON.stringify(payload)
         });
       }
     } catch (err) {

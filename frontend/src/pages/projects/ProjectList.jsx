@@ -314,7 +314,7 @@ export default function ProjectList() {
       }
 
       // Search matches (Project name, Client, or PM)
-      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+      const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) || 
                             (p.client || '').toLowerCase().includes(search.toLowerCase()) ||
                             (p.pm || '').toLowerCase().includes(search.toLowerCase());
       

@@ -13,7 +13,7 @@ router = APIRouter()
 from typing import Optional, Any
 
 class ProjectSchema(BaseModel):
-    name: str
+    name: Optional[str] = "New Project"
     project_key: Optional[str] = None
     client_name: Optional[str] = None
     pm_name: Optional[str] = None
@@ -21,6 +21,7 @@ class ProjectSchema(BaseModel):
     sqm: Optional[str] = None
     status: Optional[str] = "On track"
     deadline: Optional[str] = "TBD"
+    start_date: Optional[str] = None
     complete_status: Optional[str] = "Ongoing"
     target_margin: float = 0.0
     actual_margin: float = 0.0
@@ -133,30 +134,49 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
     if not p_key:
         p_key = (project.name or 'new-project').lower().strip().replace(' ', '-')
     
-    # Ensure uniqueness
+    # Ensure uniqueness or update existing record
     existing = db.query(Project).filter(Project.project_key == p_key).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Project with this key already exists")
+        existing.name = project.name or existing.name
+        if project.client_name is not None: existing.client_name = project.client_name
+        if project.pm_name is not None: existing.pm_name = project.pm_name
+        if project.offering is not None: existing.offering = project.offering
+        if project.sqm is not None: existing.sqm = project.sqm
+        if project.status is not None: existing.status = project.status
+        if project.deadline is not None: existing.deadline = project.deadline
+        if project.start_date is not None: existing.start_date = project.start_date
+        if project.complete_status is not None: existing.complete_status = project.complete_status
+        if project.target_margin: existing.target_margin = project.target_margin
+        if project.actual_margin: existing.actual_margin = project.actual_margin
+        if project.s1: existing.s1 = project.s1
+        if project.s2: existing.s2 = project.s2
+        if project.s3: existing.s3 = project.s3
+        if project.s4: existing.s4 = project.s4
+        if project.s5: existing.s5 = project.s5
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     active_rates = get_active_global_design_rates(db)
 
     new_project = Project(
-        name=project.name,
+        name=project.name or "New Project",
         project_key=p_key,
         client_name=project.client_name,
         pm_name=project.pm_name,
         offering=project.offering,
         sqm=project.sqm,
-        status=project.status,
-        deadline=project.deadline,
-        complete_status=project.complete_status,
-        target_margin=project.target_margin,
-        actual_margin=project.actual_margin,
-        s1=project.s1,
-        s2=project.s2,
-        s3=project.s3,
-        s4=project.s4,
-        s5=project.s5,
+        status=project.status or "On track",
+        deadline=project.deadline or "TBD",
+        start_date=project.start_date or "",
+        complete_status=project.complete_status or "Ongoing",
+        target_margin=project.target_margin or 39.0,
+        actual_margin=project.actual_margin or 39.0,
+        s1=project.s1 or "",
+        s2=project.s2 or "",
+        s3=project.s3 or "",
+        s4=project.s4 or "",
+        s5=project.s5 or "",
         design_fee_rates_snapshot=active_rates,
         design_fee_rates_original=active_rates
     )
@@ -411,6 +431,8 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.sqm = project_data.sqm
     project.status = project_data.status
     project.deadline = project_data.deadline
+    if project_data.start_date:
+        project.start_date = project_data.start_date
     project.complete_status = project_data.complete_status
     project.target_margin = project_data.target_margin
     project.actual_margin = project_data.actual_margin
