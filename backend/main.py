@@ -20,6 +20,7 @@ from routes.lookups import router as lookups_router
 from routes.orders import router as orders_router
 from routes.deployments import router as deployments_router
 from routes.audit_comparison import router as audit_comparison_router
+from routes.project_tickets import router as project_tickets_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -74,6 +75,7 @@ app.include_router(products_public_router, prefix="/api/products", tags=["produc
 app.include_router(lookups_router, prefix="/api/lookups", tags=["lookups"])
 app.include_router(deployments_router, prefix="/api/admin", tags=["deployments"])
 app.include_router(audit_comparison_router, prefix="/api/admin", tags=["audit-comparison"])
+app.include_router(project_tickets_router, prefix="/api/project-tickets", tags=["project-tickets"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -353,6 +355,27 @@ def init_db():
                         conn.execute(text(f"ALTER TABLE products ADD COLUMN {col_name} {col_type};"))
                         conn.commit()
                         print(f"Database migration: added column {col_name} to 'products' table.")
+
+                # Migrate support_tickets table to ensure extended fields exist
+                try:
+                    if 'support_tickets' in inspector.get_table_names():
+                        ticket_cols = [c["name"] for c in inspector.get_columns("support_tickets")]
+                        ticket_new_cols = [
+                            ("category", "VARCHAR DEFAULT 'Bug'"),
+                            ("raised_by", "VARCHAR"),
+                            ("eta", "VARCHAR"),
+                            ("project_name", "VARCHAR"),
+                            ("attachments_json", "JSON"),
+                            ("comments_json", "JSON"),
+                            ("updated_at", "VARCHAR")
+                        ]
+                        for t_col_name, t_col_type in ticket_new_cols:
+                            if t_col_name not in ticket_cols:
+                                conn.execute(text(f"ALTER TABLE support_tickets ADD COLUMN {t_col_name} {t_col_type};"))
+                                conn.commit()
+                                print(f"Database migration: added column {t_col_name} to 'support_tickets' table.")
+                except Exception as t_err:
+                    print(f"Database migration support_tickets (info): {t_err}")
         except Exception as migration_err:
             print(f"Warning: Migration failed: {migration_err}")
 
@@ -520,6 +543,118 @@ def init_db():
                     db.add(db_l)
                 db.commit()
                 print("Database seeded with default lookup values.")
+
+            # Seed default project tickets if none exist
+            from models.orm_models import ProjectTicket
+            ticket_count = db.query(ProjectTicket).count()
+            if ticket_count == 0:
+                sample_project_tickets = [
+                    {
+                        "ticket_number": "PM-TKT-001",
+                        "project_id": 2,
+                        "project_name": "Villa Z",
+                        "client_name": "Marco Esteves",
+                        "pm_name": "Dani",
+                        "stage": "Stage 5: Installation & Snagging",
+                        "title": "Master suite en-suite ceiling cutout misalignment",
+                        "description": "The ceiling drywall cutout for the Entero RD-S downlight in the master bathroom was drilled 50mm too close to the shower glass partition. Requires ceiling patch and re-cut before final skim coat.",
+                        "ticket_type": "Site Snag / Defect",
+                        "priority": "High",
+                        "status": "In progress",
+                        "location_area": "Master Bathroom - Zone 2",
+                        "fitting_code": "DL-01 Downlight",
+                        "cost_impact": 1200.0,
+                        "schedule_impact_days": 2,
+                        "raised_by": "Dani",
+                        "assigned_to": "Drywall Contractor",
+                        "due_date": "2026-06-05",
+                        "attachments_json": [],
+                        "comments_json": [
+                            {"sender": "Dani", "text": "Contractor notified on site. Awaiting re-skim confirmation.", "date": "24 May 2026"}
+                        ],
+                        "created_at": "24 May 2026",
+                        "updated_at": "24 May 2026"
+                    },
+                    {
+                        "ticket_number": "PM-TKT-002",
+                        "project_id": 1,
+                        "project_name": "Upper Primrose",
+                        "client_name": "Sarah Venter",
+                        "pm_name": "Martin",
+                        "stage": "Stage 3: Detail Design",
+                        "title": "Kitchen island joinery profile dimming driver RFI",
+                        "description": "Joinery sub-contractor requesting clarification on remote driver location and maximum secondary cable run distance for the recessed LED profile underneath the marble countertop.",
+                        "ticket_type": "RFI / Site Query",
+                        "priority": "Medium",
+                        "status": "Open",
+                        "location_area": "Kitchen Island Joinery",
+                        "fitting_code": "STR-02 LED Strip",
+                        "cost_impact": 0.0,
+                        "schedule_impact_days": 0,
+                        "raised_by": "Martin",
+                        "assigned_to": "Electrical Lead",
+                        "due_date": "2026-06-10",
+                        "attachments_json": [],
+                        "comments_json": [],
+                        "created_at": "22 May 2026",
+                        "updated_at": "22 May 2026"
+                    },
+                    {
+                        "ticket_number": "PM-TKT-003",
+                        "project_id": 3,
+                        "project_name": "Tambor 9",
+                        "client_name": "Liezel du Toit",
+                        "pm_name": "Alex",
+                        "stage": "Stage 2: Schematic Design",
+                        "title": "Living room chandelier drop height client variation",
+                        "description": "Client requested increasing the overall feature pendant drop from 1800mm to 2400mm due to double-volume ceiling height revision on the latest architectural drawings.",
+                        "ticket_type": "Design Revision",
+                        "priority": "Critical",
+                        "status": "Awaiting Sign-off",
+                        "location_area": "Double Volume Living Room",
+                        "fitting_code": "CH-01 Feature Pendant",
+                        "cost_impact": 4500.0,
+                        "schedule_impact_days": 3,
+                        "raised_by": "Alex",
+                        "assigned_to": "Dani",
+                        "due_date": "2026-05-30",
+                        "attachments_json": [],
+                        "comments_json": [
+                            {"sender": "Alex", "text": "Revised suspension cable quote requested from supplier.", "date": "20 May 2026"}
+                        ],
+                        "created_at": "20 May 2026",
+                        "updated_at": "20 May 2026"
+                    },
+                    {
+                        "ticket_number": "PM-TKT-004",
+                        "project_id": 4,
+                        "project_name": "Singita Elela",
+                        "client_name": "Thabo Khumalo",
+                        "pm_name": "Merlyn",
+                        "stage": "Stage 4: Procurement",
+                        "title": "Outdoor pathway IP67 bollard supplier lead time hold",
+                        "description": "Supplier confirmed an 8-week manufacturing lead time on custom dark bronze bollards. Need PM approval to expedite air freight or specify local alternative to avoid delaying Phase 1 landscaping handover.",
+                        "ticket_type": "Procurement Delay",
+                        "priority": "High",
+                        "status": "Open",
+                        "location_area": "External Boardwalk Pathway",
+                        "fitting_code": "BL-04 IP67 Bollard",
+                        "cost_impact": 0.0,
+                        "schedule_impact_days": 14,
+                        "raised_by": "Merlyn",
+                        "assigned_to": "Procurement Team",
+                        "due_date": "2026-06-01",
+                        "attachments_json": [],
+                        "comments_json": [],
+                        "created_at": "18 May 2026",
+                        "updated_at": "18 May 2026"
+                    }
+                ]
+                for t_data in sample_project_tickets:
+                    db_t = ProjectTicket(**t_data)
+                    db.add(db_t)
+                db.commit()
+                print("Database seeded with default project tickets.")
 
             print("Database initialized & seeded with default folders.")
         except Exception as seed_err:

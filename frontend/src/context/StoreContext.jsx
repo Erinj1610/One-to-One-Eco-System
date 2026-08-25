@@ -1202,14 +1202,14 @@ export function StoreProvider({ children }) {
     { id: 'purchasing', label: 'Purchasing & Receiving', icon: 'ClipboardList', path: '/purchasing', sectionId: 'projects_sec', visible: true, order: 5 },
     { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 6 },
     { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/invoices', sectionId: 'projects_sec', visible: true, order: 7 },
-    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 8 },
-    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 9 },
-    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 10 },
-    { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 11 },
-    { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 12 },
-    { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 13 },
-    { id: 'reports', label: 'Sales & KPIs', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 14 },
-    { id: 'support', label: 'Support', icon: 'Headset', path: '/support', sectionId: 'other_modules', visible: true, order: 15 }
+    { id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true, order: 8 },
+    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 9 },
+    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 10 },
+    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 11 },
+    { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 12 },
+    { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 13 },
+    { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 14 },
+    { id: 'reports', label: 'Sales & KPIs', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 15 }
   ];
   const defaultSections = [
     { id: 'general', label: 'General', order: 0 },
@@ -1219,6 +1219,19 @@ export function StoreProvider({ children }) {
   ];
 
   const [moduleConfig, setModuleConfig] = useState({ modules: defaultModules, sections: defaultSections });
+  const [supportTickets, setSupportTickets] = useState([]);
+
+  // Fetch support/ticket logs on init
+  React.useEffect(() => {
+    fetch(`${API_BASE}/api/project-tickets`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSupportTickets(data);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   // References to trace when backend fetch is completed so we don't save default values on load
   const isLoaded = React.useRef({
@@ -1270,7 +1283,16 @@ export function StoreProvider({ children }) {
           if (val !== null && val !== undefined) {
             if (key === 'moduleConfig') {
               const loadedVal = val;
-              const loadedModules = loadedVal.modules || [];
+              let loadedModules = loadedVal.modules || [];
+              
+              // Migrate legacy support module or update ticket_logger
+              loadedModules = loadedModules.map(m => {
+                if (m.id === 'support' || m.id === 'ticket_logger') {
+                  return { ...m, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
+                }
+                return m;
+              });
+
               const mergedModules = [...loadedModules];
               defaultModules.forEach(defM => {
                 if (!loadedModules.some(m => m.id === defM.id)) {
@@ -2206,7 +2228,11 @@ export function StoreProvider({ children }) {
       projectManagers,
       setProjectManagers,
       activityLogs,
-      logActivity
+      logActivity,
+      supportTickets,
+      setSupportTickets,
+      tickets: supportTickets,
+      setTickets: setSupportTickets
     }}>
       {children}
     </StoreContext.Provider>

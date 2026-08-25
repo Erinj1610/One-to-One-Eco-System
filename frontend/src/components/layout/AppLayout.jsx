@@ -34,7 +34,8 @@ export default function AppLayout() {
     '/docs': 'docs',
     '/hr': 'hr',
     '/reports': 'reports',
-    '/support': 'support'
+    '/support': 'ticket_logger',
+    '/ticket-logger': 'ticket_logger'
   };
 
   const getTitle = () => {

@@ -31,6 +31,7 @@ import DocsPage from './pages/DocsPage';
 import HrPage from './pages/HrPage';
 import ReportsPage from './pages/ReportsPage';
 import SupportPage from './pages/SupportPage';
+import TicketLoggerPage from './pages/TicketLoggerPage';
 import SettingsPage from './pages/SettingsPage';
 import ResetPassword from './pages/ResetPassword';
 
@@ -91,7 +92,8 @@ function AppInner({ devBypass, setDevBypass }) {
           <Route path="docs"       element={<DocsPage />} />
           <Route path="hr"         element={<HrPage />} />
           <Route path="reports"    element={<ReportsPage />} />
-          <Route path="support"    element={<SupportPage />} />
+          <Route path="ticket-logger" element={<TicketLoggerPage />} />
+          <Route path="support"    element={<TicketLoggerPage />} />
           <Route path="settings"   element={<SettingsPage />} />
           <Route path="admin/template-editor" element={
             <AdminRoute><TemplateEditor /></AdminRoute>

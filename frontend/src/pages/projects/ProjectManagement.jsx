@@ -5,13 +5,14 @@ import { useStore } from '../../context/StoreContext';
 import { useAuth } from '../../context/AuthContext';
 import { useResizableTable } from '../../components/common/ResizableTable';
 import DesignFeeBuilder from './DesignFeeBuilder';
+import TicketLoggerPage from '../TicketLoggerPage';
 import { API_BASE } from '../../api_config';
 import { 
   Lightbulb, ArrowLeft, RefreshCw, Upload, CheckCircle, Clock, Lock, 
   File, FileText, Receipt, Plus, Play, User, Users, ShieldAlert, 
   AlertTriangle, TrendingUp, DollarSign, Calendar, BarChart3, HelpCircle,
   ShoppingBag, ClipboardList, Wallet, Percent, Award, Folder, Download, Trash2,
-  Copy, Save, AlertCircle, ChevronRight, Layers
+  Copy, Save, AlertCircle, ChevronRight, Layers, Ticket
 } from 'lucide-react';
 
 // Philosophy Contexts for the Right Panel
@@ -986,6 +987,7 @@ export default function ProjectManagement() {
           { id: 'orders', label: '3. Orders Section', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
           { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Layers size={15} />, disabled: p.isDraft },
           { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft },
+          { id: 'tickets', label: '6. Tickets & Snags', icon: <Ticket size={15} />, disabled: p.isDraft },
           { id: 'payments', label: '💳 Payments Ledger', icon: <Wallet size={15} />, disabled: p.isDraft }
         ].map(tab => {
           const isActive = activeTab === tab.id;
@@ -2480,6 +2482,13 @@ export default function ProjectManagement() {
                   )}
                 </div>
 
+              </div>
+            )}
+
+            {/* SECTION 6: TICKETS & SNAG LIST */}
+            {activeTab === 'tickets' && (
+              <div className="animation-fade-in" style={{ padding: '16px 10px' }}>
+                <TicketLoggerPage initialProjectId={p.id} embedded={true} />
               </div>
             )}
 

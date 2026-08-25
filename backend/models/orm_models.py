@@ -597,12 +597,19 @@ class SupportTicket(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    status = Column(String, default="Pending")
+    status = Column(String, default="Open")
     urgency = Column(String, default="Medium")
+    category = Column(String, default="Bug")
+    raised_by = Column(String, nullable=True)
+    eta = Column(String, nullable=True)
+    project_name = Column(String, nullable=True)
     image_url = Column(String, nullable=True)
+    attachments_json = Column(JSON, nullable=True)
+    comments_json = Column(JSON, nullable=True)
     rating = Column(Integer, nullable=True)
     response_text = Column(String, nullable=True)
     created_at = Column(String, nullable=True)
+    updated_at = Column(String, nullable=True)
 
 
 class LookupValue(Base):
@@ -615,6 +622,37 @@ class LookupValue(Base):
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     metadata_json = Column(JSON, nullable=True)            # Optional additional configuration / colors etc.
+
+
+class ProjectTicket(Base):
+    __tablename__ = "project_tickets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_number = Column(String, index=True, nullable=True) # e.g. "PM-TKT-001"
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    project_name = Column(String, index=True, nullable=True)
+    client_name = Column(String, nullable=True)
+    pm_name = Column(String, index=True, nullable=True)
+    stage = Column(String, default="Stage 5: Installation & Snagging")
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    ticket_type = Column(String, default="Site Snag / Defect")
+    priority = Column(String, default="Medium")
+    status = Column(String, default="Open")
+    location_area = Column(String, nullable=True)
+    fitting_code = Column(String, nullable=True)
+    cost_impact = Column(Float, default=0.0)
+    schedule_impact_days = Column(Integer, default=0)
+    raised_by = Column(String, nullable=True)
+    assigned_to = Column(String, nullable=True)
+    due_date = Column(String, nullable=True)
+    resolved_date = Column(String, nullable=True)
+    resolution_notes = Column(String, nullable=True)
+    attachments_json = Column(JSON, nullable=True)
+    comments_json = Column(JSON, nullable=True)
+    created_at = Column(String, nullable=True)
+    updated_at = Column(String, nullable=True)
+
 
 
 
