@@ -512,8 +512,8 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
     all_keys = sorted(list(set(list(legacy_order_items.keys()) + list(portal_order_items.keys()))))
 
-    # Heatmap Headers with all 41 reconciliation columns
-    heatmap_headers = ["Audit Diff Status", "System Source"] + RECONCILIATION_COLUMNS
+    # Heatmap Headers with Audit Status + all 41 reconciliation columns
+    heatmap_headers = ["Audit Status"] + RECONCILIATION_COLUMNS
     heatmap_rows = [heatmap_headers]
 
     matches_count = 0
@@ -553,7 +553,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             })
             for l_item in legs:
                 row_idx = len(heatmap_rows)
-                row_vals = ["🛑 MISSING IN PORTAL", "Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                row_vals = ["🛑 MISSING IN PORTAL"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
                 heatmap_rows.append(row_vals)
                 for c_i in range(len(row_vals)):
                     red_cell_coordinates.append((row_idx, c_i))
@@ -561,60 +561,46 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
         if ports and not legs:
             new_in_portal_count += 1
-            for p_item in ports:
-                row_idx = len(heatmap_rows)
-                row_vals = ["⚠️ NEW IN PORTAL", "Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS]
-                heatmap_rows.append(row_vals)
             continue
 
-        # Both exist in Legacy and Portal: compare item by item across 41 columns
+        # Both exist: check line-by-line against Portal to find discrepancies on Live System items
         max_len = max(len(legs), len(ports))
         order_has_mismatch = False
 
-        for i in range(max_len):
-            l_item = legs[i] if i < len(legs) else None
+        for i in range(len(legs)):
+            l_item = legs[i]
             p_item = ports[i] if i < len(ports) else None
 
-            if l_item and p_item:
+            if p_item:
                 diff_cols = []
                 diff_names = []
                 for c_idx, col_name in enumerate(RECONCILIATION_COLUMNS):
                     v1 = l_item.get(col_name, "")
                     v2 = p_item.get(col_name, "")
                     if not are_values_equal(col_name, v1, v2):
-                        diff_cols.append(c_idx + 2)  # offset by 2 for Status and Source
+                        diff_cols.append(c_idx + 1)  # offset by 1 for Status column
                         diff_names.append(col_name)
 
                 if diff_cols:
                     order_has_mismatch = True
-                    diff_summary = f"🔴 MISMATCH ({len(diff_cols)} diffs: {', '.join(diff_names[:3])})"
+                    diff_summary = f"🔴 MISMATCH ({', '.join(diff_names[:3])})"
                     
-                    row_idx_l = len(heatmap_rows)
-                    heatmap_rows.append([diff_summary, "1. Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS])
+                    row_idx = len(heatmap_rows)
+                    heatmap_rows.append([diff_summary] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS])
 
-                    row_idx_p = len(heatmap_rows)
-                    heatmap_rows.append(["🔴 PORTAL MATCH", "2. Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS])
-
-                    # Mark exact diff coordinates
+                    # Mark exact diff coordinates in red
                     for diff_c in diff_cols:
-                        red_cell_coordinates.append((row_idx_l, diff_c))
-                        red_cell_coordinates.append((row_idx_p, diff_c))
-                    red_cell_coordinates.append((row_idx_l, 0))
-                    red_cell_coordinates.append((row_idx_p, 0))
+                        red_cell_coordinates.append((row_idx, diff_c))
+                    red_cell_coordinates.append((row_idx, 0))
 
-            elif l_item and not p_item:
+            else:
+                # Extra item in live system that portal doesn't have
                 order_has_mismatch = True
                 row_idx = len(heatmap_rows)
-                row_vals = ["🛑 EXTRA ITEM IN LEGACY", "1. Current Live System"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
+                row_vals = ["🛑 ITEM MISSING IN PORTAL"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
                 heatmap_rows.append(row_vals)
                 for c_i in range(len(row_vals)):
                     red_cell_coordinates.append((row_idx, c_i))
-
-            elif p_item and not l_item:
-                order_has_mismatch = True
-                row_idx = len(heatmap_rows)
-                row_vals = ["⚠️ EXTRA ITEM IN PORTAL", "2. Portal Database"] + [p_item.get(c, "") for c in RECONCILIATION_COLUMNS]
-                heatmap_rows.append(row_vals)
 
         if order_has_mismatch:
             mismatches_count += 1
