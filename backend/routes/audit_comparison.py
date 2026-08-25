@@ -411,6 +411,11 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
         if items:
             for item in items:
+                po_supplier_val = getattr(item, 'po_supplier', None) or getattr(item, 'supplier', None) or getattr(o, 'supplier_name', None) or getattr(o, 'supplier', "") or ""
+                date_ordered_val = getattr(item, 'po_date', None) or getattr(o, 'order_date', None) or getattr(o, 'quotation_sent_date', "") or ""
+                po_ref_val = getattr(item, 'po_ref', None) or o.po_number or ""
+                delivery_eta_val = getattr(item, 'eta', None) or getattr(item, 'po_eta', None) or getattr(o, 'eta', None) or getattr(o, 'expected_delivery_date', "") or ""
+
                 portal_flat_rows.append({
                     "Project Key": o.project_key or "",
                     "Project Name": proj_name,
@@ -427,15 +432,15 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Unit Cost Ex VAT": getattr(item, 'unit_cost', 0.0) or 0.0,
                     "Unit Retail Price Ex VAT": getattr(item, 'unit_retail', 0.0) or 0.0,
                     "Brand": getattr(item, 'brand', None) or "",
-                    "Supplier": getattr(item, 'supplier', None) or "",
+                    "Supplier": getattr(item, 'supplier', None) or getattr(o, 'supplier_name', "") or "",
                     "Item Type": getattr(item, 'type', None) or "Hardware",
                     "Stock Status": getattr(item, 'stock_status', None) or "",
                     "Stock on Hand": 0,
                     "Qty Ordered (PO)": getattr(item, 'po_qty_ordered', 0) or 0,
-                    "PO Supplier": getattr(item, 'po_supplier', None) or "",
-                    "Date Ordered": getattr(item, 'po_date', None) or "",
-                    "PO Reference": getattr(item, 'po_ref', None) or "",
-                    "Delivery ETA": getattr(item, 'eta', None) or "",
+                    "PO Supplier": po_supplier_val,
+                    "Date Ordered": date_ordered_val,
+                    "PO Reference": po_ref_val,
+                    "Delivery ETA": delivery_eta_val,
                     "Qty REC": getattr(item, 'received_qty', 0) or 0,
                     "Date REC": getattr(item, 'received_date', None) or "",
                     "GRN Reference": "",
@@ -476,10 +481,10 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 "Stock Status": "",
                 "Stock on Hand": 0,
                 "Qty Ordered (PO)": 0,
-                "PO Supplier": "",
-                "Date Ordered": getattr(o, 'order_date', None) or "",
+                "PO Supplier": getattr(o, 'supplier_name', None) or getattr(o, 'supplier', None) or "",
+                "Date Ordered": getattr(o, 'order_date', None) or getattr(o, 'quotation_sent_date', None) or "",
                 "PO Reference": o.po_number or "",
-                "Delivery ETA": getattr(o, 'eta', None) or "",
+                "Delivery ETA": getattr(o, 'eta', None) or getattr(o, 'expected_delivery_date', None) or "",
                 "Qty REC": 0,
                 "Date REC": "",
                 "GRN Reference": "",
@@ -536,7 +541,8 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             "Qty DEL",
             "Date DEL",
             "Delivery Reference",
-            "Delivery Comments"
+            "Delivery Comments",
+            "Sheet Order Status"
         }
         if col_name in EXCLUDED_DIFF_COLUMNS:
             return True
