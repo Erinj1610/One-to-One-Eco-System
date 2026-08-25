@@ -303,7 +303,7 @@ def extract_audit_tab_batch(payload: dict = Body(...)):
             date_inv_raw = get_row_val('AA', r)
             date_inv = parse_excel_date(date_inv_raw)
 
-            delivery_ref = str(get_row_val('AC', r) or '').strip()
+            delivery_comments = str(get_row_val('AC', r) or '').strip()
 
             po_ref = po_ref_from_sheet
             if not po_ref and date_ordered:
@@ -316,17 +316,13 @@ def extract_audit_tab_batch(payload: dict = Body(...)):
                 clean_date = re.sub(r'[^0-9]', '', date_rec)
                 grn_ref = f"GRN-{safe_order_ref}-{clean_date}"
 
-            date_del = date_rec if delivery_ref else ""
-            qty_del = qty_rec if delivery_ref else 0
-
             inv_ref_value = invoice_ref
             if not inv_ref_value and date_inv and qty_inv > 0:
                 clean_date = re.sub(r'[^0-9]', '', date_inv)
                 inv_ref_value = f"INV-{safe_order_ref}-{clean_date}"
 
+            delivery_ref = f"DEL-{safe_order_ref}" if delivery_comments else ""
             temp_item_id = f"ITEM-{safe_order_ref}-{one_one_code or item_code or 'FITTING'}-{r}"
-            stock_status = str(get_row_val('N', r) or '').strip()
-            stock_on_hand = safe_int(get_row_val('O', r))
 
             batch_flat_rows.append({
                 "Project Key": re.sub(r'[^a-zA-Z0-9]', '-', project_f5).lower(),
@@ -346,23 +342,23 @@ def extract_audit_tab_batch(payload: dict = Body(...)):
                 "Brand": brand,
                 "Supplier": supplier,
                 "Item Type": product_type,
-                "Stock Status": stock_status,
-                "Stock on Hand": stock_on_hand,
-                "Qty Ordered (PO)": 0,
+                "Stock Status": "",
+                "Stock on Hand": "",
+                "Qty Ordered (PO)": "",
                 "PO Supplier": po_supplier,
                 "Date Ordered": date_ordered,
                 "PO Reference": po_ref,
                 "Delivery ETA": eta,
-                "Qty REC": qty_rec,
+                "Qty REC": qty_rec if qty_rec > 0 else "",
                 "Date REC": date_rec,
                 "GRN Reference": grn_ref,
-                "Qty INV": qty_inv,
+                "Qty INV": qty_inv if qty_inv > 0 else "",
                 "Invoice Reference": inv_ref_value,
                 "Date INV": date_inv,
-                "Qty DEL": qty_del,
-                "Date DEL": date_del,
+                "Qty DEL": "",
+                "Date DEL": "",
                 "Delivery Reference": delivery_ref,
-                "Delivery Comments": "",
+                "Delivery Comments": delivery_comments,
                 "Sheet Order Status": order_status_g98,
                 "Deposit Value": deposit_value,
                 "Deposit Invoice Sent": deposit_invoice_sent,

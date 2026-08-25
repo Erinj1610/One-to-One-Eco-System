@@ -1742,7 +1742,7 @@ export default function SalesTracker() {
             const unitCost = Number(getRowVal('I')) || 0;
             const brand = String(getRowVal('L') || '').trim();
             const supplier = String(getRowVal('M') || '').trim();
-            const productType = String(getRowVal('N') || '').trim();
+            const productType = String(getRowVal('N') || '').trim() || "Hardware";
 
             // Transactional columns
             const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
@@ -1761,9 +1761,9 @@ export default function SalesTracker() {
             const dateInvRaw = getRowVal('AA');
             const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
 
-            const deliveryRef = String(getRowVal('AC') || '').trim();
+            const deliveryComments = String(getRowVal('AC') || '').trim();
 
-            // Use the sheet's PO reference from column Q, fallback to auto-generated if missing but ordered date is present
+            // PO Reference from Column Q, fallback to generated if missing but ordered date present
             let poRef = poRefFromSheet;
             if (!poRef && dateOrdered) {
               const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
@@ -1771,19 +1771,11 @@ export default function SalesTracker() {
               poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
             }
 
+            // Auto-generate GRN Reference if received date and quantity exist
             let grnRef = '';
             if (dateRec && qtyRec > 0) {
               const cleanDate = dateRec.replace(/[^0-9]/g, '');
               grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
-            }
-
-            // Auto-generate delivery references if delivery text/ref exists
-            let dateDel = '';
-            let qtyDel = 0;
-            if (deliveryRef) {
-              // Pre-fill delivery details with received metrics so user has a template base
-              dateDel = dateRec;
-              qtyDel = qtyRec;
             }
 
             // Auto-generate dynamic invoice reference if missing but invoice details exist
@@ -1793,11 +1785,11 @@ export default function SalesTracker() {
               invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
             }
 
+            // Delivery reference auto-generated if comments present
+            const deliveryRef = deliveryComments ? `DEL-${safeOrderRef}` : '';
+
             // Temporary unique ID
             const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
-
-            const stockStatus = String(getRowVal('N') || '').trim();
-            const stockOnHand = Number(getRowVal('O')) || 0;
 
             // Extract deposit and payment values from sheet cells
             const depositInvoiceSent = getVal('D90') || 'No';
@@ -1828,25 +1820,25 @@ export default function SalesTracker() {
               "Unit Retail Price Ex VAT": unitRetail,
               "Brand": brand,
               "Supplier": supplier,
-              "Item Type": productType || "Hardware",
-              "Stock Status": stockStatus,
-              "Stock on Hand": stockOnHand,
-              "Qty Ordered (PO)": 0,
+              "Item Type": productType,
+              "Stock Status": "",
+              "Stock on Hand": "",
+              "Qty Ordered (PO)": "",
               "PO Supplier": poSupplier,
               "Date Ordered": dateOrdered,
               "PO Reference": poRef,
               "Delivery ETA": eta,
 
-              "Qty REC": qtyRec,
+              "Qty REC": qtyRec > 0 ? qtyRec : "",
               "Date REC": dateRec,
               "GRN Reference": grnRef,
-              "Qty INV": qtyInv,
+              "Qty INV": qtyInv > 0 ? qtyInv : "",
               "Invoice Reference": invRefValue,
               "Date INV": dateInv,
-              "Qty DEL": qtyDel,
-              "Date DEL": dateDel,
+              "Qty DEL": "",
+              "Date DEL": "",
               "Delivery Reference": deliveryRef,
-              "Delivery Comments": "",
+              "Delivery Comments": deliveryComments,
               "Sheet Order Status": orderStatusG98,
               
               "Deposit Value": depositValue,
@@ -1988,8 +1980,6 @@ export default function SalesTracker() {
             const brand = String(getRowVal('L') || '').trim();
             const supplier = String(getRowVal('M') || '').trim();
             const productType = String(getRowVal('N') || '').trim() || 'Hardware';
-            const stockStatus = String(getRowVal('N') || '').trim();
-            const stockOnHand = Number(getRowVal('O')) || 0;
 
             const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
             const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
@@ -2007,7 +1997,7 @@ export default function SalesTracker() {
             const dateInvRaw = getRowVal('AA');
             const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
 
-            const deliveryRef = String(getRowVal('AC') || '').trim();
+            const deliveryComments = String(getRowVal('AC') || '').trim();
 
             let poRef = poRefFromSheet;
             if (!poRef && dateOrdered) {
@@ -2022,19 +2012,13 @@ export default function SalesTracker() {
               grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
             }
 
-            let dateDel = '';
-            let qtyDel = 0;
-            if (deliveryRef) {
-              dateDel = dateRec;
-              qtyDel = qtyRec;
-            }
-
             let invRefValue = invoiceRef;
             if (!invRefValue && dateInv && qtyInv > 0) {
               const cleanDate = dateInv.replace(/[^0-9]/g, '');
               invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
             }
 
+            const deliveryRef = deliveryComments ? `DEL-${safeOrderRef}` : '';
             const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
 
             flatRows.push({
@@ -2055,23 +2039,23 @@ export default function SalesTracker() {
               "Brand": brand,
               "Supplier": supplier,
               "Item Type": productType,
-              "Stock Status": stockStatus,
-              "Stock on Hand": stockOnHand,
-              "Qty Ordered (PO)": 0,
+              "Stock Status": "",
+              "Stock on Hand": "",
+              "Qty Ordered (PO)": "",
               "PO Supplier": poSupplier,
               "Date Ordered": dateOrdered,
               "PO Reference": poRef,
               "Delivery ETA": eta,
-              "Qty REC": qtyRec,
+              "Qty REC": qtyRec > 0 ? qtyRec : "",
               "Date REC": dateRec,
               "GRN Reference": grnRef,
-              "Qty INV": qtyInv,
+              "Qty INV": qtyInv > 0 ? qtyInv : "",
               "Invoice Reference": invRefValue,
               "Date INV": dateInv,
-              "Qty DEL": qtyDel,
-              "Date DEL": dateDel,
+              "Qty DEL": "",
+              "Date DEL": "",
               "Delivery Reference": deliveryRef,
-              "Delivery Comments": "",
+              "Delivery Comments": deliveryComments,
               "Sheet Order Status": orderStatusG98,
               "Deposit Value": depositValue,
               "Deposit Invoice Sent": depositInvoiceSent,
