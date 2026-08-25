@@ -1885,9 +1885,236 @@ export default function SalesTracker() {
     reader.readAsBinaryString(file);
   };
 
+  const handleAuditExcelUpload = (file) => {
+    if (!file) return;
+    setAuditLoading(true);
+    setAuditResult(null);
+    setAuditProgress({ percent: 20, stage: 'Reading Master Excel workbook in browser...' });
+
+    const parseExcelDate = (val) => {
+      if (!val) return '';
+      if (val instanceof Date) return !isNaN(val.getTime()) ? val.toISOString().split('T')[0] : '';
+      const str = String(val).trim();
+      if (!str) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+      if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts.length === 3) {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2];
+          return `${y}-${m}-${d}`;
+        }
+      }
+      const parsed = new Date(str);
+      return !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : str;
+    };
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+        
+        let foundTemplate = false;
+        const targetSheets = [];
+        workbook.SheetNames.forEach(name => {
+          if (name.trim().toLowerCase() === 'template') {
+            foundTemplate = true;
+            return;
+          }
+          if (foundTemplate) {
+            targetSheets.push(name);
+          }
+        });
+
+        if (targetSheets.length === 0) {
+          const skipNames = new Set(['template', 'control', 'summary', 'instructions', 'readme', 'master']);
+          workbook.SheetNames.forEach(name => {
+            if (!skipNames.has(name.trim().toLowerCase())) {
+              targetSheets.push(name);
+            }
+          });
+        }
+
+        if (targetSheets.length === 0) {
+          alert("No order/project tabs found in the Excel workbook.");
+          setAuditLoading(false);
+          return;
+        }
+
+        setAuditProgress({ percent: 45, stage: `Extracting ${targetSheets.length} project tabs...` });
+
+        const flatRows = [];
+
+        targetSheets.forEach(sheetName => {
+          const sheet = workbook.Sheets[sheetName];
+          if (!sheet) return;
+
+          const getVal = (cellRef) => (sheet[cellRef] ? String(sheet[cellRef].v || '').trim() : '');
+          
+          const clientCompany = getVal('D2');
+          const orderName = getVal('D3') || sheetName;
+          const projectF5 = getVal('F5') || 'General Project';
+          const deliveryAddress = getVal('D6');
+          const salesRep = getVal('F1');
+          const orderStatusG98 = getVal('G98') || 'Processing';
+          
+          const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+
+          const depositInvoiceSent = getVal('D90') || 'No';
+          const depositPaymentDate = parseExcelDate(sheet['D95'] ? sheet['D95'].v : undefined);
+          const balancePaymentDate = parseExcelDate(sheet['D96'] ? sheet['D96'].v : undefined);
+          const depositValue = Number(sheet['G95'] ? sheet['G95'].v : 0) || 0;
+          const balanceValue = Number(sheet['G96'] ? sheet['G96'].v : 0) || 0;
+          let amountPaid = 0;
+          if (depositPaymentDate || depositValue > 0) amountPaid += depositValue;
+          if (balancePaymentDate || balanceValue > 0) amountPaid += balanceValue;
+
+          for (let r = 9; r <= 89; r++) {
+            const getRowVal = (col) => {
+              const cell = sheet[`${col}${r}`];
+              return cell ? cell.v : undefined;
+            };
+
+            const qty = Number(getRowVal('B'));
+            if (isNaN(qty) || qty === 0) continue;
+
+            const oneOneCode = String(getRowVal('C') || '').trim();
+            const itemCode = String(getRowVal('D') || '').trim();
+            const description = String(getRowVal('E') || '').trim();
+            const unitRetail = Number(getRowVal('F')) || 0;
+            const unitCost = Number(getRowVal('I')) || 0;
+            const brand = String(getRowVal('L') || '').trim();
+            const supplier = String(getRowVal('M') || '').trim();
+            const productType = String(getRowVal('N') || '').trim() || 'Hardware';
+            const stockStatus = String(getRowVal('N') || '').trim();
+            const stockOnHand = Number(getRowVal('O')) || 0;
+
+            const poRefFromSheet = String(getRowVal('Q') || '').trim(); 
+            const poSupplier = String(getRowVal('R') || supplier || 'Warehouse Inventory').trim();
+            const dateOrderedRaw = getRowVal('S');
+            const dateOrdered = dateOrderedRaw ? parseExcelDate(dateOrderedRaw) : '';
+            const etaRaw = getRowVal('T');
+            const eta = etaRaw ? parseExcelDate(etaRaw) : '';
+
+            const dateRecRaw = getRowVal('U');
+            const dateRec = dateRecRaw ? parseExcelDate(dateRecRaw) : '';
+            const qtyRec = Number(getRowVal('V')) || 0;
+
+            const qtyInv = Number(getRowVal('Y')) || 0;
+            const invoiceRef = String(getRowVal('Z') || '').trim();
+            const dateInvRaw = getRowVal('AA');
+            const dateInv = dateInvRaw ? parseExcelDate(dateInvRaw) : '';
+
+            const deliveryRef = String(getRowVal('AC') || '').trim();
+
+            let poRef = poRefFromSheet;
+            if (!poRef && dateOrdered) {
+              const cleanDate = dateOrdered.replace(/[^0-9]/g, '');
+              const cleanSupp = poSupplier.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toLowerCase();
+              poRef = `PO-${safeOrderRef}-${cleanSupp}-${cleanDate}`;
+            }
+
+            let grnRef = '';
+            if (dateRec && qtyRec > 0) {
+              const cleanDate = dateRec.replace(/[^0-9]/g, '');
+              grnRef = `GRN-${safeOrderRef}-${cleanDate}`;
+            }
+
+            let dateDel = '';
+            let qtyDel = 0;
+            if (deliveryRef) {
+              dateDel = dateRec;
+              qtyDel = qtyRec;
+            }
+
+            let invRefValue = invoiceRef;
+            if (!invRefValue && dateInv && qtyInv > 0) {
+              const cleanDate = dateInv.replace(/[^0-9]/g, '');
+              invRefValue = `INV-${safeOrderRef}-${cleanDate}`;
+            }
+
+            const tempItemId = `ITEM-${safeOrderRef}-${oneOneCode || itemCode || 'FITTING'}-${r}`;
+
+            flatRows.push({
+              "Project Key": projectF5.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+              "Project Name": projectF5,
+              "Client Company": clientCompany,
+              "Order ID": safeOrderRef,
+              "Quote Name": orderName,
+              "Sales Rep": salesRep,
+              "Delivery Address": deliveryAddress,
+              "Item ID": tempItemId,
+              "Qty": qty,
+              "1:1 Code": oneOneCode,
+              "Item Code": itemCode,
+              "Description": description,
+              "Unit Cost Ex VAT": unitCost,
+              "Unit Retail Price Ex VAT": unitRetail,
+              "Brand": brand,
+              "Supplier": supplier,
+              "Item Type": productType,
+              "Stock Status": stockStatus,
+              "Stock on Hand": stockOnHand,
+              "Qty Ordered (PO)": 0,
+              "PO Supplier": poSupplier,
+              "Date Ordered": dateOrdered,
+              "PO Reference": poRef,
+              "Delivery ETA": eta,
+              "Qty REC": qtyRec,
+              "Date REC": dateRec,
+              "GRN Reference": grnRef,
+              "Qty INV": qtyInv,
+              "Invoice Reference": invRefValue,
+              "Date INV": dateInv,
+              "Qty DEL": qtyDel,
+              "Date DEL": dateDel,
+              "Delivery Reference": deliveryRef,
+              "Delivery Comments": "",
+              "Sheet Order Status": orderStatusG98,
+              "Deposit Value": depositValue,
+              "Deposit Invoice Sent": depositInvoiceSent,
+              "Deposit Payment Date": depositPaymentDate,
+              "Balance Value": balanceValue,
+              "Balance Payment Date": balancePaymentDate,
+              "Amount Paid": amountPaid
+            });
+          }
+        });
+
+        setAuditProgress({ percent: 75, stage: `Cross-referencing Cloud SQL database & generating 3-tab heatmap (${flatRows.length} items)...` });
+
+        const res = await fetch(`${API_BASE}/api/admin/audit-comparison/finalize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            legacy_rows: flatRows,
+            user_email: 'erin.jones@1-to-1.world'
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Finalization failed');
+        }
+
+        const finalData = await res.json();
+        setAuditProgress({ percent: 100, stage: 'Complete!' });
+        setAuditResult(finalData);
+
+      } catch (err) {
+        console.error("Audit error:", err);
+        alert(`Audit comparison failed: ${err.message}`);
+      } finally {
+        setAuditLoading(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleBulkExcelImport = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
 
     const parseExcelDate = (val) => {
       if (!val) return "";
@@ -5002,7 +5229,165 @@ export default function SalesTracker() {
           </div>
         </div>
       )}
-      
+
+      {/* READ-ONLY AUDIT COMPARISON HEATMAP MODAL (INSTANT EXCEL UPLOAD) */}
+      {showAuditModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1250
+        }}>
+          <div style={{ width: '100%', maxWidth: '580px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🔍 3. Read-Only Audit Heatmap (Instant Excel Upload)
+              </h3>
+              <button onClick={() => { setShowAuditModal(false); setAuditResult(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
+              Compare your <b>Master System Excel file (.xlsx)</b> directly against the Portal database in real-time. Discrepancies turn <span style={{ color: '#ef4444', fontWeight: 700 }}>red</span>.
+              <br/><br/>
+              <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11px', display: 'inline-block' }}>
+                🛡️ 100% READ-ONLY: Your Portal database will NEVER be updated, modified, or overwritten.
+              </span>
+            </div>
+
+            {/* UPLOAD FILE ZONE */}
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+                📁 Select or Drop your Master Excel File (.xlsx)
+              </label>
+              <div
+                style={{
+                  border: '2px dashed var(--border)',
+                  borderRadius: '8px',
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  background: 'var(--bg-secondary)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => document.getElementById('audit-excel-file-input').click()}
+                onDragOver={(e) => { e.preventDefault(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleAuditExcelUpload(e.dataTransfer.files[0]);
+                  }
+                }}
+              >
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📊</div>
+                <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  Click to browse or drag & drop Master Excel (.xlsx)
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  Parses all project tabs locally in 2 seconds without any Google timeouts or size limits.
+                </div>
+                <input
+                  id="audit-excel-file-input"
+                  type="file"
+                  accept=".xlsx,.xls"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleAuditExcelUpload(e.target.files[0]);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {auditLoading && (
+              <div style={{ padding: '14px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 700, color: '#60a5fa' }}>{auditProgress.stage || 'Analyzing Live Data...'}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{auditProgress.percent}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${auditProgress.percent}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)', borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
+                </div>
+              </div>
+            )}
+
+            {auditResult && !auditLoading && (
+              <div style={{ padding: '14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
+                <div style={{ color: '#10b981', fontWeight: 700, fontSize: '13.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>✅ Audit Comparison Complete!</span>
+                </div>
+
+                {auditResult.stats && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>{auditResult.stats.total_orders_audited}</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Total Orders</div>
+                    </div>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#10b981' }}>{auditResult.stats.matches_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#10b981' }}>🟢 Matching</div>
+                    </div>
+                    <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#ef4444' }}>{auditResult.stats.mismatches_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#ef4444' }}>🔴 Mismatches</div>
+                    </div>
+                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>{auditResult.stats.missing_in_portal_count}</div>
+                      <div style={{ fontSize: '10.5px', color: '#f59e0b' }}>🛑 Missing in Portal</div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  {auditResult.spreadsheet_url && (
+                    <a
+                      href={auditResult.spreadsheet_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: '#ffffff', padding: '7px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 700, fontSize: '12px' }}
+                    >
+                      📊 Open Live Heatmap in Google Sheets ↗
+                    </a>
+                  )}
+
+                  {auditResult.heatmap_rows && (
+                    <button
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => {
+                        const wb = XLSX.utils.book_new();
+                        
+                        // Tab 1: Audit Heatmap
+                        const ws1 = XLSX.utils.aoa_to_sheet(auditResult.heatmap_rows);
+                        XLSX.utils.book_append_sheet(wb, ws1, "🚨 AUDIT & DISCREPANCY HEATMAP");
+
+                        // Tab 2: Current Live System Data
+                        if (auditResult.legacy_rows && auditResult.legacy_rows.length > 0) {
+                          const ws2 = XLSX.utils.aoa_to_sheet(auditResult.legacy_rows);
+                          XLSX.utils.book_append_sheet(wb, ws2, "Current Live System Data");
+                        }
+
+                        // Tab 3: Portal Cloud SQL Database
+                        if (auditResult.portal_rows && auditResult.portal_rows.length > 0) {
+                          const ws3 = XLSX.utils.aoa_to_sheet(auditResult.portal_rows);
+                          XLSX.utils.book_append_sheet(wb, ws3, "Portal Cloud SQL Database");
+                        }
+
+                        XLSX.writeFile(wb, `1-to-1_World_Live_System_Audit_Comparison_${new Date().toISOString().split('T')[0]}.xlsx`);
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '7px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+                    >
+                      📥 Download Audit Excel (.xlsx)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button className="btn btn-secondary" onClick={() => { setShowAuditModal(false); setAuditResult(null); }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* RECONCILIATION SUMMARY APPROVAL MODAL */}
       {reconcileSummary && (
         <div style={{
@@ -5130,235 +5515,6 @@ export default function SalesTracker() {
             >
               🛑 Stop / Cancel Import
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* READ-ONLY AUDIT COMPARISON HEATMAP MODAL */}
-      {showAuditModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }}>
-          <div style={{ width: '100%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🔍 3. Live Read-Only Audit Heatmap
-              </h3>
-              <button onClick={() => { setShowAuditModal(false); setAuditResult(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>✕</button>
-            </div>
-
-            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
-              Compare your <b>Current Live System Google Sheet</b> directly against the Portal database in real-time. Cell differences turn <span style={{ color: '#ef4444', fontWeight: 700 }}>red</span>.
-              <br/><br/>
-              <div style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '8px 10px', borderRadius: '6px', border: '1px solid rgba(234, 179, 8, 0.3)', fontSize: '11.5px', marginBottom: '8px' }}>
-                🔑 <b>Sharing Requirement</b>: Ensure your Google Sheet is shared with:<br/>
-                <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '3px', color: '#ffffff' }}>858977785048-compute@developer.gserviceaccount.com</code>
-              </div>
-              <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '4px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '11px', display: 'inline-block' }}>
-                🛡️ READ-ONLY: Your Portal database will NEVER be updated or overwritten.
-              </span>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>
-                Current Live System Google Sheet URL or ID *
-              </label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="https://docs.google.com/spreadsheets/d/1ABC.../edit"
-                value={auditSheetUrl}
-                onChange={e => setAuditSheetUrl(e.target.value)}
-              />
-            </div>
-
-            {auditLoading && (
-              <div style={{ padding: '14px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 700, color: '#60a5fa' }}>{auditProgress.stage || 'Analyzing Live Data...'}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{auditProgress.percent}%</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ width: `${auditProgress.percent}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)', borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                  Extracting live project tabs, matching 41 columns with Cloud SQL, and generating discrepancy heatmap.
-                </div>
-              </div>
-            )}
-
-            {auditResult && !auditLoading && (
-              <div style={{ padding: '14px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', marginBottom: '16px', fontSize: '12.5px' }}>
-                <div style={{ color: '#10b981', fontWeight: 700, fontSize: '13.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>✅ Audit Comparison Complete!</span>
-                </div>
-
-                {auditResult.stats && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px' }}>
-                    <div style={{ background: 'var(--bg-secondary)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>{auditResult.stats.total_orders_audited}</div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Total Orders</div>
-                    </div>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#10b981' }}>{auditResult.stats.matches_count}</div>
-                      <div style={{ fontSize: '10.5px', color: '#10b981' }}>🟢 Matching</div>
-                    </div>
-                    <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#ef4444' }}>{auditResult.stats.mismatches_count}</div>
-                      <div style={{ fontSize: '10.5px', color: '#ef4444' }}>🔴 Mismatches</div>
-                    </div>
-                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>{auditResult.stats.missing_in_portal_count}</div>
-                      <div style={{ fontSize: '10.5px', color: '#f59e0b' }}>🛑 Missing in Portal</div>
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-                  {auditResult.spreadsheet_url && (
-                    <a
-                      href={auditResult.spreadsheet_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#2563eb', color: '#ffffff', padding: '7px 14px', borderRadius: '6px', textDecoration: 'none', fontWeight: 700, fontSize: '12px' }}
-                    >
-                      📊 Open Live Heatmap in Google Sheets ↗
-                    </a>
-                  )}
-
-                  {auditResult.heatmap_rows && (
-                    <button
-                      className="btn btn-sm btn-outline-secondary"
-                      onClick={() => {
-                        const wb = XLSX.utils.book_new();
-                        
-                        // Tab 1: Audit Heatmap
-                        const ws1 = XLSX.utils.aoa_to_sheet(auditResult.heatmap_rows);
-                        XLSX.utils.book_append_sheet(wb, ws1, "🚨 AUDIT & DISCREPANCY HEATMAP");
-
-                        // Tab 2: Current Live System Data
-                        if (auditResult.legacy_rows && auditResult.legacy_rows.length > 0) {
-                          const ws2 = XLSX.utils.aoa_to_sheet(auditResult.legacy_rows);
-                          XLSX.utils.book_append_sheet(wb, ws2, "Current Live System Data");
-                        }
-
-                        // Tab 3: Portal Cloud SQL Database
-                        if (auditResult.portal_rows && auditResult.portal_rows.length > 0) {
-                          const ws3 = XLSX.utils.aoa_to_sheet(auditResult.portal_rows);
-                          XLSX.utils.book_append_sheet(wb, ws3, "Portal Cloud SQL Database");
-                        }
-
-                        XLSX.writeFile(wb, `1-to-1_World_Live_System_Audit_Comparison_${new Date().toISOString().split('T')[0]}.xlsx`);
-                      }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '7px 14px', borderRadius: '6px', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
-                    >
-                      📥 Download Audit Excel (.xlsx)
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button className="btn btn-secondary" onClick={() => { setShowAuditModal(false); setAuditResult(null); }}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                disabled={auditLoading || !auditSheetUrl.trim()}
-                onClick={async () => {
-                  setAuditLoading(true);
-                  setAuditResult(null);
-                  setAuditProgress({ percent: 5, stage: 'Connecting to Google Sheets API & discovering project tabs...' });
-
-                  try {
-                    // Step 1: Discover tabs
-                    const tabRes = await fetch(`${API_BASE}/api/admin/audit-comparison/get-tabs`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ current_system_sheet_url: auditSheetUrl })
-                    });
-                    if (!tabRes.ok) {
-                      const errData = await tabRes.json().catch(() => ({}));
-                      throw new Error(errData.detail || 'Failed to read sheet metadata');
-                    }
-                    const tabData = await tabRes.json();
-                    const allTabs = tabData.tabs || [];
-                    const totalTabsCount = allTabs.length;
-
-                    if (totalTabsCount === 0) {
-                      throw new Error("No project/order tabs found following 'Template' in your Google Sheet.");
-                    }
-
-                    // Step 2: Extract in batches of 5 tabs with real-time progress updates
-                    let allExtractedRows = [];
-                    const batchSize = 5;
-
-                    for (let i = 0; i < totalTabsCount; i += batchSize) {
-                      const batchTabs = allTabs.slice(i, i + batchSize);
-                      const currentProgressPercent = Math.round(5 + ((i + batchTabs.length) / totalTabsCount) * 80);
-                      const currentTabName = batchTabs[batchTabs.length - 1];
-
-                      setAuditProgress({
-                        percent: currentProgressPercent,
-                        stage: `Extracting Tab ${Math.min(i + batchTabs.length, totalTabsCount)} of ${totalTabsCount}: '${currentTabName}'...`
-                      });
-
-                      const batchRes = await fetch(`${API_BASE}/api/admin/audit-comparison/extract-tab-batch`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          current_system_sheet_url: auditSheetUrl,
-                          tab_names: batchTabs
-                        })
-                      });
-
-                      if (!batchRes.ok) {
-                        const errData = await batchRes.json().catch(() => ({}));
-                        throw new Error(errData.detail || `Failed to extract batch starting at tab ${batchTabs[0]}`);
-                      }
-
-                      const batchData = await batchRes.json();
-                      if (batchData.flat_rows && batchData.flat_rows.length > 0) {
-                        allExtractedRows = allExtractedRows.concat(batchData.flat_rows);
-                      }
-                    }
-
-                    // Step 3: Finalize and generate 3-tab heatmap
-                    setAuditProgress({
-                      percent: 92,
-                      stage: 'Cross-referencing Cloud SQL database & creating 3-tab heatmap spreadsheet...'
-                    });
-
-                    const finalRes = await fetch(`${API_BASE}/api/admin/audit-comparison/finalize`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        legacy_rows: allExtractedRows,
-                        user_email: 'erin.jones@1-to-1.world'
-                      })
-                    });
-
-                    if (!finalRes.ok) {
-                      const errData = await finalRes.json().catch(() => ({}));
-                      throw new Error(errData.detail || 'Finalization failed');
-                    }
-
-                    const finalData = await finalRes.json();
-                    setAuditProgress({ percent: 100, stage: 'Complete!' });
-                    setAuditResult(finalData);
-
-                  } catch (err) {
-                    alert(`Audit error: ${err.message}`);
-                  } finally {
-                    setAuditLoading(false);
-                  }
-                }}
-                style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
-              >
-                {auditLoading ? 'Processing Live System Audit...' : '🚀 Generate Audit Heatmap'}
-              </button>
-            </div>
           </div>
         </div>
       )}
