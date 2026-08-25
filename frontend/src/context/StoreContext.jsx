@@ -1709,49 +1709,89 @@ export function StoreProvider({ children }) {
     const baseKey = (projectData.name || 'unnamed-project').toLowerCase().trim().replace(/\s+/g, '-');
     let finalKey = baseKey || 'unnamed-project';
     
+    let counter = 1;
+    while (projects[finalKey] && finalKey !== oldKey) {
+      finalKey = `${baseKey}-${counter}`;
+      counter++;
+    }
+
+    const existingDraft = projects[oldKey] || {};
+    const updatedProj = {
+      ...existingDraft,
+      ...projectData,
+      key: finalKey,
+      isDraft: false,
+      stage: projectData.stage || existingDraft.stage || 'Pending',
+      status: projectData.status || existingDraft.status || 'On track'
+    };
+
     // Optimistically update React state
     setProjects(prev => {
       const next = { ...prev };
-      const existingDraft = prev[oldKey] || {};
       delete next[oldKey];
-      
-      let counter = 1;
-      while (next[finalKey]) {
-        finalKey = `${baseKey}-${counter}`;
-        counter++;
-      }
-
-      next[finalKey] = {
-        ...existingDraft,
-        ...projectData,
-        key: finalKey,
-        isDraft: false,
-        stage: projectData.stage || existingDraft.stage || 'Pending',
-        status: projectData.status || existingDraft.status || 'On track'
-      };
+      next[finalKey] = updatedProj;
       return next;
     });
 
-    // Delete old draft from database and save final project
+    // Save to Cloud SQL database via PUT /api/projects/{oldKey}
     try {
-      await fetch(`${API_BASE}/api/projects/${oldKey}`, { method: 'DELETE' });
-      await fetch(`${API_BASE}/api/projects/`, {
-        method: 'POST',
+      const feesToSave = updatedProj.designFees || [];
+      const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : "";
+      const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : "";
+      const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : "";
+      const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : "";
+      const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
+
+      const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(oldKey)}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: projectData.name,
+          name: updatedProj.name,
           project_key: finalKey,
-          client_name: projectData.client,
-          pm_name: projectData.pm,
-          offering: projectData.offering,
-          sqm: projectData.sqm,
-          status: projectData.status || 'On track',
-          deadline: projectData.deadline || 'TBD',
-          complete_status: 'Ongoing'
+          client_name: updatedProj.client || '',
+          pm_name: updatedProj.pm || 'Dani',
+          offering: updatedProj.offering || 'Signature',
+          sqm: String(updatedProj.sqm || ''),
+          status: updatedProj.status || 'On track',
+          deadline: updatedProj.deadline || 'TBD',
+          complete_status: 'Ongoing',
+          target_margin: Number(updatedProj.targetMargin) || 39.0,
+          actual_margin: Number(updatedProj.actualMargin) || 39.0,
+          s1: s1Val,
+          s2: s2Val,
+          s3: s3Val,
+          s4: s4Val,
+          s5: s5Val
         })
       });
+
+      if (!res.ok) {
+        console.warn("PUT /api/projects failed, running POST fallback...");
+        await fetch(`${API_BASE}/api/projects/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updatedProj.name,
+            project_key: finalKey,
+            client_name: updatedProj.client || '',
+            pm_name: updatedProj.pm || 'Dani',
+            offering: updatedProj.offering || 'Signature',
+            sqm: String(updatedProj.sqm || ''),
+            status: updatedProj.status || 'On track',
+            deadline: updatedProj.deadline || 'TBD',
+            complete_status: 'Ongoing',
+            target_margin: Number(updatedProj.targetMargin) || 39.0,
+            actual_margin: Number(updatedProj.actualMargin) || 39.0,
+            s1: s1Val,
+            s2: s2Val,
+            s3: s3Val,
+            s4: s4Val,
+            s5: s5Val
+          })
+        });
+      }
     } catch (err) {
-      console.error("Error saving draft project:", err);
+      console.error("Error saving project to database:", err);
     }
 
     return finalKey;

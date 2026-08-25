@@ -363,8 +363,46 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
 @router.put("/{project_key}")
 def update_project_relational(project_key: str, project_data: ProjectSchema, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.project_key == project_key).first()
+    if not project and project_data.project_key:
+        project = db.query(Project).filter(Project.project_key == project_data.project_key).first()
+
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        active_rates = get_active_global_design_rates(db)
+        project = Project(
+            name=project_data.name or "New Project",
+            project_key=project_data.project_key or project_key,
+            client_name=project_data.client_name,
+            pm_name=project_data.pm_name,
+            offering=project_data.offering,
+            sqm=project_data.sqm,
+            status=project_data.status or "On track",
+            deadline=project_data.deadline or "TBD",
+            complete_status=project_data.complete_status or "Ongoing",
+            target_margin=project_data.target_margin or 39.0,
+            actual_margin=project_data.actual_margin or 39.0,
+            s1=project_data.s1,
+            s2=project_data.s2,
+            s3=project_data.s3,
+            s4=project_data.s4,
+            s5=project_data.s5,
+            design_fee_rates_snapshot=active_rates,
+            design_fee_rates_original=active_rates
+        )
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+        return project
+
+    # If project key changed (e.g. from draft key to final project name key)
+    if project_data.project_key and project_data.project_key != project.project_key:
+        new_key = project_data.project_key
+        existing_other = db.query(Project).filter(Project.project_key == new_key, Project.id != project.id).first()
+        if not existing_other:
+            old_pk = project.project_key
+            project.project_key = new_key
+            from models.orm_models import Order, DesignFee
+            db.query(Order).filter(Order.project_key == old_pk).update({"project_key": new_key, "project_name": project_data.name}, synchronize_session=False)
+            db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": new_key}, synchronize_session=False)
 
     project.name = project_data.name
     project.client_name = project_data.client_name
