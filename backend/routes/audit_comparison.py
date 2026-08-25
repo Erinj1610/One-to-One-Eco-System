@@ -647,34 +647,51 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     for r in portal_flat_rows:
         portal_tab_2d.append([r.get(col, "") for col in RECONCILIATION_COLUMNS])
 
-    # Create new 3-Tab Google Spreadsheet inside Shared Drive Vault using Drive API
+    # Find existing Persistent Master Audit Sheet or create it once
     audit_sheet_id = None
     audit_sheet_url = None
+    master_file_name = '1-to-1 World - Master Live System Audit Heatmap'
+
     try:
-        file_metadata = {
-            'name': '1-to-1 World - Live System Comparison & Reconciliation Audit',
-            'mimeType': 'application/vnd.google-apps.spreadsheet',
-            'parents': [ROOT_DRIVE_FOLDER_ID]
-        }
-        created_file = drive_service.files().create(
-            body=file_metadata,
+        query = f"name = '{master_file_name}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+        res = drive_service.files().list(
+            q=query,
             supportsAllDrives=True,
-            fields='id, webViewLink'
+            includeItemsFromAllDrives=True,
+            fields='files(id, name, webViewLink)'
         ).execute()
-        audit_sheet_id = created_file.get('id')
-        audit_sheet_url = created_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
-    except Exception as create_err:
-        print(f"Notice: Direct Drive Vault sheet creation fallback: {create_err}")
+        files = res.get('files', [])
+        if files:
+            audit_sheet_id = files[0]['id']
+            audit_sheet_url = files[0].get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
+    except Exception as search_err:
+        print(f"Notice searching for master audit sheet: {search_err}")
+
+    if not audit_sheet_id:
         try:
+            file_metadata = {
+                'name': master_file_name,
+                'mimeType': 'application/vnd.google-apps.spreadsheet',
+                'parents': [ROOT_DRIVE_FOLDER_ID]
+            }
             created_file = drive_service.files().create(
-                body={'name': '1-to-1 World - Live System Comparison & Reconciliation Audit', 'mimeType': 'application/vnd.google-apps.spreadsheet'},
+                body=file_metadata,
                 supportsAllDrives=True,
                 fields='id, webViewLink'
             ).execute()
             audit_sheet_id = created_file.get('id')
             audit_sheet_url = created_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
-        except Exception as e:
-            print(f"Warning: Could not create Google Sheet file: {e}")
+        except Exception as create_err:
+            try:
+                created_file = drive_service.files().create(
+                    body={'name': master_file_name, 'mimeType': 'application/vnd.google-apps.spreadsheet'},
+                    supportsAllDrives=True,
+                    fields='id, webViewLink'
+                ).execute()
+                audit_sheet_id = created_file.get('id')
+                audit_sheet_url = created_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{audit_sheet_id}/edit"
+            except Exception as e:
+                print(f"Warning: Could not create Google Sheet file: {e}")
 
     # Share audit sheet with user email
     if audit_sheet_id:
@@ -688,49 +705,55 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         except Exception as e:
             print(f"Notice: Google Drive share notice: {e}")
 
-    # Populate 3 Tabs & Red Formatting
+    # Populate 3 Tabs In-Place & Apply Red Formatting
     if audit_sheet_id:
         try:
             meta = sheets_service.spreadsheets().get(spreadsheetId=audit_sheet_id).execute()
-            initial_sheet_id = meta.get('sheets', [{}])[0].get('properties', {}).get('sheetId', 0)
+            existing_sheets = meta.get('sheets', [])
+            existing_titles = {s.get('properties', {}).get('title'): s.get('properties', {}).get('sheetId') for s in existing_sheets}
 
-            requests = [
-                {
-                    'addSheet': {
-                        'properties': {
-                            'sheetId': 101,
-                            'title': '🚨 AUDIT & DISCREPANCY HEATMAP',
-                            'gridProperties': {'frozenRowCount': 1}
-                        }
-                    }
-                },
-                {
-                    'addSheet': {
-                        'properties': {
-                            'sheetId': 102,
-                            'title': 'Current Live System Data',
-                            'gridProperties': {'frozenRowCount': 1}
-                        }
-                    }
-                },
-                {
-                    'addSheet': {
-                        'properties': {
-                            'sheetId': 103,
-                            'title': 'Portal Cloud SQL Database',
-                            'gridProperties': {'frozenRowCount': 1}
-                        }
-                    }
-                }
+            requests = []
+            tab_names = [
+                ('🚨 AUDIT & DISCREPANCY HEATMAP', 101),
+                ('Current Live System Data', 102),
+                ('Portal Cloud SQL Database', 103)
             ]
+            for title, sid in tab_names:
+                if title not in existing_titles:
+                    requests.append({
+                        'addSheet': {
+                            'properties': {
+                                'sheetId': sid,
+                                'title': title,
+                                'gridProperties': {'frozenRowCount': 1}
+                            }
+                        }
+                    })
 
-            if initial_sheet_id not in [101, 102, 103]:
-                requests.append({'deleteSheet': {'sheetId': initial_sheet_id}})
+            for s in existing_sheets:
+                stitle = s.get('properties', {}).get('title')
+                sid = s.get('properties', {}).get('sheetId')
+                if stitle not in [t[0] for t in tab_names] and len(existing_sheets) + len(requests) > 3:
+                    requests.append({'deleteSheet': {'sheetId': sid}})
 
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=audit_sheet_id,
-                body={'requests': requests}
-            ).execute()
+            if requests:
+                try:
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=audit_sheet_id,
+                        body={'requests': requests}
+                    ).execute()
+                except Exception as b_err:
+                    print(f"Sheet structure update note: {b_err}")
+
+            # Clear old content from the 3 tabs first so rows shrink/grow cleanly
+            for title, _ in tab_names:
+                try:
+                    sheets_service.spreadsheets().values().clear(
+                        spreadsheetId=audit_sheet_id,
+                        range=f"'{title}'!A1:ZZ50000"
+                    ).execute()
+                except Exception:
+                    pass
 
             # Populate all 3 tabs in parallel batch update
             data_payload = [
