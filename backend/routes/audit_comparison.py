@@ -526,8 +526,19 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     red_cell_coordinates = []  # list of (row_idx, col_idx) for Google Sheet formatting
 
     def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
-        # Ignore Item ID comparison since legacy uses temp IDs and portal uses SQL IDs
-        if col_name == "Item ID":
+        # Exclude columns requested by user or that are system-generated
+        EXCLUDED_DIFF_COLUMNS = {
+            "Item ID",
+            "Item Type",
+            "Stock Status",
+            "Stock on Hand",
+            "Qty Ordered (PO)",
+            "Qty DEL",
+            "Date DEL",
+            "Delivery Reference",
+            "Delivery Comments"
+        }
+        if col_name in EXCLUDED_DIFF_COLUMNS:
             return True
 
         v1_str = str(val1).strip() if val1 is not None else ""
@@ -838,7 +849,27 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             # Apply cell-level red highlight formatting on Tab 1
             cell_format_requests = []
             
-            # Format header row
+            # 1. Reset all data cells (rows 1 to 5000) to white background and normal text
+            cell_format_requests.append({
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 101,
+                        'startRowIndex': 1,
+                        'endRowIndex': 5000,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': len(heatmap_headers) + 1
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
+                            'textFormat': {'bold': False, 'foregroundColor': {'red': 0.1, 'green': 0.1, 'blue': 0.1}}
+                        }
+                    },
+                    'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                }
+            })
+
+            # 2. Format header row
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
