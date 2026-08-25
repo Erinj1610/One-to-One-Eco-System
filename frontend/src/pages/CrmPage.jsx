@@ -1688,8 +1688,8 @@ export default function CrmPage() {
 
                 <button 
                   className="btn btn-primary" 
-                  onClick={() => {
-                    const newKey = addProject({
+                  onClick={async () => {
+                    const newKey = await addProject({
                       name: '',
                       client: selectedClient.name,
                       projectType: 'Design & Orders',
@@ -1706,7 +1706,9 @@ export default function CrmPage() {
                       start: '—',
                       deadline: '—'
                     });
-                    navigate(`/projects/${newKey}`);
+                    if (newKey) {
+                      navigate(`/projects/${newKey}`);
+                    }
                   }}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                 >

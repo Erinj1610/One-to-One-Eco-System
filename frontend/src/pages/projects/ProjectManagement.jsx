@@ -647,7 +647,29 @@ export default function ProjectManagement() {
     }
   }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding, p?.status, orders]);
 
-  if (!p) return <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading Project...</div>;
+  if (!p) {
+    if (id === '[object Promise]' || id === 'undefined' || !id) {
+      setTimeout(() => navigate('/projects'), 50);
+      return <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>Redirecting to Projects...</div>;
+    }
+    return (
+      <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          Project Not Found
+        </div>
+        <p style={{ fontSize: '13px', marginBottom: '20px' }}>
+          The requested project "{id}" could not be found.
+        </p>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => navigate('/projects')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+        >
+          <ArrowLeft size={16} /> Back to Project List
+        </button>
+      </div>
+    );
+  }
 
   // Create new Design Fee Sub-project
   const handleCreateDesignFee = (e) => {
@@ -1583,8 +1605,7 @@ export default function ProjectManagement() {
                 <button 
                   className="btn btn-primary" 
                   style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
-                  onClick={(e) => {
-                    e.preventDefault();
+                  onClick={async () => {
                     if (!p.name?.trim()) {
                       alert("Please enter a Project Name to save!");
                       return;
@@ -1593,7 +1614,7 @@ export default function ProjectManagement() {
                       alert("Please enter a Client Name to save!");
                       return;
                     }
-                    const finalKey = saveDraftProject(id, {
+                    const finalKey = await saveDraftProject(id, {
                       name: p.name,
                       client: p.client,
                       sqm: p.sqm || '1,000',
@@ -1607,7 +1628,9 @@ export default function ProjectManagement() {
                       stage: 'Pending'
                     });
                     alert("Project created successfully!");
-                    navigate(`/projects/${finalKey}`);
+                    if (finalKey) {
+                      navigate(`/projects/${finalKey}`);
+                    }
                   }}
                 >
                   Save & Create Project

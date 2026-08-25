@@ -487,8 +487,8 @@ export default function ProjectList() {
 
               <button 
                 className="btn btn-primary" 
-                onClick={() => {
-                  const newKey = addProject({
+                onClick={async () => {
+                  const newKey = await addProject({
                     name: '',
                     client: '',
                     projectType: 'Design & Orders',
@@ -505,7 +505,9 @@ export default function ProjectList() {
                     start: '—',
                     deadline: '—'
                   });
-                  navigate(`/projects/${newKey}`);
+                  if (newKey) {
+                    navigate(`/projects/${newKey}`);
+                  }
                 }}
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '28px', fontSize: '12px' }}
               >
