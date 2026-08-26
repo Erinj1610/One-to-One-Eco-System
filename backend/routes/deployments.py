@@ -69,9 +69,16 @@ def merge_staging_to_main_on_github(token: str, version_tag: str, release_name: 
         if e.code == 409:
             raise HTTPException(status_code=409, detail=f"Git merge conflict between staging and main: {msg}. Please resolve branch differences in Git.")
         elif e.code in (401, 403):
+            if "Resource not accessible" in str(msg) or e.code == 403:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"GitHub token is missing write permissions: '{msg}'. If using a Fine-Grained token (github_pat_...), ensure 'Repository permissions -> Contents' is set to 'Read and write'. If using a Classic token (ghp_...), ensure the 'repo' scope is checked."
+                )
             raise HTTPException(status_code=401, detail=f"GitHub token authentication failed: {msg}. Please verify your GitHub Deploy Token in portal settings.")
         else:
             raise HTTPException(status_code=500, detail=f"GitHub merge API error ({e.code}): {msg}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect to GitHub API: {str(e)}")
 
