@@ -153,22 +153,39 @@ def update_client(client_id: str, payload: Dict[str, Any] = Body(...), db: Sessi
     client = None
     if client_id.isdigit():
         client = db.query(Client).filter(Client.id == int(client_id)).first()
+    
+    # Check if client_id was passed as name or dyn- slug
+    if not client and client_id.startswith(("dyn-", "new-")):
+        raw_slug = client_id.replace("dyn-", "").replace("new-", "").replace("-", " ").strip()
+        client = db.query(Client).filter(Client.name.ilike(f"%{raw_slug}%")).first()
+
     if not client:
-        # Fallback to search by name or payload name
-        client = db.query(Client).filter(Client.name.ilike(client_id)).first()
+        client = db.query(Client).filter(Client.name.ilike(client_id.strip())).first()
+
     if not client and payload.get("name"):
-        client = db.query(Client).filter(Client.name.ilike(payload.get("name"))).first()
+        client = db.query(Client).filter(Client.name.ilike(payload.get("name").strip())).first()
     
     if not client:
-        # If still not found (e.g. dyn- generated ID from project client), create new client record
+        # If still not found, create new client record
         name = (payload.get("name") or client_id).strip()
         client = Client(name=name)
         db.add(client)
 
-    if "name" in payload and payload.get("name"):
-        client.name = payload.get("name").strip()
+    old_name = client.name
+    new_name = (payload.get("name") or "").strip()
+
+    if new_name:
+        client.name = new_name
+        # If the client name changed, sync matching projects so no phantom duplicates are created
+        if old_name and old_name.lower() != new_name.lower():
+            from models.orm_models import Project
+            db.query(Project).filter(
+                (Project.client_id == client.id) | 
+                (Project.client_name.ilike(old_name))
+            ).update({Project.client_name: new_name, Project.client_id: client.id}, synchronize_session=False)
+
     if "company" in payload:
-        client.company = payload.get("company")
+        client.company = payload.get("company") or client.name
     if "type" in payload:
         client.type = payload.get("type")
     if "email" in payload:

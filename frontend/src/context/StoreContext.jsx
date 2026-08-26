@@ -2207,8 +2207,12 @@ export function StoreProvider({ children }) {
   };
 
   const updateClient = async (clientId, clientData) => {
+    let oldClientName = '';
     // Optimistically update local contacts state
     setContacts(prev => {
+      const match = prev.find(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
+      if (match) oldClientName = match.name;
+
       const exists = prev.some(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
       if (!exists) {
         return [...prev, { ...clientData, id: clientId }];
@@ -2220,6 +2224,20 @@ export function StoreProvider({ children }) {
         return c;
       });
     });
+
+    if (clientData.name && oldClientName && oldClientName.toLowerCase() !== clientData.name.toLowerCase()) {
+      setProjects(prev => {
+        const updated = {};
+        Object.entries(prev).forEach(([key, p]) => {
+          if (p.client === oldClientName || p.client_name === oldClientName || p.client_id === clientId) {
+            updated[key] = { ...p, client: clientData.name, client_name: clientData.name };
+          } else {
+            updated[key] = p;
+          }
+        });
+        return updated;
+      });
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
