@@ -386,9 +386,10 @@ function ReleasesDeploymentManager() {
   const fetchDeploymentStatus = async () => {
     setLoading(true);
     try {
-      let res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
+      // Query canonical deployment engine first so release audit history is identical across both portals
+      let res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
       if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
+        res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
       }
       if (res && res.ok) {
         const statusData = await res.json();
@@ -802,8 +803,14 @@ export default function SettingsPage() {
   } = useStore();
 
 
+  const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
+  const isStaging = hostname.includes('staging') || hostname.includes('localhost') || hostname.includes('127.0.0.1');
+
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? (isStaging 
+        ? ['General', 'Users', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        : ['General', 'Users', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+      )
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');

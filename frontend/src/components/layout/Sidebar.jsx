@@ -84,6 +84,30 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
           <SettingsIcon size={16} style={{ flexShrink: 0 }} /> 
           {!isCollapsed && <span>Settings</span>}
         </NavLink>
+
+        {!isCollapsed && (
+          <div style={{
+            padding: '6px 12px 10px 12px',
+            fontSize: '11px',
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+            marginTop: '4px'
+          }}>
+            <span style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              background: (typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? '#f59e0b' : '#10b981',
+              boxShadow: (typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? '0 0 6px rgba(245, 158, 11, 0.6)' : '0 0 6px rgba(16, 185, 129, 0.6)'
+            }} />
+            <span style={{ fontWeight: 600 }}>
+              {(typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? 'Staging Playground' : 'Live Production'}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
