@@ -1135,6 +1135,10 @@ export function StoreProvider({ children }) {
   const { user, authLoading } = useAuth();
   const [projects, setProjects] = useState({});
   const [contacts, setContacts] = useState([]);
+  const projectsRef = React.useRef(projects);
+  React.useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
   const [leads, setLeads] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [projectManagers, setProjectManagers] = useState([]);
@@ -1490,23 +1494,24 @@ export function StoreProvider({ children }) {
 
   const updateProject = async (key, field, value) => {
     // 2. Perform granular database write under the hood
-    let updatedProj = null;
+    let nextProj = null;
     setProjects(prev => {
-      const existing = prev[key] || {};
-      const nextProj = typeof field === 'object' && field !== null
+      const existing = prev[key] || projectsRef.current[key] || {};
+      nextProj = typeof field === 'object' && field !== null
         ? { ...existing, ...field }
         : { ...existing, [field]: value };
-      updatedProj = nextProj;
-      return {
+      const nextMap = {
         ...prev,
         [key]: nextProj
       };
+      projectsRef.current = nextMap;
+      return nextMap;
     });
 
-    if (!updatedProj) return;
+    if (!nextProj) return;
 
     if (field === 'orders') {
-      const currentProj = projects[key] || {};
+      const currentProj = projectsRef.current[key] || projects[key] || {};
       const newOrders = value || [];
       const oldOrders = currentProj.orders || [];
 
@@ -1659,7 +1664,8 @@ export function StoreProvider({ children }) {
       }
     } else {
       // Update project row properties
-      const feesToSave = updatedProj.designFees || [];
+      const targetProj = nextProj || projectsRef.current[key] || {};
+      const feesToSave = targetProj.designFees || [];
       const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : "";
       const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : "";
       const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : "";
@@ -1667,21 +1673,21 @@ export function StoreProvider({ children }) {
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
       try {
-        await fetch(`${API_BASE}/api/projects/${key}`, {
+        await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: updatedProj.name || key,
+            name: targetProj.name || key,
             project_key: key,
-            client_name: updatedProj.client !== undefined ? updatedProj.client : (updatedProj.client_name || ''),
-            pm_name: updatedProj.pm !== undefined ? updatedProj.pm : (updatedProj.pm_name || ''),
-            offering: updatedProj.offering || 'Signature',
-            sqm: String(updatedProj.sqm || ''),
-            status: updatedProj.status || 'On track',
-            deadline: updatedProj.deadline || 'TBD',
-            complete_status: updatedProj.complete || 'Ongoing',
-            target_margin: Number(updatedProj.targetMargin) || 0.0,
-            actual_margin: Number(updatedProj.actualMargin) || 0.0,
+            client_name: targetProj.client !== undefined ? targetProj.client : (targetProj.client_name || ''),
+            pm_name: targetProj.pm !== undefined ? targetProj.pm : (targetProj.pm_name || ''),
+            offering: targetProj.offering || 'Signature',
+            sqm: String(targetProj.sqm || ''),
+            status: targetProj.status || 'On track',
+            deadline: targetProj.deadline || 'TBD',
+            complete_status: targetProj.complete || 'Ongoing',
+            target_margin: Number(targetProj.targetMargin) || 0.0,
+            actual_margin: Number(targetProj.actualMargin) || 0.0,
             s1: s1Val,
             s2: s2Val,
             s3: s3Val,

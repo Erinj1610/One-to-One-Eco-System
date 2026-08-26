@@ -614,14 +614,10 @@ export default function ProjectManagement() {
     }
   }, [blendedMargin, p?.actualMargin, id, updateProject]);
 
-  // Sync totals to main fields for backwards compatibility with overview ledger list
+  // Sync dynamic summarized project status based on orders
   useEffect(() => {
     if (!p) return;
-    const formattedFee = `R ${grandContractValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    const formattedPaid = `R ${grandPaidValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    const formattedOutstanding = `R ${grandOutstandingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-    // Calculate dynamic summarized project status based on orders
     let computedStatus = 'Pending';
     if (orders.length > 0) {
       const statuses = orders.map(o => (o.status || 'Pending').trim().toLowerCase());
@@ -646,18 +642,7 @@ export default function ProjectManagement() {
     if (p?.status !== computedStatus) {
       updateProject(id, 'status', computedStatus);
     }
-
-    if (p?.feeValue !== grandContractValue) {
-      updateProject(id, 'feeValue', grandContractValue);
-      updateProject(id, 'feeExcl', formattedFee);
-    }
-    if (p?.paid !== formattedPaid) {
-      updateProject(id, 'paid', formattedPaid);
-    }
-    if (p?.outstanding !== formattedOutstanding) {
-      updateProject(id, 'outstanding', formattedOutstanding);
-    }
-  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding, p?.status, orders]);
+  }, [id, p?.status, orders]);
 
   if (!p) {
     if (id === '[object Promise]' || id === 'undefined' || !id) {
