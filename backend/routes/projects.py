@@ -330,11 +330,15 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
             
             # 4. Create clean OrderItem rows in batch
             for item in order.get("itemsList", []):
+                raw_item_qty = safe_int(item.get("qty", 0))
+                is_credit_val = bool(item.get("isCredit") or item.get("is_credit") or raw_item_qty < 0 or item.get("type") in ("Credit", "Credit Note", "Custom Credit"))
+                db_item_qty = -abs(raw_item_qty) if is_credit_val else raw_item_qty
+
                 db_item = OrderItem(
                     id=item.get("id"),
                     order_id=order_id,
-                    qty=safe_int(item.get("qty", 0)),
-                    type=item.get("type"),
+                    qty=db_item_qty,
+                    type="Credit" if is_credit_val else item.get("type"),
                     one_one_code=item.get("oneOneCode"),
                     code=item.get("code"),
                     description=item.get("description"),
@@ -368,8 +372,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                     receiving_history=item.get("receivingHistory", []),
                     invoice_history=item.get("invoiceHistory", []),
                     stock_on_hand=safe_int(item.get("stockOnHand", 0)),
-                    is_credit=bool(item.get("isCredit", False)),
-                    item_type=item.get("itemType", "Hardware")
+                    is_credit=is_credit_val,
+                    item_type="Credit" if is_credit_val else item.get("itemType", "Hardware")
                 )
                 db.add(db_item)
                 

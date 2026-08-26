@@ -275,7 +275,7 @@ def extract_audit_tab_batch(payload: dict = Body(...)):
         for r in range(9, 90):
             qty_raw = get_row_val('B', r)
             qty = safe_int(qty_raw)
-            if qty <= 0:
+            if qty == 0:
                 continue
 
             one_one_code = str(get_row_val('C', r) or '').strip()
@@ -416,6 +416,10 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 po_ref_val = getattr(item, 'po_ref', None) or o.po_number or ""
                 delivery_eta_val = getattr(item, 'eta', None) or getattr(item, 'po_eta', None) or getattr(o, 'eta', None) or getattr(o, 'expected_delivery_date', "") or ""
 
+                raw_qty = getattr(item, 'qty', 0) or 0
+                is_credit_item = bool(getattr(item, 'is_credit', False) or getattr(item, 'type', '') in ('Credit', 'Credit Note', 'Custom Credit') or raw_qty < 0)
+                item_qty = -abs(raw_qty) if is_credit_item else raw_qty
+
                 portal_flat_rows.append({
                     "Project Key": o.project_key or "",
                     "Project Name": proj_name,
@@ -425,7 +429,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Sales Rep": sales_rep,
                     "Delivery Address": delivery_address,
                     "Item ID": str(item.id or ""),
-                    "Qty": item.qty or 0,
+                    "Qty": item_qty,
                     "1:1 Code": getattr(item, 'one_one_code', None) or "",
                     "Item Code": getattr(item, 'code', None) or "",
                     "Description": getattr(item, 'description', None) or "",
@@ -433,7 +437,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     "Unit Retail Price Ex VAT": getattr(item, 'unit_retail', 0.0) or 0.0,
                     "Brand": getattr(item, 'brand', None) or "",
                     "Supplier": getattr(item, 'supplier', None) or getattr(o, 'supplier_name', "") or "",
-                    "Item Type": getattr(item, 'type', None) or "Hardware",
+                    "Item Type": "Credit" if is_credit_item else (getattr(item, 'type', None) or "Hardware"),
                     "Stock Status": getattr(item, 'stock_status', None) or "",
                     "Stock on Hand": 0,
                     "Qty Ordered (PO)": getattr(item, 'po_qty_ordered', 0) or 0,
