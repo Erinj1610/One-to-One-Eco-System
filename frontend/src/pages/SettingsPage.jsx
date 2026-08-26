@@ -377,6 +377,9 @@ function ReleasesDeploymentManager() {
   const [promoteForm, setPromoteForm] = useState({ version_tag: '', release_name: '', release_notes: '' });
   const [actionMsg, setActionMsg] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showTokenConfig, setShowTokenConfig] = useState(false);
+  const [githubTokenInput, setGithubTokenInput] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
 
   const fetchDeploymentStatus = async () => {
     setLoading(true);
@@ -397,6 +400,34 @@ function ReleasesDeploymentManager() {
     fetchDeploymentStatus();
   }, []);
 
+  const handleSaveGithubToken = async () => {
+    if (!githubTokenInput.trim()) {
+      alert("Please enter a valid GitHub Personal Access Token.");
+      return;
+    }
+    setSavingToken(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/deployments/github-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: githubTokenInput.trim() })
+      });
+      const resData = await res.json();
+      if (res.ok) {
+        setActionMsg({ type: 'success', text: `🟢 ${resData.message || 'GitHub Deploy Token successfully verified and connected!'}` });
+        setGithubTokenInput('');
+        setShowTokenConfig(false);
+        fetchDeploymentStatus();
+      } else {
+        alert(`Failed to save GitHub token: ${resData.detail || 'Invalid token'}`);
+      }
+    } catch (err) {
+      alert(`Error saving GitHub token: ${err.message}`);
+    } finally {
+      setSavingToken(false);
+    }
+  };
+
   const handlePromote = async () => {
     if (!promoteForm.release_name.trim()) {
       alert("Please enter a custom release name.");
@@ -414,14 +445,14 @@ function ReleasesDeploymentManager() {
           admin_email: user?.email || 'admin@1-to-1.world'
         })
       });
+      const resData = await res.json().catch(() => ({}));
       if (res.ok) {
-        setActionMsg({ type: 'success', text: `🚀 Successfully promoted release '${promoteForm.release_name}' to Live Production!` });
+        setActionMsg({ type: 'success', text: resData.message || `🚀 Successfully promoted release '${promoteForm.release_name}' to Live Production!` });
         setShowPromoteModal(false);
         setPromoteForm({ version_tag: '', release_name: '', release_notes: '' });
         fetchDeploymentStatus();
       } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(`Error promoting release: ${errData.detail || 'Failed'}`);
+        alert(`Error promoting release: ${resData.detail || 'Failed'}`);
       }
     } catch (err) {
       alert(`Error promoting release: ${err.message}`);
@@ -440,7 +471,7 @@ function ReleasesDeploymentManager() {
         body: JSON.stringify({})
       });
       if (res.ok) {
-        setActionMsg({ type: 'success', text: `⏪ Successfully rolled back Production live traffic to revision ${rev.version_tag}!` });
+        setActionMsg({ type: 'success', text: `⏪ Successfully marked Production live traffic to revision ${rev.version_tag}!` });
         fetchDeploymentStatus();
       } else {
         alert("Rollback failed.");
@@ -457,12 +488,13 @@ function ReleasesDeploymentManager() {
   }
 
   const currentProd = data?.current_production;
+  const githubInfo = data?.github_integration;
 
   return (
     <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
       <div className="section-label">🚀 Releases & Deployment Management Dashboard</div>
       <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '18px' }}>
-        Manage Staging vs. Production releases, deploy tested Staging builds live, log custom release titles, and execute 1-click revision rollbacks with zero data loss.
+        Manage Staging vs. Production releases, deploy tested Staging builds directly to the live production portal via automated GitHub merge, log custom release titles, and track historical audit trails.
       </div>
 
       {actionMsg && (
@@ -475,6 +507,85 @@ function ReleasesDeploymentManager() {
         </div>
       )}
 
+      {/* GITHUB INTEGRATION BANNER */}
+      <div style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: '10px',
+        padding: '14px 18px',
+        marginBottom: '20px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '20px' }}>🐙</span>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>GitHub Auto-Deploy Integration ({githubInfo?.repository || 'Erinj1610/One-to-One-Eco-System'})</span>
+              {githubInfo?.configured ? (
+                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                  🟢 Connected ({githubInfo.masked_token})
+                </span>
+              ) : (
+                <span style={{ fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                  ⚠️ Token Not Configured
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+              {githubInfo?.configured 
+                ? 'When you promote staging, the portal automatically merges the staging branch into main, triggering live Vercel & Cloud Run builds.' 
+                : 'Configure a GitHub Personal Access Token (PAT) with repo access to enable 1-click deployments directly from this portal.'}
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => setShowTokenConfig(!showTokenConfig)} 
+          className="btn btn-sm btn-ghost"
+          style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+        >
+          ⚙️ {githubInfo?.configured ? 'Update GitHub Token' : 'Configure GitHub Token'}
+        </button>
+      </div>
+
+      {/* GITHUB TOKEN CONFIG MODAL / DRAWER */}
+      {showTokenConfig && (
+        <div style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)',
+          borderRadius: '10px',
+          padding: '16px 18px',
+          marginBottom: '20px'
+        }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 700 }}>🔑 Connect GitHub Personal Access Token (PAT)</h4>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            Generate a GitHub Personal Access Token (classic with <code>repo</code> scope, or Fine-Grained token with <code>Contents: Read and write</code> permission on <code>{githubInfo?.repository}</code>) and paste it below.
+          </div>
+          <div style={{ display: 'flex', gap: '10px', maxWidth: '600px' }}>
+            <input 
+              type="password"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_xxxxxxxxxxxx"
+              value={githubTokenInput}
+              onChange={e => setGithubTokenInput(e.target.value)}
+              className="form-control"
+              style={{ fontSize: '12px', flex: 1 }}
+            />
+            <button 
+              className="btn btn-primary"
+              onClick={handleSaveGithubToken}
+              disabled={savingToken || !githubTokenInput.trim()}
+              style={{ whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 600 }}
+            >
+              {savingToken ? 'Validating...' : 'Save & Connect Token'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ACTIVE PRODUCTION & STAGING CARDS GRID */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
         
@@ -484,7 +595,9 @@ function ReleasesDeploymentManager() {
             <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
               🟢 ACTIVE PRODUCTION LIVE
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>ejportal.vercel.app</span>
+            <a href="https://ejportal.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#10b981', fontWeight: 600, textDecoration: 'none' }}>
+              ejportal.vercel.app ↗
+            </a>
           </div>
           <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
             {currentProd?.version_tag || 'v1.5.0'} — {currentProd?.release_name || 'Live Production'}
@@ -493,7 +606,7 @@ function ReleasesDeploymentManager() {
             Deployed by {currentProd?.deployed_by || 'Admin'} on {currentProd?.created_at || 'Recently'}
           </div>
           <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '6px', color: 'var(--text-secondary)' }}>
-            🛡️ Production Cloud SQL Database (<code style={{ color: '#60a5fa' }}>one_to_one_db_prod</code>) is active and protected.
+            🛡️ Production Cloud SQL Database (<code style={{ color: '#60a5fa' }}>One-to-One-Portal-Database</code>) is active and protected.
           </div>
         </div>
 
@@ -511,7 +624,7 @@ function ReleasesDeploymentManager() {
             Live Staging Build Ready
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-            Isolated Staging Database (<code style={{ color: '#60a5fa' }}>one_to_one_db_staging</code>) active for live UI tests.
+            Backend: <code style={{ color: '#60a5fa' }}>one-to-one-backend-staging</code> (US Central 1).
           </div>
           <button 
             onClick={() => setShowPromoteModal(true)}
@@ -567,7 +680,7 @@ function ReleasesDeploymentManager() {
                       disabled={actionLoading}
                       style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
                     >
-                      ⏪ Rollback to this Revision
+                      ⏪ Mark Active
                     </button>
                   )}
                 </td>
@@ -584,10 +697,10 @@ function ReleasesDeploymentManager() {
           background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ width: '100%', maxWidth: '500px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: 'var(--text-primary)' }}>🚀 Promote Staging to Production</h3>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Publish your tested Staging changes to the live portal. Enter a custom version tag and release title for your audit log.
+          <div style={{ width: '100%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: 'var(--text-primary)' }}>🚀 Promote Staging to Live Production</h3>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+              This will merge your tested <strong>staging</strong> branch into <strong>main</strong> on GitHub, automatically triggering live <strong>Vercel</strong> frontend and <strong>Cloud Run</strong> backend deployments.
             </div>
 
             <div style={{ marginBottom: '12px' }}>
@@ -605,7 +718,7 @@ function ReleasesDeploymentManager() {
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Release Title / Name *</label>
               <input 
                 type="text" 
-                placeholder="e.g. Custom Order Naming & Google Drive Vault" 
+                placeholder="e.g. Ticket Logger Redesign & Assigned Staff Users" 
                 value={promoteForm.release_name} 
                 onChange={e => setPromoteForm({ ...promoteForm, release_name: e.target.value })} 
                 className="form-control"
@@ -624,9 +737,9 @@ function ReleasesDeploymentManager() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button className="btn btn-secondary" onClick={() => setShowPromoteModal(false)}>Cancel</button>
+              <button className="btn btn-secondary" onClick={() => setShowPromoteModal(false)} disabled={actionLoading}>Cancel</button>
               <button className="btn btn-primary" onClick={handlePromote} disabled={actionLoading}>
-                {actionLoading ? 'Publishing Release...' : '🚀 Confirm & Publish Live'}
+                {actionLoading ? '🚀 Merging & Triggering Live Deployments...' : '🚀 Confirm & Publish Live'}
               </button>
             </div>
           </div>
