@@ -2066,14 +2066,26 @@ export default function OrdersPage() {
   // Save the spreadsheet and update the global store context
   const handleSaveOrderSpreadsheet = async (syncVault = false) => {
     if (isSavingOrder || isSyncingVault) return;
-    const proj = projects[selectedProjectKey];
-    if (!proj) return;
 
     if (syncVault) {
       setIsSyncingVault(true);
     } else {
       setIsSavingOrder(true);
     }
+
+    // Locate source project
+    let sourceProjectKey = selectedProjectKey;
+    if (!sourceProjectKey || !projects[sourceProjectKey]?.orders?.some(o => o.id === selectedOrderId)) {
+      for (const pKey of Object.keys(projects)) {
+        if (projects[pKey]?.orders?.some(o => o.id === selectedOrderId)) {
+          sourceProjectKey = pKey;
+          break;
+        }
+      }
+    }
+
+    const effectiveTargetKey = selectedProjectKey || sourceProjectKey || (clientContact ? `client-${clientContact.toLowerCase().trim().replace(/\s+/g, '-')}` : 'direct-client');
+    const targetProj = projects[effectiveTargetKey] || projects[sourceProjectKey] || {};
 
     // Calculate aggregated order totals from items list
     const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
@@ -2089,74 +2101,87 @@ export default function OrdersPage() {
       sortOrder: idx
     }));
 
-    const updatedOrders = (proj.orders || []).map(o => {
-      if (o.id === selectedOrderId) {
-        return {
-          ...o,
-          supplier: orderSupplier,
-          status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
-          eta: orderEta,
-          items: itemsCount,
-          value: Math.round(discountedValue),
-          costValue: Math.round(totalCostTotal),
-          discount: Number(orderDiscount) || 0,
-          paid: paidSum,
-          payments: orderPayments,
-          outstanding: Math.round(balanceOutstanding),
-          itemsList: orderedItemsWithIndex,
-          // Save order-specific adjusted metadata fields
-          quote_name: quoteName,
-          client: (clientCompany || clientContact || proj.client || '').trim(),
-          client_name: (clientCompany || clientContact || proj.client || '').trim(),
-          clientCompany,
-          client_company: clientCompany,
-          clientContact,
-          client_contact: clientContact,
-          clientPhone,
-          client_phone: clientPhone,
-          clientEmail,
-          client_email: clientEmail,
-          projectFullName,
-          projectTier,
-          projectSize,
-          electrician,
-          electricianPhone,
-          contractor,
-          contractorPhone,
-          interiorDesigner,
-          interiorDesignerPhone,
-          oneOneRep,
-          pmName,
-          pmPhone,
-          pmEmail,
-          deliveryAddress,
-          billingDetails,
-          orderDate,
-          pfNumber,
-          pfDate,
-          fileSource,
-          projectClass,
-          quotationSentDate,
-          division
-        };
-      }
-      return o;
-    });
+    const existingOrderObj = (projects[sourceProjectKey]?.orders || []).find(o => o.id === selectedOrderId) || {};
 
-    // Save back to dynamic project state and ensure database writes finish
-    await updateProject(selectedProjectKey, 'orders', updatedOrders);
+    const updatedOrder = {
+      ...existingOrderObj,
+      id: selectedOrderId,
+      supplier: orderSupplier,
+      status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
+      eta: orderEta,
+      items: itemsCount,
+      value: Math.round(discountedValue),
+      costValue: Math.round(totalCostTotal),
+      discount: Number(orderDiscount) || 0,
+      paid: paidSum,
+      payments: orderPayments,
+      outstanding: Math.round(balanceOutstanding),
+      itemsList: orderedItemsWithIndex,
+      // Save order-specific adjusted metadata fields
+      quote_name: quoteName,
+      client: (clientCompany || clientContact || targetProj.client || '').trim(),
+      client_name: (clientCompany || clientContact || targetProj.client || '').trim(),
+      clientCompany,
+      client_company: clientCompany,
+      clientContact,
+      client_contact: clientContact,
+      clientPhone,
+      client_phone: clientPhone,
+      clientEmail,
+      client_email: clientEmail,
+      projectFullName: projectFullName || targetProj.name || '',
+      projectTier,
+      projectSize,
+      electrician,
+      electricianPhone,
+      contractor,
+      contractorPhone,
+      interiorDesigner,
+      interiorDesignerPhone,
+      oneOneRep,
+      pmName,
+      pmPhone,
+      pmEmail,
+      deliveryAddress,
+      billingDetails,
+      orderDate,
+      pfNumber,
+      pfDate,
+      fileSource,
+      projectClass,
+      quotationSentDate,
+      division,
+      projectKey: effectiveTargetKey
+    };
+
+    if (sourceProjectKey && effectiveTargetKey && sourceProjectKey !== effectiveTargetKey) {
+      // Remove from source project
+      const remainingSourceOrders = (projects[sourceProjectKey]?.orders || []).filter(o => o.id !== selectedOrderId);
+      await updateProject(sourceProjectKey, 'orders', remainingSourceOrders);
+
+      // Add to target project
+      const targetOrders = [...(projects[effectiveTargetKey]?.orders || []).filter(o => o.id !== selectedOrderId), updatedOrder];
+      await updateProject(effectiveTargetKey, 'orders', targetOrders);
+    } else {
+      const existingList = projects[effectiveTargetKey]?.orders || [];
+      const hasOrder = existingList.some(o => o.id === selectedOrderId);
+      const updatedOrders = hasOrder 
+        ? existingList.map(o => o.id === selectedOrderId ? updatedOrder : o)
+        : [...existingList, updatedOrder];
+      await updateProject(effectiveTargetKey, 'orders', updatedOrders);
+    }
 
     // Calculate global margins for the project
-    const designTotal = (proj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
-    const orderTotal = updatedOrders.reduce((s, o) => s + (o.value || 0), 0);
+    const designTotal = (targetProj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
+    const orderTotal = Math.round(discountedValue);
     const contractTotal = designTotal + orderTotal;
     
-    const designMarginValue = (proj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
-    const orderMarginValue = updatedOrders.reduce((s, o) => s + ((o.value || 0) - (o.costValue || 0)), 0);
+    const designMarginValue = (targetProj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
+    const orderMarginValue = Math.round(discountedValue) - Math.round(totalCostTotal);
     const totalProfit = designMarginValue + orderMarginValue;
     const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
 
-    await updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
+    await updateProject(effectiveTargetKey, 'actualMargin', blendedMargin);
 
     if (!syncVault) {
       setIsSavingOrder(false);

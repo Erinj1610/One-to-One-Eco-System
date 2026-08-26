@@ -1644,11 +1644,18 @@ export function StoreProvider({ children }) {
         } else {
           // Unconditionally persist order details to Cloud SQL
           try {
-            await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
+            const updateRes = await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(orderData)
             });
+            if (!updateRes.ok && updateRes.status === 404) {
+              await fetch(`${API_BASE}/api/orders/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+              });
+            }
           } catch (err) {
             console.error(`Error updating order ${newOrder.id}:`, err);
           }
@@ -1669,30 +1676,16 @@ export function StoreProvider({ children }) {
             }
           }
 
-          // Find added or updated items
-          const oldItemsMap = new Map(oldItems.map(i => [i.id, i]));
+          // Upsert all items to Cloud SQL
           for (const newItem of newItems) {
-            const oldItem = oldItemsMap.get(newItem.id);
-            if (!oldItem) {
-              try {
-                await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(mapItemToSchema(newItem))
-                });
-              } catch (err) {
-                console.error(`Error creating item ${newItem.id}:`, err);
-              }
-            } else {
-              try {
-                await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(mapItemToSchema(newItem))
-                });
-              } catch (err) {
-                console.error(`Error updating item ${newItem.id}:`, err);
-              }
+            try {
+              await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mapItemToSchema(newItem))
+              });
+            } catch (err) {
+              console.error(`Error upserting item ${newItem.id}:`, err);
             }
           }
         }
