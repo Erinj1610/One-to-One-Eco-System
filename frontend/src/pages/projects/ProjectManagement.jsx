@@ -131,6 +131,48 @@ export default function ProjectManagement() {
   }, [location.state]);
 
   const p = projects[id];
+  const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
+
+  const handleSaveOverview = async () => {
+    if (!p) return;
+    try {
+      setSaveStatus('saving');
+      await updateProject(id, {
+        name: p.name,
+        projectType: p.projectType,
+        pm: p.pm,
+        start: p.start,
+        deadline: p.deadline,
+        sqm: p.sqm,
+        targetMargin: p.targetMargin,
+        delay: p.delay,
+        client: p.client,
+        client_name: p.client,
+        clientCompany: p.clientCompany,
+        clientEmail: p.clientEmail,
+        clientPhone: p.clientPhone,
+        architectName: p.architectName,
+        architectCompany: p.architectCompany,
+        architectEmail: p.architectEmail,
+        architectPhone: p.architectPhone,
+        contractorName: p.contractorName,
+        contractorCompany: p.contractorCompany,
+        contractorEmail: p.contractorEmail,
+        contractorPhone: p.contractorPhone,
+        billingName: p.billingName,
+        billingEmail: p.billingEmail,
+        billingPhone: p.billingPhone,
+        billingDetails: p.billingDetails,
+        deliveryAddress: p.deliveryAddress
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      console.error("Error saving project:", err);
+      setSaveStatus('error');
+    }
+  };
+
   const { stage: computedStage, progressPct: computedProgress } = useMemo(() => {
     if (!p) return { stage: 'Stage 1', progressPct: 0 };
     return calculateProjectStageAndProgress(p);
@@ -1026,9 +1068,40 @@ export default function ProjectManagement() {
           {/* SECTION 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ClipboardList size={14} />
-                <span><strong>Overview Section:</strong> Configure basic project criteria, stakeholder details, and manage the contacts directory.</span>
+              <div style={{ 
+                background: 'var(--bg-info)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '12px 16px', 
+                fontSize: '12.5px', 
+                color: 'var(--text-info)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={14} />
+                  <span><strong>Overview Section:</strong> Configure basic project criteria, stakeholder details, and manage the contacts directory.</span>
+                </div>
+                <button
+                  type="button"
+                  className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
+                  onClick={handleSaveOverview}
+                  disabled={saveStatus === 'saving'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 16px',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Save size={14} />
+                  <span>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved to Database ✓' : 'Save Project Details'}</span>
+                </button>
               </div>
 
               {/* 1. Project Information Details Card */}
@@ -1647,6 +1720,28 @@ export default function ProjectManagement() {
                   }}
                 >
                   Save & Create Project
+                </button>
+              )}
+              {!p.isDraft && (
+                <button 
+                  type="button"
+                  className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
+                  onClick={handleSaveOverview}
+                  disabled={saveStatus === 'saving'}
+                  style={{ 
+                    width: '100%', 
+                    justifyContent: 'center', 
+                    padding: '12px', 
+                    fontSize: '14px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <Save size={16} />
+                  <span>{saveStatus === 'saving' ? 'Saving to Database...' : saveStatus === 'saved' ? 'Changes Saved to Database ✓' : 'Save Project Details'}</span>
                 </button>
               )}
               
