@@ -532,7 +532,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     missing_in_portal_count = 0
     new_in_portal_count = 0
     discrepancy_details = []
-    red_cell_coordinates = []  # list of (row_idx, col_idx) for Google Sheet formatting
+    red_ranges = []  # list of (start_row, end_row, start_col, end_col) for Google Sheet formatting
 
     def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
         # Exclude columns requested by user or that are system-generated
@@ -623,8 +623,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 row_idx = len(heatmap_rows)
                 row_vals = ["🛑 MISSING IN PORTAL"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
                 heatmap_rows.append(row_vals)
-                for c_i in range(len(row_vals)):
-                    red_cell_coordinates.append((row_idx, c_i))
+                red_ranges.append((row_idx, row_idx + 1, 0, len(row_vals)))
             continue
 
         if ports and not legs:
@@ -695,10 +694,10 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     row_idx = len(heatmap_rows)
                     heatmap_rows.append([diff_summary] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS])
 
-                    # Mark exact diff coordinates in red
+                    # Mark status cell and exact diff coordinates in red
+                    red_ranges.append((row_idx, row_idx + 1, 0, 1))
                     for diff_c in diff_cols:
-                        red_cell_coordinates.append((row_idx, diff_c))
-                    red_cell_coordinates.append((row_idx, 0))
+                        red_ranges.append((row_idx, row_idx + 1, diff_c, diff_c + 1))
 
             else:
                 # Extra item in live system that portal doesn't have
@@ -706,8 +705,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 row_idx = len(heatmap_rows)
                 row_vals = ["🛑 ITEM MISSING IN PORTAL"] + [l_item.get(c, "") for c in RECONCILIATION_COLUMNS]
                 heatmap_rows.append(row_vals)
-                for c_i in range(len(row_vals)):
-                    red_cell_coordinates.append((row_idx, c_i))
+                red_ranges.append((row_idx, row_idx + 1, 0, len(row_vals)))
 
         if order_has_mismatch:
             mismatches_count += 1
@@ -859,13 +857,15 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             # Apply cell-level red highlight formatting on Tab 1
             cell_format_requests = []
             
-            # 1. Reset all data cells (rows 1 to 5000) to white background and normal text
+            total_data_rows = max(len(heatmap_rows), len(legacy_tab_2d), len(portal_tab_2d), 30000)
+
+            # 1. Reset all data cells to white background and normal text
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
                         'sheetId': 101,
                         'startRowIndex': 1,
-                        'endRowIndex': 5000,
+                        'endRowIndex': total_data_rows + 500,
                         'startColumnIndex': 0,
                         'endColumnIndex': len(heatmap_headers) + 1
                     },
@@ -899,16 +899,42 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 }
             })
 
-            # Highlight specific discrepancy coordinates in red
-            for r_idx, c_idx in red_cell_coordinates[:1500]:
+            # 3. Add conditional formatting rule so missing rows are always highlighted across all rows
+            cell_format_requests.append({
+                'addConditionalFormatRule': {
+                    'rule': {
+                        'ranges': [{
+                            'sheetId': 101,
+                            'startRowIndex': 1,
+                            'endRowIndex': total_data_rows + 500,
+                            'startColumnIndex': 0,
+                            'endColumnIndex': len(heatmap_headers)
+                        }],
+                        'booleanRule': {
+                            'condition': {
+                                'type': 'CUSTOM_FORMULA',
+                                'values': [{'userEnteredValue': '=ISNUMBER(SEARCH("MISSING", $A2))'}]
+                            },
+                            'format': {
+                                'backgroundColor': {'red': 1.0, 'green': 0.88, 'blue': 0.88},
+                                'textFormat': {'foregroundColor': {'red': 0.86, 'green': 0.15, 'blue': 0.15}, 'bold': True}
+                            }
+                        }
+                    },
+                    'index': 0
+                }
+            })
+
+            # 4. Highlight specific discrepancy cell ranges in red (100% full coverage for all 6000+ rows)
+            for sr, er, sc, ec in red_ranges:
                 cell_format_requests.append({
                     'repeatCell': {
                         'range': {
                             'sheetId': 101,
-                            'startRowIndex': r_idx,
-                            'endRowIndex': r_idx + 1,
-                            'startColumnIndex': c_idx,
-                            'endColumnIndex': c_idx + 1
+                            'startRowIndex': sr,
+                            'endRowIndex': er,
+                            'startColumnIndex': sc,
+                            'endColumnIndex': ec
                         },
                         'cell': {
                             'userEnteredFormat': {
@@ -920,14 +946,17 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                     }
                 })
 
-            if cell_format_requests:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=audit_sheet_id,
-                    body={'requests': cell_format_requests}
-                ).execute()
-
-        except Exception as sheet_err:
-            print(f"Notice: Google Sheet tab batch update notice: {sheet_err}")
+            # Execute formatting in safe chunks of 500 requests to avoid Google Sheets API payload limits
+            CHUNK_SIZE = 500
+            for i in range(0, len(cell_format_requests), CHUNK_SIZE):
+                chunk = cell_format_requests[i:i + CHUNK_SIZE]
+                try:
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=audit_sheet_id,
+                        body={'requests': chunk}
+                    ).execute()
+                except Exception as chunk_err:
+                    print(f"Notice applying format chunk {i}-{i+CHUNK_SIZE}: {chunk_err}")
 
     return {
         "status": "success",
