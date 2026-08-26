@@ -1673,8 +1673,8 @@ export function StoreProvider({ children }) {
           body: JSON.stringify({
             name: updatedProj.name || key,
             project_key: key,
-            client_name: updatedProj.client || '',
-            pm_name: updatedProj.pm || '',
+            client_name: updatedProj.client !== undefined ? updatedProj.client : (updatedProj.client_name || ''),
+            pm_name: updatedProj.pm !== undefined ? updatedProj.pm : (updatedProj.pm_name || ''),
             offering: updatedProj.offering || 'Signature',
             sqm: String(updatedProj.sqm || ''),
             status: updatedProj.status || 'On track',

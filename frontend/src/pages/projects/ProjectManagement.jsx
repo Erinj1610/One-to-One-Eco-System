@@ -1177,18 +1177,21 @@ export default function ProjectManagement() {
                       value={p.client || ''} 
                       onChange={(e) => {
                         const val = e.target.value;
-                        updateProject(id, 'client', val);
                         const contact = contacts.find(c => c.name === val);
                         if (contact) {
-                          updateProject(id, 'clientCompany', contact.company || '');
-                          updateProject(id, 'clientEmail', contact.email || '');
-                          updateProject(id, 'clientPhone', contact.phone || '');
-                          
-                          // Pre-populate Billing details from client
-                          updateProject(id, 'billingName', contact.name);
-                          updateProject(id, 'billingEmail', contact.email || '');
-                          updateProject(id, 'billingPhone', contact.phone || '');
-                          updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                          updateProject(id, {
+                            client: val,
+                            client_name: val,
+                            clientCompany: contact.company || '',
+                            clientEmail: contact.email || '',
+                            clientPhone: contact.phone || '',
+                            billingName: contact.name,
+                            billingEmail: contact.email || '',
+                            billingPhone: contact.phone || '',
+                            billingDetails: `${contact.name}\n${contact.company || ''}`
+                          });
+                        } else {
+                          updateProject(id, { client: val, client_name: val });
                         }
                       }} 
                       placeholder="Type client name or select..."
@@ -1253,12 +1256,16 @@ export default function ProjectManagement() {
                           list="architect-datalist"
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateProject(id, 'architectName', val);
                             const contact = contacts.find(c => c.name === val);
                             if (contact) {
-                              updateProject(id, 'architectCompany', contact.company || '');
-                              updateProject(id, 'architectEmail', contact.email || '');
-                              updateProject(id, 'architectPhone', contact.phone || '');
+                              updateProject(id, {
+                                architectName: val,
+                                architectCompany: contact.company || '',
+                                architectEmail: contact.email || '',
+                                architectPhone: contact.phone || ''
+                              });
+                            } else {
+                              updateProject(id, 'architectName', val);
                             }
                           }}
                           placeholder="Type or select architect..."
@@ -1317,12 +1324,16 @@ export default function ProjectManagement() {
                           list="contractor-datalist"
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateProject(id, 'contractorName', val);
                             const contact = contacts.find(c => c.name === val);
                             if (contact) {
-                              updateProject(id, 'contractorCompany', contact.company || '');
-                              updateProject(id, 'contractorEmail', contact.email || '');
-                              updateProject(id, 'contractorPhone', contact.phone || '');
+                              updateProject(id, {
+                                contractorName: val,
+                                contractorCompany: contact.company || '',
+                                contractorEmail: contact.email || '',
+                                contractorPhone: contact.phone || ''
+                              });
+                            } else {
+                              updateProject(id, 'contractorName', val);
                             }
                           }}
                           placeholder="Type or select contractor..."
@@ -1382,22 +1393,26 @@ export default function ProjectManagement() {
                         list="billing-datalist"
                         onChange={(e) => {
                           const val = e.target.value;
-                          updateProject(id, 'billingName', val);
-                          
                           if (val === `Use Client Details (${p.client})` || val === p.client) {
-                            updateProject(id, 'billingName', p.client || '');
-                            updateProject(id, 'billingEmail', p.clientEmail || '');
-                            updateProject(id, 'billingPhone', p.clientPhone || '');
-                            updateProject(id, 'billingDetails', `${p.client || ''}\n${p.clientCompany || ''}`);
+                            updateProject(id, {
+                              billingName: p.client || '',
+                              billingEmail: p.clientEmail || '',
+                              billingPhone: p.clientPhone || '',
+                              billingDetails: `${p.client || ''}\n${p.clientCompany || ''}`
+                            });
                             return;
                           }
 
                           const contact = contacts.find(c => c.name === val);
                           if (contact) {
-                            updateProject(id, 'billingName', contact.name);
-                            updateProject(id, 'billingEmail', contact.email || '');
-                            updateProject(id, 'billingPhone', contact.phone || '');
-                            updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                            updateProject(id, {
+                              billingName: contact.name,
+                              billingEmail: contact.email || '',
+                              billingPhone: contact.phone || '',
+                              billingDetails: `${contact.name}\n${contact.company || ''}`
+                            });
+                          } else {
+                            updateProject(id, 'billingName', val);
                           }
                         }} 
                         placeholder="Type billing name or select..."
