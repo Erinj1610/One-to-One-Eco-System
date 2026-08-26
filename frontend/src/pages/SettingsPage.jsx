@@ -386,9 +386,10 @@ function ReleasesDeploymentManager() {
   const fetchDeploymentStatus = async () => {
     setLoading(true);
     try {
-      let res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
+      // Query canonical deployment engine first so release audit history is identical across both portals
+      let res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
       if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
+        res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
       }
       if (res && res.ok) {
         const statusData = await res.json();
