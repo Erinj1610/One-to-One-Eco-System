@@ -157,10 +157,36 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.project_key == project_key).first()
     project_id = project.id if project else None
 
-    # Check if duplicate po_number
+    # Check if existing po_number - if so, update gracefully (idempotent create)
     existing = db.query(Order).filter(Order.po_number == po_number).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Order with this PO number already exists")
+        if project_id: existing.project_id = project_id
+        existing.project_key = project_key
+        existing.supplier_name = order_data.get("supplier_name") or existing.supplier_name
+        existing.items_count = int(order_data.get("items_count", existing.items_count or 0))
+        existing.value = float(order_data.get("value", existing.value or 0.0))
+        existing.paid = float(order_data.get("paid", existing.paid or 0.0))
+        existing.outstanding = float(order_data.get("outstanding", existing.outstanding or 0.0))
+        existing.status = order_data.get("status") or existing.status
+        existing.eta = order_data.get("eta") or existing.eta
+        if "quote_name" in order_data: existing.quote_name = order_data.get("quote_name")
+        if "packingLists" in order_data: existing.packing_lists = order_data.get("packingLists")
+        if "deliveryNotes" in order_data: existing.delivery_notes = order_data.get("deliveryNotes")
+        if "purchaseOrders" in order_data: existing.purchase_orders = order_data.get("purchaseOrders")
+        if "goodsReceivedNotes" in order_data: existing.goods_received_notes = order_data.get("goodsReceivedNotes")
+        if "clientInvoices" in order_data: existing.client_invoices = order_data.get("clientInvoices")
+        if "orderDate" in order_data: existing.order_date = order_data.get("orderDate")
+        if "quotationSentDate" in order_data: existing.quotation_sent_date = order_data.get("quotationSentDate")
+        if "pfDate" in order_data: existing.pf_date = order_data.get("pfDate")
+        if "payments" in order_data: existing.payments = order_data.get("payments")
+        if "depositValue" in order_data: existing.deposit_value = float(order_data.get("depositValue")) if order_data.get("depositValue") is not None else None
+        if "depositInvoiceSent" in order_data: existing.deposit_invoice_sent = order_data.get("depositInvoiceSent")
+        if "depositPaymentDate" in order_data: existing.deposit_payment_date = order_data.get("depositPaymentDate")
+        if "balanceValue" in order_data: existing.balance_value = float(order_data.get("balanceValue")) if order_data.get("balanceValue") is not None else None
+        if "balancePaymentDate" in order_data: existing.balance_payment_date = order_data.get("balancePaymentDate")
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     # Extract standard fields
     new_order = Order(
@@ -286,10 +312,51 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
 
 @router.post("/{po_number}/items")
 def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = Depends(get_db)):
-    # Check if duplicate ID
+    # Check if duplicate ID - if so, update gracefully (idempotent create)
     existing = db.query(OrderItem).filter(OrderItem.id == item_data.id).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Item with this ID already exists")
+        existing.order_id = po_number
+        existing.qty = item_data.qty
+        existing.type = item_data.type
+        existing.one_one_code = item_data.one_one_code
+        existing.code = item_data.code
+        existing.description = item_data.description
+        existing.floor = item_data.floor
+        existing.area = item_data.area
+        existing.dimming = item_data.dimming
+        existing.brand = item_data.brand
+        existing.supplier = item_data.supplier
+        existing.unit_cost = item_data.unit_cost
+        existing.unit_trade = item_data.unit_trade
+        existing.unit_retail = item_data.unit_retail
+        existing.selection = item_data.selection
+        existing.stock_status = item_data.stock_status
+        existing.eta = item_data.eta
+        existing.po_ref = item_data.po_ref
+        existing.po_qty_ordered = item_data.po_qty_ordered
+        existing.po_eta = item_data.po_eta
+        existing.invoice_qty = item_data.invoice_qty
+        existing.po_supplier = item_data.po_supplier
+        existing.po_date = item_data.po_date
+        existing.received_qty = item_data.received_qty
+        existing.received_date = item_data.received_date
+        existing.invoice_ref = item_data.invoice_ref
+        existing.invoice_date = item_data.invoice_date
+        existing.invoice_value = item_data.invoice_value
+        existing.delivery_qty = item_data.delivery_qty
+        existing.delivery_date = item_data.delivery_date
+        existing.delivery_status = item_data.delivery_status
+        existing.delivery_history = json.dumps(item_data.delivery_history)
+        existing.purchase_history = json.dumps(item_data.purchase_history)
+        existing.receiving_history = json.dumps(item_data.receiving_history)
+        existing.invoice_history = json.dumps(item_data.invoice_history)
+        existing.stock_on_hand = item_data.stock_on_hand
+        existing.is_credit = item_data.is_credit
+        existing.item_type = item_data.item_type
+        existing.sort_order = item_data.sort_order
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     new_item = OrderItem(
         id=item_data.id,
