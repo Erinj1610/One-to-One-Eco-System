@@ -842,6 +842,7 @@ export default function ProjectManagement() {
   // Create new Product Order
   const handleCreateProductOrder = () => {
     const newOrderId = `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    const contact = (contacts || []).find(c => c.name === p.client || c.company === p.client) || {};
     const newOrder = {
       id: newOrderId,
       supplier: 'Made by 1-to-1',
@@ -851,6 +852,16 @@ export default function ProjectManagement() {
       outstanding: 0,
       status: 'Pending',
       eta: '—',
+      client: p.client || '',
+      client_name: p.client || '',
+      clientCompany: contact.company || p.client || '',
+      client_company: contact.company || p.client || '',
+      clientContact: contact.name || p.client || '',
+      client_contact: contact.name || p.client || '',
+      clientPhone: contact.phone || '',
+      client_phone: contact.phone || '',
+      clientEmail: contact.email || '',
+      client_email: contact.email || '',
       itemsList: []
     };
 

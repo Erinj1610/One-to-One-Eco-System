@@ -2247,6 +2247,7 @@ export default function OrdersPage() {
     if (!proj) return;
 
     const newPoId = 'Q-2026-0' + (allOrders.length + 42);
+    const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
     const newOrder = {
       id: newPoId,
       quote_name: newPoForm.quote_name || 'General Spec',
@@ -2259,6 +2260,16 @@ export default function OrdersPage() {
       eta: newPoForm.eta,
       costValue: 900,
       discount: 0,
+      client: proj.client || '',
+      client_name: proj.client || '',
+      clientCompany: contact.company || proj.client || '',
+      client_company: contact.company || proj.client || '',
+      clientContact: contact.name || proj.client || '',
+      client_contact: contact.name || proj.client || '',
+      clientPhone: contact.phone || '',
+      client_phone: contact.phone || '',
+      clientEmail: contact.email || '',
+      client_email: contact.email || '',
       itemsList: [
         {
           id: 'I-' + Date.now(),
@@ -2288,7 +2299,7 @@ export default function OrdersPage() {
       ...newOrder,
       projectKey: newPoForm.projectKey,
       projectName: proj.name,
-      projectClient: proj.client
+      projectClient: newOrder.clientCompany || newOrder.clientContact || proj.client
     });
   };
 
