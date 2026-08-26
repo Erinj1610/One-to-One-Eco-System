@@ -2,12 +2,11 @@
 
 ## CRITICAL BEHAVIORAL DIRECTIVES (PERMANENT ACROSS ALL CONVERSATIONS)
 
-1. **MANDATORY STAGING-FIRST WORKFLOW (PROTECT PRODUCTION)**:
-   - NEVER develop, push, or deploy directly to `main` or production Cloud Run (`one-to-one-backend`).
-   - ALL feature work, bug fixes, database adjustments, and testing MUST be done on the `staging` branch.
-   - All backend changes MUST be deployed to the Cloud Run Staging service (`one-to-one-backend-staging-858977785048.us-central1.run.app`).
-   - All frontend changes MUST be pushed to the `staging` branch and verified on the Staging environment.
-   - Production (`main` branch, production Cloud Run `one-to-one-backend`, and `ejportal.vercel.app`) must ONLY be updated when the USER explicitly requests a production deployment/release after verifying staging.
+1. **ABSOLUTE BLOCK ON `main` BRANCH (100% STAGING-ONLY ENFORCEMENT)**:
+   - The AI agent is PERMANENTLY FORBIDDEN from checking out, committing to, merging into, or pushing to `main` under any circumstances.
+   - The AI agent must NEVER execute `git checkout main`, `git merge ... main`, `git push origin main`, or any command targeting `main`.
+   - All development, bug fixes, database adjustments, and git pushes MUST be done exclusively on the `staging` branch.
+   - Production promotion (`main` branch) is controlled exclusively by the user via the Portal UI Release Manager (`Settings → Releases & Deployments`).
 
 2. **MANDATORY LIVE STAGING VERIFICATION**:
    - NEVER consider work complete based only on local code edits or local servers.
