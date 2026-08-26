@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - staging
     paths:
       - 'backend/**'
       - '.github/workflows/deploy-backend.yml'
@@ -11,7 +12,6 @@ on:
 env:
   GCP_PROJECT_ID: 'one-to-one-portal-500205'
   GCP_REGION: 'us-central1'
-  SERVICE_NAME: 'one-to-one-backend'
 
 jobs:
   deploy:
@@ -21,6 +21,15 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+
+    - name: Determine Service Name
+      id: svc
+      run: |
+        if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
+          echo "SERVICE_NAME=one-to-one-backend-staging" >> $GITHUB_ENV
+        else
+          echo "SERVICE_NAME=one-to-one-backend" >> $GITHUB_ENV
+        fi
 
     - name: Authenticate with Google Cloud
       id: auth
