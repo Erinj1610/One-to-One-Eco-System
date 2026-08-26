@@ -1361,6 +1361,22 @@ export function StoreProvider({ children }) {
                 });
               }
               setter(parsedProjects);
+            } else if (key === 'contacts') {
+              const raw = Array.isArray(val) ? val : [];
+              const seenIds = new Set();
+              const seenNames = new Set();
+              const uniqueContacts = [];
+              raw.forEach(c => {
+                if (!c) return;
+                const cId = String(c.id);
+                const cName = (c.name || '').trim().toLowerCase();
+                if (!seenIds.has(cId) && !seenNames.has(cName)) {
+                  seenIds.add(cId);
+                  if (cName) seenNames.add(cName);
+                  uniqueContacts.push(c);
+                }
+              });
+              setter(uniqueContacts);
             } else {
               setter(val);
             }
@@ -2206,23 +2222,39 @@ export function StoreProvider({ children }) {
     }
   };
 
+  const deduplicateContacts = (list) => {
+    const seenIds = new Set();
+    const seenNames = new Set();
+    const unique = [];
+    (list || []).forEach(c => {
+      if (!c) return;
+      const cId = String(c.id);
+      const cName = (c.name || '').trim().toLowerCase();
+      if (!seenIds.has(cId) && !seenNames.has(cName)) {
+        seenIds.add(cId);
+        if (cName) seenNames.add(cName);
+        unique.push(c);
+      }
+    });
+    return unique;
+  };
+
   const updateClient = async (clientId, clientData) => {
-    let oldClientName = '';
     // Optimistically update local contacts state
     setContacts(prev => {
-      const match = prev.find(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
-      if (match) oldClientName = match.name;
-
       const exists = prev.some(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
+      let updatedList = [];
       if (!exists) {
-        return [...prev, { ...clientData, id: clientId }];
+        updatedList = [...prev, { ...clientData, id: clientId }];
+      } else {
+        updatedList = prev.map(c => {
+          if (c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase())) {
+            return { ...c, ...clientData };
+          }
+          return c;
+        });
       }
-      return prev.map(c => {
-        if (c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase())) {
-          return { ...c, ...clientData };
-        }
-        return c;
-      });
+      return deduplicateContacts(updatedList);
     });
 
     try {
@@ -2233,7 +2265,10 @@ export function StoreProvider({ children }) {
       });
       if (res.ok) {
         const updated = await res.json();
-        setContacts(prev => prev.map(c => (c.id === updated.id || String(c.id) === String(clientId)) ? updated : c));
+        setContacts(prev => {
+          const mapped = prev.map(c => (c.id === updated.id || String(c.id) === String(clientId)) ? updated : c);
+          return deduplicateContacts(mapped);
+        });
         return updated;
       }
     } catch (err) {
@@ -2252,7 +2287,7 @@ export function StoreProvider({ children }) {
         const created = await res.json();
         setContacts(prev => {
           const filtered = prev.filter(c => c.id !== created.id && c.name.toLowerCase() !== created.name.toLowerCase());
-          return [...filtered, created];
+          return deduplicateContacts([...filtered, created]);
         });
         return created;
       }
@@ -2278,7 +2313,7 @@ export function StoreProvider({ children }) {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setContacts(data);
+          setContacts(deduplicateContacts(data));
         }
       }
     } catch (err) {

@@ -70,6 +70,17 @@ export default function ProjectManagement() {
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   
+  const uniqueContacts = useMemo(() => {
+    const seen = new Set();
+    return (contacts || []).filter(c => {
+      if (!c || !c.name) return false;
+      const key = c.name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [contacts]);
+
   // Link/Unlink shifting modal states
   const [linkModalItem, setLinkModalItem] = useState(null);
   const [linkClient, setLinkClient] = useState('');
@@ -1184,8 +1195,8 @@ export default function ProjectManagement() {
                       list="client-datalist"
                     />
                     <datalist id="client-datalist">
-                      {(contacts || []).map(c => (
-                        <option key={c.id || c.name} value={c.name}>{c.company ? `${c.company} (${c.type})` : c.type}</option>
+                      {uniqueContacts.map(c => (
+                        <option key={c.id || c.name} value={c.name}>{c.company && c.company !== c.name ? `${c.company} (${c.type || 'Private'})` : (c.type || 'Private')}</option>
                       ))}
                     </datalist>
                   </div>
@@ -1253,7 +1264,7 @@ export default function ProjectManagement() {
                           placeholder="Type or select architect..."
                         />
                         <datalist id="architect-datalist">
-                          {(contacts || []).filter(c => c.type === 'Architect').map(c => (
+                          {uniqueContacts.filter(c => c.type === 'Architect').map(c => (
                             <option key={c.id || c.name} value={c.name}>{c.company || 'Architect'}</option>
                           ))}
                         </datalist>
@@ -1317,7 +1328,7 @@ export default function ProjectManagement() {
                           placeholder="Type or select contractor..."
                         />
                         <datalist id="contractor-datalist">
-                          {(contacts || []).filter(c => c.type === 'Contractor').map(c => (
+                          {uniqueContacts.filter(c => c.type === 'Contractor').map(c => (
                             <option key={c.id || c.name} value={c.name}>{c.company || 'Contractor'}</option>
                           ))}
                         </datalist>
@@ -1393,8 +1404,8 @@ export default function ProjectManagement() {
                       />
                       <datalist id="billing-datalist">
                         {p.client && <option value={`Use Client Details (${p.client})`} />}
-                        {(contacts || []).map(c => (
-                          <option key={c.id || c.name} value={c.name}>{c.company || c.type}</option>
+                        {uniqueContacts.map(c => (
+                          <option key={c.id || c.name} value={c.name}>{c.company && c.company !== c.name ? `${c.company} (${c.type || 'Private'})` : (c.type || 'Private')}</option>
                         ))}
                       </datalist>
                     </div>
@@ -2694,8 +2705,8 @@ export default function ProjectManagement() {
                   disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
-                  {contacts.map(c => (
-                    <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                  {uniqueContacts.map(c => (
+                    <option key={c.id || c.name} value={c.name}>{c.name} ({c.company || c.type || 'Private'})</option>
                   ))}
                 </select>
                 {linkProjectKey && (

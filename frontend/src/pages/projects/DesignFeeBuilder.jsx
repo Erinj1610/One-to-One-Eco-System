@@ -394,19 +394,20 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
 
   const projectList = Object.entries(projects).map(([key, p]) => ({ key, name: p.name || key, client: p.client, pm: p.pm || p.projectManager }));
   
-  // Combine contacts array and unique project client names
+  // Clean deduplicated contact list
   const contactList = useMemo(() => {
-    const map = new Map();
+    const seen = new Set();
+    const list = [];
     (contacts || []).forEach(c => {
-      if (c.id || c.name) map.set(String(c.id || c.name), c);
-    });
-    Object.values(projects || {}).forEach(p => {
-      if (p.client && !Array.from(map.values()).some(c => c.name === p.client || c.company === p.client)) {
-        map.set(`proj-client-${p.client}`, { id: `proj-client-${p.client}`, name: p.client, company: p.client });
+      if (!c || !c.name) return;
+      const key = c.name.trim().toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(c);
       }
     });
-    return Array.from(map.values());
-  }, [contacts, projects]);
+    return list;
+  }, [contacts]);
 
   const [feeName, setFeeName] = useState(initialFeeSnapshot?.name || 'Master Design Fee Proposal');
   const [selectedProjKey, setSelectedProjKey] = useState(projectId || '');
