@@ -3338,8 +3338,8 @@ export default function OrdersPage() {
                                       setBillingDetails(proj.billingDetails);
                                     }
 
-                                    // Lock client details to this project's client contact
-                                    if (proj.client) {
+                                    // If no client is set yet, default from project
+                                    if (!clientContact && !clientCompany && proj.client) {
                                       setClientContact(proj.client);
                                       const contact = contacts.find(c => c.name === proj.client);
                                       if (contact) {
@@ -6591,7 +6591,7 @@ export default function OrdersPage() {
                     if (filtered.length > 0) {
                       const nextKey = filtered[0].key;
                       setLinkProjectKey(nextKey);
-                      if (filtered[0].client) {
+                      if (!linkClient && filtered[0].client) {
                         setLinkClient(filtered[0].client);
                       }
                     }
@@ -6603,7 +6603,7 @@ export default function OrdersPage() {
                   onChange={e => {
                     const nextKey = e.target.value;
                     setLinkProjectKey(nextKey);
-                    if (nextKey) {
+                    if (nextKey && !linkClient) {
                       const proj = projects[nextKey];
                       if (proj && proj.client) {
                         setLinkClient(proj.client);
@@ -6626,22 +6626,16 @@ export default function OrdersPage() {
                   className="form-control" 
                   value={linkClient} 
                   onChange={e => setLinkClient(e.target.value)}
-                  disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
                   {combinedContacts.map(c => (
                     <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
                   ))}
                 </select>
-                {linkProjectKey && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
-                    🔒 Client locked to project client: <strong>{linkClient}</strong>
-                  </span>
-                )}
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                <strong>Linking Note:</strong> Changing links shifts this document. If unlinked from a project, it will be catalogued directly under the client's direct order portfolio.
+                <strong>Linking Note:</strong> Orders can be assigned any custom client while remaining linked to their project.
               </div>
             </div>
 
