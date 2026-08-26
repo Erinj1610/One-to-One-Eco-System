@@ -1413,6 +1413,19 @@ export default function OrdersPage() {
   }, [location.state]);
 
   // Filtered orders/quotations list for the ledger overview
+  const isAnyFilterActive = searchQuery !== '' || filterStatus !== 'All' || projectFilterKey !== 'All' || clientFilter !== 'All' || pmFilter !== 'All' || paymentStatusFilter !== 'All' || !!startDate || !!endDate;
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setFilterStatus('All');
+    setProjectFilterKey('All');
+    setClientFilter('All');
+    setPmFilter('All');
+    setPaymentStatusFilter('All');
+    setStartDate('');
+    setEndDate('');
+  };
+
   const filteredOrders = allOrders.filter(o => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -1423,8 +1436,8 @@ export default function OrdersPage() {
       (o.projectPm || '').toLowerCase().includes(query);
       
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
-    const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
-    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter;
+    const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
+    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter || o.client === clientFilter || o.clientCompany === clientFilter || o.clientContact === clientFilter;
     const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
     const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
     
@@ -2697,8 +2710,19 @@ export default function OrdersPage() {
                   </select>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{filteredOrders.length}</strong> active BOQs
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {isAnyFilterActive && (
+                    <button 
+                      className="btn btn-ghost btn-sm" 
+                      onClick={handleClearFilters}
+                      style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Showing <strong>{filteredOrders.length}</strong> active BOQs
+                  </div>
                 </div>
               </div>
 
