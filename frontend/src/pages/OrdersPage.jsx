@@ -334,7 +334,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 export default function OrdersPage() {
   const { 
     projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
-    bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
+    refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
 
@@ -2101,34 +2101,26 @@ export default function OrdersPage() {
       sortOrder: idx
     }));
 
-    const existingOrderObj = (projects[sourceProjectKey]?.orders || []).find(o => o.id === selectedOrderId) || {};
-
-    const updatedOrder = {
-      ...existingOrderObj,
-      id: selectedOrderId,
-      supplier: orderSupplier,
-      status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
-      eta: orderEta,
-      items: itemsCount,
+    const orderPayload = {
+      project_key: effectiveTargetKey,
+      po_number: selectedOrderId,
+      supplier_name: orderSupplier,
+      items_count: itemsCount,
       value: Math.round(discountedValue),
       costValue: Math.round(totalCostTotal),
       discount: Number(orderDiscount) || 0,
       paid: paidSum,
       payments: orderPayments,
       outstanding: Math.round(balanceOutstanding),
-      itemsList: orderedItemsWithIndex,
-      // Save order-specific adjusted metadata fields
+      status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
+      eta: orderEta,
       quote_name: quoteName,
       client: (clientCompany || clientContact || targetProj.client || '').trim(),
       client_name: (clientCompany || clientContact || targetProj.client || '').trim(),
       clientCompany,
-      client_company: clientCompany,
       clientContact,
-      client_contact: clientContact,
       clientPhone,
-      client_phone: clientPhone,
       clientEmail,
-      client_email: clientEmail,
       projectFullName: projectFullName || targetProj.name || '',
       projectTier,
       projectSize,
@@ -2150,38 +2142,86 @@ export default function OrdersPage() {
       fileSource,
       projectClass,
       quotationSentDate,
-      division,
-      projectKey: effectiveTargetKey
+      division
     };
 
-    if (sourceProjectKey && effectiveTargetKey && sourceProjectKey !== effectiveTargetKey) {
-      // Remove from source project
-      const remainingSourceOrders = (projects[sourceProjectKey]?.orders || []).filter(o => o.id !== selectedOrderId);
-      await updateProject(sourceProjectKey, 'orders', remainingSourceOrders);
-
-      // Add to target project
-      const targetOrders = [...(projects[effectiveTargetKey]?.orders || []).filter(o => o.id !== selectedOrderId), updatedOrder];
-      await updateProject(effectiveTargetKey, 'orders', targetOrders);
-    } else {
-      const existingList = projects[effectiveTargetKey]?.orders || [];
-      const hasOrder = existingList.some(o => o.id === selectedOrderId);
-      const updatedOrders = hasOrder 
-        ? existingList.map(o => o.id === selectedOrderId ? updatedOrder : o)
-        : [...existingList, updatedOrder];
-      await updateProject(effectiveTargetKey, 'orders', updatedOrders);
+    // 1. Direct Cloud SQL order update
+    try {
+      const updateRes = await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload)
+      });
+      if (!updateRes.ok && updateRes.status === 404) {
+        await fetch(`${API_BASE}/api/orders/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
+      }
+    } catch (e) {
+      console.error("Error saving order in database:", e);
     }
 
-    // Calculate global margins for the project
-    const designTotal = (targetProj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
-    const orderTotal = Math.round(discountedValue);
-    const contractTotal = designTotal + orderTotal;
-    
-    const designMarginValue = (targetProj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
-    const orderMarginValue = Math.round(discountedValue) - Math.round(totalCostTotal);
-    const totalProfit = designMarginValue + orderMarginValue;
-    const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
+    // 2. Direct Cloud SQL items upsert
+    for (const item of orderedItemsWithIndex) {
+      try {
+        const itemSchema = {
+          id: String(item.id),
+          qty: Math.round(Number(item.qty) || 0),
+          type: item.type || null,
+          one_one_code: item.oneOneCode || item.one_one_code || null,
+          code: item.code || null,
+          description: item.description || null,
+          floor: item.floor || null,
+          area: item.area || null,
+          dimming: item.dimming || null,
+          brand: item.brand || null,
+          supplier: item.supplier || null,
+          unit_cost: Number(item.unitCost || item.unit_cost) || 0.0,
+          unit_trade: Number(item.unitTrade || item.unit_trade) || 0.0,
+          unit_retail: Number(item.unitRetail || item.unit_retail) || 0.0,
+          selection: item.selection || null,
+          stock_status: item.stockStatus || item.stock_status || null,
+          eta: item.eta || null,
+          po_ref: item.poRef || item.po_ref || null,
+          po_qty_ordered: Math.round(Number(item.poQtyOrdered || item.po_qty_ordered) || 0),
+          po_eta: item.poEta || item.po_eta || null,
+          invoice_qty: Math.round(Number(item.invoiceQty || item.invoice_qty) || 0),
+          po_supplier: item.poSupplier || item.po_supplier || null,
+          po_date: item.poDate || item.po_date || null,
+          received_qty: Math.round(Number(item.receivedQty || item.received_qty) || 0),
+          received_date: item.receivedDate || item.received_date || null,
+          invoice_ref: item.invoiceRef || item.invoice_ref || null,
+          invoice_date: item.invoiceDate || item.invoice_date || null,
+          invoice_value: Number(item.invoiceValue || item.invoice_value) || 0.0,
+          delivery_qty: Math.round(Number(item.deliveryQty || item.delivery_qty) || 0),
+          delivery_date: item.deliveryDate || item.delivery_date || null,
+          delivery_status: item.deliveryStatus || item.delivery_status || null,
+          delivery_history: Array.isArray(item.deliveryHistory || item.delivery_history) ? (item.deliveryHistory || item.delivery_history) : [],
+          purchase_history: Array.isArray(item.purchaseHistory || item.purchase_history) ? (item.purchaseHistory || item.purchase_history) : [],
+          receiving_history: Array.isArray(item.receivingHistory || item.receiving_history) ? (item.receivingHistory || item.receiving_history) : [],
+          invoice_history: Array.isArray(item.invoiceHistory || item.invoice_history) ? (item.invoiceHistory || item.invoice_history) : [],
+          stock_on_hand: Math.round(Number(item.stockOnHand || item.stock_on_hand) || 0),
+          is_credit: !!(item.isCredit || item.is_credit),
+          item_type: item.itemType || item.item_type || "Hardware",
+          sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0)
+        };
 
-    await updateProject(effectiveTargetKey, 'actualMargin', blendedMargin);
+        await fetch(`${API_BASE}/api/orders/${selectedOrderId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemSchema)
+        });
+      } catch (e) {
+        console.error("Error saving item in database:", e);
+      }
+    }
+
+    // 3. Immediately re-fetch and refresh projects state
+    if (refreshProjects) {
+      await refreshProjects();
+    }
 
     if (!syncVault) {
       setIsSavingOrder(false);

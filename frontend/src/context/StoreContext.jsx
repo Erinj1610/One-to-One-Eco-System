@@ -2377,6 +2377,7 @@ export function StoreProvider({ children }) {
   return (
     <StoreContext.Provider value={{ 
       projects, 
+      setProjects,
       updateProject, 
       addProject, 
       saveDraftProject, 
