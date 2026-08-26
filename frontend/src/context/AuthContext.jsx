@@ -20,25 +20,44 @@ export function AuthProvider({ children, devBypass = false }) {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    // If we already have a mock user, we don't block loading
-    if (user) {
-      setIsAdmin(ADMIN_EMAILS.includes(user.email));
-      setAuthLoading(false);
+    // Check mock user in localStorage on mount
+    try {
+      const saved = localStorage.getItem('mock_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setUser(parsed);
+        setIsAdmin(ADMIN_EMAILS.includes(parsed.email));
+        setAuthLoading(false);
+      }
+    } catch (e) {
+      console.warn("Error parsing saved mock user:", e);
     }
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
         setIsAdmin(ADMIN_EMAILS.includes(currentUser.email));
-      } else if (!localStorage.getItem('mock_user')) {
-        setUser(null);
-        setIsAdmin(false);
+      } else {
+        try {
+          const saved = localStorage.getItem('mock_user');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setUser(parsed);
+            setIsAdmin(ADMIN_EMAILS.includes(parsed.email));
+          } else {
+            setUser(null);
+            setIsAdmin(false);
+          }
+        } catch (e) {
+          setUser(null);
+          setIsAdmin(false);
+        }
       }
       setAuthLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, []);
 
   const loginMock = (email) => {
     const mockUser = { email, uid: 'mock-uid-123' };

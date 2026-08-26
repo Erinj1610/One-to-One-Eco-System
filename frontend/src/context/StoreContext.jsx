@@ -1250,7 +1250,7 @@ export function StoreProvider({ children }) {
   });
 
   const getModuleName = (moduleId, fallback) => {
-    const found = moduleConfig.modules.find(m => m.id === moduleId);
+    const found = moduleConfig?.modules?.find(m => m.id === moduleId);
     return found ? found.label : fallback;
   };
 

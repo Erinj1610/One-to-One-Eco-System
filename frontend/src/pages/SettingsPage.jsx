@@ -384,7 +384,10 @@ function ReleasesDeploymentManager() {
   const fetchDeploymentStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/deployments`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${API_BASE}/api/admin/deployments`, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const statusData = await res.json();
         setData(statusData);

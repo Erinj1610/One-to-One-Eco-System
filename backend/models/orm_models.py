@@ -260,6 +260,33 @@ class Order(Base):
     balance_payment_date = Column(String, nullable=True)
     pm_name = Column(String, nullable=True)
 
+    # Order-specific client and metadata overrides
+    client_name = Column(String, nullable=True)
+    client_company = Column(String, nullable=True)
+    client_contact = Column(String, nullable=True)
+    client_phone = Column(String, nullable=True)
+    client_email = Column(String, nullable=True)
+    client = Column(String, nullable=True)
+    project_full_name = Column(String, nullable=True)
+    project_tier = Column(String, nullable=True)
+    project_size = Column(String, nullable=True)
+    electrician = Column(String, nullable=True)
+    electrician_phone = Column(String, nullable=True)
+    contractor = Column(String, nullable=True)
+    contractor_phone = Column(String, nullable=True)
+    interior_designer = Column(String, nullable=True)
+    interior_designer_phone = Column(String, nullable=True)
+    one_one_rep = Column(String, nullable=True)
+    pm_phone = Column(String, nullable=True)
+    pm_email = Column(String, nullable=True)
+    delivery_address = Column(String, nullable=True)
+    billing_details = Column(String, nullable=True)
+    file_source = Column(String, nullable=True)
+    project_class = Column(String, nullable=True)
+    division = Column(String, nullable=True)
+    pf_number = Column(String, nullable=True)
+    discount = Column(Float, default=0.0)
+
 
 
 
