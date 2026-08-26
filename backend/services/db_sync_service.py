@@ -120,7 +120,32 @@ def run_migrations(db: Session):
         ("delivery_notes", "JSON"),
         ("purchase_orders", "JSON"),
         ("goods_received_notes", "JSON"),
-        ("client_invoices", "JSON")
+        ("client_invoices", "JSON"),
+        ("client_name", "VARCHAR"),
+        ("client_company", "VARCHAR"),
+        ("client_contact", "VARCHAR"),
+        ("client_phone", "VARCHAR"),
+        ("client_email", "VARCHAR"),
+        ("client", "VARCHAR"),
+        ("project_full_name", "VARCHAR"),
+        ("project_tier", "VARCHAR"),
+        ("project_size", "VARCHAR"),
+        ("electrician", "VARCHAR"),
+        ("electrician_phone", "VARCHAR"),
+        ("contractor", "VARCHAR"),
+        ("contractor_phone", "VARCHAR"),
+        ("interior_designer", "VARCHAR"),
+        ("interior_designer_phone", "VARCHAR"),
+        ("one_one_rep", "VARCHAR"),
+        ("pm_phone", "VARCHAR"),
+        ("pm_email", "VARCHAR"),
+        ("delivery_address", "VARCHAR"),
+        ("billing_details", "VARCHAR"),
+        ("file_source", "VARCHAR"),
+        ("project_class", "VARCHAR"),
+        ("division", "VARCHAR"),
+        ("pf_number", "VARCHAR"),
+        ("discount", "FLOAT DEFAULT 0.0")
     ]
     for col_name, col_type in order_columns:
         try:

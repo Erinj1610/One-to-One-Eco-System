@@ -119,4 +119,31 @@ def test_create_order_and_items(db_session):
     assert item1.order_id == "PO-2026-0001"
     assert item1.qty == 5
 
+def test_order_client_override(db_session):
+    from models.orm_models import Order
+    project = Project(name="Cape Manor", project_key="cape-manor", client_name="Original Client")
+    db_session.add(project)
+    db_session.commit()
+
+    order = Order(
+        project_id=project.id,
+        project_key="cape-manor",
+        po_number="PO-2026-0002",
+        client_name="Independent Order Client",
+        client_company="Independent Order Client LLC",
+        client_contact="John Doe",
+        client_phone="+27821234567",
+        client_email="john@client.com"
+    )
+    db_session.add(order)
+    db_session.commit()
+    db_session.refresh(order)
+
+    assert order.client_name == "Independent Order Client"
+    assert order.client_company == "Independent Order Client LLC"
+    assert order.client_contact == "John Doe"
+    assert order.client_phone == "+27821234567"
+    assert order.client_email == "john@client.com"
+
+
 

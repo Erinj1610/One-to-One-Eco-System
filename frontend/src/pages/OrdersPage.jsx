@@ -1379,12 +1379,16 @@ export default function OrdersPage() {
         }
       }
 
+      const effectiveClient = (o.clientCompany || o.client_company || o.clientContact || o.client_contact || o.client || o.client_name || p.client || '').trim();
       return {
         ...o,
         projectKey: p.key,
-        projectName: p.name,
-        projectClient: p.client,
-        projectPm: p.pm || p.pmName || '',
+        projectName: o.projectFullName || o.project_full_name || p.name,
+        projectClient: effectiveClient || p.client,
+        client: effectiveClient || p.client,
+        clientCompany: o.clientCompany !== undefined ? o.clientCompany : (o.client_company !== undefined ? o.client_company : ''),
+        clientContact: o.clientContact !== undefined ? o.clientContact : (o.client_contact !== undefined ? o.client_contact : ''),
+        projectPm: o.pmName || o.pm_name || p.pm || p.pmName || '',
         paymentStatus,
         status: computedStatus
       };
@@ -1547,13 +1551,19 @@ export default function OrdersPage() {
 
     // Retrieve linked project & contact info for automatic defaults
     const proj = projects[order.projectKey] || {};
-    const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
+    const orderClient = order.clientCompany || order.client_company || order.clientContact || order.client_contact || order.client || order.client_name || '';
+    const contact = (contacts || []).find(c => (orderClient && (c.name === orderClient || c.company === orderClient)) || (proj.client && (c.name === proj.client || c.company === proj.client))) || {};
 
     // Auto-populate or read existing order-adjusted properties
-    setClientCompany(order.clientCompany !== undefined ? order.clientCompany : (contact.company || proj.client || ''));
-    setClientContact(order.clientContact !== undefined ? order.clientContact : (contact.name || proj.client || ''));
-    setClientPhone(order.clientPhone !== undefined ? order.clientPhone : (contact.phone || ''));
-    setClientEmail(order.clientEmail !== undefined ? order.clientEmail : (contact.email || ''));
+    const hasOrderComp = order.clientCompany !== undefined && order.clientCompany !== null ? order.clientCompany : (order.client_company !== undefined && order.client_company !== null ? order.client_company : null);
+    const hasOrderCont = order.clientContact !== undefined && order.clientContact !== null ? order.clientContact : (order.client_contact !== undefined && order.client_contact !== null ? order.client_contact : null);
+    const hasOrderPhone = order.clientPhone !== undefined && order.clientPhone !== null ? order.clientPhone : (order.client_phone !== undefined && order.client_phone !== null ? order.client_phone : null);
+    const hasOrderEmail = order.clientEmail !== undefined && order.clientEmail !== null ? order.clientEmail : (order.client_email !== undefined && order.client_email !== null ? order.client_email : null);
+
+    setClientCompany(hasOrderComp !== null ? hasOrderComp : (contact.company || proj.client || ''));
+    setClientContact(hasOrderCont !== null ? hasOrderCont : (contact.name || order.client || proj.client || ''));
+    setClientPhone(hasOrderPhone !== null ? hasOrderPhone : (contact.phone || ''));
+    setClientEmail(hasOrderEmail !== null ? hasOrderEmail : (contact.email || ''));
 
     setProjectFullName(order.projectFullName !== undefined ? order.projectFullName : (proj.name || ''));
     setProjectTier(order.projectTier !== undefined ? order.projectTier : (proj.offering || 'Signature'));
@@ -2089,10 +2099,16 @@ export default function OrdersPage() {
           itemsList: orderedItemsWithIndex,
           // Save order-specific adjusted metadata fields
           quote_name: quoteName,
+          client: (clientCompany || clientContact || proj.client || '').trim(),
+          client_name: (clientCompany || clientContact || proj.client || '').trim(),
           clientCompany,
+          client_company: clientCompany,
           clientContact,
+          client_contact: clientContact,
           clientPhone,
+          client_phone: clientPhone,
           clientEmail,
+          client_email: clientEmail,
           projectFullName,
           projectTier,
           projectSize,

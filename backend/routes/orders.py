@@ -145,6 +145,94 @@ def get_order(po_number: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
+def apply_order_fields(order, order_data: dict, project_id=None, project_key=None):
+    if project_id:
+        order.project_id = project_id
+    if project_key:
+        order.project_key = project_key
+    elif order_data.get("project_key"):
+        order.project_key = order_data.get("project_key")
+
+    order.supplier_name = order_data.get("supplier_name", order_data.get("supplier", order.supplier_name))
+    order.items_count = int(order_data.get("items_count", order_data.get("items", order.items_count or 0)))
+    order.value = float(order_data.get("value", order.value or 0.0))
+    order.paid = float(order_data.get("paid", order.paid or 0.0))
+    order.outstanding = float(order_data.get("outstanding", order.outstanding or 0.0))
+    order.status = order_data.get("status") or order.status or "Pending"
+    order.eta = order_data.get("eta") or order.eta or "—"
+    
+    if "quote_name" in order_data or "quoteName" in order_data:
+        order.quote_name = order_data.get("quote_name") or order_data.get("quoteName")
+    if "packingLists" in order_data: order.packing_lists = order_data.get("packingLists")
+    if "deliveryNotes" in order_data: order.delivery_notes = order_data.get("deliveryNotes")
+    if "purchaseOrders" in order_data: order.purchase_orders = order_data.get("purchaseOrders")
+    if "goodsReceivedNotes" in order_data: order.goods_received_notes = order_data.get("goodsReceivedNotes")
+    if "clientInvoices" in order_data: order.client_invoices = order_data.get("clientInvoices")
+    if "orderDate" in order_data: order.order_date = order_data.get("orderDate")
+    if "quotationSentDate" in order_data: order.quotation_sent_date = order_data.get("quotationSentDate")
+    if "pfDate" in order_data: order.pf_date = order_data.get("pfDate")
+    if "payments" in order_data: order.payments = order_data.get("payments")
+    if "depositValue" in order_data and order_data.get("depositValue") is not None:
+        order.deposit_value = float(order_data.get("depositValue"))
+    if "depositInvoiceSent" in order_data: order.deposit_invoice_sent = order_data.get("depositInvoiceSent")
+    if "depositPaymentDate" in order_data: order.deposit_payment_date = order_data.get("depositPaymentDate")
+    if "balanceValue" in order_data and order_data.get("balanceValue") is not None:
+        order.balance_value = float(order_data.get("balanceValue"))
+    if "balancePaymentDate" in order_data: order.balance_payment_date = order_data.get("balancePaymentDate")
+
+    # Order-specific client details & metadata overrides
+    client_comp = order_data.get("clientCompany") if "clientCompany" in order_data else order_data.get("client_company")
+    client_cont = order_data.get("clientContact") if "clientContact" in order_data else order_data.get("client_contact")
+    client_ph = order_data.get("clientPhone") if "clientPhone" in order_data else order_data.get("client_phone")
+    client_em = order_data.get("clientEmail") if "clientEmail" in order_data else order_data.get("client_email")
+    client_gen = order_data.get("client") if "client" in order_data else (order_data.get("client_name") or client_comp or client_cont)
+
+    if client_comp is not None: order.client_company = client_comp
+    if client_cont is not None: order.client_contact = client_cont
+    if client_ph is not None: order.client_phone = client_ph
+    if client_em is not None: order.client_email = client_em
+    if client_gen is not None:
+        order.client = client_gen
+        order.client_name = client_gen
+
+    if "projectFullName" in order_data or "project_full_name" in order_data:
+        order.project_full_name = order_data.get("projectFullName") or order_data.get("project_full_name")
+    if "projectTier" in order_data or "project_tier" in order_data:
+        order.project_tier = order_data.get("projectTier") or order_data.get("project_tier")
+    if "projectSize" in order_data or "project_size" in order_data:
+        order.project_size = order_data.get("projectSize") or order_data.get("project_size")
+    if "electrician" in order_data: order.electrician = order_data.get("electrician")
+    if "electricianPhone" in order_data or "electrician_phone" in order_data:
+        order.electrician_phone = order_data.get("electricianPhone") or order_data.get("electrician_phone")
+    if "contractor" in order_data: order.contractor = order_data.get("contractor")
+    if "contractorPhone" in order_data or "contractor_phone" in order_data:
+        order.contractor_phone = order_data.get("contractorPhone") or order_data.get("contractor_phone")
+    if "interiorDesigner" in order_data or "interior_designer" in order_data:
+        order.interior_designer = order_data.get("interiorDesigner") or order_data.get("interior_designer")
+    if "interiorDesignerPhone" in order_data or "interior_designer_phone" in order_data:
+        order.interior_designer_phone = order_data.get("interiorDesignerPhone") or order_data.get("interior_designer_phone")
+    if "oneOneRep" in order_data or "one_one_rep" in order_data:
+        order.one_one_rep = order_data.get("oneOneRep") or order_data.get("one_one_rep")
+    if "pmName" in order_data or "pm_name" in order_data:
+        order.pm_name = order_data.get("pmName") or order_data.get("pm_name")
+    if "pmPhone" in order_data or "pm_phone" in order_data:
+        order.pm_phone = order_data.get("pmPhone") or order_data.get("pm_phone")
+    if "pmEmail" in order_data or "pm_email" in order_data:
+        order.pm_email = order_data.get("pmEmail") or order_data.get("pm_email")
+    if "deliveryAddress" in order_data or "delivery_address" in order_data:
+        order.delivery_address = order_data.get("deliveryAddress") or order_data.get("delivery_address")
+    if "billingDetails" in order_data or "billing_details" in order_data:
+        order.billing_details = order_data.get("billingDetails") or order_data.get("billing_details")
+    if "fileSource" in order_data or "file_source" in order_data:
+        order.file_source = order_data.get("fileSource") or order_data.get("file_source")
+    if "projectClass" in order_data or "project_class" in order_data:
+        order.project_class = order_data.get("projectClass") or order_data.get("project_class")
+    if "division" in order_data: order.division = order_data.get("division")
+    if "pfNumber" in order_data or "pf_number" in order_data:
+        order.pf_number = order_data.get("pfNumber") or order_data.get("pf_number")
+    if "discount" in order_data and order_data.get("discount") is not None:
+        order.discount = float(order_data.get("discount", 0.0))
+
 @router.post("/")
 def create_order(order_data: dict, db: Session = Depends(get_db)):
     project_key = order_data.get("project_key")
@@ -160,62 +248,18 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
     # Check if existing po_number - if so, update gracefully (idempotent create)
     existing = db.query(Order).filter(Order.po_number == po_number).first()
     if existing:
-        if project_id: existing.project_id = project_id
-        existing.project_key = project_key
-        existing.supplier_name = order_data.get("supplier_name") or existing.supplier_name
-        existing.items_count = int(order_data.get("items_count", existing.items_count or 0))
-        existing.value = float(order_data.get("value", existing.value or 0.0))
-        existing.paid = float(order_data.get("paid", existing.paid or 0.0))
-        existing.outstanding = float(order_data.get("outstanding", existing.outstanding or 0.0))
-        existing.status = order_data.get("status") or existing.status
-        existing.eta = order_data.get("eta") or existing.eta
-        if "quote_name" in order_data: existing.quote_name = order_data.get("quote_name")
-        if "packingLists" in order_data: existing.packing_lists = order_data.get("packingLists")
-        if "deliveryNotes" in order_data: existing.delivery_notes = order_data.get("deliveryNotes")
-        if "purchaseOrders" in order_data: existing.purchase_orders = order_data.get("purchaseOrders")
-        if "goodsReceivedNotes" in order_data: existing.goods_received_notes = order_data.get("goodsReceivedNotes")
-        if "clientInvoices" in order_data: existing.client_invoices = order_data.get("clientInvoices")
-        if "orderDate" in order_data: existing.order_date = order_data.get("orderDate")
-        if "quotationSentDate" in order_data: existing.quotation_sent_date = order_data.get("quotationSentDate")
-        if "pfDate" in order_data: existing.pf_date = order_data.get("pfDate")
-        if "payments" in order_data: existing.payments = order_data.get("payments")
-        if "depositValue" in order_data: existing.deposit_value = float(order_data.get("depositValue")) if order_data.get("depositValue") is not None else None
-        if "depositInvoiceSent" in order_data: existing.deposit_invoice_sent = order_data.get("depositInvoiceSent")
-        if "depositPaymentDate" in order_data: existing.deposit_payment_date = order_data.get("depositPaymentDate")
-        if "balanceValue" in order_data: existing.balance_value = float(order_data.get("balanceValue")) if order_data.get("balanceValue") is not None else None
-        if "balancePaymentDate" in order_data: existing.balance_payment_date = order_data.get("balancePaymentDate")
+        apply_order_fields(existing, order_data, project_id=project_id, project_key=project_key)
         db.commit()
         db.refresh(existing)
         return existing
 
     # Extract standard fields
     new_order = Order(
-        project_id=project_id,
-        project_key=project_key,
         po_number=po_number,
-        supplier_name=order_data.get("supplier_name"),
-        items_count=int(order_data.get("items_count", 0)),
-        value=float(order_data.get("value", 0.0)),
-        paid=float(order_data.get("paid", 0.0)),
-        outstanding=float(order_data.get("outstanding", 0.0)),
-        status=order_data.get("status", "Pending"),
-        eta=order_data.get("eta", "—"),
-        quote_name=order_data.get("quote_name", "General Spec"),
-        packing_lists=order_data.get("packingLists"),
-        delivery_notes=order_data.get("deliveryNotes"),
-        purchase_orders=order_data.get("purchaseOrders"),
-        goods_received_notes=order_data.get("goodsReceivedNotes"),
-        client_invoices=order_data.get("clientInvoices"),
-        order_date=order_data.get("orderDate"),
-        quotation_sent_date=order_data.get("quotationSentDate"),
-        pf_date=order_data.get("pfDate"),
-        payments=order_data.get("payments"),
-        deposit_value=float(order_data.get("depositValue")) if order_data.get("depositValue") is not None else None,
-        deposit_invoice_sent=order_data.get("depositInvoiceSent"),
-        deposit_payment_date=order_data.get("depositPaymentDate"),
-        balance_value=float(order_data.get("balanceValue")) if order_data.get("balanceValue") is not None else None,
-        balance_payment_date=order_data.get("balancePaymentDate")
+        project_id=project_id,
+        project_key=project_key
     )
+    apply_order_fields(new_order, order_data, project_id=project_id, project_key=project_key)
     db.add(new_order)
     db.commit()
     db.refresh(new_order)
@@ -228,38 +272,13 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Order not found")
     
     project_key = order_data.get("project_key")
+    project_id = None
     if project_key:
         order.project_key = project_key
         project = db.query(Project).filter(Project.project_key == project_key).first()
-        order.project_id = project.id if project else None
+        project_id = project.id if project else None
 
-    order.supplier_name = order_data.get("supplier_name")
-    order.items_count = int(order_data.get("items_count", 0))
-    order.value = float(order_data.get("value", 0.0))
-    order.paid = float(order_data.get("paid", 0.0))
-    order.outstanding = float(order_data.get("outstanding", 0.0))
-    order.status = order_data.get("status", "Pending")
-    order.eta = order_data.get("eta", "—")
-    if "quote_name" in order_data:
-        order.quote_name = order_data.get("quote_name")
-        
-    if "packingLists" in order_data:
-        order.packing_lists = order_data.get("packingLists")
-    if "deliveryNotes" in order_data:
-        order.delivery_notes = order_data.get("deliveryNotes")
-    if "purchaseOrders" in order_data:
-        order.purchase_orders = order_data.get("purchaseOrders")
-    if "goodsReceivedNotes" in order_data:
-        order.goods_received_notes = order_data.get("goodsReceivedNotes")
-    if "clientInvoices" in order_data:
-        order.client_invoices = order_data.get("clientInvoices")
-    if "orderDate" in order_data:
-        order.order_date = order_data.get("orderDate")
-    if "quotationSentDate" in order_data:
-        order.quotation_sent_date = order_data.get("quotationSentDate")
-    if "pfDate" in order_data:
-        order.pf_date = order_data.get("pfDate")
-    
+    apply_order_fields(order, order_data, project_id=project_id, project_key=project_key)
     db.commit()
     db.refresh(order)
     return order
