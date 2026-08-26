@@ -803,8 +803,14 @@ export default function SettingsPage() {
   } = useStore();
 
 
+  const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
+  const isStaging = hostname.includes('staging') || hostname.includes('localhost') || hostname.includes('127.0.0.1');
+
   const availableTabs = isAdmin
-    ? ['General', 'Users', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+    ? (isStaging 
+        ? ['General', 'Users', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        : ['General', 'Users', 'Activity log', 'Project managers', 'Dropdowns', 'Permissions', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+      )
     : ['General', 'Permissions', 'Rate card', 'Alerts', 'Integrations'];
 
   const [activeTab, setActiveTab] = useState('General');
