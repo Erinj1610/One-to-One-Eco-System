@@ -908,6 +908,44 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "designFees": relational_fees,
                 "orders": proj_orders
             }
+
+        # Ensure all client-direct and unmapped order groups are included in projects_dict
+        for p_key, p_orders in orders_by_project.items():
+            if p_key not in projects_dict:
+                c_name = "Direct Client"
+                p_name = p_key
+                pm_name = "Martin Döller"
+                for o in p_orders:
+                    if o.get("client") or o.get("clientCompany") or o.get("clientContact"):
+                        c_name = o.get("client") or o.get("clientCompany") or o.get("clientContact")
+                    if o.get("projectFullName"):
+                        p_name = o.get("projectFullName")
+                    if o.get("pmName"):
+                        pm_name = o.get("pmName")
+
+                projects_dict[p_key] = {
+                    "key": p_key,
+                    "name": p_name if p_name != p_key else (f"{c_name} (Direct)" if p_key.startswith("client-") else p_key),
+                    "client": c_name,
+                    "pm": pm_name,
+                    "projectType": "Client-Direct" if p_key.startswith("client-") or "direct" in p_key.lower() else "Standard",
+                    "offering": "Signature",
+                    "sqm": "—",
+                    "status": "Ongoing",
+                    "deadline": "TBD",
+                    "start": p_orders[0].get("orderDate") if p_orders and p_orders[0].get("orderDate") else "2026-01-01",
+                    "complete": "Ongoing",
+                    "targetMargin": 18.0,
+                    "actualMargin": 18.0,
+                    "s1": "",
+                    "s2": "",
+                    "s3": "",
+                    "s4": "",
+                    "s5": "",
+                    "designFees": fees_by_project.get(p_key, []),
+                    "orders": p_orders
+                }
+
         return projects_dict
     except Exception as e:
         print(f"Error dynamically building projects dict: {e}")

@@ -1579,10 +1579,14 @@ export function StoreProvider({ children }) {
       const newOrderIds = new Set(newOrders.map(o => o.id));
       for (const oldOrder of oldOrders) {
         if (!newOrderIds.has(oldOrder.id)) {
-          try {
-            await fetch(`${API_BASE}/api/orders/${oldOrder.id}`, { method: 'DELETE' });
-          } catch (err) {
-            console.error(`Error deleting order ${oldOrder.id}:`, err);
+          // Safety check: only delete if the order was NOT moved to another project
+          const existsElsewhere = Object.keys(projectsRef.current || {}).some(pk => pk !== key && (projectsRef.current[pk]?.orders || []).some(o => o.id === oldOrder.id));
+          if (!existsElsewhere) {
+            try {
+              await fetch(`${API_BASE}/api/orders/${oldOrder.id}`, { method: 'DELETE' });
+            } catch (err) {
+              console.error(`Error deleting order ${oldOrder.id}:`, err);
+            }
           }
         }
       }
