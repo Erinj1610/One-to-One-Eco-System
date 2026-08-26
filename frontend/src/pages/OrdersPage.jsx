@@ -1565,9 +1565,9 @@ export default function OrdersPage() {
     setClientPhone(hasOrderPhone !== null ? hasOrderPhone : (contact.phone || ''));
     setClientEmail(hasOrderEmail !== null ? hasOrderEmail : (contact.email || ''));
 
-    setProjectFullName(order.projectFullName !== undefined ? order.projectFullName : (proj.name || ''));
-    setProjectTier(order.projectTier !== undefined ? order.projectTier : (proj.offering || 'Signature'));
-    setProjectSize(order.projectSize !== undefined ? order.projectSize : (proj.sqm || '—'));
+    setProjectFullName(order.projectFullName || order.project_full_name || proj.name || '');
+    setProjectTier(order.projectTier || order.project_tier || proj.offering || 'Signature');
+    setProjectSize(order.projectSize || order.project_size || proj.sqm || '—');
     
     setElectrician(order.electrician || 'TBD Electrician');
     setElectricianPhone(order.electricianPhone || '—');
@@ -3321,9 +3321,10 @@ export default function OrdersPage() {
                               <select 
                                 className="form-control" 
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
-                                value={Object.keys(projects).find(k => projects[k].name === projectFullName) || ''}
+                                value={selectedProjectKey || Object.keys(projects).find(k => projects[k].name === projectFullName) || ''}
                                 onChange={e => {
                                   const projKey = e.target.value;
+                                  setSelectedProjectKey(projKey);
                                   const proj = projects[projKey];
                                   if (proj) {
                                     setProjectFullName(proj.name);
