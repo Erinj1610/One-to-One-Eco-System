@@ -334,7 +334,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 export default function OrdersPage() {
   const { 
     projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
-    bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
+    refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
 
@@ -513,8 +513,8 @@ export default function OrdersPage() {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('All');
 
   // Sorting States
-  const [sortField, setSortField] = useState(null);
-  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
+  const [sortField, setSortField] = useState('id');
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' | 'desc'
 
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
@@ -1413,6 +1413,19 @@ export default function OrdersPage() {
   }, [location.state]);
 
   // Filtered orders/quotations list for the ledger overview
+  const isAnyFilterActive = searchQuery !== '' || filterStatus !== 'All' || projectFilterKey !== 'All' || clientFilter !== 'All' || pmFilter !== 'All' || paymentStatusFilter !== 'All' || !!startDate || !!endDate;
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setFilterStatus('All');
+    setProjectFilterKey('All');
+    setClientFilter('All');
+    setPmFilter('All');
+    setPaymentStatusFilter('All');
+    setStartDate('');
+    setEndDate('');
+  };
+
   const filteredOrders = allOrders.filter(o => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -1423,8 +1436,8 @@ export default function OrdersPage() {
       (o.projectPm || '').toLowerCase().includes(query);
       
     const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
-    const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey;
-    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter;
+    const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
+    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter || o.client === clientFilter || o.clientCompany === clientFilter || o.clientContact === clientFilter;
     const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
     const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
     
@@ -1565,9 +1578,9 @@ export default function OrdersPage() {
     setClientPhone(hasOrderPhone !== null ? hasOrderPhone : (contact.phone || ''));
     setClientEmail(hasOrderEmail !== null ? hasOrderEmail : (contact.email || ''));
 
-    setProjectFullName(order.projectFullName !== undefined ? order.projectFullName : (proj.name || ''));
-    setProjectTier(order.projectTier !== undefined ? order.projectTier : (proj.offering || 'Signature'));
-    setProjectSize(order.projectSize !== undefined ? order.projectSize : (proj.sqm || '—'));
+    setProjectFullName(order.projectFullName || order.project_full_name || proj.name || '');
+    setProjectTier(order.projectTier || order.project_tier || proj.offering || 'Signature');
+    setProjectSize(order.projectSize || order.project_size || proj.sqm || '—');
     
     setElectrician(order.electrician || 'TBD Electrician');
     setElectricianPhone(order.electricianPhone || '—');
@@ -2060,13 +2073,32 @@ export default function OrdersPage() {
   };
 
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [isSyncingVault, setIsSyncingVault] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
 
   // Save the spreadsheet and update the global store context
-  const handleSaveOrderSpreadsheet = async () => {
-    if (isSavingOrder) return;
-    const proj = projects[selectedProjectKey];
-    if (!proj) return;
-    setIsSavingOrder(true);
+  const handleSaveOrderSpreadsheet = async (syncVault = false) => {
+    if (isSavingOrder || isSyncingVault) return;
+
+    if (syncVault) {
+      setIsSyncingVault(true);
+    } else {
+      setIsSavingOrder(true);
+    }
+
+    // Locate source project
+    let sourceProjectKey = selectedProjectKey;
+    if (!sourceProjectKey || !projects[sourceProjectKey]?.orders?.some(o => o.id === selectedOrderId)) {
+      for (const pKey of Object.keys(projects)) {
+        if (projects[pKey]?.orders?.some(o => o.id === selectedOrderId)) {
+          sourceProjectKey = pKey;
+          break;
+        }
+      }
+    }
+
+    const effectiveTargetKey = selectedProjectKey || sourceProjectKey || (clientContact ? `client-${clientContact.toLowerCase().trim().replace(/\s+/g, '-')}` : 'direct-client');
+    const targetProj = projects[effectiveTargetKey] || projects[sourceProjectKey] || {};
 
     // Calculate aggregated order totals from items list
     const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
@@ -2082,162 +2114,219 @@ export default function OrdersPage() {
       sortOrder: idx
     }));
 
-    const updatedOrders = (proj.orders || []).map(o => {
-      if (o.id === selectedOrderId) {
-        return {
-          ...o,
-          supplier: orderSupplier,
-          status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
-          eta: orderEta,
-          items: itemsCount,
-          value: Math.round(discountedValue),
-          costValue: Math.round(totalCostTotal),
-          discount: Number(orderDiscount) || 0,
-          paid: paidSum,
-          payments: orderPayments,
-          outstanding: Math.round(balanceOutstanding),
-          itemsList: orderedItemsWithIndex,
-          // Save order-specific adjusted metadata fields
-          quote_name: quoteName,
-          client: (clientCompany || clientContact || proj.client || '').trim(),
-          client_name: (clientCompany || clientContact || proj.client || '').trim(),
-          clientCompany,
-          client_company: clientCompany,
-          clientContact,
-          client_contact: clientContact,
-          clientPhone,
-          client_phone: clientPhone,
-          clientEmail,
-          client_email: clientEmail,
-          projectFullName,
-          projectTier,
-          projectSize,
-          electrician,
-          electricianPhone,
-          contractor,
-          contractorPhone,
-          interiorDesigner,
-          interiorDesignerPhone,
-          oneOneRep,
-          pmName,
-          pmPhone,
-          pmEmail,
-          deliveryAddress,
-          billingDetails,
-          orderDate,
-          pfNumber,
-          pfDate,
-          fileSource,
-          projectClass,
-          quotationSentDate,
-          division
-        };
+    const orderPayload = {
+      project_key: effectiveTargetKey,
+      po_number: selectedOrderId,
+      supplier_name: orderSupplier,
+      items_count: itemsCount,
+      value: Math.round(discountedValue),
+      costValue: Math.round(totalCostTotal),
+      discount: Number(orderDiscount) || 0,
+      paid: paidSum,
+      payments: orderPayments,
+      outstanding: Math.round(balanceOutstanding),
+      status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
+      eta: orderEta,
+      quote_name: quoteName,
+      client: (clientCompany || clientContact || targetProj.client || '').trim(),
+      client_name: (clientCompany || clientContact || targetProj.client || '').trim(),
+      clientCompany,
+      clientContact,
+      clientPhone,
+      clientEmail,
+      projectFullName: projectFullName || targetProj.name || '',
+      projectTier,
+      projectSize,
+      electrician,
+      electricianPhone,
+      contractor,
+      contractorPhone,
+      interiorDesigner,
+      interiorDesignerPhone,
+      oneOneRep,
+      pmName,
+      pmPhone,
+      pmEmail,
+      deliveryAddress,
+      billingDetails,
+      orderDate,
+      pfNumber,
+      pfDate,
+      fileSource,
+      projectClass,
+      quotationSentDate,
+      division
+    };
+
+    // 1. Direct Cloud SQL order update
+    try {
+      const updateRes = await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload)
+      });
+      if (!updateRes.ok && updateRes.status === 404) {
+        await fetch(`${API_BASE}/api/orders/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
       }
-      return o;
-    });
+    } catch (e) {
+      console.error("Error saving order in database:", e);
+    }
 
-    // Save back to dynamic project state
-    updateProject(selectedProjectKey, 'orders', updatedOrders);
+    // 2. Direct Cloud SQL items upsert
+    for (const item of orderedItemsWithIndex) {
+      try {
+        const itemSchema = {
+          id: String(item.id),
+          qty: Math.round(Number(item.qty) || 0),
+          type: item.type || null,
+          one_one_code: item.oneOneCode || item.one_one_code || null,
+          code: item.code || null,
+          description: item.description || null,
+          floor: item.floor || null,
+          area: item.area || null,
+          dimming: item.dimming || null,
+          brand: item.brand || null,
+          supplier: item.supplier || null,
+          unit_cost: Number(item.unitCost || item.unit_cost) || 0.0,
+          unit_trade: Number(item.unitTrade || item.unit_trade) || 0.0,
+          unit_retail: Number(item.unitRetail || item.unit_retail) || 0.0,
+          selection: item.selection || null,
+          stock_status: item.stockStatus || item.stock_status || null,
+          eta: item.eta || null,
+          po_ref: item.poRef || item.po_ref || null,
+          po_qty_ordered: Math.round(Number(item.poQtyOrdered || item.po_qty_ordered) || 0),
+          po_eta: item.poEta || item.po_eta || null,
+          invoice_qty: Math.round(Number(item.invoiceQty || item.invoice_qty) || 0),
+          po_supplier: item.poSupplier || item.po_supplier || null,
+          po_date: item.poDate || item.po_date || null,
+          received_qty: Math.round(Number(item.receivedQty || item.received_qty) || 0),
+          received_date: item.receivedDate || item.received_date || null,
+          invoice_ref: item.invoiceRef || item.invoice_ref || null,
+          invoice_date: item.invoiceDate || item.invoice_date || null,
+          invoice_value: Number(item.invoiceValue || item.invoice_value) || 0.0,
+          delivery_qty: Math.round(Number(item.deliveryQty || item.delivery_qty) || 0),
+          delivery_date: item.deliveryDate || item.delivery_date || null,
+          delivery_status: item.deliveryStatus || item.delivery_status || null,
+          delivery_history: Array.isArray(item.deliveryHistory || item.delivery_history) ? (item.deliveryHistory || item.delivery_history) : [],
+          purchase_history: Array.isArray(item.purchaseHistory || item.purchase_history) ? (item.purchaseHistory || item.purchase_history) : [],
+          receiving_history: Array.isArray(item.receivingHistory || item.receiving_history) ? (item.receivingHistory || item.receiving_history) : [],
+          invoice_history: Array.isArray(item.invoiceHistory || item.invoice_history) ? (item.invoiceHistory || item.invoice_history) : [],
+          stock_on_hand: Math.round(Number(item.stockOnHand || item.stock_on_hand) || 0),
+          is_credit: !!(item.isCredit || item.is_credit),
+          item_type: item.itemType || item.item_type || "Hardware",
+          sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0)
+        };
 
-    // Calculate global margins for the project
-    const designTotal = (proj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
-    const orderTotal = updatedOrders.reduce((s, o) => s + (o.value || 0), 0);
-    const contractTotal = designTotal + orderTotal;
-    
-    const designMarginValue = (proj.designFees || []).reduce((s, f) => s + ((f.feeValue || 0) * ((f.margin || 20) / 100)), 0);
-    const orderMarginValue = updatedOrders.reduce((s, o) => s + ((o.value || 0) - (o.costValue || 0)), 0);
-    const totalProfit = designMarginValue + orderMarginValue;
-    const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
+        await fetch(`${API_BASE}/api/orders/${selectedOrderId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemSchema)
+        });
+      } catch (e) {
+        console.error("Error saving item in database:", e);
+      }
+    }
 
-    updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
+    // 3. Immediately re-fetch and refresh projects state
+    if (refreshProjects) {
+      await refreshProjects();
+    }
+
+    if (!syncVault) {
+      setIsSavingOrder(false);
+      setSaveSuccessMsg('✓ Order & items saved successfully!');
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+      return;
+    }
 
     // Trigger Drive vault save with visible feedback
-    (async () => {
-      try {
-        const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-        const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-        const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-        const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-        const vatAmount = discountedRetail * 0.15;
-        const finalTotalInclVat = discountedRetail * 1.15;
+    try {
+      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const vatAmount = discountedRetail * 0.15;
+      const finalTotalInclVat = discountedRetail * 1.15;
 
-        const finalItems = activeOrderItems.map((item, idx) => ({
-          index: (idx + 1).toString(),
-          code: item.code || '',
-          oneOneCode: item.oneOneCode || '',
-          type: item.type || '',
-          description: item.description || '',
-          qty: (item.qty || 0).toString(),
-          brand: item.brand || '',
-          retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          floor: item.floor || '',
-          area: item.area || '',
-          dimming: item.dimming || 'Non-dim',
-          unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          stockStatus: item.stockStatus || 'In Stock',
-          eta: item.eta || '4 weeks'
-        }));
+      const finalItems = activeOrderItems.map((item, idx) => ({
+        index: (idx + 1).toString(),
+        code: item.code || '',
+        oneOneCode: item.oneOneCode || '',
+        type: item.type || '',
+        description: item.description || '',
+        qty: (item.qty || 0).toString(),
+        brand: item.brand || '',
+        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: item.dimming || 'Non-dim',
+        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        stockStatus: item.stockStatus || 'In Stock',
+        eta: item.eta || '4 weeks'
+      }));
 
-        const vaultTokens = {
-          PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
-          CLIENT_NAME: clientContact || clientCompany || proj.client || 'Client Name',
-          DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-          DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
-          PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
-          ORDER_NAME: quoteName || selectedOrderId || '',
-          QUOTE_NAME: quoteName || '',
-          FEE_NAME: quoteName || selectedOrderId || '',
-          ORDER_NUMBER: selectedOrderId,
-          ORDER_STATUS: orderStatus || 'Draft',
-          CLIENT_COMPANY: clientCompany || proj.client || 'Private Client',
-          CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-          CLIENT_EMAIL: clientEmail || '',
-          CLIENT_PHONE: clientPhone || '',
-          DELIVERY_ADDRESS: deliveryAddress || '',
-          ONEONE_REP: oneOneRep || 'Martin Döller',
-          PM_NAME: pmName || 'Merlyn Mittins',
-          SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          items: finalItems
-        };
+      const vaultTokens = {
+        PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
+        CLIENT_NAME: clientContact || clientCompany || proj.client || 'Client Name',
+        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
+        DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
+        PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
+        ORDER_NAME: quoteName || selectedOrderId || '',
+        QUOTE_NAME: quoteName || '',
+        FEE_NAME: quoteName || selectedOrderId || '',
+        ORDER_NUMBER: selectedOrderId,
+        ORDER_STATUS: orderStatus || 'Draft',
+        CLIENT_COMPANY: clientCompany || proj.client || 'Private Client',
+        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
+        CLIENT_EMAIL: clientEmail || '',
+        CLIENT_PHONE: clientPhone || '',
+        DELIVERY_ADDRESS: deliveryAddress || '',
+        ONEONE_REP: oneOneRep || 'Martin Döller',
+        PM_NAME: pmName || 'Merlyn Mittins',
+        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        items: finalItems
+      };
 
-        let successCount = 0;
-        let errors = [];
+      let successCount = 0;
+      let errors = [];
 
-        for (const dType of orderDocTypes) {
-          try {
-            const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(vaultTokens)
-            });
-            if (res.ok) {
-              successCount++;
-            } else {
-              const errData = await res.json().catch(() => ({}));
-              errors.push(`${dType}: ${errData.detail || res.statusText || 'Failed'}`);
-            }
-          } catch (e) {
-            errors.push(`${dType}: ${e.message}`);
+      for (const dType of orderDocTypes) {
+        try {
+          const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(vaultTokens)
+          });
+          if (res.ok) {
+            successCount++;
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            errors.push(`${dType}: ${errData.detail || res.statusText || 'Failed'}`);
           }
+        } catch (e) {
+          errors.push(`${dType}: ${e.message}`);
         }
-
-        if (errors.length > 0) {
-          alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n\n⚠️ Drive Vault Save Details:\n` + errors.join('\n'));
-        } else {
-          alert(`Quotation Workspace Brain & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
-        }
-      } catch (vaultErr) {
-        alert(`Quotation Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
-      } finally {
-        setIsSavingOrder(false);
-        setSelectedOrderId(null);
       }
-    })();
+
+      if (errors.length > 0) {
+        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
+      } else {
+        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+      }
+    } catch (vaultErr) {
+      alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
+    } finally {
+      setIsSyncingVault(false);
+    }
   };
 
   // Create a brand-new Purchase Order / Quotation
@@ -2621,8 +2710,19 @@ export default function OrdersPage() {
                   </select>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{filteredOrders.length}</strong> active BOQs
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {isAnyFilterActive && (
+                    <button 
+                      className="btn btn-ghost btn-sm" 
+                      onClick={handleClearFilters}
+                      style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Showing <strong>{filteredOrders.length}</strong> active BOQs
+                  </div>
                 </div>
               </div>
 
@@ -2953,22 +3053,51 @@ export default function OrdersPage() {
                 })()}
 
 
+                {saveSuccessMsg && (
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#10b981',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {saveSuccessMsg}
+                  </div>
+                )}
+
                 <button 
                   className="btn btn-ghost btn-sm" 
                   onClick={() => {
                     if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
                   }}
+                  disabled={isSavingOrder || isSyncingVault}
                 >
-                  Cancel
+                  Close
                 </button>
                 
                 <button 
-                  className="btn btn-primary btn-sm" 
-                  onClick={handleSaveOrderSpreadsheet}
-                  disabled={isSavingOrder}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: isSavingOrder ? 0.7 : 1, cursor: isSavingOrder ? 'not-allowed' : 'pointer' }}
+                  className="btn btn-secondary btn-sm" 
+                  onClick={() => handleSaveOrderSpreadsheet(false)}
+                  disabled={isSavingOrder || isSyncingVault}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                  title="Instantly save all edits, line items, and pricing to database without Google Drive sync"
                 >
-                  <Save size={14} /> {isSavingOrder ? '⏳ Syncing Drive Vault...' : 'Save & Sync BOQ'}
+                  <Save size={14} /> {isSavingOrder ? 'Saving...' : 'Save & Update'}
+                </button>
+
+                <button 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => handleSaveOrderSpreadsheet(true)}
+                  disabled={isSavingOrder || isSyncingVault}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                  title="Save order to database and generate Quotation, Invoice, BOQ & Schedule on Google Drive"
+                >
+                  <FileText size={14} /> {isSyncingVault ? '⏳ Generating Docs...' : 'Save & Document'}
                 </button>
               </div>
             </div>
@@ -3281,9 +3410,10 @@ export default function OrdersPage() {
                               <select 
                                 className="form-control" 
                                 style={{ height: '24px', fontSize: '11px', padding: '2px 6px' }}
-                                value={Object.keys(projects).find(k => projects[k].name === projectFullName) || ''}
+                                value={selectedProjectKey || Object.keys(projects).find(k => projects[k].name === projectFullName) || ''}
                                 onChange={e => {
                                   const projKey = e.target.value;
+                                  setSelectedProjectKey(projKey);
                                   const proj = projects[projKey];
                                   if (proj) {
                                     setProjectFullName(proj.name);
@@ -3298,8 +3428,8 @@ export default function OrdersPage() {
                                       setBillingDetails(proj.billingDetails);
                                     }
 
-                                    // Lock client details to this project's client contact
-                                    if (proj.client) {
+                                    // If no client is set yet, default from project
+                                    if (!clientContact && !clientCompany && proj.client) {
                                       setClientContact(proj.client);
                                       const contact = contacts.find(c => c.name === proj.client);
                                       if (contact) {
@@ -6551,7 +6681,7 @@ export default function OrdersPage() {
                     if (filtered.length > 0) {
                       const nextKey = filtered[0].key;
                       setLinkProjectKey(nextKey);
-                      if (filtered[0].client) {
+                      if (!linkClient && filtered[0].client) {
                         setLinkClient(filtered[0].client);
                       }
                     }
@@ -6563,7 +6693,7 @@ export default function OrdersPage() {
                   onChange={e => {
                     const nextKey = e.target.value;
                     setLinkProjectKey(nextKey);
-                    if (nextKey) {
+                    if (nextKey && !linkClient) {
                       const proj = projects[nextKey];
                       if (proj && proj.client) {
                         setLinkClient(proj.client);
@@ -6586,22 +6716,16 @@ export default function OrdersPage() {
                   className="form-control" 
                   value={linkClient} 
                   onChange={e => setLinkClient(e.target.value)}
-                  disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
                   {combinedContacts.map(c => (
                     <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
                   ))}
                 </select>
-                {linkProjectKey && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
-                    🔒 Client locked to project client: <strong>{linkClient}</strong>
-                  </span>
-                )}
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                <strong>Linking Note:</strong> Changing links shifts this document. If unlinked from a project, it will be catalogued directly under the client's direct order portfolio.
+                <strong>Linking Note:</strong> Orders can be assigned any custom client while remaining linked to their project.
               </div>
             </div>
 

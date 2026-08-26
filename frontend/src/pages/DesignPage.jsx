@@ -1099,22 +1099,16 @@ export default function DesignPage() {
                   className="form-control" 
                   value={linkClient} 
                   onChange={e => setLinkClient(e.target.value)}
-                  disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
                   {contacts.map(c => (
                     <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
                   ))}
                 </select>
-                {linkProjectKey && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
-                    🔒 Client locked to project client: <strong>{linkClient}</strong>
-                  </span>
-                )}
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-primary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                <strong>Linking Note:</strong> Changing links shifts this design fee. If unlinked from a project, it will be catalogued directly under the client's direct design fee portfolio.
+                <strong>Linking Note:</strong> Design fees can be assigned custom clients while remaining linked to their project.
               </div>
             </div>
 

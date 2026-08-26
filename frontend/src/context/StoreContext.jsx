@@ -1579,10 +1579,14 @@ export function StoreProvider({ children }) {
       const newOrderIds = new Set(newOrders.map(o => o.id));
       for (const oldOrder of oldOrders) {
         if (!newOrderIds.has(oldOrder.id)) {
-          try {
-            await fetch(`${API_BASE}/api/orders/${oldOrder.id}`, { method: 'DELETE' });
-          } catch (err) {
-            console.error(`Error deleting order ${oldOrder.id}:`, err);
+          // Safety check: only delete if the order was NOT moved to another project
+          const existsElsewhere = Object.keys(projectsRef.current || {}).some(pk => pk !== key && (projectsRef.current[pk]?.orders || []).some(o => o.id === oldOrder.id));
+          if (!existsElsewhere) {
+            try {
+              await fetch(`${API_BASE}/api/orders/${oldOrder.id}`, { method: 'DELETE' });
+            } catch (err) {
+              console.error(`Error deleting order ${oldOrder.id}:`, err);
+            }
           }
         }
       }
@@ -1642,19 +1646,22 @@ export function StoreProvider({ children }) {
             }
           }
         } else {
-          // Update existing order row if any properties changed (excluding itemsList)
-          const cleanOld = { ...oldOrder, itemsList: undefined };
-          const cleanNew = { ...newOrder, itemsList: undefined };
-          if (JSON.stringify(cleanOld) !== JSON.stringify(cleanNew)) {
-            try {
-              await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
-                method: 'PUT',
+          // Unconditionally persist order details to Cloud SQL
+          try {
+            const updateRes = await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(orderData)
+            });
+            if (!updateRes.ok && updateRes.status === 404) {
+              await fetch(`${API_BASE}/api/orders/`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderData)
               });
-            } catch (err) {
-              console.error(`Error updating order ${newOrder.id}:`, err);
             }
+          } catch (err) {
+            console.error(`Error updating order ${newOrder.id}:`, err);
           }
 
           // Sync order items
@@ -1673,33 +1680,16 @@ export function StoreProvider({ children }) {
             }
           }
 
-          // Find added or updated items
-          const oldItemsMap = new Map(oldItems.map(i => [i.id, i]));
+          // Upsert all items to Cloud SQL
           for (const newItem of newItems) {
-            const oldItem = oldItemsMap.get(newItem.id);
-            if (!oldItem) {
-              try {
-                await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(mapItemToSchema(newItem))
-                });
-              } catch (err) {
-                console.error(`Error creating item ${newItem.id}:`, err);
-              }
-            } else {
-              // Update if changed
-              if (JSON.stringify(mapItemToSchema(newItem)) !== JSON.stringify(mapItemToSchema(oldItem))) {
-                try {
-                  await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(mapItemToSchema(newItem))
-                  });
-                } catch (err) {
-                  console.error(`Error updating item ${newItem.id}:`, err);
-                }
-              }
+            try {
+              await fetch(`${API_BASE}/api/orders/${newOrder.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mapItemToSchema(newItem))
+              });
+            } catch (err) {
+              console.error(`Error upserting item ${newItem.id}:`, err);
             }
           }
         }
@@ -2387,6 +2377,7 @@ export function StoreProvider({ children }) {
   return (
     <StoreContext.Provider value={{ 
       projects, 
+      setProjects,
       updateProject, 
       addProject, 
       saveDraftProject, 

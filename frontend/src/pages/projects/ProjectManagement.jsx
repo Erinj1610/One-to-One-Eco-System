@@ -2828,7 +2828,7 @@ export default function ProjectManagement() {
                   onChange={e => {
                     const nextKey = e.target.value;
                     setLinkProjectKey(nextKey);
-                    if (nextKey) {
+                    if (nextKey && !linkClient) {
                       const proj = projects[nextKey];
                       if (proj && proj.client) {
                         setLinkClient(proj.client);
@@ -2849,22 +2849,16 @@ export default function ProjectManagement() {
                   className="form-control" 
                   value={linkClient} 
                   onChange={e => setLinkClient(e.target.value)}
-                  disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
                   {uniqueContacts.map(c => (
                     <option key={c.id || c.name} value={c.name}>{c.name} ({c.company || c.type || 'Private'})</option>
                   ))}
                 </select>
-                {linkProjectKey && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-info)', marginTop: '4px', display: 'block' }}>
-                    🔒 Client locked to project client: <strong>{linkClient}</strong>
-                  </span>
-                )}
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-primary)', padding: '10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                <strong>Linking Note:</strong> Changing links shifts this document. If unlinked from a project, it will be catalogued directly under the client's direct portfolio.
+                <strong>Linking Note:</strong> Orders and documents can be assigned custom clients while remaining linked to their project.
               </div>
             </div>
 
