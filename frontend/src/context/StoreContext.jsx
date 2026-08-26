@@ -1283,23 +1283,33 @@ export function StoreProvider({ children }) {
           if (val !== null && val !== undefined) {
             if (key === 'moduleConfig') {
               const loadedVal = val;
-              let loadedModules = loadedVal.modules || [];
+              let rawModules = loadedVal.modules || [];
               
-              // Migrate legacy support module or update ticket_logger
-              loadedModules = loadedModules.map(m => {
-                if (m.id === 'support' || m.id === 'ticket_logger') {
-                  return { ...m, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
+              const seenIds = new Set();
+              const seenPaths = new Set();
+              const uniqueModules = [];
+
+              rawModules.forEach(m => {
+                let mod = { ...m };
+                if (mod.id === 'support' || mod.id === 'ticket_logger' || mod.path === '/support' || mod.path === '/ticket-logger') {
+                  mod = { ...mod, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
                 }
-                return m;
+                if (!seenIds.has(mod.id) && !seenPaths.has(mod.path)) {
+                  seenIds.add(mod.id);
+                  seenPaths.add(mod.path);
+                  uniqueModules.push(mod);
+                }
               });
 
-              const mergedModules = [...loadedModules];
               defaultModules.forEach(defM => {
-                if (!loadedModules.some(m => m.id === defM.id)) {
-                  mergedModules.push(defM);
+                if (!seenIds.has(defM.id) && !seenPaths.has(defM.path)) {
+                  seenIds.add(defM.id);
+                  seenPaths.add(defM.path);
+                  uniqueModules.push(defM);
                 }
               });
-              setter({ ...loadedVal, modules: mergedModules });
+
+              setter({ ...loadedVal, modules: uniqueModules });
             } else if (key === 'activity_logs') {
               const localSaved = localStorage.getItem('activity_logs');
               let localLogs = [];
