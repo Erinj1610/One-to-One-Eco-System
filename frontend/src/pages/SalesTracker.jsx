@@ -2450,7 +2450,7 @@ export default function SalesTracker() {
 
           const targetItem = {
             id: String(row["Item ID"] || `ITEM-${orderId}-${itemCode}-${Date.now()}`),
-            qty: Math.abs(qty),
+            qty: isCredit ? -Math.abs(qty) : Math.abs(qty),
             code: itemCode,
             oneOneCode: oneOneCode,
             description,
@@ -2458,7 +2458,7 @@ export default function SalesTracker() {
             unitRetail,
             brand,
             supplier,
-            itemType,
+            itemType: isCredit ? "Credit" : itemType,
             isCredit,
             is_credit: isCredit,
             stockStatus: String(row["Stock Status"] || "").trim(),
