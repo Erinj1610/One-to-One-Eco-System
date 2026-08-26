@@ -1,8 +1,8 @@
 const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
-const isProductionHost = hostname === 'ejportal.world' || hostname === 'www.ejportal.world' || hostname === 'portal.one-to-one.world';
-export const API_BASE = isProductionHost 
-  ? 'https://one-to-one-backend-858977785048.us-central1.run.app'
-  : 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
+const isStagingHost = hostname.includes('staging');
+export const API_BASE = isStagingHost 
+  ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
+  : 'https://one-to-one-backend-858977785048.us-central1.run.app';
 
 import { auth } from './firebase';
 
