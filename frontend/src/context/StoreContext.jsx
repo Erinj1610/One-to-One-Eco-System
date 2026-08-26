@@ -1642,19 +1642,15 @@ export function StoreProvider({ children }) {
             }
           }
         } else {
-          // Update existing order row if any properties changed (excluding itemsList)
-          const cleanOld = { ...oldOrder, itemsList: undefined };
-          const cleanNew = { ...newOrder, itemsList: undefined };
-          if (JSON.stringify(cleanOld) !== JSON.stringify(cleanNew)) {
-            try {
-              await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-              });
-            } catch (err) {
-              console.error(`Error updating order ${newOrder.id}:`, err);
-            }
+          // Unconditionally persist order details to Cloud SQL
+          try {
+            await fetch(`${API_BASE}/api/orders/${newOrder.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(orderData)
+            });
+          } catch (err) {
+            console.error(`Error updating order ${newOrder.id}:`, err);
           }
 
           // Sync order items
@@ -1688,17 +1684,14 @@ export function StoreProvider({ children }) {
                 console.error(`Error creating item ${newItem.id}:`, err);
               }
             } else {
-              // Update if changed
-              if (JSON.stringify(mapItemToSchema(newItem)) !== JSON.stringify(mapItemToSchema(oldItem))) {
-                try {
-                  await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(mapItemToSchema(newItem))
-                  });
-                } catch (err) {
-                  console.error(`Error updating item ${newItem.id}:`, err);
-                }
+              try {
+                await fetch(`${API_BASE}/api/orders/items/${newItem.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(mapItemToSchema(newItem))
+                });
+              } catch (err) {
+                console.error(`Error updating item ${newItem.id}:`, err);
               }
             }
           }

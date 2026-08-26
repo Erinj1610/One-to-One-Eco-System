@@ -2143,8 +2143,8 @@ export default function OrdersPage() {
       return o;
     });
 
-    // Save back to dynamic project state
-    updateProject(selectedProjectKey, 'orders', updatedOrders);
+    // Save back to dynamic project state and ensure database writes finish
+    await updateProject(selectedProjectKey, 'orders', updatedOrders);
 
     // Calculate global margins for the project
     const designTotal = (proj.designFees || []).reduce((s, f) => s + (f.feeValue || 0), 0);
@@ -2156,7 +2156,7 @@ export default function OrdersPage() {
     const totalProfit = designMarginValue + orderMarginValue;
     const blendedMargin = contractTotal > 0 ? Math.round((totalProfit / contractTotal) * 100) : 18;
 
-    updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
+    await updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
     if (!syncVault) {
       setIsSavingOrder(false);
