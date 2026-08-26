@@ -1250,317 +1250,344 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.65)',
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'center',
           zIndex: 9999,
-          padding: '16px'
+          padding: '24px 16px',
+          overflowY: 'auto'
         }}>
           <div className="card animation-scale-up" style={{
             width: '100%',
             maxWidth: '740px',
-            maxHeight: '92vh',
-            overflowY: 'auto',
+            maxHeight: 'calc(100vh - 48px)',
             background: 'var(--bg-primary)',
             borderRadius: '12px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-            border: '1px solid var(--border)'
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            margin: 'auto 0'
           }}>
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Fixed Sticky Header */}
+            <div style={{
+              padding: '16px 24px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--bg-primary)',
+              flexShrink: 0
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Ticket size={22} color="var(--text-info)" />
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Log Project Management Ticket</h3>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Log Project Management Ticket</h3>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Record site snags, design revisions, RFIs, or procurement hold-ups</div>
                 </div>
               </div>
               <button 
                 onClick={() => setShowCreateModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '4px' }}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTicket} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-              {/* Project & Stage Row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project *</label>
-                  <select
-                    className="form-control"
-                    required
-                    value={form.project_id}
-                    onChange={e => handleProjectSelect(e.target.value)}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    <option value="">Select Target Project...</option>
-                    {projectList.map(p => (
-                      <option key={p.id} value={p.id}>{p.name || p.projectName} ({p.client || 'Client'})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Stage</label>
-                  <select
-                    className="form-control"
-                    value={form.stage}
-                    onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    {PROJECT_STAGES.map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Title */}
-              <div className="form-row">
-                <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Ticket Title / Summary *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Master suite en-suite ceiling cutout misalignment 50mm off..."
-                  className="form-control"
-                  value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  style={{ borderRadius: '8px', padding: '9px 12px', fontSize: '12px' }}
-                />
-              </div>
-
-              {/* Type, Priority, and Status */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '12px' }}>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Ticket Type</label>
-                  <select
-                    className="form-control"
-                    value={form.ticket_type}
-                    onChange={e => setForm(f => ({ ...f, ticket_type: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    {TICKET_TYPES.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Priority</label>
-                  <select
-                    className="form-control"
-                    value={form.priority}
-                    onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    {PRIORITIES.map(p => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Initial Status</label>
-                  <select
-                    className="form-control"
-                    value={form.status}
-                    onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    <option value="Open">Open / Reported</option>
-                    <option value="In progress">In Progress</option>
-                    <option value="Awaiting Sign-off">Awaiting Sign-off</option>
-                    <option value="Resolved">Resolved</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Location & Fitting Reference */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Location / Room Area</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Master Bedroom Ensuite - Zone 2"
-                    className="form-control"
-                    value={form.location_area}
-                    onChange={e => setForm(f => ({ ...f, location_area: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Fitting / Luminaire Code</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. DL-01 Downlight or TR-04 Track"
-                    className="form-control"
-                    value={form.fitting_code}
-                    onChange={e => setForm(f => ({ ...f, fitting_code: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-              </div>
-
-              {/* Impact: Cost (R) & Schedule Delay (Days) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Cost Variation (ZAR)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="50"
-                    placeholder="0.00"
-                    className="form-control"
-                    value={form.cost_impact}
-                    onChange={e => setForm(f => ({ ...f, cost_impact: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Schedule Delay (Days)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    className="form-control"
-                    value={form.schedule_impact_days}
-                    onChange={e => setForm(f => ({ ...f, schedule_impact_days: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Target Due Date</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={form.due_date}
-                    onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-              </div>
-
-              {/* Assigned Staff User & Raised By */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Assigned Staff User</label>
-                  <select
-                    className="form-control"
-                    value={form.assigned_to}
-                    onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
-                  >
-                    <option value="">-- Select Assigned Staff User --</option>
-                    {staffOptions.map(s => (
-                      <option key={s.name} value={s.name}>
-                        {s.name} {s.role ? `(${s.role})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Raised By</label>
-                  <input
-                    type="text"
-                    placeholder="Your Name"
-                    className="form-control"
-                    value={form.raised_by}
-                    onChange={e => setForm(f => ({ ...f, raised_by: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
-                  />
-                </div>
-              </div>
-
-              {/* Description & Site Notes with Paste Support */}
-              <div className="form-row">
-                <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>
-                  Description & Site Notes * <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(You can paste photos directly with Ctrl+V)</span>
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="Describe the issue, defect, contractor query, or variation details..."
-                  className="form-control"
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  onPaste={handlePasteImage}
-                  style={{ borderRadius: '8px', padding: '10px 12px', resize: 'vertical', fontFamily: 'inherit', fontSize: '12px' }}
-                />
-              </div>
-
-              {/* Site Photos & Drawing Upload */}
-              <div className="form-row">
-                <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Photos & Plan Markups</label>
-                <div
-                  onPaste={handlePasteImage}
-                  onClick={() => document.getElementById('project-ticket-file-input').click()}
-                  style={{
-                    border: '2px dashed var(--border)',
-                    borderRadius: '8px',
-                    padding: '18px',
-                    textAlign: 'center',
-                    background: 'var(--bg-secondary)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Upload size={22} color="var(--text-tertiary)" style={{ marginBottom: '4px' }} />
-                  <div style={{ fontSize: '12px', fontWeight: 600 }}>Click to upload site photos, or paste copied screenshots directly (Ctrl+V)</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>PNG, JPG, JPEG supported</div>
-                  <input
-                    type="file"
-                    id="project-ticket-file-input"
-                    multiple
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                  />
-                </div>
-
-                {formImages.length > 0 && (
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-                    {formImages.map((img, idx) => (
-                      <div key={idx} style={{ position: 'relative', width: '70px', height: '55px' }}>
-                        <img
-                          src={img}
-                          alt="preview"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border)' }}
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleRemoveImage(idx); }}
-                          style={{
-                            position: 'absolute',
-                            top: '-5px',
-                            right: '-5px',
-                            width: '18px',
-                            height: '18px',
-                            borderRadius: '50%',
-                            background: '#ef4444',
-                            color: '#fff',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+            {/* Scrollable Form Content */}
+            <form onSubmit={handleCreateTicket} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', margin: 0 }}>
+              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, overflowY: 'auto' }}>
+                
+                {/* Project & Stage Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project *</label>
+                    <select
+                      className="form-control"
+                      required
+                      value={form.project_id}
+                      onChange={e => handleProjectSelect(e.target.value)}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      <option value="">Select Target Project...</option>
+                      {projectList.map(p => (
+                        <option key={p.id} value={p.id}>{p.name || p.projectName} ({p.client || 'Client'})</option>
+                      ))}
+                    </select>
                   </div>
-                )}
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Stage</label>
+                    <select
+                      className="form-control"
+                      value={form.stage}
+                      onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      {PROJECT_STAGES.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div className="form-row">
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Ticket Title / Summary *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Master suite en-suite ceiling cutout misalignment 50mm off..."
+                    className="form-control"
+                    value={form.title}
+                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                    style={{ borderRadius: '8px', padding: '9px 12px', fontSize: '12px' }}
+                  />
+                </div>
+
+                {/* Type, Priority, and Status */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Ticket Type</label>
+                    <select
+                      className="form-control"
+                      value={form.ticket_type}
+                      onChange={e => setForm(f => ({ ...f, ticket_type: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      {TICKET_TYPES.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Priority</label>
+                    <select
+                      className="form-control"
+                      value={form.priority}
+                      onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      {PRIORITIES.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Initial Status</label>
+                    <select
+                      className="form-control"
+                      value={form.status}
+                      onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      <option value="Open">Open / Reported</option>
+                      <option value="In progress">In Progress</option>
+                      <option value="Awaiting Sign-off">Awaiting Sign-off</option>
+                      <option value="Resolved">Resolved</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Location & Fitting Reference */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Location / Room Area</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Master Bedroom Ensuite - Zone 2"
+                      className="form-control"
+                      value={form.location_area}
+                      onChange={e => setForm(f => ({ ...f, location_area: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Fitting / Luminaire Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DL-01 Downlight or TR-04 Track"
+                      className="form-control"
+                      value={form.fitting_code}
+                      onChange={e => setForm(f => ({ ...f, fitting_code: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Impact: Cost (R) & Schedule Delay (Days) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Cost Variation (ZAR)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      placeholder="0.00"
+                      className="form-control"
+                      value={form.cost_impact}
+                      onChange={e => setForm(f => ({ ...f, cost_impact: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Schedule Delay (Days)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      className="form-control"
+                      value={form.schedule_impact_days}
+                      onChange={e => setForm(f => ({ ...f, schedule_impact_days: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Target Due Date</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={form.due_date}
+                      onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Assigned Staff User & Raised By */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Assigned Staff User</label>
+                    <select
+                      className="form-control"
+                      value={form.assigned_to}
+                      onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                    >
+                      <option value="">-- Select Assigned Staff User --</option>
+                      {staffOptions.map(s => (
+                        <option key={s.name} value={s.name}>
+                          {s.name} {s.role ? `(${s.role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Raised By</label>
+                    <input
+                      type="text"
+                      placeholder="Your Name"
+                      className="form-control"
+                      value={form.raised_by}
+                      onChange={e => setForm(f => ({ ...f, raised_by: e.target.value }))}
+                      style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Description & Site Notes with Paste Support */}
+                <div className="form-row">
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>
+                    Description & Site Notes * <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(You can paste photos directly with Ctrl+V)</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="Describe the issue, defect, contractor query, or variation details..."
+                    className="form-control"
+                    value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    onPaste={handlePasteImage}
+                    style={{ borderRadius: '8px', padding: '10px 12px', resize: 'vertical', fontFamily: 'inherit', fontSize: '12px' }}
+                  />
+                </div>
+
+                {/* Site Photos & Drawing Upload */}
+                <div className="form-row">
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Photos & Plan Markups</label>
+                  <div
+                    onPaste={handlePasteImage}
+                    onClick={() => document.getElementById('project-ticket-file-input').click()}
+                    style={{
+                      border: '2px dashed var(--border)',
+                      borderRadius: '8px',
+                      padding: '18px',
+                      textAlign: 'center',
+                      background: 'var(--bg-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Upload size={22} color="var(--text-tertiary)" style={{ marginBottom: '4px' }} />
+                    <div style={{ fontSize: '12px', fontWeight: 600 }}>Click to upload site photos, or paste copied screenshots directly (Ctrl+V)</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>PNG, JPG, JPEG supported</div>
+                    <input
+                      type="file"
+                      id="project-ticket-file-input"
+                      multiple
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleFileChange}
+                    />
+                  </div>
+
+                  {formImages.length > 0 && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                      {formImages.map((img, idx) => (
+                        <div key={idx} style={{ position: 'relative', width: '70px', height: '55px' }}>
+                          <img
+                            src={img}
+                            alt="preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border)' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleRemoveImage(idx); }}
+                            style={{
+                              position: 'absolute',
+                              top: '-5px',
+                              right: '-5px',
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: '#ef4444',
+                              color: '#fff',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
 
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              {/* Fixed Sticky Footer */}
+              <div style={{
+                borderTop: '1px solid var(--border)',
+                padding: '14px 24px',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+                background: 'var(--bg-secondary)',
+                flexShrink: 0
+              }}>
                 <button 
                   type="button" 
                   className="btn btn-ghost" 
@@ -1590,25 +1617,38 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0, 0, 0, 0.65)',
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'center',
           zIndex: 9999,
-          padding: '16px'
+          padding: '24px 16px',
+          overflowY: 'auto'
         }}>
           <div className="card animation-scale-up" style={{
             width: '100%',
-            maxWidth: '920px',
-            maxHeight: '92vh',
-            overflowY: 'auto',
+            maxWidth: '960px',
+            maxHeight: 'calc(100vh - 48px)',
             background: 'var(--bg-primary)',
             borderRadius: '12px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-            border: '1px solid var(--border)'
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
+            border: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            margin: 'auto 0'
           }}>
-            {/* Header */}
-            <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Fixed Sticky Header */}
+            <div style={{
+              padding: '16px 24px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--bg-primary)',
+              flexShrink: 0
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button 
                   className="btn btn-ghost btn-sm" 
@@ -1622,19 +1662,20 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-info)', fontSize: '14px' }}>
                       {selectedTicket.ticket_number}
                     </span>
-                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>{selectedTicket.title}</h3>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{selectedTicket.title}</h3>
                   </div>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedTicket(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '4px' }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px' }}>
+            {/* Scrollable Content Body */}
+            <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 320px', gap: '24px', overflowY: 'auto', flex: 1 }}>
               
               {/* Left Column: Meta, Description, Photos, Discussion */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
