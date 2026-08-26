@@ -1674,7 +1674,7 @@ export function StoreProvider({ children }) {
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
       try {
-        await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
+        const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1696,8 +1696,14 @@ export function StoreProvider({ children }) {
             s5: s5Val
           })
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Failed to update project ${key}:`, res.status, errText);
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
       } catch (err) {
         console.error("Error updating project:", err);
+        throw err;
       }
     }
   };
