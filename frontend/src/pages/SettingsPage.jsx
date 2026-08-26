@@ -381,14 +381,16 @@ function ReleasesDeploymentManager() {
   const [githubTokenInput, setGithubTokenInput] = useState('');
   const [savingToken, setSavingToken] = useState(false);
 
+  const DEPLOY_BACKEND = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
+
   const fetchDeploymentStatus = async () => {
     setLoading(true);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(`${API_BASE}/api/admin/deployments`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
+      let res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
+      }
+      if (res && res.ok) {
         const statusData = await res.json();
         setData(statusData);
       }
@@ -410,13 +412,23 @@ function ReleasesDeploymentManager() {
     }
     setSavingToken(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/deployments/github-token`, {
+      const payload = JSON.stringify({ token: githubTokenInput.trim() });
+      let res = await fetch(`${API_BASE}/api/admin/deployments/github-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: githubTokenInput.trim() })
-      });
-      const resData = await res.json();
-      if (res.ok) {
+        body: payload
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/github-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      const resData = res ? await res.json().catch(() => ({})) : {};
+      if (res && res.ok) {
         setActionMsg({ type: 'success', text: `🟢 ${resData.message || 'GitHub Deploy Token successfully verified and connected!'}` });
         setGithubTokenInput('');
         setShowTokenConfig(false);
@@ -438,18 +450,29 @@ function ReleasesDeploymentManager() {
     }
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/deployments/promote`, {
+      const payload = JSON.stringify({
+        version_tag: promoteForm.version_tag || `v1.${Date.now().toString().slice(-4)}`,
+        release_name: promoteForm.release_name,
+        release_notes: promoteForm.release_notes,
+        admin_email: user?.email || 'admin@1-to-1.world'
+      });
+
+      let res = await fetch(`${API_BASE}/api/admin/deployments/promote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version_tag: promoteForm.version_tag || `v1.${Date.now().toString().slice(-4)}`,
-          release_name: promoteForm.release_name,
-          release_notes: promoteForm.release_notes,
-          admin_email: user?.email || 'admin@1-to-1.world'
-        })
-      });
-      const resData = await res.json().catch(() => ({}));
-      if (res.ok) {
+        body: payload
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload
+        }).catch(() => null);
+      }
+
+      const resData = res ? await res.json().catch(() => ({})) : {};
+      if (res && res.ok) {
         setActionMsg({ type: 'success', text: resData.message || `🚀 Successfully promoted release '${promoteForm.release_name}' to Live Production!` });
         setShowPromoteModal(false);
         setPromoteForm({ version_tag: '', release_name: '', release_notes: '' });
@@ -468,12 +491,21 @@ function ReleasesDeploymentManager() {
     if (!window.confirm(`Are you sure you want to rollback live Production traffic to revision ${rev.version_tag} (${rev.release_name})?`)) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/deployments/rollback/${rev.id}`, {
+      let res = await fetch(`${API_BASE}/api/admin/deployments/rollback/${rev.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
-      });
-      if (res.ok) {
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/rollback/${rev.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }).catch(() => null);
+      }
+
+      if (res && res.ok) {
         setActionMsg({ type: 'success', text: `⏪ Successfully marked Production live traffic to revision ${rev.version_tag}!` });
         fetchDeploymentStatus();
       } else {
