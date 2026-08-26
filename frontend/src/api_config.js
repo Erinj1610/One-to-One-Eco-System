@@ -1,8 +1,8 @@
 const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
-const isStagingHost = hostname.includes('staging') || hostname.includes('erinj1610s-projects');
-export const API_BASE = isStagingHost 
-  ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
-  : 'https://one-to-one-backend-858977785048.us-central1.run.app';
+const isProductionHost = hostname === 'ejportal.world' || hostname === 'www.ejportal.world' || hostname === 'portal.one-to-one.world';
+export const API_BASE = isProductionHost 
+  ? 'https://one-to-one-backend-858977785048.us-central1.run.app'
+  : 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
 
 import { auth } from './firebase';
 
@@ -22,7 +22,7 @@ window.fetch = async (url, options = {}) => {
     cleanUrl.startsWith('/admin/');
 
   if (isBackendRequest) {
-    const newOptions = { ...options };
+    const newOptions = { ...options, cache: options.cache || 'no-store' };
     
     let token = null;
     const currentUser = auth.currentUser;

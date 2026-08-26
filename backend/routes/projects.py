@@ -389,6 +389,13 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project = db.query(Project).filter(Project.project_key == project_key).first()
     if not project and project_data.project_key:
         project = db.query(Project).filter(Project.project_key == project_data.project_key).first()
+    if not project:
+        project = db.query(Project).filter(Project.name == project_key).first()
+    if not project and project_data.name:
+        project = db.query(Project).filter(Project.name == project_data.name).first()
+    if not project:
+        normalized_name = project_key.replace('-', ' ')
+        project = db.query(Project).filter(Project.name.ilike(normalized_name)).first()
 
     if not project:
         active_rates = get_active_global_design_rates(db)

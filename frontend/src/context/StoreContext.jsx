@@ -1135,6 +1135,10 @@ export function StoreProvider({ children }) {
   const { user, authLoading } = useAuth();
   const [projects, setProjects] = useState({});
   const [contacts, setContacts] = useState([]);
+  const projectsRef = React.useRef(projects);
+  React.useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
   const [leads, setLeads] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [projectManagers, setProjectManagers] = useState([]);
@@ -1270,16 +1274,19 @@ export function StoreProvider({ children }) {
     }
 
     const loadState = (key, setter) => {
+      const tParam = `_t=${Date.now()}`;
       const url = key === 'projects'
-        ? `${API_BASE}/api/projects/all`
-        : `${API_BASE}/api/settings/${key}`;
-      fetch(url)
+        ? `${API_BASE}/api/projects/all?${tParam}`
+        : key === 'contacts'
+        ? `${API_BASE}/api/clients?${tParam}`
+        : `${API_BASE}/api/settings/${key}?${tParam}`;
+      fetch(url, { cache: 'no-store' })
         .then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           return res.json();
         })
         .then(data => {
-          const val = key === 'projects' ? data : (data && data.value);
+          const val = key === 'projects' || key === 'contacts' ? data : (data && data.value);
           if (val !== null && val !== undefined) {
             if (key === 'moduleConfig') {
               const loadedVal = val;
@@ -1318,9 +1325,9 @@ export function StoreProvider({ children }) {
               } catch(e){}
               const dbLogs = Array.isArray(val) ? val : [];
               const merged = [...dbLogs];
-              localLogs.forEach(loc => {
-                if (loc && loc.id && !merged.some(m => m.id === loc.id)) {
-                  merged.push(loc);
+              localLogs.forEach(ll => {
+                if (!merged.some(m => m.id === ll.id)) {
+                  merged.push(ll);
                 }
               });
               merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -1359,6 +1366,22 @@ export function StoreProvider({ children }) {
                 });
               }
               setter(parsedProjects);
+            } else if (key === 'contacts') {
+              const raw = Array.isArray(val) ? val : [];
+              const seenIds = new Set();
+              const seenNames = new Set();
+              const uniqueContacts = [];
+              raw.forEach(c => {
+                if (!c) return;
+                const cId = String(c.id);
+                const cName = (c.name || '').trim().toLowerCase();
+                if (!seenIds.has(cId) && !seenNames.has(cName)) {
+                  seenIds.add(cId);
+                  if (cName) seenNames.add(cName);
+                  uniqueContacts.push(c);
+                }
+              });
+              setter(uniqueContacts);
             } else {
               setter(val);
             }
@@ -1404,9 +1427,9 @@ export function StoreProvider({ children }) {
     }).catch(err => console.error(`Error saving ${key}:`, err));
   };
 
-  // Dedicated relational API endpoints handle projects & orders updates directly
+  // Dedicated relational API endpoints handle projects, orders & clients updates directly
   // React.useEffect(() => { saveState('projects', projects); }, [projects]);
-  React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
+  // React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
   React.useEffect(() => { saveState('leads', leads); }, [leads]);
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
   React.useEffect(() => { saveState('alertSettings', alertSettings); }, [alertSettings]);
@@ -1472,23 +1495,24 @@ export function StoreProvider({ children }) {
 
   const updateProject = async (key, field, value) => {
     // 2. Perform granular database write under the hood
-    let updatedProj = null;
+    let nextProj = null;
     setProjects(prev => {
-      const existing = prev[key] || {};
-      const nextProj = typeof field === 'object' && field !== null
+      const existing = prev[key] || projectsRef.current[key] || {};
+      nextProj = typeof field === 'object' && field !== null
         ? { ...existing, ...field }
         : { ...existing, [field]: value };
-      updatedProj = nextProj;
-      return {
+      const nextMap = {
         ...prev,
         [key]: nextProj
       };
+      projectsRef.current = nextMap;
+      return nextMap;
     });
 
-    if (!updatedProj) return;
+    if (!nextProj) return;
 
     if (field === 'orders') {
-      const currentProj = projects[key] || {};
+      const currentProj = projectsRef.current[key] || projects[key] || {};
       const newOrders = value || [];
       const oldOrders = currentProj.orders || [];
 
@@ -1641,7 +1665,8 @@ export function StoreProvider({ children }) {
       }
     } else {
       // Update project row properties
-      const feesToSave = updatedProj.designFees || [];
+      const targetProj = nextProj || projectsRef.current[key] || {};
+      const feesToSave = targetProj.designFees || [];
       const s1Val = feesToSave[0] ? JSON.stringify(feesToSave[0]) : "";
       const s2Val = feesToSave[1] ? JSON.stringify(feesToSave[1]) : "";
       const s3Val = feesToSave[2] ? JSON.stringify(feesToSave[2]) : "";
@@ -1649,21 +1674,21 @@ export function StoreProvider({ children }) {
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
       try {
-        await fetch(`${API_BASE}/api/projects/${key}`, {
+        const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: updatedProj.name || key,
+            name: targetProj.name || key,
             project_key: key,
-            client_name: updatedProj.client || '',
-            pm_name: updatedProj.pm || '',
-            offering: updatedProj.offering || 'Signature',
-            sqm: String(updatedProj.sqm || ''),
-            status: updatedProj.status || 'On track',
-            deadline: updatedProj.deadline || 'TBD',
-            complete_status: updatedProj.complete || 'Ongoing',
-            target_margin: Number(updatedProj.targetMargin) || 0.0,
-            actual_margin: Number(updatedProj.actualMargin) || 0.0,
+            client_name: targetProj.client !== undefined ? targetProj.client : (targetProj.client_name || ''),
+            pm_name: targetProj.pm !== undefined ? targetProj.pm : (targetProj.pm_name || ''),
+            offering: targetProj.offering || 'Signature',
+            sqm: String(targetProj.sqm || ''),
+            status: targetProj.status || 'On track',
+            deadline: targetProj.deadline || 'TBD',
+            complete_status: targetProj.complete || 'Ongoing',
+            target_margin: Number(targetProj.targetMargin) || 0.0,
+            actual_margin: Number(targetProj.actualMargin) || 0.0,
             s1: s1Val,
             s2: s2Val,
             s3: s3Val,
@@ -1671,8 +1696,14 @@ export function StoreProvider({ children }) {
             s5: s5Val
           })
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`Failed to update project ${key}:`, res.status, errText);
+          throw new Error(`Server returned ${res.status}: ${errText}`);
+        }
       } catch (err) {
         console.error("Error updating project:", err);
+        throw err;
       }
     }
   };
@@ -2204,6 +2235,105 @@ export function StoreProvider({ children }) {
     }
   };
 
+  const deduplicateContacts = (list) => {
+    const seenIds = new Set();
+    const seenNames = new Set();
+    const unique = [];
+    (list || []).forEach(c => {
+      if (!c) return;
+      const cId = String(c.id);
+      const cName = (c.name || '').trim().toLowerCase();
+      if (!seenIds.has(cId) && !seenNames.has(cName)) {
+        seenIds.add(cId);
+        if (cName) seenNames.add(cName);
+        unique.push(c);
+      }
+    });
+    return unique;
+  };
+
+  const updateClient = async (clientId, clientData) => {
+    // Optimistically update local contacts state
+    setContacts(prev => {
+      const exists = prev.some(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
+      let updatedList = [];
+      if (!exists) {
+        updatedList = [...prev, { ...clientData, id: clientId }];
+      } else {
+        updatedList = prev.map(c => {
+          if (c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase())) {
+            return { ...c, ...clientData };
+          }
+          return c;
+        });
+      }
+      return deduplicateContacts(updatedList);
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientData)
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setContacts(prev => {
+          const mapped = prev.map(c => (c.id === updated.id || String(c.id) === String(clientId)) ? updated : c);
+          return deduplicateContacts(mapped);
+        });
+        return updated;
+      }
+    } catch (err) {
+      console.error("Error updating client in Cloud SQL:", err);
+    }
+  };
+
+  const addClient = async (clientData) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientData)
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setContacts(prev => {
+          const filtered = prev.filter(c => c.id !== created.id && c.name.toLowerCase() !== created.name.toLowerCase());
+          return deduplicateContacts([...filtered, created]);
+        });
+        return created;
+      }
+    } catch (err) {
+      console.error("Error creating client in Cloud SQL:", err);
+    }
+  };
+
+  const deleteClient = async (clientId) => {
+    setContacts(prev => prev.filter(c => c.id !== clientId && String(c.id) !== String(clientId)));
+    try {
+      await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error("Error deleting client in Cloud SQL:", err);
+    }
+  };
+
+  const refreshClients = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/clients`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setContacts(deduplicateContacts(data));
+        }
+      }
+    } catch (err) {
+      console.error("Error refreshing clients from Cloud SQL:", err);
+    }
+  };
+
   return (
     <StoreContext.Provider value={{ 
       projects, 
@@ -2218,6 +2348,10 @@ export function StoreProvider({ children }) {
       bulkRenameOrders,
       contacts, 
       setContacts, 
+      updateClient,
+      addClient,
+      deleteClient,
+      refreshClients,
       leads, 
       setLeads, 
       moveLead, 

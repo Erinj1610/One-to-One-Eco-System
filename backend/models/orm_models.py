@@ -166,6 +166,7 @@ class Client(Base):
     order_gap_months = Column(Integer, nullable=True)
     date_started = Column(String, nullable=True)
     avg_payment_delay_days = Column(Integer, nullable=True)
+    activities = Column(JSON, nullable=True, default=list)
 
 class Contact(Base):
     __tablename__ = "contacts"

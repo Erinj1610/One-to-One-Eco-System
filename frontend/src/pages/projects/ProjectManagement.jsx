@@ -70,6 +70,17 @@ export default function ProjectManagement() {
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   
+  const uniqueContacts = useMemo(() => {
+    const seen = new Set();
+    return (contacts || []).filter(c => {
+      if (!c || !c.name) return false;
+      const key = c.name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [contacts]);
+
   // Link/Unlink shifting modal states
   const [linkModalItem, setLinkModalItem] = useState(null);
   const [linkClient, setLinkClient] = useState('');
@@ -120,6 +131,85 @@ export default function ProjectManagement() {
   }, [location.state]);
 
   const p = projects[id];
+  const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
+  const [overviewForm, setOverviewForm] = useState({
+    name: '',
+    client: '',
+    clientCompany: '',
+    clientEmail: '',
+    clientPhone: '',
+    projectType: 'Design & Orders',
+    pm: 'Dani',
+    start: '',
+    deadline: '',
+    sqm: '',
+    targetMargin: 39,
+    delay: 'None',
+    architectName: '',
+    architectCompany: '',
+    architectEmail: '',
+    architectPhone: '',
+    contractorName: '',
+    contractorCompany: '',
+    contractorEmail: '',
+    contractorPhone: '',
+    billingName: '',
+    billingEmail: '',
+    billingPhone: '',
+    billingDetails: '',
+    deliveryAddress: ''
+  });
+
+  useEffect(() => {
+    if (p) {
+      setOverviewForm({
+        name: p.name || '',
+        client: p.client || p.client_name || '',
+        clientCompany: p.clientCompany || '',
+        clientEmail: p.clientEmail || '',
+        clientPhone: p.clientPhone || '',
+        projectType: p.projectType || 'Design & Orders',
+        pm: p.pm || 'Dani',
+        start: formatDateForInput(p.start),
+        deadline: formatDateForInput(p.deadline),
+        sqm: p.sqm || '',
+        targetMargin: p.targetMargin || alertSettings?.defaultTargetMargin || 39,
+        delay: p.delay || 'None',
+        architectName: p.architectName || '',
+        architectCompany: p.architectCompany || '',
+        architectEmail: p.architectEmail || '',
+        architectPhone: p.architectPhone || '',
+        contractorName: p.contractorName || '',
+        contractorCompany: p.contractorCompany || '',
+        contractorEmail: p.contractorEmail || '',
+        contractorPhone: p.contractorPhone || '',
+        billingName: p.billingName || '',
+        billingEmail: p.billingEmail || '',
+        billingPhone: p.billingPhone || '',
+        billingDetails: p.billingDetails || '',
+        deliveryAddress: p.deliveryAddress || ''
+      });
+    }
+  }, [p?.id, p?.key, p?.client, p?.client_name, p?.name]);
+
+  const handleSaveOverview = async () => {
+    if (!p) return;
+    try {
+      setSaveStatus('saving');
+      await updateProject(id, {
+        ...overviewForm,
+        client: overviewForm.client,
+        client_name: overviewForm.client
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      console.error("Error saving project:", err);
+      setSaveStatus('error');
+      alert(`Save failed: ${err.message || 'Could not commit to database'}`);
+    }
+  };
+
   const { stage: computedStage, progressPct: computedProgress } = useMemo(() => {
     if (!p) return { stage: 'Stage 1', progressPct: 0 };
     return calculateProjectStageAndProgress(p);
@@ -603,14 +693,10 @@ export default function ProjectManagement() {
     }
   }, [blendedMargin, p?.actualMargin, id, updateProject]);
 
-  // Sync totals to main fields for backwards compatibility with overview ledger list
+  // Sync dynamic summarized project status based on orders
   useEffect(() => {
     if (!p) return;
-    const formattedFee = `R ${grandContractValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    const formattedPaid = `R ${grandPaidValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    const formattedOutstanding = `R ${grandOutstandingValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-    // Calculate dynamic summarized project status based on orders
     let computedStatus = 'Pending';
     if (orders.length > 0) {
       const statuses = orders.map(o => (o.status || 'Pending').trim().toLowerCase());
@@ -635,18 +721,7 @@ export default function ProjectManagement() {
     if (p?.status !== computedStatus) {
       updateProject(id, 'status', computedStatus);
     }
-
-    if (p?.feeValue !== grandContractValue) {
-      updateProject(id, 'feeValue', grandContractValue);
-      updateProject(id, 'feeExcl', formattedFee);
-    }
-    if (p?.paid !== formattedPaid) {
-      updateProject(id, 'paid', formattedPaid);
-    }
-    if (p?.outstanding !== formattedOutstanding) {
-      updateProject(id, 'outstanding', formattedOutstanding);
-    }
-  }, [grandContractValue, grandPaidValue, grandOutstandingValue, id, updateProject, p?.feeValue, p?.paid, p?.outstanding, p?.status, orders]);
+  }, [id, p?.status, orders]);
 
   if (!p) {
     if (id === '[object Promise]' || id === 'undefined' || !id) {
@@ -1030,9 +1105,40 @@ export default function ProjectManagement() {
           {/* SECTION 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ClipboardList size={14} />
-                <span><strong>Overview Section:</strong> Configure basic project criteria, stakeholder details, and manage the contacts directory.</span>
+              <div style={{ 
+                background: 'var(--bg-info)', 
+                borderRadius: 'var(--radius-md)', 
+                padding: '12px 16px', 
+                fontSize: '12.5px', 
+                color: 'var(--text-info)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={14} />
+                  <span><strong>Overview Section:</strong> Configure basic project criteria, stakeholder details, and manage the contacts directory.</span>
+                </div>
+                <button
+                  type="button"
+                  className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
+                  onClick={handleSaveOverview}
+                  disabled={saveStatus === 'saving'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 16px',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Save size={14} />
+                  <span>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved to Database ✓' : 'Save Project Details'}</span>
+                </button>
               </div>
 
               {/* 1. Project Information Details Card */}
@@ -1048,16 +1154,16 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
-                      value={p.name || ''} 
-                      onChange={(e) => updateProject(id, 'name', e.target.value)} 
+                      value={overviewForm.name} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, name: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Project Type Workflow:</span>
                     <select 
                       className="form-control" 
-                      value={p.projectType || 'Design & Orders'} 
-                      onChange={(e) => updateProject(id, 'projectType', e.target.value)}
+                      value={overviewForm.projectType} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, projectType: e.target.value }))}
                     >
                       <option value="Design & Orders">Design & Orders</option>
                       <option value="Design-Only">Design-Only</option>
@@ -1069,8 +1175,8 @@ export default function ProjectManagement() {
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <select 
                         className="form-control" 
-                        value={p.pm || 'Dani'} 
-                        onChange={(e) => updateProject(id, 'pm', e.target.value)}
+                        value={overviewForm.pm} 
+                        onChange={(e) => setOverviewForm(prev => ({ ...prev, pm: e.target.value }))}
                         style={{ flex: 1 }}
                       >
                         {(projectManagers || []).map(pm => (
@@ -1103,8 +1209,8 @@ export default function ProjectManagement() {
                     <input 
                       type="date" 
                       className="form-control" 
-                      value={formatDateForInput(p.start)} 
-                      onChange={(e) => updateProject(id, 'start', e.target.value)} 
+                      value={overviewForm.start} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, start: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1112,8 +1218,8 @@ export default function ProjectManagement() {
                     <input 
                       type="date" 
                       className="form-control" 
-                      value={formatDateForInput(p.deadline)} 
-                      onChange={(e) => updateProject(id, 'deadline', e.target.value)} 
+                      value={overviewForm.deadline} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, deadline: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1121,8 +1227,8 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
-                      value={p.sqm || ''} 
-                      onChange={(e) => updateProject(id, 'sqm', e.target.value)} 
+                      value={overviewForm.sqm} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, sqm: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1130,16 +1236,16 @@ export default function ProjectManagement() {
                     <input 
                       type="number" 
                       className="form-control" 
-                      value={p.targetMargin || alertSettings?.defaultTargetMargin || 39} 
-                      onChange={(e) => updateProject(id, 'targetMargin', Number(e.target.value) || 0)} 
+                      value={overviewForm.targetMargin} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, targetMargin: Number(e.target.value) || 0 }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: 'span 2' }}>
                     <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>Delay / Blockers:</span>
                     <select 
                       className="form-control" 
-                      value={p.delay || 'None'} 
-                      onChange={(e) => updateProject(id, 'delay', e.target.value)}
+                      value={overviewForm.delay} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, delay: e.target.value }))}
                     >
                       <option value="None">None</option>
                       <option value="Awaiting feedback/approval">Awaiting feedback/approval</option>
@@ -1163,29 +1269,32 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
-                      value={p.client || ''} 
+                      value={overviewForm.client} 
                       onChange={(e) => {
                         const val = e.target.value;
-                        updateProject(id, 'client', val);
                         const contact = contacts.find(c => c.name === val);
                         if (contact) {
-                          updateProject(id, 'clientCompany', contact.company || '');
-                          updateProject(id, 'clientEmail', contact.email || '');
-                          updateProject(id, 'clientPhone', contact.phone || '');
-                          
-                          // Pre-populate Billing details from client
-                          updateProject(id, 'billingName', contact.name);
-                          updateProject(id, 'billingEmail', contact.email || '');
-                          updateProject(id, 'billingPhone', contact.phone || '');
-                          updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                          setOverviewForm(prev => ({
+                            ...prev,
+                            client: val,
+                            clientCompany: contact.company || '',
+                            clientEmail: contact.email || '',
+                            clientPhone: contact.phone || '',
+                            billingName: contact.name,
+                            billingEmail: contact.email || '',
+                            billingPhone: contact.phone || '',
+                            billingDetails: `${contact.name}\n${contact.company || ''}`
+                          }));
+                        } else {
+                          setOverviewForm(prev => ({ ...prev, client: val }));
                         }
                       }} 
                       placeholder="Type client name or select..."
                       list="client-datalist"
                     />
                     <datalist id="client-datalist">
-                      {(contacts || []).map(c => (
-                        <option key={c.id || c.name} value={c.name}>{c.company ? `${c.company} (${c.type})` : c.type}</option>
+                      {uniqueContacts.map(c => (
+                        <option key={c.id || c.name} value={c.name}>{c.company && c.company !== c.name ? `${c.company} (${c.type || 'Private'})` : (c.type || 'Private')}</option>
                       ))}
                     </datalist>
                   </div>
@@ -1194,8 +1303,8 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
-                      value={p.clientCompany || ''} 
-                      onChange={(e) => updateProject(id, 'clientCompany', e.target.value)} 
+                      value={overviewForm.clientCompany} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, clientCompany: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1203,8 +1312,8 @@ export default function ProjectManagement() {
                     <input 
                       type="email" 
                       className="form-control" 
-                      value={p.clientEmail || ''} 
-                      onChange={(e) => updateProject(id, 'clientEmail', e.target.value)} 
+                      value={overviewForm.clientEmail} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, clientEmail: e.target.value }))} 
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1212,8 +1321,8 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
-                      value={p.clientPhone || ''} 
-                      onChange={(e) => updateProject(id, 'clientPhone', e.target.value)} 
+                      value={overviewForm.clientPhone} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, clientPhone: e.target.value }))} 
                     />
                   </div>
                 </div>
@@ -1238,22 +1347,27 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.architectName || ''} 
+                          value={overviewForm.architectName} 
                           list="architect-datalist"
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateProject(id, 'architectName', val);
                             const contact = contacts.find(c => c.name === val);
                             if (contact) {
-                              updateProject(id, 'architectCompany', contact.company || '');
-                              updateProject(id, 'architectEmail', contact.email || '');
-                              updateProject(id, 'architectPhone', contact.phone || '');
+                              setOverviewForm(prev => ({
+                                ...prev,
+                                architectName: val,
+                                architectCompany: contact.company || '',
+                                architectEmail: contact.email || '',
+                                architectPhone: contact.phone || ''
+                              }));
+                            } else {
+                              setOverviewForm(prev => ({ ...prev, architectName: val }));
                             }
                           }}
                           placeholder="Type or select architect..."
                         />
                         <datalist id="architect-datalist">
-                          {(contacts || []).filter(c => c.type === 'Architect').map(c => (
+                          {uniqueContacts.filter(c => c.type === 'Architect').map(c => (
                             <option key={c.id || c.name} value={c.name}>{c.company || 'Architect'}</option>
                           ))}
                         </datalist>
@@ -1264,8 +1378,8 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.architectCompany || ''} 
-                          onChange={(e) => updateProject(id, 'architectCompany', e.target.value)} 
+                          value={overviewForm.architectCompany} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, architectCompany: e.target.value }))} 
                           placeholder="Architect Company"
                         />
                       </div>
@@ -1275,8 +1389,8 @@ export default function ProjectManagement() {
                         <input 
                           type="email" 
                           className="form-control" 
-                          value={p.architectEmail || ''} 
-                          onChange={(e) => updateProject(id, 'architectEmail', e.target.value)} 
+                          value={overviewForm.architectEmail} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, architectEmail: e.target.value }))} 
                           placeholder="architect@email.com"
                         />
                       </div>
@@ -1286,8 +1400,8 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.architectPhone || ''} 
-                          onChange={(e) => updateProject(id, 'architectPhone', e.target.value)} 
+                          value={overviewForm.architectPhone} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, architectPhone: e.target.value }))} 
                           placeholder="Contact Number"
                         />
                       </div>
@@ -1302,22 +1416,27 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.contractorName || ''} 
+                          value={overviewForm.contractorName} 
                           list="contractor-datalist"
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateProject(id, 'contractorName', val);
                             const contact = contacts.find(c => c.name === val);
                             if (contact) {
-                              updateProject(id, 'contractorCompany', contact.company || '');
-                              updateProject(id, 'contractorEmail', contact.email || '');
-                              updateProject(id, 'contractorPhone', contact.phone || '');
+                              setOverviewForm(prev => ({
+                                ...prev,
+                                contractorName: val,
+                                contractorCompany: contact.company || '',
+                                contractorEmail: contact.email || '',
+                                contractorPhone: contact.phone || ''
+                              }));
+                            } else {
+                              setOverviewForm(prev => ({ ...prev, contractorName: val }));
                             }
                           }}
                           placeholder="Type or select contractor..."
                         />
                         <datalist id="contractor-datalist">
-                          {(contacts || []).filter(c => c.type === 'Contractor').map(c => (
+                          {uniqueContacts.filter(c => c.type === 'Contractor').map(c => (
                             <option key={c.id || c.name} value={c.name}>{c.company || 'Contractor'}</option>
                           ))}
                         </datalist>
@@ -1328,8 +1447,8 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.contractorCompany || ''} 
-                          onChange={(e) => updateProject(id, 'contractorCompany', e.target.value)} 
+                          value={overviewForm.contractorCompany} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, contractorCompany: e.target.value }))} 
                           placeholder="Contractor Company"
                         />
                       </div>
@@ -1339,8 +1458,8 @@ export default function ProjectManagement() {
                         <input 
                           type="email" 
                           className="form-control" 
-                          value={p.contractorEmail || ''} 
-                          onChange={(e) => updateProject(id, 'contractorEmail', e.target.value)} 
+                          value={overviewForm.contractorEmail} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, contractorEmail: e.target.value }))} 
                           placeholder="contractor@email.com"
                         />
                       </div>
@@ -1350,8 +1469,8 @@ export default function ProjectManagement() {
                         <input 
                           type="text" 
                           className="form-control" 
-                          value={p.contractorPhone || ''} 
-                          onChange={(e) => updateProject(id, 'contractorPhone', e.target.value)} 
+                          value={overviewForm.contractorPhone} 
+                          onChange={(e) => setOverviewForm(prev => ({ ...prev, contractorPhone: e.target.value }))} 
                           placeholder="Contact Number"
                         />
                       </div>
@@ -1367,34 +1486,40 @@ export default function ProjectManagement() {
                       <input 
                         type="text" 
                         className="form-control" 
-                        value={p.billingName || ''} 
+                        value={overviewForm.billingName} 
                         list="billing-datalist"
                         onChange={(e) => {
                           const val = e.target.value;
-                          updateProject(id, 'billingName', val);
-                          
-                          if (val === `Use Client Details (${p.client})` || val === p.client) {
-                            updateProject(id, 'billingName', p.client || '');
-                            updateProject(id, 'billingEmail', p.clientEmail || '');
-                            updateProject(id, 'billingPhone', p.clientPhone || '');
-                            updateProject(id, 'billingDetails', `${p.client || ''}\n${p.clientCompany || ''}`);
+                          if (val === `Use Client Details (${overviewForm.client})` || val === overviewForm.client) {
+                            setOverviewForm(prev => ({
+                              ...prev,
+                              billingName: prev.client || '',
+                              billingEmail: prev.clientEmail || '',
+                              billingPhone: prev.clientPhone || '',
+                              billingDetails: `${prev.client || ''}\n${prev.clientCompany || ''}`
+                            }));
                             return;
                           }
 
                           const contact = contacts.find(c => c.name === val);
                           if (contact) {
-                            updateProject(id, 'billingName', contact.name);
-                            updateProject(id, 'billingEmail', contact.email || '');
-                            updateProject(id, 'billingPhone', contact.phone || '');
-                            updateProject(id, 'billingDetails', `${contact.name}\n${contact.company || ''}`);
+                            setOverviewForm(prev => ({
+                              ...prev,
+                              billingName: contact.name,
+                              billingEmail: contact.email || '',
+                              billingPhone: contact.phone || '',
+                              billingDetails: `${contact.name}\n${contact.company || ''}`
+                            }));
+                          } else {
+                            setOverviewForm(prev => ({ ...prev, billingName: val }));
                           }
                         }} 
                         placeholder="Type billing name or select..."
                       />
                       <datalist id="billing-datalist">
-                        {p.client && <option value={`Use Client Details (${p.client})`} />}
-                        {(contacts || []).map(c => (
-                          <option key={c.id || c.name} value={c.name}>{c.company || c.type}</option>
+                        {overviewForm.client && <option value={`Use Client Details (${overviewForm.client})`} />}
+                        {uniqueContacts.map(c => (
+                          <option key={c.id || c.name} value={c.name}>{c.company && c.company !== c.name ? `${c.company} (${c.type || 'Private'})` : (c.type || 'Private')}</option>
                         ))}
                       </datalist>
                     </div>
@@ -1403,8 +1528,8 @@ export default function ProjectManagement() {
                       <input 
                         type="email" 
                         className="form-control" 
-                        value={p.billingEmail || ''} 
-                        onChange={(e) => updateProject(id, 'billingEmail', e.target.value)} 
+                        value={overviewForm.billingEmail} 
+                        onChange={(e) => setOverviewForm(prev => ({ ...prev, billingEmail: e.target.value }))} 
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1412,8 +1537,8 @@ export default function ProjectManagement() {
                       <input 
                         type="text" 
                         className="form-control" 
-                        value={p.billingPhone || ''} 
-                        onChange={(e) => updateProject(id, 'billingPhone', e.target.value)} 
+                        value={overviewForm.billingPhone} 
+                        onChange={(e) => setOverviewForm(prev => ({ ...prev, billingPhone: e.target.value }))} 
                       />
                     </div>
                   </div>
@@ -1424,8 +1549,8 @@ export default function ProjectManagement() {
                       className="form-control" 
                       rows={2} 
                       placeholder="Full business legal/VAT billing coordinates"
-                      value={p.billingDetails || ''} 
-                      onChange={(e) => updateProject(id, 'billingDetails', e.target.value)} 
+                      value={overviewForm.billingDetails} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, billingDetails: e.target.value }))} 
                     />
                   </div>
 
@@ -1437,8 +1562,8 @@ export default function ProjectManagement() {
                       className="form-control" 
                       rows={2} 
                       placeholder="Street name, City, Zip Code"
-                      value={p.deliveryAddress || ''} 
-                      onChange={(e) => updateProject(id, 'deliveryAddress', e.target.value)} 
+                      value={overviewForm.deliveryAddress} 
+                      onChange={(e) => setOverviewForm(prev => ({ ...prev, deliveryAddress: e.target.value }))} 
                     />
                   </div>
                 </div>
@@ -1636,6 +1761,28 @@ export default function ProjectManagement() {
                   }}
                 >
                   Save & Create Project
+                </button>
+              )}
+              {!p.isDraft && (
+                <button 
+                  type="button"
+                  className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
+                  onClick={handleSaveOverview}
+                  disabled={saveStatus === 'saving'}
+                  style={{ 
+                    width: '100%', 
+                    justifyContent: 'center', 
+                    padding: '12px', 
+                    fontSize: '14px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                  }}
+                >
+                  <Save size={16} />
+                  <span>{saveStatus === 'saving' ? 'Saving to Database...' : saveStatus === 'saved' ? 'Changes Saved to Database ✓' : 'Save Project Details'}</span>
                 </button>
               )}
               
@@ -2694,8 +2841,8 @@ export default function ProjectManagement() {
                   disabled={!!linkProjectKey}
                 >
                   <option value="">-- Select Client --</option>
-                  {contacts.map(c => (
-                    <option key={c.id} value={c.name}>{c.name} ({c.company || 'Private'})</option>
+                  {uniqueContacts.map(c => (
+                    <option key={c.id || c.name} value={c.name}>{c.name} ({c.company || c.type || 'Private'})</option>
                   ))}
                 </select>
                 {linkProjectKey && (
