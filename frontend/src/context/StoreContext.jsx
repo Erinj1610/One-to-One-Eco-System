@@ -2225,20 +2225,6 @@ export function StoreProvider({ children }) {
       });
     });
 
-    if (clientData.name && oldClientName && oldClientName.toLowerCase() !== clientData.name.toLowerCase()) {
-      setProjects(prev => {
-        const updated = {};
-        Object.entries(prev).forEach(([key, p]) => {
-          if (p.client === oldClientName || p.client_name === oldClientName || p.client_id === clientId) {
-            updated[key] = { ...p, client: clientData.name, client_name: clientData.name };
-          } else {
-            updated[key] = p;
-          }
-        });
-        return updated;
-      });
-    }
-
     try {
       const res = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
         method: 'PUT',

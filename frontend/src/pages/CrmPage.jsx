@@ -70,37 +70,25 @@ export default function CrmPage() {
   // Page States
   const [selectedClient, setSelectedClient] = useState(null);
 
-  // Union of hardcoded contacts and unique client names from database projects
+  // Deduplicated list of clients strictly from Cloud SQL contacts
   const combinedContacts = useMemo(() => {
-    const projectClients = new Set();
-    Object.values(projects || {}).forEach(p => {
-      if (p.client && p.client.trim()) {
-        projectClients.add(p.client.trim());
+    const seenIds = new Set();
+    const seenNames = new Set();
+    const uniqueList = [];
+
+    (contacts || []).forEach(c => {
+      if (!c) return;
+      const cId = String(c.id);
+      const cName = (c.name || '').trim().toLowerCase();
+      if (!seenIds.has(cId) && !seenNames.has(cName)) {
+        seenIds.add(cId);
+        if (cName) seenNames.add(cName);
+        uniqueList.push(c);
       }
     });
 
-    const list = [...(contacts || [])];
-
-    projectClients.forEach(clientName => {
-      const exists = list.some(c => (c.name || '').toLowerCase() === clientName.toLowerCase());
-      if (!exists) {
-        list.push({
-          id: `dyn-${clientName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
-          name: clientName,
-          company: clientName,
-          type: 'Private',
-          email: '',
-          phone: '',
-          status: 'Active',
-          lastContactDate: '2026-05-19',
-          lastContactSummary: 'Imported from active project',
-          activities: []
-        });
-      }
-    });
-
-    return list;
-  }, [contacts, projects]);
+    return uniqueList;
+  }, [contacts]);
 
   useEffect(() => {
     if (location.state?.selectedClientId) {

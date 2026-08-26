@@ -176,13 +176,6 @@ def update_client(client_id: str, payload: Dict[str, Any] = Body(...), db: Sessi
 
     if new_name:
         client.name = new_name
-        # If the client name changed, sync matching projects so no phantom duplicates are created
-        if old_name and old_name.lower() != new_name.lower():
-            from models.orm_models import Project
-            db.query(Project).filter(
-                (Project.client_id == client.id) | 
-                (Project.client_name.ilike(old_name))
-            ).update({Project.client_name: new_name, Project.client_id: client.id}, synchronize_session=False)
 
     if "company" in payload:
         client.company = payload.get("company") or client.name
