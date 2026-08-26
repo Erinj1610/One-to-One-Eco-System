@@ -513,8 +513,8 @@ export default function OrdersPage() {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('All');
 
   // Sorting States
-  const [sortField, setSortField] = useState(null);
-  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
+  const [sortField, setSortField] = useState('id');
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' | 'desc'
 
   const [datePreset, setDatePreset] = useState('All Time');
   const [startDate, setStartDate] = useState('');
