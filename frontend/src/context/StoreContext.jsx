@@ -1272,6 +1272,8 @@ export function StoreProvider({ children }) {
     const loadState = (key, setter) => {
       const url = key === 'projects'
         ? `${API_BASE}/api/projects/all`
+        : key === 'contacts'
+        ? `${API_BASE}/api/clients`
         : `${API_BASE}/api/settings/${key}`;
       fetch(url)
         .then(res => {
@@ -1279,7 +1281,7 @@ export function StoreProvider({ children }) {
           return res.json();
         })
         .then(data => {
-          const val = key === 'projects' ? data : (data && data.value);
+          const val = key === 'projects' || key === 'contacts' ? data : (data && data.value);
           if (val !== null && val !== undefined) {
             if (key === 'moduleConfig') {
               const loadedVal = val;
@@ -1318,9 +1320,9 @@ export function StoreProvider({ children }) {
               } catch(e){}
               const dbLogs = Array.isArray(val) ? val : [];
               const merged = [...dbLogs];
-              localLogs.forEach(loc => {
-                if (loc && loc.id && !merged.some(m => m.id === loc.id)) {
-                  merged.push(loc);
+              localLogs.forEach(ll => {
+                if (!merged.some(m => m.id === ll.id)) {
+                  merged.push(ll);
                 }
               });
               merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -1404,9 +1406,9 @@ export function StoreProvider({ children }) {
     }).catch(err => console.error(`Error saving ${key}:`, err));
   };
 
-  // Dedicated relational API endpoints handle projects & orders updates directly
+  // Dedicated relational API endpoints handle projects, orders & clients updates directly
   // React.useEffect(() => { saveState('projects', projects); }, [projects]);
-  React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
+  // React.useEffect(() => { saveState('contacts', contacts); }, [contacts]);
   React.useEffect(() => { saveState('leads', leads); }, [leads]);
   React.useEffect(() => { saveState('invoices', invoices); }, [invoices]);
   React.useEffect(() => { saveState('alertSettings', alertSettings); }, [alertSettings]);
@@ -2204,6 +2206,82 @@ export function StoreProvider({ children }) {
     }
   };
 
+  const updateClient = async (clientId, clientData) => {
+    // Optimistically update local contacts state
+    setContacts(prev => {
+      const exists = prev.some(c => c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase()));
+      if (!exists) {
+        return [...prev, { ...clientData, id: clientId }];
+      }
+      return prev.map(c => {
+        if (c.id === clientId || String(c.id) === String(clientId) || (c.name && clientData.name && c.name.toLowerCase() === clientData.name.toLowerCase())) {
+          return { ...c, ...clientData };
+        }
+        return c;
+      });
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientData)
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setContacts(prev => prev.map(c => (c.id === updated.id || String(c.id) === String(clientId)) ? updated : c));
+        return updated;
+      }
+    } catch (err) {
+      console.error("Error updating client in Cloud SQL:", err);
+    }
+  };
+
+  const addClient = async (clientData) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientData)
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setContacts(prev => {
+          const filtered = prev.filter(c => c.id !== created.id && c.name.toLowerCase() !== created.name.toLowerCase());
+          return [...filtered, created];
+        });
+        return created;
+      }
+    } catch (err) {
+      console.error("Error creating client in Cloud SQL:", err);
+    }
+  };
+
+  const deleteClient = async (clientId) => {
+    setContacts(prev => prev.filter(c => c.id !== clientId && String(c.id) !== String(clientId)));
+    try {
+      await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error("Error deleting client in Cloud SQL:", err);
+    }
+  };
+
+  const refreshClients = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/clients`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setContacts(data);
+        }
+      }
+    } catch (err) {
+      console.error("Error refreshing clients from Cloud SQL:", err);
+    }
+  };
+
   return (
     <StoreContext.Provider value={{ 
       projects, 
@@ -2218,6 +2296,10 @@ export function StoreProvider({ children }) {
       bulkRenameOrders,
       contacts, 
       setContacts, 
+      updateClient,
+      addClient,
+      deleteClient,
+      refreshClients,
       leads, 
       setLeads, 
       moveLead, 

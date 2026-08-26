@@ -21,6 +21,7 @@ from routes.orders import router as orders_router
 from routes.deployments import router as deployments_router
 from routes.audit_comparison import router as audit_comparison_router
 from routes.project_tickets import router as project_tickets_router
+from routes.clients import router as clients_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -76,6 +77,7 @@ app.include_router(lookups_router, prefix="/api/lookups", tags=["lookups"])
 app.include_router(deployments_router, prefix="/api/admin", tags=["deployments"])
 app.include_router(audit_comparison_router, prefix="/api/admin", tags=["audit-comparison"])
 app.include_router(project_tickets_router, prefix="/api/project-tickets", tags=["project-tickets"])
+app.include_router(clients_router, prefix="/api/clients", tags=["clients"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -140,6 +142,17 @@ def init_db():
                             print("Database migration: created 'design_fees' table.")
                     except Exception as df_err:
                         print(f"Design fee table migration notice: {df_err}")
+
+                    # Ensure clients table has activities column
+                    try:
+                        if 'clients' in inspector.get_table_names():
+                            client_cols = [c['name'] for c in inspector.get_columns('clients')]
+                            if 'activities' not in client_cols:
+                                conn.execute(text("ALTER TABLE clients ADD COLUMN activities JSON DEFAULT '[]';"))
+                                conn.commit()
+                                print("Database migration: created 'activities' column on 'clients' table.")
+                    except Exception as cl_err:
+                        print(f"Clients table migration notice: {cl_err}")
                     
                     # Drop order_metadata column if it exists
                     order_cols_refresh = [c['name'] for c in inspector.get_columns('orders')]

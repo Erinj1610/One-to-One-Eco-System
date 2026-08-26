@@ -26,6 +26,10 @@ export default function CrmPage() {
   const { 
     contacts, 
     setContacts, 
+    updateClient,
+    addClient,
+    deleteClient,
+    refreshClients,
     projects, 
     attritionLogs, 
     logAttrition,
@@ -171,49 +175,29 @@ export default function CrmPage() {
     }
   }, [selectedClient]);
 
-  const handleSaveClient = () => {
+  const handleSaveClient = async () => {
     if (!editClientData.name.trim()) {
       showToast("Client name is required!");
       return;
     }
-    setContacts(prev => {
-      const exists = prev.some(c => c.id === selectedClient.id);
-      let updatedList = [...prev];
-      if (!exists) {
-        const newC = {
-          id: selectedClient.id,
-          name: editClientData.name,
-          company: editClientData.company || editClientData.name,
-          type: editClientData.type || 'Private',
-          email: editClientData.email || '',
-          phone: editClientData.phone || '',
-          status: 'Active',
-          lastContactDate: '2026-05-19',
-          lastContactSummary: 'Added profile to CRM',
-          activities: []
-        };
-        updatedList.push(newC);
+    const payload = {
+      name: editClientData.name.trim(),
+      company: editClientData.company || editClientData.name.trim(),
+      type: editClientData.type || 'Private',
+      email: editClientData.email || '',
+      phone: editClientData.phone || '',
+      statedGoal: editClientData.statedGoal || '',
+      nps: editClientData.nps !== '' && editClientData.nps !== null ? Number(editClientData.nps) : null,
+      totalValue: Number(editClientData.totalValue || 0),
+      annualRevenue: Number(editClientData.annualRevenue || 0)
+    };
+
+    if (selectedClient) {
+      if (updateClient) {
+        await updateClient(selectedClient.id, payload);
       }
-      return updatedList.map(c => {
-        if (c.id === selectedClient.id) {
-          const updated = {
-            ...c,
-            name: editClientData.name,
-            company: editClientData.company,
-            type: editClientData.type,
-            email: editClientData.email,
-            phone: editClientData.phone,
-            statedGoal: editClientData.statedGoal,
-            nps: editClientData.nps !== '' && editClientData.nps !== null ? Number(editClientData.nps) : null,
-            totalValue: Number(editClientData.totalValue),
-            annualRevenue: Number(editClientData.annualRevenue)
-          };
-          setSelectedClient(updated);
-          return updated;
-        }
-        return c;
-      });
-    });
+      setSelectedClient(prev => ({ ...prev, ...payload }));
+    }
     setIsEditingClient(false);
     showToast("Client profile updated successfully!");
   };
@@ -413,19 +397,15 @@ export default function CrmPage() {
   }, [kpiFilteredClients, showAllClients]);
 
   // Interactive Action Nudge and Churn Resolvers
-  const handleResolveAlert = (clientId, touchpointText) => {
-    setContacts(prev => prev.map(c => {
-      if (c.id === clientId) {
-        return {
-          ...c,
-          lastContactDate: '2026-05-19',
-          lastContactSummary: touchpointText,
-          status: 'Active'
-        };
-      }
-      return c;
-    }));
+  const handleResolveAlert = async (clientId, touchpointText) => {
     setResolvedAlerts(prev => [...prev, clientId]);
+    if (updateClient && clientId) {
+      await updateClient(clientId, {
+        lastContactDate: '2026-05-19',
+        lastContactSummary: touchpointText,
+        status: 'Active'
+      });
+    }
   };
 
   const openReciprocityNudge = (client) => {
@@ -452,26 +432,28 @@ export default function CrmPage() {
     showToast(`Retention email successfully sent to ${client.name}!`);
   };
 
-  const handleConfirmLoss = () => {
+  const handleConfirmLoss = async () => {
     if (!postMortemClient) return;
     logAttrition(postMortemClient.id, postMortemClient.name, lossReason, lossNotes);
-    setContacts(prev => prev.map(c => {
-      if (c.id === postMortemClient.id) {
-        return { ...c, status: 'Inactive', lastContactDate: '2026-05-19', lastContactSummary: `Post-Mortem: Marked inactive due to ${lossReason}` };
-      }
-      return c;
-    }));
+    const updatePayload = {
+      status: 'Inactive',
+      lastContactDate: '2026-05-19',
+      lastContactSummary: `Post-Mortem: Marked inactive due to ${lossReason}`
+    };
+    if (updateClient && postMortemClient.id) {
+      await updateClient(postMortemClient.id, updatePayload);
+    }
     showToast(`Post-Mortem logged successfully. ${postMortemClient.name} is now marked Inactive.`);
     setPostMortemClient(null);
     setLossNotes('');
   };
 
-  const addContact = () => {
-    if (!form.name) return;
-    setContacts(prev => [...prev, { 
-      ...form, 
-      id: Date.now(), 
-      projects: 0, 
+  const addContact = async () => {
+    if (!form.name || !form.name.trim()) return;
+    const newClientPayload = {
+      ...form,
+      name: form.name.trim(),
+      company: form.company || form.name.trim(),
       status: 'Active',
       lastProjectDate: null,
       lastContactDate: '2026-05-19',
@@ -482,8 +464,15 @@ export default function CrmPage() {
       orderGapMonths: null,
       nps: null,
       dateStarted: '2026-05-19',
-      avgPaymentDelayDays: null
-    }]);
+      avgPaymentDelayDays: null,
+      activities: []
+    };
+    if (addClient) {
+      const created = await addClient(newClientPayload);
+      if (created) {
+        setSelectedClient(created);
+      }
+    }
     setForm({ name: '', company: '', type: 'Architect', email: '', phone: '' });
     setShowModal(false);
     showToast('New client successfully created!');
@@ -1923,7 +1912,7 @@ export default function CrmPage() {
                   <button
                     className="btn btn-primary"
                     style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-                    onClick={() => {
+                    onClick={async () => {
                       if (!newActivityText.trim()) return;
                       const now = new Date();
                       const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
@@ -1932,27 +1921,19 @@ export default function CrmPage() {
                         id: Date.now(),
                         text: newActivityText.trim(),
                         date: timestamp,
-                        staff: 'You'
+                        staff: 'You',
+                        type: 'Note'
                       };
                       const updated = [...clientActivities, newEntry];
                       setClientActivities(updated);
                       setNewActivityText('');
-                      // Persist to contacts store
-                      setContacts(prev => {
-                        const exists = prev.some(c => c.id === selectedClient.id);
-                        let list = [...prev];
-                        if (!exists) {
-                          const newC = {
-                            ...selectedClient,
-                            activities: updated
-                          };
-                          list.push(newC);
-                          return list;
-                        }
-                        return list.map(c =>
-                          c.id === selectedClient.id ? { ...c, activities: updated } : c
-                        );
-                      });
+                      if (updateClient && selectedClient?.id) {
+                        await updateClient(selectedClient.id, {
+                          activities: updated,
+                          lastContactDate: timestamp.split(' ')[0] || '2026-05-19',
+                          lastContactSummary: newActivityText.trim()
+                        });
+                      }
                     }}
                   >
                     <Send size={14} /> Log Activity
