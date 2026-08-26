@@ -1274,12 +1274,13 @@ export function StoreProvider({ children }) {
     }
 
     const loadState = (key, setter) => {
+      const tParam = `_t=${Date.now()}`;
       const url = key === 'projects'
-        ? `${API_BASE}/api/projects/all`
+        ? `${API_BASE}/api/projects/all?${tParam}`
         : key === 'contacts'
-        ? `${API_BASE}/api/clients`
-        : `${API_BASE}/api/settings/${key}`;
-      fetch(url)
+        ? `${API_BASE}/api/clients?${tParam}`
+        : `${API_BASE}/api/settings/${key}?${tParam}`;
+      fetch(url, { cache: 'no-store' })
         .then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           return res.json();

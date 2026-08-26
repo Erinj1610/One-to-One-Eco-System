@@ -22,7 +22,7 @@ window.fetch = async (url, options = {}) => {
     cleanUrl.startsWith('/admin/');
 
   if (isBackendRequest) {
-    const newOptions = { ...options };
+    const newOptions = { ...options, cache: options.cache || 'no-store' };
     
     let token = null;
     const currentUser = auth.currentUser;
