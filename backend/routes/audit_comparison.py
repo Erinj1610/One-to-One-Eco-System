@@ -958,6 +958,9 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 except Exception as chunk_err:
                     print(f"Notice applying format chunk {i}-{i+CHUNK_SIZE}: {chunk_err}")
 
+        except Exception as sheet_err:
+            print(f"Notice: Google Sheet tab batch update notice: {sheet_err}")
+
     return {
         "status": "success",
         "spreadsheet_id": audit_sheet_id,
