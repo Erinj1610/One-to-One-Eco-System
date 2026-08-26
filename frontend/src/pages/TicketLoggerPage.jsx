@@ -52,6 +52,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
   const { projects = {}, projectManagers = [] } = useStore();
 
   const [tickets, setTickets] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -62,6 +63,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
   const [searchQuery, setSearchQuery] = useState('');
   const [projectFilter, setProjectFilter] = useState(initialProjectId ? String(initialProjectId) : 'All');
   const [pmFilter, setPmFilter] = useState('All');
+  const [assignedFilter, setAssignedFilter] = useState('All');
   const [stageFilter, setStageFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
@@ -97,6 +99,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
   // Detail / Resolution editing
   const [detailStatus, setDetailStatus] = useState('Open');
+  const [detailAssignedTo, setDetailAssignedTo] = useState('');
   const [detailResolutionNotes, setDetailResolutionNotes] = useState('');
   const [detailDueDate, setDetailDueDate] = useState('');
   const [detailCostImpact, setDetailCostImpact] = useState(0);
@@ -125,9 +128,73 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
     }
   };
 
+  // Fetch Staff Members from Cloud SQL
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/project-tickets/staff`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setStaffList(data);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching staff list:', err);
+    }
+  };
+
   useEffect(() => {
     fetchTickets();
+    fetchStaff();
   }, []);
+
+  // Compute unified staff options list (Cloud SQL Staff + Project Managers + Defaults)
+  const staffOptions = useMemo(() => {
+    const staffMap = new Map();
+    // 1. Staff from API (Cloud SQL Employees & Users)
+    (staffList || []).forEach(s => {
+      if (s && s.name && s.name.trim()) {
+        staffMap.set(s.name.trim().toLowerCase(), {
+          id: s.id,
+          name: s.name.trim(),
+          role: s.role || 'Staff',
+          department: s.department || ''
+        });
+      }
+    });
+    // 2. PMs from StoreContext
+    (projectManagers || []).forEach(pm => {
+      if (pm && pm.name && pm.name.trim()) {
+        const key = pm.name.trim().toLowerCase();
+        if (!staffMap.has(key)) {
+          staffMap.set(key, {
+            id: pm.id || key,
+            name: pm.name.trim(),
+            role: 'Project Manager',
+            department: 'Design'
+          });
+        }
+      }
+    });
+    // 3. Fallbacks
+    const defaultStaff = [
+      'Erin Jones', 'Martin Doller', 'Dani', 'Brad Abrahams', 
+      'Ryan McCarthy', 'Michaela Carter', 'Adiel Louw', 'Najma Smith', 
+      'Dean Boyce', 'Alex', 'Merlyn'
+    ];
+    defaultStaff.forEach(name => {
+      const key = name.toLowerCase();
+      if (!staffMap.has(key)) {
+        staffMap.set(key, {
+          id: key,
+          name: name,
+          role: 'Staff',
+          department: ''
+        });
+      }
+    });
+    return Array.from(staffMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [staffList, projectManagers]);
 
   // Prepopulate Project Info in form when project selector changes
   const handleProjectSelect = (projId) => {
@@ -156,6 +223,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
   const handleOpenDetail = (ticket) => {
     setSelectedTicket(ticket);
     setDetailStatus(ticket.status || 'Open');
+    setDetailAssignedTo(ticket.assigned_to || '');
     setDetailResolutionNotes(ticket.resolution_notes || '');
     setDetailDueDate(ticket.due_date || '');
     setDetailCostImpact(ticket.cost_impact || 0);
@@ -214,6 +282,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       cost_impact: parseFloat(form.cost_impact) || 0.0,
       schedule_impact_days: parseInt(form.schedule_impact_days) || 0,
       raised_by: form.raised_by.trim() || user?.displayName || user?.email?.split('@')[0] || 'Staff',
+      assigned_to: form.assigned_to ? form.assigned_to.trim() : '',
       attachments: formImages,
       created_at: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     };
@@ -262,6 +331,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
     const body = {
       status: detailStatus,
+      assigned_to: detailAssignedTo,
       resolution_notes: detailResolutionNotes,
       due_date: detailDueDate,
       cost_impact: parseFloat(detailCostImpact) || 0,
@@ -356,12 +426,13 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
   // Export Snag List / Project Tickets to CSV
   const handleExportCSV = () => {
-    const headers = ['Ticket Number', 'Project', 'Client', 'PM', 'Stage', 'Title', 'Type', 'Priority', 'Status', 'Area', 'Fitting Code', 'Cost Impact (ZAR)', 'Schedule Delay (Days)', 'Raised By', 'Assigned To', 'Due Date', 'Created Date'];
+    const headers = ['Ticket Number', 'Project', 'Client', 'PM', 'Assigned To', 'Stage', 'Title', 'Type', 'Priority', 'Status', 'Area', 'Fitting Code', 'Cost Impact (ZAR)', 'Schedule Delay (Days)', 'Raised By', 'Due Date', 'Created Date'];
     const rows = filteredTickets.map(t => [
       t.ticket_number,
       `"${(t.project_name || '').replace(/"/g, '""')}"`,
       `"${(t.client_name || '').replace(/"/g, '""')}"`,
       t.pm_name,
+      `"${t.assigned_to || ''}"`,
       `"${t.stage}"`,
       `"${(t.title || '').replace(/"/g, '""')}"`,
       `"${t.ticket_type}"`,
@@ -372,7 +443,6 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       t.cost_impact || 0,
       t.schedule_impact_days || 0,
       `"${t.raised_by || ''}"`,
-      `"${t.assigned_to || ''}"`,
       t.due_date || '',
       t.created_at || ''
     ]);
@@ -400,7 +470,9 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
         const matchArea = (t.location_area || '').toLowerCase().includes(q);
         const matchFitting = (t.fitting_code || '').toLowerCase().includes(q);
         const matchRaised = (t.raised_by || '').toLowerCase().includes(q);
-        if (!matchTitle && !matchDesc && !matchNum && !matchProj && !matchArea && !matchFitting && !matchRaised) return false;
+        const matchAssigned = (t.assigned_to || '').toLowerCase().includes(q);
+        const matchPm = (t.pm_name || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchDesc && !matchNum && !matchProj && !matchArea && !matchFitting && !matchRaised && !matchAssigned && !matchPm) return false;
       }
       // Project filter
       if (projectFilter !== 'All') {
@@ -411,6 +483,14 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       // PM filter
       if (pmFilter !== 'All') {
         if ((t.pm_name || '').toLowerCase() !== pmFilter.toLowerCase()) return false;
+      }
+      // Assigned Staff filter
+      if (assignedFilter !== 'All') {
+        if (assignedFilter === 'Unassigned') {
+          if (t.assigned_to && t.assigned_to.trim()) return false;
+        } else {
+          if ((t.assigned_to || '').toLowerCase() !== assignedFilter.toLowerCase()) return false;
+        }
       }
       // Stage filter
       if (stageFilter !== 'All') {
@@ -433,7 +513,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       }
       return true;
     });
-  }, [tickets, searchQuery, projectFilter, pmFilter, stageFilter, typeFilter, priorityFilter, statusFilter]);
+  }, [tickets, searchQuery, projectFilter, pmFilter, assignedFilter, stageFilter, typeFilter, priorityFilter, statusFilter]);
 
   // Project List Options
   const projectList = useMemo(() => {
@@ -447,6 +527,31 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
     const fromTickets = tickets.map(t => t.pm_name).filter(Boolean);
     return Array.from(new Set([...fromProps, ...fromTickets, 'Dani', 'Martin', 'Alex', 'Merlyn']));
   }, [projectManagers, tickets]);
+
+  // Active filters count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (projectFilter !== 'All' && !embedded) count++;
+    if (pmFilter !== 'All') count++;
+    if (assignedFilter !== 'All') count++;
+    if (stageFilter !== 'All') count++;
+    if (typeFilter !== 'All') count++;
+    if (priorityFilter !== 'All') count++;
+    if (statusFilter !== 'All') count++;
+    if (searchQuery.trim()) count++;
+    return count;
+  }, [projectFilter, pmFilter, assignedFilter, stageFilter, typeFilter, priorityFilter, statusFilter, searchQuery, embedded]);
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    if (!embedded) setProjectFilter('All');
+    setPmFilter('All');
+    setAssignedFilter('All');
+    setStageFilter('All');
+    setTypeFilter('All');
+    setPriorityFilter('All');
+    setStatusFilter('All');
+  };
 
   // KPI Calculations
   const kpiStats = useMemo(() => {
@@ -679,20 +784,50 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
         </div>
       </div>
 
-      {/* ─── FILTERS ROW ─────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* ─── MODERN CLEAN FILTERS TOOLBAR ────────────────────────────── */}
+      <div 
+        className="card" 
+        style={{ 
+          marginBottom: '16px', 
+          padding: '10px 14px', 
+          background: 'var(--bg-primary)', 
+          border: '1px solid var(--border)',
+          borderRadius: '10px'
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
           
-          {/* Left filters: Project, PM, Stage, Type, Priority */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+          {/* Left: Search & Filter Controls */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', flex: '1 1 auto' }}>
             
+            {/* Search Input */}
+            <div style={{ position: 'relative', width: '210px', minWidth: '180px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+              <input
+                type="text"
+                placeholder="Search tickets, snags..."
+                className="form-control"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ width: '100%', paddingLeft: '30px', paddingRight: searchQuery ? '26px' : '10px', fontSize: '12px', height: '34px', borderRadius: '6px' }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: '8px', top: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
             {/* Project Filter (only show if not embedded inside single project) */}
             {!embedded && (
               <select
                 className="form-control"
                 value={projectFilter}
                 onChange={e => setProjectFilter(e.target.value)}
-                style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px', minWidth: '140px' }}
+                style={{ width: 'auto', minWidth: '130px', maxWidth: '170px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: projectFilter !== 'All' ? 'var(--text-info)' : undefined }}
               >
                 <option value="All">All Projects</option>
                 {projectList.map(p => (
@@ -701,12 +836,30 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               </select>
             )}
 
+            {/* Assigned Staff User Filter */}
+            <select
+              className="form-control"
+              value={assignedFilter}
+              onChange={e => setAssignedFilter(e.target.value)}
+              style={{ width: 'auto', minWidth: '140px', maxWidth: '190px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', fontWeight: assignedFilter !== 'All' ? 600 : 400, borderColor: assignedFilter !== 'All' ? 'var(--text-info)' : undefined }}
+            >
+              <option value="All">👤 All Staff / Assignees</option>
+              <option value="Unassigned">👤 Unassigned</option>
+              <optgroup label="Staff Users">
+                {staffOptions.map(s => (
+                  <option key={s.name} value={s.name}>
+                    {s.name} {s.role ? `(${s.role})` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+
             {/* PM Filter */}
             <select
               className="form-control"
               value={pmFilter}
               onChange={e => setPmFilter(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px' }}
+              style={{ width: 'auto', minWidth: '105px', maxWidth: '140px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: pmFilter !== 'All' ? 'var(--text-info)' : undefined }}
             >
               <option value="All">All PMs</option>
               {pmList.map(pm => (
@@ -719,7 +872,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               className="form-control"
               value={stageFilter}
               onChange={e => setStageFilter(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px' }}
+              style={{ width: 'auto', minWidth: '110px', maxWidth: '150px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: stageFilter !== 'All' ? 'var(--text-info)' : undefined }}
             >
               <option value="All">All Stages</option>
               {PROJECT_STAGES.map(s => (
@@ -732,7 +885,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               className="form-control"
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px' }}
+              style={{ width: 'auto', minWidth: '110px', maxWidth: '150px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: typeFilter !== 'All' ? 'var(--text-info)' : undefined }}
             >
               <option value="All">All Types</option>
               {TICKET_TYPES.map(t => (
@@ -745,7 +898,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               className="form-control"
               value={priorityFilter}
               onChange={e => setPriorityFilter(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px' }}
+              style={{ width: 'auto', minWidth: '105px', maxWidth: '135px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: priorityFilter !== 'All' ? 'var(--text-info)' : undefined }}
             >
               <option value="All">All Priorities</option>
               {PRIORITIES.map(p => (
@@ -758,7 +911,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               className="form-control"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 10px', borderRadius: '6px', height: '32px' }}
+              style={{ width: 'auto', minWidth: '105px', maxWidth: '135px', height: '34px', fontSize: '12px', padding: '0 8px', borderRadius: '6px', borderColor: statusFilter !== 'All' ? 'var(--text-info)' : undefined }}
             >
               <option value="All">All Statuses</option>
               <option value="Open">Open</option>
@@ -766,28 +919,39 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               <option value="Awaiting Sign-off">Awaiting Sign-off</option>
               <option value="Resolved">Resolved</option>
             </select>
-          </div>
 
-          {/* Right: Search Bar */}
-          <div style={{ position: 'relative', width: '240px' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
-            <input
-              type="text"
-              placeholder="Search snags, areas, fittings..."
-              className="form-control"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '30px', fontSize: '12px', height: '32px', borderRadius: '6px' }}
-            />
-            {searchQuery && (
+            {/* Reset Filters Pill */}
+            {activeFilterCount > 0 && (
               <button
-                onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '8px', top: '7px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                onClick={handleResetFilters}
+                className="btn btn-ghost btn-sm"
+                style={{ 
+                  height: '34px', 
+                  fontSize: '11px', 
+                  fontWeight: 600,
+                  color: 'var(--text-danger)', 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '4px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)'
+                }}
+                title="Clear all active filters and search"
               >
-                <X size={14} />
+                <X size={12} /> Reset ({activeFilterCount})
               </button>
             )}
+
           </div>
+
+          {/* Right: Items Count Badge */}
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{filteredTickets.length}</span>
+            <span>of {tickets.length} tickets</span>
+          </div>
+
         </div>
       </div>
 
@@ -797,16 +961,16 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
           <table className="table" style={{ margin: 0 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 14px', width: '100px' }}>Ticket #</th>
-                <th>Title & Area</th>
-                <th style={{ width: '140px' }}>Project</th>
-                <th style={{ width: '140px' }}>Stage</th>
-                <th style={{ width: '140px' }}>Type</th>
-                <th style={{ width: '110px' }}>Priority</th>
-                <th style={{ width: '100px' }}>PM</th>
-                <th style={{ width: '110px' }}>Cost Impact</th>
-                <th style={{ width: '120px' }}>Status</th>
-                <th style={{ width: '50px', textAlign: 'center' }}></th>
+                <th style={{ padding: '12px 14px', width: '90px' }}>Ticket #</th>
+                <th>Title & Details</th>
+                {!embedded && <th style={{ width: '130px' }}>Project</th>}
+                <th style={{ width: '130px' }}>Type</th>
+                <th style={{ width: '105px' }}>Priority</th>
+                <th style={{ width: '140px' }}>Assigned To</th>
+                <th style={{ width: '95px' }}>PM</th>
+                <th style={{ width: '100px' }}>Cost Impact</th>
+                <th style={{ width: '115px' }}>Status</th>
+                <th style={{ width: '45px', textAlign: 'center' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -852,12 +1016,11 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                         </div>
                       )}
                     </td>
-                    <td style={{ fontSize: '12px', fontWeight: 600 }}>
-                      {t.project_name || 'General'}
-                    </td>
-                    <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      {t.stage}
-                    </td>
+                    {!embedded && (
+                      <td style={{ fontSize: '12px', fontWeight: 600 }}>
+                        {t.project_name || 'General'}
+                      </td>
+                    )}
                     <td>
                       <span className={`badge ${typeConfig.color}`} style={{ fontSize: '11px' }}>
                         {t.ticket_type}
@@ -868,6 +1031,34 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                         <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: priorityConfig.dotColor }} />
                         <span style={{ fontSize: '12px', fontWeight: 500 }}>{priorityConfig.label}</span>
                       </div>
+                    </td>
+                    <td>
+                      {t.assigned_to ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ 
+                            width: '22px', 
+                            height: '22px', 
+                            borderRadius: '50%', 
+                            background: 'rgba(59, 130, 246, 0.15)', 
+                            color: 'var(--text-info)', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontSize: '10px', 
+                            fontWeight: 700,
+                            flexShrink: 0
+                          }}>
+                            {t.assigned_to.trim()[0].toUpperCase()}
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                            {t.assigned_to}
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                          Unassigned
+                        </span>
+                      )}
                     </td>
                     <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {t.pm_name || '—'}
@@ -900,7 +1091,12 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                   <td colSpan={10} style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-tertiary)' }}>
                     <Ticket size={32} strokeWidth={1.5} color="var(--text-tertiary)" style={{ marginBottom: '8px' }} />
                     <div style={{ fontSize: '13px', fontWeight: 500 }}>No project management tickets found matching current filters</div>
-                    <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)} style={{ marginTop: '10px' }}>
+                    {activeFilterCount > 0 && (
+                      <button className="btn btn-sm btn-ghost" onClick={handleResetFilters} style={{ marginTop: '8px', color: 'var(--text-info)' }}>
+                        Reset filters
+                      </button>
+                    )}
+                    <button className="btn btn-sm btn-primary" onClick={() => setShowCreateModal(true)} style={{ marginTop: '10px', marginLeft: '6px' }}>
                       + Log a Project Ticket
                     </button>
                   </td>
@@ -1004,9 +1200,24 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                         )}
 
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <User size={12} />
-                            <span>{t.pm_name || 'Unassigned'}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <div style={{ 
+                              width: '18px', 
+                              height: '18px', 
+                              borderRadius: '50%', 
+                              background: t.assigned_to ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-secondary)', 
+                              color: t.assigned_to ? 'var(--text-info)' : 'var(--text-tertiary)', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              fontSize: '9px', 
+                              fontWeight: 700 
+                            }}>
+                              {(t.assigned_to || t.pm_name || '?')[0].toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: t.assigned_to ? 600 : 400, color: t.assigned_to ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                              {t.assigned_to || t.pm_name || 'Unassigned'}
+                            </span>
                           </div>
 
                           {t.cost_impact > 0 && (
@@ -1083,7 +1294,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     required
                     value={form.project_id}
                     onChange={e => handleProjectSelect(e.target.value)}
-                    style={{ borderRadius: '8px', padding: '8px 10px' }}
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
                   >
                     <option value="">Select Target Project...</option>
                     {projectList.map(p => (
@@ -1098,7 +1309,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.stage}
                     onChange={e => setForm(f => ({ ...f, stage: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px' }}
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
                   >
                     {PROJECT_STAGES.map(s => (
                       <option key={s} value={s}>{s}</option>
@@ -1117,7 +1328,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                   className="form-control"
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  style={{ borderRadius: '8px', padding: '9px 12px' }}
+                  style={{ borderRadius: '8px', padding: '9px 12px', fontSize: '12px' }}
                 />
               </div>
 
@@ -1129,7 +1340,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.ticket_type}
                     onChange={e => setForm(f => ({ ...f, ticket_type: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px' }}
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
                   >
                     {TICKET_TYPES.map(t => (
                       <option key={t.value} value={t.value}>{t.label}</option>
@@ -1143,7 +1354,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.priority}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px' }}
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
                   >
                     {PRIORITIES.map(p => (
                       <option key={p.value} value={p.value}>{p.label}</option>
@@ -1157,7 +1368,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.status}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 10px' }}
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
                   >
                     <option value="Open">Open / Reported</option>
                     <option value="In progress">In Progress</option>
@@ -1177,7 +1388,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.location_area}
                     onChange={e => setForm(f => ({ ...f, location_area: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
 
@@ -1189,7 +1400,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.fitting_code}
                     onChange={e => setForm(f => ({ ...f, fitting_code: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
               </div>
@@ -1206,7 +1417,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.cost_impact}
                     onChange={e => setForm(f => ({ ...f, cost_impact: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
 
@@ -1219,7 +1430,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.schedule_impact_days}
                     onChange={e => setForm(f => ({ ...f, schedule_impact_days: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
 
@@ -1230,23 +1441,28 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.due_date}
                     onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
               </div>
 
-              {/* Assigned To & Raised By */}
+              {/* Assigned Staff User & Raised By */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Assigned Contractor / Lead</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Drywall Subcontractor / Martin"
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Assigned Staff User</label>
+                  <select
                     className="form-control"
                     value={form.assigned_to}
                     onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
-                  />
+                    style={{ borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}
+                  >
+                    <option value="">-- Select Assigned Staff User --</option>
+                    {staffOptions.map(s => (
+                      <option key={s.name} value={s.name}>
+                        {s.name} {s.role ? `(${s.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="form-row">
@@ -1257,7 +1473,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     className="form-control"
                     value={form.raised_by}
                     onChange={e => setForm(f => ({ ...f, raised_by: e.target.value }))}
-                    style={{ borderRadius: '8px', padding: '8px 12px' }}
+                    style={{ borderRadius: '8px', padding: '8px 12px', fontSize: '12px' }}
                   />
                 </div>
               </div>
@@ -1275,7 +1491,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   onPaste={handlePasteImage}
-                  style={{ borderRadius: '8px', padding: '10px 12px', resize: 'vertical', fontFamily: 'inherit' }}
+                  style={{ borderRadius: '8px', padding: '10px 12px', resize: 'vertical', fontFamily: 'inherit', fontSize: '12px' }}
                 />
               </div>
 
@@ -1426,7 +1642,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                 {/* Meta Attributes Panel */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
                   gap: '12px',
                   padding: '14px',
                   background: 'var(--bg-secondary)',
@@ -1436,6 +1652,17 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                   <div>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', fontWeight: 700 }}>PROJECT</span>
                     <strong style={{ fontSize: '13px' }}>{selectedTicket.project_name || 'General'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', fontWeight: 700 }}>ASSIGNED USER</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: selectedTicket.assigned_to ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-primary)', color: selectedTicket.assigned_to ? 'var(--text-info)' : 'var(--text-tertiary)', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                        {(selectedTicket.assigned_to || selectedTicket.pm_name || '?')[0].toUpperCase()}
+                      </div>
+                      <strong style={{ fontSize: '12px', color: selectedTicket.assigned_to ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                        {selectedTicket.assigned_to || 'Unassigned'}
+                      </strong>
+                    </div>
                   </div>
                   <div>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', fontWeight: 700 }}>ASSIGNED PM</span>
@@ -1462,6 +1689,10 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                     <span className={`badge ${STATUS_COLUMNS.find(c => c.id === selectedTicket.status)?.badge || 'b-default'}`} style={{ marginTop: '3px', display: 'inline-block', fontSize: '11px' }}>
                       {selectedTicket.status}
                     </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', fontWeight: 700 }}>RAISED BY</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{selectedTicket.raised_by || 'Staff'}</span>
                   </div>
                 </div>
 
@@ -1605,6 +1836,24 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                       <option value="In progress">In Progress</option>
                       <option value="Awaiting Sign-off">Awaiting Sign-off</option>
                       <option value="Resolved">Resolved / Closed</option>
+                    </select>
+                  </div>
+
+                  {/* Assigned Staff User Selector */}
+                  <div className="form-row" style={{ marginBottom: '12px' }}>
+                    <label className="form-label" style={{ fontSize: '11px', fontWeight: 600 }}>Assigned Staff User</label>
+                    <select
+                      className="form-control"
+                      value={detailAssignedTo}
+                      onChange={e => setDetailAssignedTo(e.target.value)}
+                      style={{ fontSize: '12px', borderRadius: '6px' }}
+                    >
+                      <option value="">-- Unassigned --</option>
+                      {staffOptions.map(s => (
+                        <option key={s.name} value={s.name}>
+                          {s.name} {s.role ? `(${s.role})` : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

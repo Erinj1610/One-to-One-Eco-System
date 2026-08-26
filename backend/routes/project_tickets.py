@@ -1,12 +1,55 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import ProjectTicket, Project
+from models.orm_models import ProjectTicket, Project, Employee, User
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from datetime import datetime
 
 router = APIRouter()
+
+@router.get("/staff")
+def get_staff_members(db: Session = Depends(get_db)):
+    """
+    Returns list of all active staff users and employees for ticket assignments.
+    """
+    employees = db.query(Employee).all()
+    staff_list = []
+    seen = set()
+    
+    # Priority 1: Cloud SQL Employees
+    for emp in employees:
+        name = (emp.name or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            usr = db.query(User).filter(User.id == emp.user_id).first() if emp.user_id else None
+            staff_list.append({
+                "id": emp.id,
+                "name": name,
+                "role": emp.role or "Staff",
+                "department": emp.department or "Design",
+                "email": usr.email if usr else ""
+            })
+            
+    # Priority 2: Registered Cloud SQL Users without employee records
+    users = db.query(User).filter(User.disabled == False).all()
+    for u in users:
+        emp = db.query(Employee).filter(Employee.user_id == u.id).first()
+        if not emp:
+            name = u.email.split('@')[0].replace('.', ' ').title()
+            if name and name not in seen:
+                seen.add(name)
+                staff_list.append({
+                    "id": f"u-{u.id}",
+                    "name": name,
+                    "role": "Staff",
+                    "department": "Head Office",
+                    "email": u.email
+                })
+
+    # Sort alphabetically by name
+    staff_list.sort(key=lambda x: x["name"].lower())
+    return staff_list
 
 class ProjectTicketCreate(BaseModel):
     project_id: Optional[int] = None
@@ -94,6 +137,7 @@ def list_project_tickets(
     project_id: Optional[int] = None,
     project_name: Optional[str] = None,
     pm_name: Optional[str] = None,
+    assigned_to: Optional[str] = None,
     stage: Optional[str] = None,
     status: Optional[str] = None,
     ticket_type: Optional[str] = None,
@@ -108,6 +152,8 @@ def list_project_tickets(
         query = query.filter(ProjectTicket.project_name == project_name)
     if pm_name:
         query = query.filter(ProjectTicket.pm_name == pm_name)
+    if assigned_to and assigned_to != 'All':
+        query = query.filter(ProjectTicket.assigned_to == assigned_to)
     if stage:
         query = query.filter(ProjectTicket.stage == stage)
     if status and status != 'All':
