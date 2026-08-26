@@ -79,3 +79,44 @@ def test_create_lookup_value(db_session):
     assert lookup.sort_order == 5
     assert lookup.metadata_json == {"color": "purple"}
 
+def test_create_order_and_items(db_session):
+    from models.orm_models import Order, OrderItem
+    project = Project(name="Bantry Bay Villa", project_key="bantry-bay-villa")
+    db_session.add(project)
+    db_session.commit()
+
+    order = Order(
+        project_id=project.id,
+        project_key=project.project_key,
+        po_number="PO-2026-0001",
+        supplier_name="Delta Light",
+        items_count=2,
+        value=15000.0,
+        status="Pending"
+    )
+    db_session.add(order)
+    db_session.commit()
+    db_session.refresh(order)
+
+    assert order.id is not None
+    assert order.po_number == "PO-2026-0001"
+    assert order.project_key == "bantry-bay-villa"
+
+    item1 = OrderItem(
+        id="I-001",
+        order_id="PO-2026-0001",
+        qty=5,
+        type="DL-01",
+        description="Downlight fixture",
+        unit_cost=1000.0,
+        unit_retail=1500.0
+    )
+    db_session.add(item1)
+    db_session.commit()
+    db_session.refresh(item1)
+
+    assert item1.id == "I-001"
+    assert item1.order_id == "PO-2026-0001"
+    assert item1.qty == 5
+
+

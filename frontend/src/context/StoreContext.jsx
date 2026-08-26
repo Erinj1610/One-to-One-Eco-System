@@ -1254,6 +1254,146 @@ export function StoreProvider({ children }) {
     return found ? found.label : fallback;
   };
 
+  // Helper to parse projects and design fees payload consistently
+  const parseProjectsPayload = React.useCallback((val) => {
+    const parsedProjects = {};
+    if (val && typeof val === 'object') {
+      Object.entries(val).forEach(([pKey, p]) => {
+        if (p && typeof p === 'object') {
+          const fees = [];
+          ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
+            const rawVal = p[col];
+            if (rawVal) {
+              if (typeof rawVal === 'string') {
+                if (rawVal.trim() && rawVal !== 'null') {
+                  try {
+                    fees.push(JSON.parse(rawVal));
+                  } catch (e) {
+                    console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
+                  }
+                }
+              } else if (typeof rawVal === 'object') {
+                fees.push(rawVal);
+              }
+            }
+          });
+          if (fees.length === 0 && p.designFees && Array.isArray(p.designFees)) {
+            fees.push(...p.designFees);
+          }
+          parsedProjects[pKey] = {
+            ...p,
+            designFees: fees,
+            orders: p.orders || []
+          };
+        }
+      });
+    }
+    return parsedProjects;
+  }, []);
+
+  const loadState = React.useCallback((key, setter) => {
+    const tParam = `_t=${Date.now()}`;
+    const url = key === 'projects'
+      ? `${API_BASE}/api/projects/all?${tParam}`
+      : key === 'contacts'
+      ? `${API_BASE}/api/clients?${tParam}`
+      : `${API_BASE}/api/settings/${key}?${tParam}`;
+    return fetch(url, { cache: 'no-store' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        const val = key === 'projects' || key === 'contacts' ? data : (data && data.value);
+        if (val !== null && val !== undefined) {
+          if (key === 'moduleConfig') {
+            const loadedVal = val;
+            let rawModules = loadedVal.modules || [];
+            
+            const seenIds = new Set();
+            const seenPaths = new Set();
+            const uniqueModules = [];
+
+            rawModules.forEach(m => {
+              let mod = { ...m };
+              if (mod.id === 'support' || mod.id === 'ticket_logger' || mod.path === '/support' || mod.path === '/ticket-logger') {
+                mod = { ...mod, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
+              }
+              if (!seenIds.has(mod.id) && !seenPaths.has(mod.path)) {
+                seenIds.add(mod.id);
+                seenPaths.add(mod.path);
+                uniqueModules.push(mod);
+              }
+            });
+
+            defaultModules.forEach(defM => {
+              if (!seenIds.has(defM.id) && !seenPaths.has(defM.path)) {
+                seenIds.add(defM.id);
+                seenPaths.add(defM.path);
+                uniqueModules.push(defM);
+              }
+            });
+
+            setter({ ...loadedVal, modules: uniqueModules });
+          } else if (key === 'activity_logs') {
+            const localSaved = localStorage.getItem('activity_logs');
+            let localLogs = [];
+            try {
+              if (localSaved) localLogs = JSON.parse(localSaved);
+            } catch(e){}
+            const dbLogs = Array.isArray(val) ? val : [];
+            const merged = [...dbLogs];
+            localLogs.forEach(ll => {
+              if (!merged.some(m => m.id === ll.id)) {
+                merged.push(ll);
+              }
+            });
+            merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            setter(merged);
+          } else if (key === 'projects') {
+            const parsedProjects = parseProjectsPayload(val);
+            setter(parsedProjects);
+            projectsRef.current = parsedProjects;
+          } else if (key === 'contacts') {
+            const raw = Array.isArray(val) ? val : [];
+            const seenIds = new Set();
+            const seenNames = new Set();
+            const uniqueContacts = [];
+            raw.forEach(c => {
+              if (!c) return;
+              const cId = String(c.id);
+              const cName = (c.name || '').trim().toLowerCase();
+              if (!seenIds.has(cId) && !seenNames.has(cName)) {
+                seenIds.add(cId);
+                if (cName) seenNames.add(cName);
+                uniqueContacts.push(c);
+              }
+            });
+            setter(uniqueContacts);
+          } else {
+            setter(val);
+          }
+        } else if (key === 'activity_logs') {
+          const localSaved = localStorage.getItem('activity_logs');
+          let localLogs = [];
+          try {
+            if (localSaved) localLogs = JSON.parse(localSaved);
+          } catch(e){}
+          setter(localLogs);
+        } else if (key === 'projectManagers') {
+          setter(defaultPMs);
+        }
+        isLoaded.current[key] = true;
+      })
+      .catch(err => {
+        console.error(`Error loading ${key}:`, err);
+        if (key === 'projectManagers') {
+          setter(defaultPMs);
+        }
+        isLoaded.current[key] = true;
+      });
+  }, [parseProjectsPayload]);
+
   // Load all states when user logs in
   React.useEffect(() => {
     if (!user || authLoading) {
@@ -1273,139 +1413,6 @@ export function StoreProvider({ children }) {
       return;
     }
 
-    const loadState = (key, setter) => {
-      const tParam = `_t=${Date.now()}`;
-      const url = key === 'projects'
-        ? `${API_BASE}/api/projects/all?${tParam}`
-        : key === 'contacts'
-        ? `${API_BASE}/api/clients?${tParam}`
-        : `${API_BASE}/api/settings/${key}?${tParam}`;
-      fetch(url, { cache: 'no-store' })
-        .then(res => {
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-          return res.json();
-        })
-        .then(data => {
-          const val = key === 'projects' || key === 'contacts' ? data : (data && data.value);
-          if (val !== null && val !== undefined) {
-            if (key === 'moduleConfig') {
-              const loadedVal = val;
-              let rawModules = loadedVal.modules || [];
-              
-              const seenIds = new Set();
-              const seenPaths = new Set();
-              const uniqueModules = [];
-
-              rawModules.forEach(m => {
-                let mod = { ...m };
-                if (mod.id === 'support' || mod.id === 'ticket_logger' || mod.path === '/support' || mod.path === '/ticket-logger') {
-                  mod = { ...mod, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
-                }
-                if (!seenIds.has(mod.id) && !seenPaths.has(mod.path)) {
-                  seenIds.add(mod.id);
-                  seenPaths.add(mod.path);
-                  uniqueModules.push(mod);
-                }
-              });
-
-              defaultModules.forEach(defM => {
-                if (!seenIds.has(defM.id) && !seenPaths.has(defM.path)) {
-                  seenIds.add(defM.id);
-                  seenPaths.add(defM.path);
-                  uniqueModules.push(defM);
-                }
-              });
-
-              setter({ ...loadedVal, modules: uniqueModules });
-            } else if (key === 'activity_logs') {
-              const localSaved = localStorage.getItem('activity_logs');
-              let localLogs = [];
-              try {
-                if (localSaved) localLogs = JSON.parse(localSaved);
-              } catch(e){}
-              const dbLogs = Array.isArray(val) ? val : [];
-              const merged = [...dbLogs];
-              localLogs.forEach(ll => {
-                if (!merged.some(m => m.id === ll.id)) {
-                  merged.push(ll);
-                }
-              });
-              merged.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-              setter(merged);
-            } else if (key === 'projects') {
-              const parsedProjects = {};
-              if (val && typeof val === 'object') {
-                Object.entries(val).forEach(([pKey, p]) => {
-                  if (p && typeof p === 'object') {
-                    const fees = [];
-                    ['s1', 's2', 's3', 's4', 's5'].forEach(col => {
-                      const rawVal = p[col];
-                      if (rawVal) {
-                        if (typeof rawVal === 'string') {
-                          if (rawVal.trim() && rawVal !== 'null') {
-                            try {
-                              fees.push(JSON.parse(rawVal));
-                            } catch(e) {
-                              console.error(`Error parsing design fee column ${col} for project ${pKey}:`, e);
-                            }
-                          }
-                        } else if (typeof rawVal === 'object') {
-                          fees.push(rawVal);
-                        }
-                      }
-                    });
-                    if (fees.length === 0 && p.designFees && Array.isArray(p.designFees)) {
-                      fees.push(...p.designFees);
-                    }
-                    parsedProjects[pKey] = {
-                      ...p,
-                      designFees: fees,
-                      orders: p.orders || []
-                    };
-                  }
-                });
-              }
-              setter(parsedProjects);
-            } else if (key === 'contacts') {
-              const raw = Array.isArray(val) ? val : [];
-              const seenIds = new Set();
-              const seenNames = new Set();
-              const uniqueContacts = [];
-              raw.forEach(c => {
-                if (!c) return;
-                const cId = String(c.id);
-                const cName = (c.name || '').trim().toLowerCase();
-                if (!seenIds.has(cId) && !seenNames.has(cName)) {
-                  seenIds.add(cId);
-                  if (cName) seenNames.add(cName);
-                  uniqueContacts.push(c);
-                }
-              });
-              setter(uniqueContacts);
-            } else {
-              setter(val);
-            }
-          } else if (key === 'activity_logs') {
-            const localSaved = localStorage.getItem('activity_logs');
-            let localLogs = [];
-            try {
-              if (localSaved) localLogs = JSON.parse(localSaved);
-            } catch(e){}
-            setter(localLogs);
-          } else if (key === 'projectManagers') {
-            setter(defaultPMs);
-          }
-          isLoaded.current[key] = true;
-        })
-        .catch(err => {
-          console.error(`Error loading ${key}:`, err);
-          if (key === 'projectManagers') {
-            setter(defaultPMs);
-          }
-          isLoaded.current[key] = true;
-        });
-    };
-
     loadState('projects', setProjects);
     loadState('contacts', setContacts);
     loadState('leads', setLeads);
@@ -1414,7 +1421,41 @@ export function StoreProvider({ children }) {
     loadState('moduleConfig', setModuleConfig);
     loadState('projectManagers', setProjectManagers);
     loadState('activity_logs', setActivityLogs);
-  }, [user, authLoading]);
+  }, [user, authLoading, loadState]);
+
+  // Live Background Polling & Focus / Visibility Change Revalidation (ensures real-time updates across sessions)
+  React.useEffect(() => {
+    if (!user || authLoading) return;
+
+    // Fast polling every 15 seconds when window is visible
+    const pollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadState('projects', setProjects);
+        loadState('contacts', setContacts);
+        loadState('invoices', setInvoices);
+        loadState('leads', setLeads);
+      }
+    }, 15000);
+
+    // Immediate revalidation when user switches back to tab or focuses window
+    const handleRevalidate = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadState('projects', setProjects);
+        loadState('contacts', setContacts);
+        loadState('invoices', setInvoices);
+        loadState('leads', setLeads);
+      }
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(pollTimer);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
+  }, [user, authLoading, loadState]);
 
   // Save states on changes (excluding initial load)
   const saveState = (key, value) => {
@@ -1494,7 +1535,8 @@ export function StoreProvider({ children }) {
   };
 
   const updateProject = async (key, field, value) => {
-    // 2. Perform granular database write under the hood
+    // 1. Capture snapshot of the existing project before any in-memory state updates
+    const oldProj = projectsRef.current[key] || projects[key] || {};
     let nextProj = null;
     setProjects(prev => {
       const existing = prev[key] || projectsRef.current[key] || {};
@@ -1512,9 +1554,8 @@ export function StoreProvider({ children }) {
     if (!nextProj) return;
 
     if (field === 'orders') {
-      const currentProj = projectsRef.current[key] || projects[key] || {};
       const newOrders = value || [];
-      const oldOrders = currentProj.orders || [];
+      const oldOrders = oldProj.orders || [];
 
       // Check for renamed orders first
       if (oldOrders.length === newOrders.length) {
@@ -1576,7 +1617,7 @@ export function StoreProvider({ children }) {
 
 
         if (!oldOrder) {
-          // Create new order row
+          // Create new order row immediately in Cloud SQL
           try {
             await fetch(`${API_BASE}/api/orders/`, {
               method: 'POST',
@@ -1587,7 +1628,7 @@ export function StoreProvider({ children }) {
             console.error(`Error creating order ${newOrder.id}:`, err);
           }
 
-          // Create order item rows
+          // Create order item rows immediately in Cloud SQL
           const items = newOrder.itemsList || [];
           for (const item of items) {
             try {
@@ -1737,13 +1778,14 @@ export function StoreProvider({ children }) {
       s1:'',s2:'',s3:'',s4:'',s5:''
     };
 
-    setProjects(prev => ({
-      ...prev,
-      [key]: newProj
-    }));
+    setProjects(prev => {
+      const nextMap = { ...prev, [key]: newProj };
+      projectsRef.current = nextMap;
+      return nextMap;
+    });
 
     try {
-      await fetch(`${API_BASE}/api/projects/`, {
+      const res = await fetch(`${API_BASE}/api/projects/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1762,6 +1804,9 @@ export function StoreProvider({ children }) {
           s1: '', s2: '', s3: '', s4: '', s5: ''
         })
       });
+      if (!res.ok) {
+        console.error(`Failed to create project ${key}:`, res.status);
+      }
     } catch (err) {
       console.error("Error creating project:", err);
     }
@@ -1779,7 +1824,7 @@ export function StoreProvider({ children }) {
       counter++;
     }
 
-    const existingDraft = projects[oldKey] || {};
+    const existingDraft = projects[oldKey] || projectsRef.current[oldKey] || {};
     const updatedProj = {
       ...existingDraft,
       ...projectData,
@@ -1791,11 +1836,12 @@ export function StoreProvider({ children }) {
       start: projectData.start || existingDraft.start || new Date().toISOString().split('T')[0]
     };
 
-    // Optimistically update React state
+    // Optimistically update React state and ref
     setProjects(prev => {
       const next = { ...prev };
       delete next[oldKey];
       next[finalKey] = updatedProj;
+      projectsRef.current = next;
       return next;
     });
 
@@ -1862,6 +1908,7 @@ export function StoreProvider({ children }) {
       setProjects(prev => {
         const next = { ...prev };
         delete next[key];
+        projectsRef.current = next;
         return next;
       });
     } catch (err) {
@@ -2153,10 +2200,13 @@ export function StoreProvider({ children }) {
 
   const refreshProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/projects/all`);
+      const res = await fetch(`${API_BASE}/api/projects/all?_t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        setProjects(data);
+        const parsed = parseProjectsPayload(data);
+        setProjects(parsed);
+        projectsRef.current = parsed;
+        return parsed;
       }
     } catch (err) {
       console.error("Error refreshing projects:", err);

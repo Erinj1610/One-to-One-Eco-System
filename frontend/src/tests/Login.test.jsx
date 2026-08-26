@@ -17,7 +17,7 @@ describe('Login Component', () => {
   test('renders login title and inputs', () => {
     renderWithProviders(<Login onBypass={() => {}} />);
     
-    expect(screen.getByText('1-to-1 World Portal')).toBeInTheDocument();
+    expect(screen.getByText('ONE TO ONE')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('name@onetoone.co.za')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument();
   });
