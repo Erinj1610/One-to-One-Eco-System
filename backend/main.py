@@ -664,8 +664,12 @@ def init_db():
     except Exception as e:
         print(f"DB Init Error: {e}")
 
+@app.on_event("startup")
+async def startup_event():
+    import threading
+    threading.Thread(target=init_db, daemon=True).start()
+
 if __name__ == "__main__":
-    init_db()
     # optimized for Windows auto-reload
     uvicorn.run(
         "main:app", 
@@ -675,6 +679,3 @@ if __name__ == "__main__":
         reload_dirs=["."], 
         reload_excludes=[".venv", "venv", "node_modules", "__pycache__"]
     )
-else:
-    # If imported by uvicorn CLI, still init DB
-    init_db()
