@@ -437,21 +437,23 @@ const ProductCADRenderer = ({ cutout = 'Ø76mm' }) => {
 };
 
 // SVG Stock Level Trend Line Chart
-const StockTrendChart = ({ history }) => {
-  if (!history || history.length === 0) return null;
-  
-  const balances = [...history].reverse().map(h => h.balance);
-  const dates = [...history].reverse().map(h => h.date);
+const StockTrendChart = ({ chartPoints = [], currentStock = 0 }) => {
+  const pointsData = chartPoints && chartPoints.length > 0
+    ? chartPoints 
+    : [{ date: 'Today', balance: currentStock }];
+
+  const balances = pointsData.map(h => h.balance);
+  const dates = pointsData.map(h => h.date);
 
   const maxVal = Math.max(...balances, 10) * 1.25;
-  const chartWidth = 550;
-  const chartHeight = 160;
-  const paddingX = 40;
-  const paddingY = 25;
+  const chartWidth = 650;
+  const chartHeight = 170;
+  const paddingX = 45;
+  const paddingY = 30;
   
   const points = balances.map((val, idx) => {
     const x = paddingX + (idx * (chartWidth - paddingX * 2)) / (balances.length - 1 || 1);
-    const y = chartHeight - paddingY - (val * (chartHeight - paddingY * 2)) / maxVal;
+    const y = chartHeight - paddingY - (val * (chartHeight - paddingY * 2)) / (maxVal || 1);
     return { x, y, val, date: dates[idx] };
   });
 
@@ -466,7 +468,7 @@ const StockTrendChart = ({ history }) => {
         <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <TrendingUp size={15} color="var(--text-info)" /> Inventory Stock Trend History
         </h4>
-        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Based on recent transactions & audits</span>
+        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Live Palladium ERP stock movement ledger</span>
       </div>
       
       <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ overflow: 'visible' }}>
@@ -661,6 +663,35 @@ export default function ProductsPage() {
   // 2. Audit Trail State
   const [auditLogs, setAuditLogs] = useState([]);
   const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
+
+  // 3. Stock History State (Live from Palladium)
+  const [stockHistoryData, setStockHistoryData] = useState(null);
+  const [isLoadingStockHistory, setIsLoadingStockHistory] = useState(false);
+
+  const fetchStockHistory = async (sku) => {
+    if (!sku) return;
+    setIsLoadingStockHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/products/${encodeURIComponent(sku)}/stock-history`);
+      if (res.ok) {
+        const data = await res.json();
+        setStockHistoryData(data);
+      } else {
+        setStockHistoryData(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stock history:', err);
+      setStockHistoryData(null);
+    } finally {
+      setIsLoadingStockHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history' && selectedSku) {
+      fetchStockHistory(selectedSku);
+    }
+  }, [activeTab, selectedSku]);
 
   // 4. Excel Import Progress Modal State
   const [importProgress, setImportProgress] = useState({
@@ -1880,7 +1911,6 @@ export default function ProductsPage() {
                 {[
                   { id: 'specs', label: 'Specifications' },
                   { id: 'costing', label: 'Costing' },
-                  { id: 'supplier', label: 'Supplier Details' },
                   { id: 'history', label: 'Stock History' },
                   { id: 'audit', label: '📜 Audit Trail & History' },
                   { id: 'accessories', label: '⚡ Linked Drivers & Accessories' }
@@ -1898,6 +1928,7 @@ export default function ProductsPage() {
                     }}
                     onClick={() => {
                       setActiveTab(t.id);
+                      if (t.id === 'history' && activeProduct?.sku) fetchStockHistory(activeProduct.sku);
                       if (t.id === 'audit' && activeProduct?.id) fetchAuditLogs(activeProduct.id);
                       if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
                     }}
@@ -2697,138 +2728,93 @@ export default function ProductsPage() {
                   </div>
                 )}
 
-                {/* 3. SUPPLIER DETAILS VIEW */}
-                {activeTab === 'supplier' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                    {/* Supplier Profile Card */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ width: '48px', height: '48px', background: 'rgba(24,95,165,0.08)', color: 'var(--text-info)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', fontSize: '20px', fontWeight: 700 }}>
-                          🏢
-                        </div>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>{activeProduct.supplierDetails.name}</h4>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Primary Supplier Vendor</span>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Origin Country</span>
-                          <strong style={{ color: 'var(--text-primary)' }}>{activeProduct.origin}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Vendor Status</span>
-                          <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Active Partner</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Supplier Rating</span>
-                          <span style={{ color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '2px' }}><Star size={11} fill="var(--text-warning)" /> 4.9 / 5.0</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
-                          <MapPin size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                          <span>{activeProduct.supplierDetails.address}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Logistics & Business Terms Card */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>Logistics & Terms</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <Clock size={16} color="var(--text-info)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Fulfillment Lead Time</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.leadTime}</div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <CreditCard size={16} color="var(--text-success)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Payment terms</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.paymentTerms}</div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <Truck size={16} color="var(--text-warning)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Fulfillment / Shipping</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.shippingMethod}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Account representative contact details */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                      <div>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Account Manager Contact</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, border: '1px solid var(--border)' }}>
-                            {activeProduct.supplierDetails.contactPerson.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.contactPerson}</div>
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>{activeProduct.supplierDetails.role}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <a href={`mailto:${activeProduct.supplierDetails.email}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Mail size={12} /> Email Representative
-                        </a>
-                        <a href={`tel:${activeProduct.supplierDetails.phone}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Phone size={12} /> Call Direct ({activeProduct.supplierDetails.phone})
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. STOCK HISTORY VIEW */}
+                {/* 3. STOCK HISTORY VIEW (LIVE PALLADIUM AUDIT TRAIL) */}
                 {activeTab === 'history' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
                     {/* SVG Stock level Trend Area Chart */}
-                    <StockTrendChart history={activeProduct.stockHistory} />
+                    <StockTrendChart 
+                      chartPoints={stockHistoryData?.chart_points || []} 
+                      currentStock={activeProduct.stock_on_hand || activeProduct.stock || 0} 
+                    />
 
                     {/* Stock Movements Log ledger */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Stock Movement Transaction Log</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Date</th>
-                            <th>Transaction Type</th>
-                            <th>Reference Document</th>
-                            <th style={{ textAlign: 'center' }}>Quantity Changed</th>
-                            <th style={{ textAlign: 'center' }}>Running Balance</th>
-                            <th>Handled By</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeProduct.stockHistory.map((h, idx) => (
-                            <tr key={idx}>
-                              <td>{h.date}</td>
-                              <td>
-                                <span className={`badge ${h.type === 'Stock In' ? 'b-success' : h.type === 'Stock Out' ? 'b-danger' : 'b-warning'}`} style={{ fontSize: '9px', padding: '2px 8px' }}>
-                                  {h.type}
-                                </span>
-                              </td>
-                              <td style={{ fontFamily: 'monospace' }}>{h.reference}</td>
-                              <td style={{ textAlign: 'center', fontWeight: 600, color: h.qty.startsWith('+') ? 'var(--text-success)' : 'var(--text-danger)' }}>
-                                {h.qty}
-                              </td>
-                              <td style={{ textAlign: 'center', fontWeight: 700 }}>{h.balance}</td>
-                              <td>{h.staff}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          📦 Stock Movement Transaction Log
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button 
+                            className="btn btn-ghost btn-sm" 
+                            style={{ fontSize: '11px', padding: '4px 10px', height: '28px' }}
+                            onClick={() => fetchStockHistory(activeProduct.sku)}
+                            disabled={isLoadingStockHistory}
+                          >
+                            <RefreshCw size={12} className={isLoadingStockHistory ? 'spin' : ''} /> Refresh History
+                          </button>
+                          <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                            Source: Palladium ERP Ledger
+                          </span>
+                        </div>
+                      </div>
+
+                      {isLoadingStockHistory ? (
+                        <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          <RefreshCw size={20} className="spin" style={{ marginBottom: '8px' }} />
+                          <div>Loading live stock movement transactions from Palladium ERP...</div>
+                        </div>
+                      ) : stockHistoryData?.transactions && stockHistoryData.transactions.length > 0 ? (
+                        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                          <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0, textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg-secondary)' }}>
+                                <th style={{ padding: '8px 12px' }}>Date</th>
+                                <th style={{ padding: '8px 12px' }}>Transaction Type</th>
+                                <th style={{ padding: '8px 12px' }}>Reference Document</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Quantity Changed</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Running Balance</th>
+                                <th style={{ padding: '8px 12px' }}>Handled By</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stockHistoryData.transactions.map((t, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{t.date}</td>
+                                  <td style={{ padding: '10px 12px' }}>
+                                    <span className={`badge ${
+                                      t.type.includes('Receipt') || t.type.includes('GRV') ? 'b-success' : 
+                                      t.type.includes('Sales') || t.type.includes('Invoice') ? 'b-danger' : 
+                                      'b-warning'
+                                    }`} style={{ fontSize: '9.5px', padding: '2px 8px', fontWeight: 700 }}>
+                                      {t.type}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 600 }}>
+                                    {t.doc_number} {t.reference && t.reference !== 'Supplier' && t.reference !== 'Customer' ? `(${t.reference})` : ''}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: t.qty > 0 ? '#10b981' : 'var(--text-danger)' }}>
+                                    {t.qty_display}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {t.balance}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
+                                    {t.handled_by || 'System'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '36px 16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                          <div style={{ fontSize: '24px', marginBottom: '6px' }}>📦</div>
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            No stock movement transactions recorded in Palladium ERP for this item.
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
