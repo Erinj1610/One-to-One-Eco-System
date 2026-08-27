@@ -201,14 +201,19 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
     if not rows:
         return {"status": "success", "message": f"Tab '{target_tab}' is empty (no data rows).", "updated_count": 0}
 
-    updated_count = 0
-    now = datetime.utcnow()
+    # 1. Fetch all products into an in-memory dictionary for O(1) instant lookup
+    all_products = {p.sku.strip().upper(): p for p in db.query(Product).all() if p.sku}
+    logger.info(f"Loaded {len(all_products)} products into memory for instant sheet sync.")
 
     for r in rows:
         if not r or not r[0]:
             continue
         sku = str(r[0]).strip()
         if not sku:
+            continue
+
+        prod = all_products.get(sku.upper())
+        if not prod:
             continue
 
         # Extract values — if cell is missing/blank, value is None
@@ -227,36 +232,33 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         finish = str(r[16]).strip() if len(r) > 16 and r[16] and str(r[16]).strip() else None
         driver_spec = str(r[18]).strip() if len(r) > 18 and r[18] and str(r[18]).strip() else None
 
-        prod = db.query(Product).filter(Product.sku == sku).first()
-        if prod:
-            # Overwrite specification fields cleanly from the sheet
-            prod.image_url = photo_url
-            prod.technical_image_url = tech_image_url
-            
-            if category: prod.category = category
-            if family_brand: 
-                prod.family = family_brand
-                prod.brand = family_brand
-            
-            if wattage_str:
-                try:
-                    clean_w = re.sub(r"[^\d.-]", "", wattage_str)
-                    prod.system_power = float(clean_w) if clean_w else 0.0
-                except:
-                    prod.system_power = 0.0
-            else:
+        prod.image_url = photo_url
+        prod.technical_image_url = tech_image_url
+        
+        if category: prod.category = category
+        if family_brand: 
+            prod.family = family_brand
+            prod.brand = family_brand
+        
+        if wattage_str:
+            try:
+                clean_w = re.sub(r"[^\d.-]", "", wattage_str)
+                prod.system_power = float(clean_w) if clean_w else 0.0
+            except:
                 prod.system_power = 0.0
+        else:
+            prod.system_power = 0.0
 
-            prod.kelvin = cct
-            prod.cri = cri
-            prod.beam_angle = beam_angle
-            prod.ip_rating = ip_rating
-            prod.dimming_protocol = dimming
-            prod.cutout = cutout
-            prod.color = finish
-            prod.driver_spec = driver_spec
-            
-            updated_count += 1
+        prod.kelvin = cct
+        prod.cri = cri
+        prod.beam_angle = beam_angle
+        prod.ip_rating = ip_rating
+        prod.dimming_protocol = dimming
+        prod.cutout = cutout
+        prod.color = finish
+        prod.driver_spec = driver_spec
+        
+        updated_count += 1
 
     # Update last sync timestamp in settings
     setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
