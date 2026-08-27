@@ -88,6 +88,26 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             WHERE decOnHand > 0 OR decAvail > 0 OR decAlloc > 0
         """)
         loc_rows = p_cursor.fetchall()
+
+        # 4. Fetch vendor/supplier links
+        p_cursor.execute("""
+            SELECT 
+                iv.strPartNumber AS sku,
+                iv.strVendName AS vend_code,
+                v.strCity AS city,
+                v.strProvince AS province,
+                v.strPhone AS phone,
+                v.strCellPhone AS cell,
+                v.strEmail AS email,
+                iv.strItemCode AS vend_item_code,
+                iv.strItemDesc AS vend_item_desc,
+                iv.decPrice AS vend_price,
+                iv.decLocalPrice AS vend_local_price,
+                iv.bitPreferred AS is_preferred
+            FROM tblInvVend iv
+            LEFT JOIN tblVendors v ON iv.strVendName = v.strVendName
+        """)
+        vend_rows = p_cursor.fetchall()
         p_conn.close()
 
         # Group location breakdown by SKU
@@ -102,7 +122,25 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 "alloc": float(lr['alloc'] or 0.0)
             }
 
-        # 4. Fetch existing products from Portal Cloud SQL for matching
+        # Map vendor details by SKU
+        vend_map = {}
+        for vr in vend_rows:
+            sku = str(vr['sku']).strip()
+            vend_map[sku] = {
+                "vend_code": str(vr.get('vend_code') or '').strip(),
+                "city": str(vr.get('city') or '').strip(),
+                "province": str(vr.get('province') or '').strip(),
+                "phone": str(vr.get('phone') or '').strip(),
+                "cell": str(vr.get('cell') or '').strip(),
+                "email": str(vr.get('email') or '').strip(),
+                "vend_item_code": str(vr.get('vend_item_code') or '').strip(),
+                "vend_item_desc": str(vr.get('vend_item_desc') or '').strip(),
+                "vend_price": float(vr.get('vend_price') or 0.0),
+                "vend_local_price": float(vr.get('vend_local_price') or 0.0),
+                "is_preferred": bool(vr.get('is_preferred'))
+            }
+
+        # 5. Fetch existing products from Portal Cloud SQL for matching
         existing_products = {p.sku.strip(): p for p in db.query(Product).all() if p.sku}
         now_dt = datetime.now(timezone.utc)
 
@@ -132,6 +170,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             lead_days = item.get('lead_time_days')
             lead_str = f"{int(lead_days)} days" if lead_days and float(lead_days) > 0 else None
             loc_json = loc_map.get(sku)
+            vend_json = vend_map.get(sku)
+            vend_name = vend_json['vend_code'] if vend_json and vend_json.get('vend_code') else None
 
             if sku in existing_products:
                 prod = existing_products[sku]
@@ -140,6 +180,10 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     prod.category = category
                 if family:
                     prod.family = family
+                if vend_name:
+                    prod.supplier_name = vend_name
+                if vend_json:
+                    prod.supplier_details_json = vend_json
                 prod.cost_price = cost_val
                 prod.retail_price = selling_val
                 prod.trade_price = selling_val
@@ -162,6 +206,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     name=name,
                     category=category,
                     family=family,
+                    supplier_name=vend_name,
+                    supplier_details_json=vend_json,
                     cost_price=cost_val,
                     retail_price=selling_val,
                     trade_price=selling_val,

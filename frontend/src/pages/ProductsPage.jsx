@@ -2420,8 +2420,21 @@ export default function ProductsPage() {
                   <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
                     {/* 1. TOP COMMERCIAL KPI SUMMARY CARDS */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
                       
+                      {/* Supplier Unit Cost */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          📦 Supplier Cost Price
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                          R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Palladium Price List Cost (Last PP)
+                        </span>
+                      </div>
+
                       {/* RRP Selling Price */}
                       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
@@ -2435,39 +2448,13 @@ export default function ProductsPage() {
                         </span>
                       </div>
 
-                      {/* Supplier Unit Cost */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          📦 Supplier Unit Cost (Last PP)
-                        </span>
-                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
-                          R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          Source: Palladium ERP Last PP
-                        </span>
-                      </div>
-
-                      {/* Gross Profit per Unit */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          💵 Unit Gross Profit
-                        </span>
-                        <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '6px' }}>
-                          R {Math.max(0, (activeProduct.retailPrice || 0) - (activeProduct.unitCost || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          Per Unit Sold
-                        </span>
-                      </div>
-
-                      {/* Gross Profit Margin % */}
+                      {/* Gross Profit Margin % & Markup */}
                       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
                           📈 Profit Margin & Mark-Up
                         </span>
                         <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '6px' }}>
-                          {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0.0'}%
+                          {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0.0'}% Margin
                         </div>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                           Mark-Up: {activeProduct.unitCost > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.unitCost) * 100).toFixed(1) : '0.0'}%
@@ -2477,78 +2464,72 @@ export default function ProductsPage() {
                       {/* Total Warehouse Stock Valuation */}
                       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          🏢 Stock Valuation (On Hand)
+                          🏢 Total Stock Valuation
                         </span>
                         <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
                           R {((activeProduct.stock_on_hand || activeProduct.stock || 0) * (activeProduct.unitCost || activeProduct.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
-                          {activeProduct.stock_on_hand || activeProduct.stock || 0} {activeProduct.unit_of_measure || 'Units'} Physical Stock
+                          {activeProduct.stock_on_hand || activeProduct.stock || 0} {activeProduct.unit_of_measure || 'Units'} Physical On Hand
                         </span>
                       </div>
 
                     </div>
 
-                    {/* 2. COMMERCIAL PRICING & MARGIN TABLE */}
+                    {/* 2. VENDOR & COMMERCIAL PROCUREMENT DETAILS */}
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>💰 Commercial Pricing Structure</h4>
-                        <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>Pricelist: REGULAR</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          🏢 Vendor & Commercial Procurement Details
+                        </h4>
+                        <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                          Source: Palladium Vendor Master
+                        </span>
                       </div>
-                      <table className="table" style={{ width: '100%', fontSize: '12.5px', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th style={{ padding: '8px 12px' }}>Tier / Line Item</th>
-                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>Price (Excl. VAT)</th>
-                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>VAT (15%)</th>
-                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>Price (Incl. VAT)</th>
-                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Gross Margin</th>
-                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Mark-Up</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td style={{ fontWeight: 600, padding: '10px 12px' }}>
-                              <div>RRP Selling Price (Regular)</div>
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Primary selling price for standard quotations & orders</span>
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-info)', padding: '10px 12px' }}>
-                              R {(activeProduct.retailPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
-                              R {((activeProduct.retailPrice || 0) * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '10px 12px' }}>
-                              R {((activeProduct.retailPrice || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'center', padding: '10px 12px' }}>
-                              <span className="badge b-success" style={{ fontWeight: 700, padding: '3px 8px' }}>
-                                {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0'}% margin
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 600, padding: '10px 12px' }}>
-                              {activeProduct.unitCost > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.unitCost) * 100).toFixed(1) : '0'}%
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontWeight: 600, padding: '10px 12px' }}>
-                              <div>Supplier Unit Cost (Last PP)</div>
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Recorded unit purchase cost from Palladium ERP</span>
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '10px 12px' }}>
-                              R {(activeProduct.unitCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
-                              R {((activeProduct.unitCost || 0) * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
-                              R {((activeProduct.unitCost || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '10px 12px' }}>Base Cost</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '10px 12px' }}>-</td>
-                          </tr>
-                        </tbody>
-                      </table>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                        
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor / Supplier</span>
+                          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px', color: 'var(--text-primary)' }}>
+                            {activeProduct.supplier_details_json?.vend_code || activeProduct.supplier_name || activeProduct.brand || 'Standard Vendor'}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                            {activeProduct.supplier_details_json?.city ? `${activeProduct.supplier_details_json.city}, ${activeProduct.supplier_details_json.province || 'SA'}` : 'Registered Palladium Supplier'}
+                          </span>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Item Code</span>
+                          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px', fontFamily: 'monospace', color: 'var(--text-info)' }}>
+                            {activeProduct.supplier_details_json?.vend_item_code || activeProduct.sku}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                            Supplier Catalogue Reference
+                          </span>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Contact Email</span>
+                          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '4px', color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                            {activeProduct.supplier_details_json?.email || '-'}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                            Orders & Procurement
+                          </span>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Contact Phone</span>
+                          <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '4px', color: 'var(--text-primary)' }}>
+                            {activeProduct.supplier_details_json?.phone || activeProduct.supplier_details_json?.cell || '-'}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                            Direct Vendor Line
+                          </span>
+                        </div>
+
+                      </div>
                     </div>
 
                     {/* 3. LIVE INVENTORY & WAREHOUSE LOCATION BREAKDOWN */}

@@ -429,6 +429,7 @@ class Product(Base):
     stock_locations_json = Column(JSON, nullable=True)
     unit_of_measure = Column(String, nullable=True)
     palladium_last_synced_at = Column(DateTime, nullable=True)
+    supplier_details_json = Column(JSON, nullable=True)
     
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
