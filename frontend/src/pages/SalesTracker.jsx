@@ -2030,11 +2030,21 @@ export default function SalesTracker() {
             
             const safeOrderRef = orderName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
 
+            const parseExcelNumber = (val) => {
+              if (val === undefined || val === null || val === '') return 0;
+              if (typeof val === 'number') return val;
+              const s = String(val).trim().replace(/\s/g, '');
+              if (/,\d{1,2}$/.test(s) && !s.includes('.')) {
+                return parseFloat(s.replace(',', '.')) || 0;
+              }
+              return parseFloat(s.replace(/,/g, '')) || 0;
+            };
+
             const depositInvoiceSent = getVal('D90') || 'No';
             const depositPaymentDate = parseExcelDate(sheet['D95'] ? sheet['D95'].v : undefined);
             const balancePaymentDate = parseExcelDate(sheet['D96'] ? sheet['D96'].v : undefined);
-            const depositValue = Number(sheet['G95'] ? sheet['G95'].v : 0) || 0;
-            const balanceValue = Number(sheet['G96'] ? sheet['G96'].v : 0) || 0;
+            const depositValue = parseExcelNumber(sheet['G95'] ? sheet['G95'].v : 0);
+            const balanceValue = parseExcelNumber(sheet['G96'] ? sheet['G96'].v : 0);
             let amountPaid = 0;
             if (depositPaymentDate || depositValue > 0) amountPaid += depositValue;
             if (balancePaymentDate || balanceValue > 0) amountPaid += balanceValue;
@@ -2045,14 +2055,14 @@ export default function SalesTracker() {
                 return cell ? cell.v : undefined;
               };
 
-              const qty = Number(getRowVal('B'));
+              const qty = parseExcelNumber(getRowVal('B'));
               if (isNaN(qty) || qty === 0) continue;
 
               const oneOneCode = String(getRowVal('C') || '').trim();
               const itemCode = String(getRowVal('D') || '').trim();
               const description = String(getRowVal('E') || '').trim();
-              const unitRetail = Number(getRowVal('F')) || 0;
-              const unitCost = Number(getRowVal('I')) || 0;
+              const unitRetail = parseExcelNumber(getRowVal('F'));
+              const unitCost = parseExcelNumber(getRowVal('I'));
               const brand = String(getRowVal('L') || '').trim();
               const supplier = String(getRowVal('M') || '').trim();
               const productType = String(getRowVal('N') || '').trim() || 'Hardware';
