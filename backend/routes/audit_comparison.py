@@ -551,18 +551,30 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     red_ranges = []  # list of (start_row, end_row, start_col, end_col) for Google Sheet formatting
 
     def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
-        # Exclude columns requested by user or that are system-generated
+        # Exclude columns requested by user or that are system-generated / optional tracking
         EXCLUDED_DIFF_COLUMNS = {
             "Item ID",
             "Item Type",
             "Stock Status",
             "Stock on Hand",
             "Qty Ordered (PO)",
+            "PO Reference",
+            "Date Ordered",
+            "Delivery ETA",
+            "Qty REC",
+            "Date REC",
+            "GRN Reference",
+            "Qty INV",
+            "Invoice Reference",
+            "Date INV",
             "Qty DEL",
             "Date DEL",
             "Delivery Reference",
             "Delivery Comments",
-            "Sheet Order Status"
+            "Sheet Order Status",
+            "Deposit Invoice Sent",
+            "Deposit Payment Date",
+            "Balance Payment Date"
         }
         if col_name in EXCLUDED_DIFF_COLUMNS:
             return True
@@ -570,8 +582,8 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         v1_str = str(val1).strip() if val1 is not None else ""
         v2_str = str(val2).strip() if val2 is not None else ""
 
-        # Treat blank, empty string, None, "—", "null" as equivalent
-        if v1_str in {"", "—", "None", "null", "undefined"} and v2_str in {"", "—", "None", "null", "undefined"}:
+        # Treat blank, empty string, None, "—", "null" as equivalent (or if either is blank on optional metadata)
+        if (not v1_str or v1_str in {"", "—", "None", "null", "undefined"}) and (not v2_str or v2_str in {"", "—", "None", "null", "undefined"}):
             return True
 
         # Numeric columns or any monetary/quantity columns
