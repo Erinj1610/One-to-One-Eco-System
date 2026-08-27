@@ -2507,58 +2507,66 @@ export default function ProductsPage() {
 
                         return (
                           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                            <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0, textAlign: 'left' }}>
+                            <table className="table" style={{ width: '100%', fontSize: '11.5px', margin: 0, textAlign: 'left', whiteSpace: 'nowrap' }}>
                               <thead>
                                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                                  <th style={{ padding: '8px 10px', width: '40px', textAlign: 'center' }}>#</th>
+                                  <th style={{ padding: '8px 12px' }}>Number</th>
                                   <th style={{ padding: '8px 12px' }}>Vendor Name</th>
                                   <th style={{ padding: '8px 12px' }}>Vendor Item Code</th>
                                   <th style={{ padding: '8px 12px' }}>Vendor Item Description</th>
                                   <th style={{ padding: '8px 10px', textAlign: 'center' }}>Warranty</th>
                                   <th style={{ padding: '8px 12px', textAlign: 'right' }}>Vendor Price</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Exchange</th>
                                   <th style={{ padding: '8px 12px', textAlign: 'right' }}>Local Price</th>
                                   <th style={{ padding: '8px 10px', textAlign: 'center' }}>Disc %</th>
-                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Landed Factor %</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Landed Cost Factor %</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Estimated Landed</th>
                                   <th style={{ padding: '8px 10px', textAlign: 'center' }}>Preferred</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {vendorList.map((vend, idx) => (
                                   <tr key={idx}>
-                                    <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                                      {idx + 1}
+                                    <td style={{ padding: '9px 12px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                      {vend.vendor_number || vend.vend_code || vend.vendor_name || '-'}
                                     </td>
-                                    <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                       {vend.vendor_name || vend.vend_code || '-'}
                                     </td>
-                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
                                       {vend.vendor_item_code || vend.vend_item_code || '-'}
                                     </td>
-                                    <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '280px' }}>
+                                    <td style={{ padding: '9px 12px', color: 'var(--text-secondary)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                       {vend.vendor_item_desc || vend.vend_item_desc || '-'}
                                     </td>
-                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                      {vend.warranty_days ? `${vend.warranty_days} Days` : '-'}
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {vend.warranty_days !== undefined ? vend.warranty_days : 0}
                                     </td>
-                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                                      R {(vend.vendor_price !== undefined ? vend.vendor_price : (vend.vend_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>
+                                      {(vend.vendor_price !== undefined ? vend.vendor_price : (vend.vend_price || 0)).toFixed(2)}
                                     </td>
-                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                      R {(vend.local_price !== undefined ? vend.local_price : (vend.vend_local_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.exchange_rate !== undefined ? vend.exchange_rate : 1.0).toFixed(4)}
                                     </td>
-                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                      {vend.discount_pct || 0}%
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {(vend.local_price !== undefined ? vend.local_price : (vend.vend_local_price || 0)).toFixed(2)}
                                     </td>
-                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                      {vend.landed_cost_factor_pct || 0}%
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.discount_pct !== undefined ? vend.discount_pct : 0).toFixed(2)}
                                     </td>
-                                    <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.landed_cost_factor_pct !== undefined ? vend.landed_cost_factor_pct : 0).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {(vend.estimated_landed !== undefined ? vend.estimated_landed : (vend.local_price || 0)).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center' }}>
                                       {vend.is_preferred ? (
-                                        <span className="badge b-success" style={{ fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
-                                          ⭐ Preferred
+                                        <span style={{ color: '#10b981', fontSize: '14px', fontWeight: 700 }}>
+                                          ☑
                                         </span>
                                       ) : (
-                                        <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>-</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>☐</span>
                                       )}
                                     </td>
                                   </tr>

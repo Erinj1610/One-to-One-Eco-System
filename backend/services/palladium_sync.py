@@ -93,19 +93,18 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         p_cursor.execute("""
             SELECT 
                 iv.strPartNumber AS sku,
-                iv.strVendName AS vendor_name,
+                iv.strVendName AS vendor_number,
+                COALESCE(v.strVendDesc, iv.strVendName) AS vendor_name,
                 iv.strItemCode AS vendor_item_code,
                 iv.strItemDesc AS vendor_item_desc,
                 iv.intWarrantyDays AS warranty_days,
                 iv.decPrice AS vendor_price,
+                CAST(1.0000 AS decimal(18,4)) AS exchange_rate,
                 iv.decLocalPrice AS local_price,
                 iv.decDiscPerc AS discount_pct,
                 iv.decLandedCostFactor AS landed_cost_factor_pct,
-                iv.bitPreferred AS is_preferred,
-                v.strPhone AS phone,
-                v.strEmail AS email,
-                v.strCity AS city,
-                v.strProvince AS province
+                CAST((iv.decLocalPrice * (1.0 + (COALESCE(iv.decLandedCostFactor, 0.0) / 100.0))) AS decimal(18,2)) AS estimated_landed,
+                iv.bitPreferred AS is_preferred
             FROM tblInvVend iv
             LEFT JOIN tblVendors v ON iv.strVendName = v.strVendName
             ORDER BY iv.strPartNumber, iv.bitPreferred DESC;
@@ -125,26 +124,25 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 "alloc": float(lr['alloc'] or 0.0)
             }
 
-        # Map list of vendors by SKU
+        # Map list of vendors with complete 12 columns by SKU
         vend_map = {}
         for vr in vend_rows:
             sku = str(vr['sku']).strip()
             if sku not in vend_map:
                 vend_map[sku] = []
             vend_map[sku].append({
+                "vendor_number": str(vr.get('vendor_number') or '').strip(),
                 "vendor_name": str(vr.get('vendor_name') or '').strip(),
                 "vendor_item_code": str(vr.get('vendor_item_code') or '').strip(),
                 "vendor_item_desc": str(vr.get('vendor_item_desc') or '').strip(),
                 "warranty_days": int(vr.get('warranty_days') or 0),
                 "vendor_price": float(vr.get('vendor_price') or 0.0),
+                "exchange_rate": float(vr.get('exchange_rate') or 1.0),
                 "local_price": float(vr.get('local_price') or 0.0),
                 "discount_pct": float(vr.get('discount_pct') or 0.0),
                 "landed_cost_factor_pct": float(vr.get('landed_cost_factor_pct') or 0.0),
-                "is_preferred": bool(vr.get('is_preferred')),
-                "phone": str(vr.get('phone') or '').strip(),
-                "email": str(vr.get('email') or '').strip(),
-                "city": str(vr.get('city') or '').strip(),
-                "province": str(vr.get('province') or '').strip()
+                "estimated_landed": float(vr.get('estimated_landed') or 0.0),
+                "is_preferred": bool(vr.get('is_preferred'))
             })
 
         # 5. Fetch existing products from Portal Cloud SQL for matching
