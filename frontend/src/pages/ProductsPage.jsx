@@ -1912,7 +1912,6 @@ export default function ProductsPage() {
                   { id: 'specs', label: 'Specifications' },
                   { id: 'costing', label: 'Costing' },
                   { id: 'history', label: 'Stock History' },
-                  { id: 'audit', label: '📜 Audit Trail & History' },
                   { id: 'accessories', label: '⚡ Linked Drivers & Accessories' }
                 ].map(t => (
                   <button
@@ -1929,7 +1928,6 @@ export default function ProductsPage() {
                     onClick={() => {
                       setActiveTab(t.id);
                       if (t.id === 'history' && activeProduct?.sku) fetchStockHistory(activeProduct.sku);
-                      if (t.id === 'audit' && activeProduct?.id) fetchAuditLogs(activeProduct.id);
                       if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
                     }}
                   >
@@ -2819,50 +2817,7 @@ export default function ProductsPage() {
                   </div>
                 )}
 
-                {/* 5. AUDIT TRAIL VIEW */}
-                {activeTab === 'audit' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>📜 Product Modification Audit Trail (Cloud SQL Log)</h4>
-                        <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }} onClick={() => fetchAuditLogs(activeProduct.id)}>🔄 Refresh Log</button>
-                      </div>
-
-                      {isLoadingAuditLogs ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading database audit history...</div>
-                      ) : auditLogs.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                          No audit log entries recorded for this SKU yet. Any cell edits made in Bulk Grid or Workspace will log here permanently.
-                        </div>
-                      ) : (
-                        <table className="table" style={{ width: '100%', fontSize: '12px' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-secondary)' }}>
-                              <th>Timestamp</th>
-                              <th>Field Changed</th>
-                              <th>Old Value</th>
-                              <th>New Value</th>
-                              <th>Modified By</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {auditLogs.map((log) => (
-                              <tr key={log.id}>
-                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{log.timestamp}</td>
-                                <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{log.field_changed}</td>
-                                <td style={{ color: 'var(--text-danger)', fontFamily: 'monospace' }}>{log.old_value || '(empty)'}</td>
-                                <td style={{ color: 'var(--text-success)', fontFamily: 'monospace', fontWeight: 600 }}>{log.new_value}</td>
-                                <td>{log.updated_by_name}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* 6. LINKED ACCESSORIES & DRIVERS VIEW */}
+                {/* 4. LINKED ACCESSORIES & DRIVERS VIEW */}
                 {activeTab === 'accessories' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
