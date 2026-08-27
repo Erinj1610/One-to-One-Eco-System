@@ -2415,162 +2415,240 @@ export default function ProductsPage() {
                   </fieldset>
                 )}
 
-                {/* 2. COSTING VIEW */}
+                {/* 2. COSTING & COMMERCIAL STRUCTURE VIEW */}
                 {activeTab === 'costing' && (
-                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
-                    {/* Supplier Costing Breakdown */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Supplier & Costing Breakdown</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
+                    {/* 1. TOP COMMERCIAL KPI SUMMARY CARDS */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                      
+                      {/* RRP Selling Price */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          🏷️ RRP Selling Price (Excl. VAT)
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-info)', marginTop: '6px' }}>
+                          R {(activeProduct.retailPrice || activeProduct.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          R {((activeProduct.retailPrice || activeProduct.retail_price || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Incl. 15% VAT)
+                        </span>
+                      </div>
+
+                      {/* Supplier Unit Cost */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          📦 Supplier Unit Cost (Last PP)
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                          R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Source: Palladium ERP Last PP
+                        </span>
+                      </div>
+
+                      {/* Gross Profit per Unit */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          💵 Unit Gross Profit
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '6px' }}>
+                          R {Math.max(0, (activeProduct.retailPrice || 0) - (activeProduct.unitCost || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Per Unit Sold
+                        </span>
+                      </div>
+
+                      {/* Gross Profit Margin % */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          📈 Profit Margin & Mark-Up
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '6px' }}>
+                          {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0.0'}%
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Mark-Up: {activeProduct.unitCost > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.unitCost) * 100).toFixed(1) : '0.0'}%
+                        </span>
+                      </div>
+
+                      {/* Total Warehouse Stock Valuation */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          🏢 Stock Valuation (On Hand)
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                          R {((activeProduct.stock_on_hand || activeProduct.stock || 0) * (activeProduct.unitCost || activeProduct.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                          {activeProduct.stock_on_hand || activeProduct.stock || 0} {activeProduct.unit_of_measure || 'Units'} Physical Stock
+                        </span>
+                      </div>
+
+                    </div>
+
+                    {/* 2. COMMERCIAL PRICING & MARGIN TABLE */}
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>💰 Commercial Pricing Structure</h4>
+                        <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>Pricelist: REGULAR</span>
+                      </div>
+                      <table className="table" style={{ width: '100%', fontSize: '12.5px', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Supplier</th>
-                            <th>Brand</th>
-                            <th style={{ textAlign: 'right' }}>Cost Price (R)</th>
-                            <th style={{ textAlign: 'right' }}>Internal Cost (R)</th>
-                            <th style={{ textAlign: 'center' }}>Mark-Up %</th>
-                            <th style={{ textAlign: 'right' }}>Landed Cost (R)</th>
-                            <th style={{ textAlign: 'center' }}>Last Updated</th>
+                            <th style={{ padding: '8px 12px' }}>Tier / Line Item</th>
+                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>Price (Excl. VAT)</th>
+                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>VAT (15%)</th>
+                            <th style={{ textAlign: 'right', padding: '8px 12px' }}>Price (Incl. VAT)</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Gross Margin</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Mark-Up</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
-                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{formFields.supplier || activeProduct.supplier}</td>
-                            <td>{formFields.brand || activeProduct.brand}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
-                                value={formFields.cost_price || ''}
-                                onChange={e => {
-                                  const cost = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, cost_price: cost });
-                                }}
-                              />
+                            <td style={{ fontWeight: 600, padding: '10px 12px' }}>
+                              <div>RRP Selling Price (Regular)</div>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Primary selling price for standard quotations & orders</span>
                             </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
-                                value={formFields.internal_cost || ''}
-                                onChange={e => {
-                                  const ic = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, internal_cost: ic });
-                                }}
-                              />
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-info)', padding: '10px 12px' }}>
+                              R {(activeProduct.retailPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <input 
-                                type="text" 
-                                style={{ width: '70px', height: '28px', fontSize: '12px', textAlign: 'center', display: 'inline-block' }}
-                                value={formFields.markup || ''}
-                                onChange={e => setFormFields({ ...formFields, markup: e.target.value })}
-                              />
+                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
+                              R {((activeProduct.retailPrice || 0) * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{activeProduct.costing?.lastUpdated || 'Jan 25, 2026'}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '10px 12px' }}>
+                              R {((activeProduct.retailPrice || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '10px 12px' }}>
+                              <span className="badge b-success" style={{ fontWeight: 700, padding: '3px 8px' }}>
+                                {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0'}% margin
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 600, padding: '10px 12px' }}>
+                              {activeProduct.unitCost > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.unitCost) * 100).toFixed(1) : '0'}%
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style={{ fontWeight: 600, padding: '10px 12px' }}>
+                              <div>Supplier Unit Cost (Last PP)</div>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Recorded unit purchase cost from Palladium ERP</span>
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '10px 12px' }}>
+                              R {(activeProduct.unitCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
+                              R {((activeProduct.unitCost || 0) * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--text-secondary)', padding: '10px 12px' }}>
+                              R {((activeProduct.unitCost || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '10px 12px' }}>Base Cost</td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '10px 12px' }}>-</td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
 
-                    {/* Pricing Tiers & Margin Structure */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Pricing & Margin Structure</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Customer Tier</th>
-                            <th style={{ textAlign: 'right' }}>Target Price (R)</th>
-                            <th style={{ textAlign: 'center' }}>Projected Margin %</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td style={{ fontWeight: 600 }}>RRP Price (Selling Price)</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
-                                value={formFields.recommended_retail_price || ''}
-                                onChange={e => {
-                                  const rrp = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, recommended_retail_price: rrp });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge b-success" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                                {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}% margin
-                              </span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontWeight: 600 }}>Trade / Partner Price</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
-                                value={formFields.trade_price || ''}
-                                onChange={e => {
-                                  const trade = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, trade_price: trade });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge b-info" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                                {formFields.trade_price > 0 ? Math.round(((formFields.trade_price - formFields.cost_price) / formFields.trade_price) * 100) : 0}% margin
-                              </span>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                    {/* 3. LIVE INVENTORY & WAREHOUSE LOCATION BREAKDOWN */}
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>🏢 Live Warehouse Stock & Allocations</h4>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                          Unit of Measure: <strong>{activeProduct.unit_of_measure || 'EA'}</strong> | Lead Time: <strong>{activeProduct.lead_time || 'In Stock'}</strong>
+                        </span>
+                      </div>
 
-                    {/* Costing KPI row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Projected Margin %</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>
-                          {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}%
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Available to Sell</span>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: (activeProduct.stock_available || activeProduct.stock || 0) > 0 ? '#10b981' : 'var(--text-danger)', marginTop: '4px' }}>
+                            {activeProduct.stock_available !== undefined ? activeProduct.stock_available : (activeProduct.stock || 0)}
+                          </div>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Physical On Hand</span>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+                            {activeProduct.stock_on_hand !== undefined ? activeProduct.stock_on_hand : (activeProduct.stock || 0)}
+                          </div>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Allocated to Orders</span>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>
+                            {activeProduct.stock_allocated || 0}
+                          </div>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Incoming (On PO)</span>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
+                            {activeProduct.stock_on_order || 0}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Landed Cost</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Price</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {(formFields.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Net Profit per Unit</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>R {Math.max(0, (formFields.recommended_retail_price || 0) - (formFields.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
+
+                      {/* Detailed Location Breakdown Rows */}
+                      {activeProduct.stock_locations_json && Object.keys(activeProduct.stock_locations_json).length > 0 ? (
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                          <div style={{ background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                            Warehouse Breakdown
+                          </div>
+                          <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0 }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg-primary)' }}>
+                                <th style={{ padding: '6px 12px' }}>Location / Bin</th>
+                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>On Hand</th>
+                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>Available</th>
+                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>Allocated</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(activeProduct.stock_locations_json).map(([locName, locData]) => (
+                                <tr key={locName}>
+                                  <td style={{ fontWeight: 600, padding: '8px 12px' }}>
+                                    {locName === 'STOCK' ? '🏢 Main Warehouse (STOCK)' : locName === 'PROJECT' ? '📋 Project Allocated (PROJECT)' : locName === 'FAULT' ? '⚠️ Fault / QA (FAULT)' : locName}
+                                  </td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600, padding: '8px 12px' }}>{locData.on_hand || 0}</td>
+                                  <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 600, padding: '8px 12px' }}>{locData.avail || 0}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-warning)', padding: '8px 12px' }}>{locData.alloc || 0}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                          No multi-warehouse allocation records. All stock managed under standard inventory.
+                        </div>
+                      )}
                     </div>
 
-                    {/* Contact Info & Terms footer */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', borderTop: '1px solid var(--border)', paddingTop: '18px' }}>
+                    {/* 4. PALLADIUM ERP METADATA & RECONCILIATION */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 18px', fontSize: '12px' }}>
                       <div>
-                        <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Supplier Contact Info</h5>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Globe size={13} /> <a href={`https://${activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}`} target="_blank" rel="noreferrer">{activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}</a></span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Mail size={13} /> {activeProduct.costing?.contactInfo?.email || 'orders@eldc.co.za'}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={13} /> {activeProduct.costing?.contactInfo?.phone || '+27 (0) 21 448 8658'}</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>ERP Part Number / SKU:</span>
+                        <div style={{ fontWeight: 700, fontFamily: 'monospace', marginTop: '2px' }}>{activeProduct.sku}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)' }}>ERP Category:</span>
+                        <div style={{ fontWeight: 700, marginTop: '2px' }}>{activeProduct.category || '-'} ({activeProduct.family || 'Standard'})</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-secondary)' }}>Last Synced with Palladium:</span>
+                        <div style={{ fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
+                          {activeProduct.palladium_last_synced_at ? new Date(activeProduct.palladium_last_synced_at).toLocaleString() : 'Live'}
                         </div>
                       </div>
                       <div>
-                        <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Fulfillment Terms</h5>
-                        <p style={{ margin: 0, fontSize: '12px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                          {activeProduct.costing?.terms || 'Standard payment structure: 50% deposit, balance paid in full prior to release.'}
-                        </p>
+                        <span style={{ color: 'var(--text-secondary)' }}>ERP Data Source:</span>
+                        <div style={{ fontWeight: 700, marginTop: '2px' }}>paldbOnetoOneLive (MS SQL)</div>
                       </div>
                     </div>
+
                   </div>
-                  </fieldset>
                 )}
 
                 {/* 3. SUPPLIER DETAILS VIEW */}
