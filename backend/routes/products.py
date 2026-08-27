@@ -854,3 +854,46 @@ def delete_product_accessory(product_id: int, accessory_link_id: int, db: Sessio
     db.delete(acc)
     db.commit()
     return {"message": "Unlinked accessory successfully."}
+
+@public_router.get("/specs-sheet-info")
+def get_specs_sheet_info(db: Session = Depends(get_db)):
+    from models.orm_models import PortalSetting
+    setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
+    if setting and setting.value and isinstance(setting.value, dict):
+        return {
+            "configured": True,
+            **setting.value
+        }
+    return {
+        "configured": False,
+        "spreadsheet_id": None,
+        "spreadsheet_url": None,
+        "last_synced_at": None
+    }
+
+@public_router.post("/generate-specs-sheet")
+def create_specs_sheet_endpoint(db: Session = Depends(get_db)):
+    try:
+        from services.google_sheet_specs_service import generate_specs_master_sheet
+        res = generate_specs_master_sheet(db=db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@public_router.post("/sync-sheet-specs")
+def sync_sheet_specs_endpoint(db: Session = Depends(get_db)):
+    try:
+        from services.google_sheet_specs_service import sync_specs_from_sheet
+        res = sync_specs_from_sheet(db=db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@public_router.post("/sync-new-items-to-inbox")
+def sync_new_items_to_inbox_endpoint(db: Session = Depends(get_db)):
+    try:
+        from services.google_sheet_specs_service import sync_new_items_to_inbox
+        res = sync_new_items_to_inbox(db=db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

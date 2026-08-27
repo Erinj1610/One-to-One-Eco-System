@@ -22,6 +22,7 @@ from routes.deployments import router as deployments_router
 from routes.audit_comparison import router as audit_comparison_router
 from routes.project_tickets import router as project_tickets_router
 from routes.clients import router as clients_router
+from routes.palladium import router as palladium_router, public_router as palladium_public_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -86,6 +87,8 @@ app.include_router(deployments_router, prefix="/api/admin", tags=["deployments"]
 app.include_router(audit_comparison_router, prefix="/api/admin", tags=["audit-comparison"])
 app.include_router(project_tickets_router, prefix="/api/project-tickets", tags=["project-tickets"])
 app.include_router(clients_router, prefix="/api/clients", tags=["clients"])
+app.include_router(palladium_router, prefix="/api", tags=["palladium"])
+app.include_router(palladium_public_router, prefix="/api", tags=["palladium"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles

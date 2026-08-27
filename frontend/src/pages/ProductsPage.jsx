@@ -3,7 +3,8 @@ import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
-  Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings
+  Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
+  RefreshCw, ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -436,21 +437,23 @@ const ProductCADRenderer = ({ cutout = 'Ø76mm' }) => {
 };
 
 // SVG Stock Level Trend Line Chart
-const StockTrendChart = ({ history }) => {
-  if (!history || history.length === 0) return null;
-  
-  const balances = [...history].reverse().map(h => h.balance);
-  const dates = [...history].reverse().map(h => h.date);
+const StockTrendChart = ({ chartPoints = [], currentStock = 0 }) => {
+  const pointsData = chartPoints && chartPoints.length > 0
+    ? chartPoints 
+    : [{ date: 'Today', balance: currentStock }];
+
+  const balances = pointsData.map(h => h.balance);
+  const dates = pointsData.map(h => h.date);
 
   const maxVal = Math.max(...balances, 10) * 1.25;
-  const chartWidth = 550;
-  const chartHeight = 160;
-  const paddingX = 40;
-  const paddingY = 25;
+  const chartWidth = 650;
+  const chartHeight = 170;
+  const paddingX = 45;
+  const paddingY = 30;
   
   const points = balances.map((val, idx) => {
     const x = paddingX + (idx * (chartWidth - paddingX * 2)) / (balances.length - 1 || 1);
-    const y = chartHeight - paddingY - (val * (chartHeight - paddingY * 2)) / maxVal;
+    const y = chartHeight - paddingY - (val * (chartHeight - paddingY * 2)) / (maxVal || 1);
     return { x, y, val, date: dates[idx] };
   });
 
@@ -465,7 +468,7 @@ const StockTrendChart = ({ history }) => {
         <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <TrendingUp size={15} color="var(--text-info)" /> Inventory Stock Trend History
         </h4>
-        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Based on recent transactions & audits</span>
+        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Live Palladium ERP stock movement ledger</span>
       </div>
       
       <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} style={{ overflow: 'visible' }}>
@@ -538,6 +541,7 @@ export default function ProductsPage() {
       reorderLevel: p.reorder_level || 100,
       status: p.status || (p.is_active === false ? 'Inactive' : 'Active'),
       is_active: p.is_active !== undefined ? p.is_active : p.status !== 'Inactive',
+      supplier_details_json: p.supplier_details_json || [],
       costing: p.costing || {
         supplierSku: p.sku,
         supplierUnitCost: p.cost_price || 0.0,
@@ -585,6 +589,9 @@ export default function ProductsPage() {
     }
   };
 
+  const [palladiumStatus, setPalladiumStatus] = useState(null);
+  const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
+
   // Fetch lightweight KPI summary counts
   const fetchSummary = async () => {
     try {
@@ -593,14 +600,45 @@ export default function ProductsPage() {
     } catch (_) {}
   };
 
+  const fetchPalladiumStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/status`);
+      if (res.ok) setPalladiumStatus(await res.json());
+    } catch (_) {}
+  };
+
+  const handleTriggerPalladiumSync = async () => {
+    setIsSyncingPalladium(true);
+    triggerToast("Starting 100% read-only Palladium ERP synchronization...");
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/sync`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`🎉 ${data.message || 'Palladium sync completed successfully!'}`);
+        fetchPage({ page: 1 });
+        fetchSummary();
+        fetchPalladiumStatus();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Palladium Sync Notice: ${err.detail || 'Failed to sync with Palladium ERP.'}`);
+      }
+    } catch (e) {
+      alert(`Palladium Connection Error: ${e.message}`);
+    } finally {
+      setIsSyncingPalladium(false);
+    }
+  };
+
   // Backwards-compat alias used by import handler
   const fetchProducts = () => {
     fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
     fetchSummary();
+    fetchPalladiumStatus();
   };
 
   useEffect(() => {
     fetchSummary();
+    fetchPalladiumStatus();
     fetchPage({ page: 1 });
   }, []);
 
@@ -626,7 +664,101 @@ export default function ProductsPage() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
 
-  // 4. Excel Import Progress Modal State
+  // 3. Stock History State (Live from Palladium)
+  const [stockHistoryData, setStockHistoryData] = useState(null);
+  const [isLoadingStockHistory, setIsLoadingStockHistory] = useState(false);
+
+  const fetchStockHistory = async (sku) => {
+    if (!sku) return;
+    setIsLoadingStockHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/products/${encodeURIComponent(sku)}/stock-history`);
+      if (res.ok) {
+        const data = await res.json();
+        setStockHistoryData(data);
+      } else {
+        setStockHistoryData(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stock history:', err);
+      setStockHistoryData(null);
+    } finally {
+      setIsLoadingStockHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history' && selectedSku) {
+      fetchStockHistory(selectedSku);
+    }
+  }, [activeTab, selectedSku]);
+
+  // 4. Google Sheets Specifications Master State
+  const [specsSheetInfo, setSpecsSheetInfo] = useState({ configured: false, spreadsheet_url: '', last_synced_at: '' });
+  const [isSyncingSheetSpecs, setIsSyncingSheetSpecs] = useState(false);
+  const [isGeneratingSheet, setIsGeneratingSheet] = useState(false);
+
+  const fetchSpecsSheetInfo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/specs-sheet-info`);
+      if (res.ok) {
+        const data = await res.json();
+        setSpecsSheetInfo(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch specs sheet info", e);
+    }
+  };
+
+  const handleGenerateSpecsSheet = async () => {
+    setIsGeneratingSheet(true);
+    triggerToast("Generating Master Product Specifications Google Sheet in Google Drive...");
+    try {
+      const res = await fetch(`${API_BASE}/api/products/generate-specs-sheet`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast("🎉 Google Sheet created and populated successfully in Drive!");
+        setSpecsSheetInfo(data);
+        if (data.spreadsheet_url) {
+          window.open(data.spreadsheet_url, '_blank');
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Sheet Generation Error: ${err.detail || 'Failed to generate sheet'}`);
+      }
+    } catch (e) {
+      alert(`Connection error: ${e.message}`);
+    } finally {
+      setIsGeneratingSheet(false);
+    }
+  };
+
+  const handleSyncSheetSpecs = async () => {
+    setIsSyncingSheetSpecs(true);
+    triggerToast("Synchronizing specifications & images from Google Sheet...");
+    try {
+      const res = await fetch(`${API_BASE}/api/products/sync-sheet-specs`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`🎉 ${data.message || 'Specifications synchronized successfully!'}`);
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchSpecsSheetInfo();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Sheet Sync Notice: ${err.detail || 'Failed to sync with Google Sheet'}`);
+      }
+    } catch (e) {
+      alert(`Connection error: ${e.message}`);
+    } finally {
+      setIsSyncingSheetSpecs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpecsSheetInfo();
+  }, []);
+
+  // 5. Excel Import Progress Modal State
   const [importProgress, setImportProgress] = useState({
     isImporting: false,
     totalRows: 0,
@@ -1478,6 +1610,16 @@ export default function ProductsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
+                  {palladiumStatus?.last_synced_at && (
+                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                      ● Palladium ERP Synced ({(() => {
+                        const d = palladiumStatus.last_synced_at;
+                        const str = String(d);
+                        const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()})
+                    </span>
+                  )}
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
                   📦 {getModuleName('products', 'Products')} Master Database
@@ -1485,40 +1627,28 @@ export default function ProductsPage() {
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
-                  onClick={() => setShowBulkRepricingModal(true)}
+                  onClick={handleTriggerPalladiumSync}
+                  disabled={isSyncingPalladium}
                   className="btn btn-ghost"
-                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
+                  title="100% Read-Only Sync from Palladium ERP Database"
+                  style={{ 
+                    border: '1px solid #10b981', 
+                    color: '#10b981', 
+                    background: 'rgba(16, 185, 129, 0.08)', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    fontSize: '12px', 
+                    height: '36px',
+                    fontWeight: 600
+                  }}
                 >
-                  🏷️ Bulk Re-Pricing (% Shift)
+                  <RefreshCw size={14} className={isSyncingPalladium ? 'animate-spin' : ''} />
+                  {isSyncingPalladium ? 'Syncing Palladium...' : 'Sync Palladium ERP'}
                 </button>
-
-                <button
-                  onClick={() => setIsBulkGridMode(!isBulkGridMode)}
-                  className={`btn ${isBulkGridMode ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
-                >
-                  ⚡ {isBulkGridMode ? 'Exit Bulk Grid' : 'Product Manager Bulk Grid'}
-                </button>
-
-                {isBulkGridMode && Object.keys(gridEdits).length > 0 && (
-                  <button 
-                    onClick={handleCommitGridEdits} 
-                    className="btn btn-success" 
-                    style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
-                  >
-                    💾 Save All Changes ({Object.keys(gridEdits).length} Row(s))
-                  </button>
-                )}
 
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <Download size={14} /> Download Template / Export
-                </button>
-                <label className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <FileText size={14} /> Bulk Import (Excel)
-                  <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleBulkImportExcel} />
-                </label>
-                <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-                  <Plus size={15} /> Create Product SKU
+                  <Download size={14} /> Export Product Database
                 </button>
               </div>
             </div>
@@ -1729,102 +1859,27 @@ export default function ProductsPage() {
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                       
                       {/* DESCRIPTION / NAME */}
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="text" 
-                            style={{ 
-                              width: '100%', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              background: gridEdits[p.id]?.name !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.name !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.name !== undefined ? gridEdits[p.id].name : p.name}
-                            onChange={e => handleGridCellChange(p.id, 'name', e.target.value)}
-                          />
-                        ) : (
-                          p.name
-                        )}
-                      </td>
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
 
                       <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
                       
-                      {/* UNIT COST */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            style={{ 
-                              width: '85px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'right',
-                              background: gridEdits[p.id]?.cost_price !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.cost_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.cost_price !== undefined ? gridEdits[p.id].cost_price : (p.unitCost || p.cost_price || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'cost_price', e.target.value)}
-                          />
-                        ) : (
-                          `R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        )}
+                      {/* SUPPLIER COST PRICE */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                        {`R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </td>
 
                       {/* RRP RETAIL PRICE */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            style={{ 
-                              width: '85px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              background: gridEdits[p.id]?.retail_price !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.retail_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.retail_price !== undefined ? gridEdits[p.id].retail_price : (p.retailPrice || p.retail_price || p.recommended_retail_price || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'retail_price', e.target.value)}
-                          />
-                        ) : (
-                          `R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        )}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                        {`R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </td>
 
                       {/* STOCK LEVEL (CLEAN NUMERIC DISPLAY) */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            style={{ 
-                              width: '65px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'center',
-                              fontWeight: 600,
-                              background: gridEdits[p.id]?.stock_level !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.stock_level !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.stock_level !== undefined ? gridEdits[p.id].stock_level : (p.stock || p.stock_level || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'stock_level', e.target.value)}
-                          />
-                        ) : (
-                          p.stock || p.stock_level || 0
-                        )}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>
+                        <span className={`badge ${(p.stock || p.stock_level || 0) > 0 ? 'b-success' : 'b-secondary'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                          {p.stock || p.stock_level || 0}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -1904,95 +1959,20 @@ export default function ProductsPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: '8px' }}>
-                  {isEditing ? (
-                    <>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Item Availability:</span>
-                        <select
-                          className="form-control"
-                          style={{ width: '150px', height: '30px', padding: '2px 6px', fontSize: '12px', fontWeight: 600 }}
-                          value={editingStatus}
-                          onChange={e => setEditingStatus(e.target.value)}
-                        >
-                          <option value="Active">Active (Can be ordered)</option>
-                          <option value="Inactive">Inactive (Blocked from orders)</option>
-                        </select>
-                      </div>
+                  <span className={`badge ${activeProduct.status === 'Inactive' || !activeProduct.is_active ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                    {activeProduct.status === 'Inactive' || !activeProduct.is_active ? '🔴 Discontinued / Inactive in ERP' : '🟢 Active in Palladium ERP'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                    🔒 Palladium Single Source of Truth
+                  </span>
+                </div>
+              </div>
 
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stock Qty:</span>
-                        <input
-                          type="number"
-                          className="form-control"
-                          style={{ width: '85px', height: '30px', padding: '2px 6px', fontSize: '12px', textAlign: 'center' }}
-                          value={editingStock}
-                          onChange={e => setEditingStock(Math.max(0, parseInt(e.target.value) || 0))}
-                        />
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '6px', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          style={{ height: '30px', fontSize: '11.5px', padding: '0 12px' }}
-                          onClick={() => { setIsEditing(false); setEditingStatus(activeProduct.status); setEditingStock(activeProduct.stock); }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          style={{ height: '30px', fontSize: '11.5px', padding: '0 14px' }}
-                          onClick={handleCommitChanges}
-                        >
-                          Save Changes
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge ${activeProduct.status === 'Inactive' ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
-                        {activeProduct.status === 'Inactive' ? '🔴 Inactive (Blocked from orders)' : '🟢 Active (Can be ordered)'}
-                      </span>
-                      
-                      <button
-                        className="btn btn-primary btn-sm"
-                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => setIsEditing(true)}
-                      >
-                        ✏️ Edit Item
-                      </button>
-
-                      <button
-                        className={`btn btn-sm ${activeProduct.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
-                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        title={activeProduct.status === 'Inactive' ? 'Make item Active for new orders' : 'Mark item Inactive (Block from new orders)'}
-                        onClick={async () => {
-                          const nextStatus = activeProduct.status === 'Inactive' ? 'Active' : 'Inactive';
-                          if (!window.confirm(`Set SKU '${activeProduct.sku}' to '${nextStatus}'? (Inactive items cannot be added to new orders while keeping past order history intact).`)) return;
-                          try {
-                            const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ ...activeProduct, status: nextStatus, is_active: nextStatus === 'Active' })
-                            });
-                            if (res.ok) {
-                              const updatedData = await res.json();
-                              triggerToast(`Product SKU '${activeProduct.sku}' is now ${nextStatus}.`);
-                              setProducts(prev => prev.map(item => item.id === activeProduct.id ? { ...item, status: nextStatus, is_active: nextStatus === 'Active' } : item));
-                              fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
-                              fetchSummary();
-                            } else {
-                              const errData = await res.json().catch(() => ({}));
-                              alert("Could not update item status: " + (errData.detail || "Server error"));
-                            }
-                          } catch (e) {
-                            alert("Network error: " + e.message);
-                          }
-                        }}
-                      >
-                        {activeProduct.status === 'Inactive' ? '✅ Set to Active' : '🚫 Set to Inactive'}
-                      </button>
-                    </div>
-                  )}
+              {/* READ-ONLY ERP SAFETY BANNER */}
+              <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                <ShieldCheck size={20} color="#10b981" />
+                <div>
+                  <strong>Palladium ERP Managed Record:</strong> All product names, SKUs, selling prices, cost prices, categories, and stock quantities are live-synchronized from Palladium Accounting. Editing in the portal is disabled to protect database integrity.
                 </div>
               </div>
 
@@ -2001,9 +1981,7 @@ export default function ProductsPage() {
                 {[
                   { id: 'specs', label: 'Specifications' },
                   { id: 'costing', label: 'Costing' },
-                  { id: 'supplier', label: 'Supplier Details' },
                   { id: 'history', label: 'Stock History' },
-                  { id: 'audit', label: '📜 Audit Trail & History' },
                   { id: 'accessories', label: '⚡ Linked Drivers & Accessories' }
                 ].map(t => (
                   <button
@@ -2019,7 +1997,7 @@ export default function ProductsPage() {
                     }}
                     onClick={() => {
                       setActiveTab(t.id);
-                      if (t.id === 'audit' && activeProduct?.id) fetchAuditLogs(activeProduct.id);
+                      if (t.id === 'history' && activeProduct?.sku) fetchStockHistory(activeProduct.sku);
                       if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
                     }}
                   >
@@ -2030,851 +2008,664 @@ export default function ProductsPage() {
 
               {/* ACTIVE TAB CONTENT */}
               <div className="animation-fade-in">
-                
                 {activeTab === 'specs' && (
-                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                      {/* Product Images Panel — Photo + Technical Image */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Google Sheets Specs Master Toolbar */}
+                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '16px' }}>
+                          📊
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Specifications & Digital Assets Master
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            Managed via Google Sheets • Target Drive Folder: <code>0AFF94SUUC_EQUk9PVA</code>
+                          </div>
+                        </div>
+                      </div>
 
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          style={{ fontSize: '11px', padding: '6px 14px', height: '32px' }}
+                          onClick={handleSyncSheetSpecs}
+                          disabled={isSyncingSheetSpecs}
+                        >
+                          <RefreshCw size={13} className={isSyncingSheetSpecs ? 'spin' : ''} /> {isSyncingSheetSpecs ? 'Syncing...' : 'Sync From Google Sheet'}
+                        </button>
+                        
+                        <a 
+                          href={specsSheetInfo.spreadsheet_url || "https://drive.google.com/drive/u/0/folders/0AFF94SUUC_EQUk9PVA"} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn btn-ghost btn-sm" 
+                          style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '6px 14px', height: '32px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <ExternalLink size={13} /> Open Master Sheet in Drive ↗
+                        </a>
+
+                        {!specsSheetInfo.spreadsheet_url && (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            style={{ fontSize: '11px', padding: '6px 12px', height: '32px' }}
+                            onClick={handleGenerateSpecsSheet}
+                            disabled={isGeneratingSheet}
+                          >
+                            ⚡ Generate Sheet
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Master Specs Display Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                      
+                      {/* 1. VISUAL ASSETS (Product Photo & Technical CAD Drawing) */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* Product Photo Card */}
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                            📷 Product Photo
-                          </span>
-                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              📷 Product Visual Asset
+                            </span>
+                            {activeProduct.image_url && (
+                              <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Linked</span>
+                            )}
+                          </div>
+                          <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {activeProduct.image_url ? (
                               <img
-                                src={`${API_BASE}${activeProduct.image_url}`}
+                                src={activeProduct.image_url.startsWith('http') ? activeProduct.image_url : `${API_BASE}${activeProduct.image_url}`}
                                 alt={activeProduct.name}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
                               <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductImageRenderer type={(formFields.category || 'downlight').toLowerCase()} height="160" />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo uploaded</p>
+                                <ProductImageRenderer type={(activeProduct.category || 'downlight').toLowerCase()} height="150" />
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo URL provided in Google Sheet</p>
                               </div>
                             )}
                           </div>
-                          {isEditing && (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                              📷 {activeProduct.image_url ? 'Replace Product Photo' : 'Upload Product Photo'}
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleUploadImage(activeProduct.id, e.target.files[0], 'product_image');
-                                }
-                              }} />
-                            </label>
-                          )}
                         </div>
 
-                        {/* Technical Image Card */}
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                            📐 Technical / Spec Image
-                          </span>
-                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {/* Technical / CAD Drawing Card */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              📐 Technical Dimension / CAD Drawing
+                            </span>
+                            {activeProduct.technical_image_url && (
+                              <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Linked</span>
+                            )}
+                          </div>
+                          <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {activeProduct.technical_image_url ? (
                               <img
-                                src={`${API_BASE}${activeProduct.technical_image_url}`}
+                                src={activeProduct.technical_image_url.startsWith('http') ? activeProduct.technical_image_url : `${API_BASE}${activeProduct.technical_image_url}`}
                                 alt={`${activeProduct.name} - Technical`}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
                               <div style={{ textAlign: 'center', padding: '20px' }}>
                                 <ProductCADRenderer cutout={activeProduct.cutout || 'N/A'} />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No technical image uploaded</p>
-                              </div>
-                            )}
-                          </div>
-                          {isEditing && (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                              📐 {activeProduct.technical_image_url ? 'Replace Technical Image' : 'Upload Technical Image'}
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleUploadImage(activeProduct.id, e.target.files[0], 'technical_image');
-                                }
-                              }} />
-                            </label>
-                          )}
-                        </div>
-
-                        {/* Product Name field */}
-                        <div className="form-row" style={{ textAlign: 'left' }}>
-                          <label className="form-label">Product Name</label>
-                          <input
-                            type="text"
-                            className="form-control"
-                            value={formFields.name || ''}
-                            onChange={e => setFormFields({ ...formFields, name: e.target.value })}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Custom status flags & Selection criteria */}
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <h4 style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Flags & Parameters</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Consignment</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.consignment || ''}
-                                onChange={e => setFormFields({ ...formFields, consignment: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Red List</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.red_list || ''}
-                                onChange={e => setFormFields({ ...formFields, red_list: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">First Fix</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.first_fix || ''}
-                                onChange={e => setFormFields({ ...formFields, first_fix: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Selection</label>
-                              <input 
-                                type="text"
-                                className="form-control"
-                                value={formFields.selection || ''}
-                                onChange={e => setFormFields({ ...formFields, selection: e.target.value })}
-                                placeholder="0"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Technical specifications details form grid */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-                          <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            📐 Specifications & Fitting Parameters
-                          </h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">SKU / Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.sku || ''} 
-                                onChange={e => setFormFields({ ...formFields, sku: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">One to One Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.one_to_one_code || ''} 
-                                onChange={e => setFormFields({ ...formFields, one_to_one_code: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Family / Range</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.family || ''} 
-                                onChange={e => setFormFields({ ...formFields, family: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Fitting Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.category || ''} 
-                                onChange={e => setFormFields({ ...formFields, category: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Brand</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.brand || ''} 
-                                onChange={e => setFormFields({ ...formFields, brand: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Supplier</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.supplier || ''} 
-                                onChange={e => setFormFields({ ...formFields, supplier: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Lead Time</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.lead_time || ''} 
-                                onChange={e => setFormFields({ ...formFields, lead_time: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Local / Import</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.origin || ''}
-                                onChange={e => setFormFields({ ...formFields, origin: e.target.value })}
-                              >
-                                <option value="">Select Option</option>
-                                <option value="Local">Local</option>
-                                <option value="Import">Import</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Product Colour</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.color || ''} 
-                                onChange={e => setFormFields({ ...formFields, color: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Cut-Out / Mounting</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.cutout || ''} 
-                                onChange={e => setFormFields({ ...formFields, cutout: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Light Source parameters */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Light Source specs</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Light Source Incl.</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.light_source_incl || ''}
-                                onChange={e => setFormFields({ ...formFields, light_source_incl: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Light Source Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.light_source_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, light_source_type: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Kelvin</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.kelvin || ''} 
-                                onChange={e => setFormFields({ ...formFields, kelvin: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Beam Angle</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.beam_angle || ''} 
-                                onChange={e => setFormFields({ ...formFields, beam_angle: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">CRI</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.cri || ''} 
-                                onChange={e => setFormFields({ ...formFields, cri: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">IP Rating</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.ip_rating || ''} 
-                                onChange={e => setFormFields({ ...formFields, ip_rating: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">System Power (W)</label>
-                              <input 
-                                type="number" 
-                                className="form-control" 
-                                value={formFields.system_power || ''} 
-                                onChange={e => setFormFields({ ...formFields, system_power: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Lighting Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.lighting_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, lighting_type: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Dimming and Driver details Column */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Dimming & Drivers</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Dimmable</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.dimmable || ''}
-                                onChange={e => setFormFields({ ...formFields, dimmable: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Dimming Protocol</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.dimming_protocol || ''} 
-                                onChange={e => setFormFields({ ...formFields, dimming_protocol: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Incl.</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.driver_incl || ''}
-                                onChange={e => setFormFields({ ...formFields, driver_incl: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Location</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_location || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_location: e.target.value })} 
-                                placeholder="e.g. Remote / External"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Qty of Fittings per Driver</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.fittings_per_driver || ''} 
-                                onChange={e => setFormFields({ ...formFields, fittings_per_driver: e.target.value })} 
-                                placeholder="e.g. 1 Fitting per Driver"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Series or Parallel Connection</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_connection_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_connection_type: e.target.value })} 
-                                placeholder="e.g. Series"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Max Cable Length & Gauge</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_max_cable || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_max_cable: e.target.value })} 
-                                placeholder="e.g. 1m away using 0.5mm cable"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Specification</label>
-                              <textarea 
-                                className="form-control" 
-                                style={{ height: '50px', fontSize: '11.5px', fontFamily: 'monospace' }}
-                                value={formFields.driver_spec || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_spec: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Codes, description and QR Links */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Custom plan codes & QR</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">FOH Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.foh_code_description || ''} 
-                                onChange={e => setFormFields({ ...formFields, foh_code_description: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Client Description</label>
-                              <textarea 
-                                className="form-control" 
-                                style={{ height: '50px', fontSize: '11.5px' }}
-                                value={formFields.client_description || ''} 
-                                onChange={e => setFormFields({ ...formFields, client_description: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">QR Link</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.qr_link || ''} 
-                                onChange={e => setFormFields({ ...formFields, qr_link: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Technical Documents Box */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 10px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Technical Documents</h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {activeProduct.files && activeProduct.files.length > 0 ? (
-                              activeProduct.files.map(file => (
-                                <div key={file.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px' }}>
-                                  <a href={`${API_BASE}${file.file_path}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'inherit' }}>
-                                    <FileText size={16} color={file.file_type === 'image' ? 'var(--text-warning)' : 'var(--text-info)'} />
-                                    <span style={{ fontSize: '11.5px', fontWeight: 500 }}>{file.file_name}</span>
-                                  </a>
-                                  <button style={{ background: 'none', border: 'none', color: 'var(--text-danger)', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }} onClick={() => handleDeleteFile(activeProduct.id, file.id)}>Delete</button>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <FileText size={16} color="var(--text-info)" />
-                                  <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
-                                </div>
-                                <Download size={14} color="var(--text-secondary)" />
-                              </div>
-                            )}
-                            {isEditing && (
-                              <div style={{ marginTop: '4px' }}>
-                                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
-                                  <Plus size={12} /> Upload Technical Document
-                                  <input type="file" style={{ display: 'none' }} onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                      handleUploadFile(activeProduct.id, e.target.files[0]);
-                                    }
-                                  }} />
-                                </label>
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No CAD drawing URL provided in Google Sheet</p>
                               </div>
                             )}
                           </div>
                         </div>
+
+                        {/* PDF Datasheet Link */}
+                        {activeProduct.spec_sheet_url && (
+                          <a 
+                            href={activeProduct.spec_sheet_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="btn btn-outline" 
+                            style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', padding: '10px' }}
+                          >
+                            <FileText size={15} color="var(--text-info)" /> Download Official Spec Sheet (PDF) ↗
+                          </a>
+                        )}
                       </div>
 
-                    {/* Accessories Requirements List */}
-                    {activeProduct.accessories && activeProduct.accessories.length > 0 && (
-                      <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Associated Accessories & Mounting Kits</h4>
-                        <table className="table" style={{ width: '100%', fontSize: '11.5px' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-secondary)' }}>
-                              <th style={{ padding: '6px 10px', width: '180px' }}>Accessory SKU</th>
-                              <th>Description</th>
-                              <th style={{ textAlign: 'center', width: '120px' }}>Required Qty</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activeProduct.accessories.map((acc, idx) => (
-                              <tr key={idx}>
-                                <td style={{ fontWeight: 600, padding: '6px 10px', color: 'var(--text-info)' }}>{acc.code}</td>
-                                <td>{acc.desc}</td>
-                                <td style={{ textAlign: 'center', fontWeight: 700 }}>1 per Fitting</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                    </div>
-                  </fieldset>
-                )}
-
-                {/* 2. COSTING VIEW */}
-                {activeTab === 'costing' && (
-                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    
-                    {/* Supplier Costing Breakdown */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Supplier & Costing Breakdown</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Supplier</th>
-                            <th>Brand</th>
-                            <th style={{ textAlign: 'right' }}>Cost Price (R)</th>
-                            <th style={{ textAlign: 'right' }}>Internal Cost (R)</th>
-                            <th style={{ textAlign: 'center' }}>Mark-Up %</th>
-                            <th style={{ textAlign: 'right' }}>Landed Cost (R)</th>
-                            <th style={{ textAlign: 'center' }}>Last Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{formFields.supplier || activeProduct.supplier}</td>
-                            <td>{formFields.brand || activeProduct.brand}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
-                                value={formFields.cost_price || ''}
-                                onChange={e => {
-                                  const cost = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, cost_price: cost });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '110px', height: '28px', fontSize: '12px', textAlign: 'right', display: 'inline-block' }}
-                                value={formFields.internal_cost || ''}
-                                onChange={e => {
-                                  const ic = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, internal_cost: ic });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <input 
-                                type="text" 
-                                style={{ width: '70px', height: '28px', fontSize: '12px', textAlign: 'center', display: 'inline-block' }}
-                                value={formFields.markup || ''}
-                                onChange={e => setFormFields({ ...formFields, markup: e.target.value })}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{activeProduct.costing?.lastUpdated || 'Jan 25, 2026'}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Pricing Tiers & Margin Structure */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Pricing & Margin Structure</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Customer Tier</th>
-                            <th style={{ textAlign: 'right' }}>Target Price (R)</th>
-                            <th style={{ textAlign: 'center' }}>Projected Margin %</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td style={{ fontWeight: 600 }}>RRP Price (Selling Price)</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
-                                value={formFields.recommended_retail_price || ''}
-                                onChange={e => {
-                                  const rrp = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, recommended_retail_price: rrp });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge b-success" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                                {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}% margin
-                              </span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontWeight: 600 }}>Trade / Partner Price</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <input 
-                                type="number" 
-                                style={{ width: '120px', height: '28px', fontSize: '12px', textAlign: 'right' }}
-                                value={formFields.trade_price || ''}
-                                onChange={e => {
-                                  const trade = parseFloat(e.target.value) || 0;
-                                  setFormFields({ ...formFields, trade_price: trade });
-                                }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className="badge b-info" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                                {formFields.trade_price > 0 ? Math.round(((formFields.trade_price - formFields.cost_price) / formFields.trade_price) * 100) : 0}% margin
-                              </span>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Costing KPI row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Projected Margin %</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>
-                          {formFields.recommended_retail_price > 0 ? Math.round(((formFields.recommended_retail_price - formFields.cost_price) / formFields.recommended_retail_price) * 100) : 0}%
-                        </div>
-                      </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Landed Cost</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>R {((parseFloat(formFields.cost_price) || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Price</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>R {(formFields.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-secondary)' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>RRP Net Profit per Unit</span>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-success)', marginTop: '4px' }}>R {Math.max(0, (formFields.recommended_retail_price || 0) - (formFields.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                      </div>
-                    </div>
-
-                    {/* Contact Info & Terms footer */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', borderTop: '1px solid var(--border)', paddingTop: '18px' }}>
-                      <div>
-                        <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Supplier Contact Info</h5>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Globe size={13} /> <a href={`https://${activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}`} target="_blank" rel="noreferrer">{activeProduct.costing?.contactInfo?.website || 'www.eldc.co.za'}</a></span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Mail size={13} /> {activeProduct.costing?.contactInfo?.email || 'orders@eldc.co.za'}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Phone size={13} /> {activeProduct.costing?.contactInfo?.phone || '+27 (0) 21 448 8658'}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Fulfillment Terms</h5>
-                        <p style={{ margin: 0, fontSize: '12px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                          {activeProduct.costing?.terms || 'Standard payment structure: 50% deposit, balance paid in full prior to release.'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  </fieldset>
-                )}
-
-                {/* 3. SUPPLIER DETAILS VIEW */}
-                {activeTab === 'supplier' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                    {/* Supplier Profile Card */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ width: '48px', height: '48px', background: 'rgba(24,95,165,0.08)', color: 'var(--text-info)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', fontSize: '20px', fontWeight: 700 }}>
-                          🏢
-                        </div>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>{activeProduct.supplierDetails.name}</h4>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Primary Supplier Vendor</span>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Origin Country</span>
-                          <strong style={{ color: 'var(--text-primary)' }}>{activeProduct.origin}</strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Vendor Status</span>
-                          <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Active Partner</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                          <span>Supplier Rating</span>
-                          <span style={{ color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '2px' }}><Star size={11} fill="var(--text-warning)" /> 4.9 / 5.0</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
-                          <MapPin size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                          <span>{activeProduct.supplierDetails.address}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Logistics & Business Terms Card */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>Logistics & Terms</h4>
+                      {/* 2. LIGHTING PERFORMANCE & OPTICS */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <Clock size={16} color="var(--text-info)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Fulfillment Lead Time</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.leadTime}</div>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            💡 Lighting Performance & Optical Metrics
+                          </h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>System Power (W)</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.system_power || activeProduct.wattage ? `${activeProduct.system_power || activeProduct.wattage} W` : '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Luminous Output</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
+                                {activeProduct.lumens ? `${activeProduct.lumens} lm` : '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Temperature</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.kelvin || activeProduct.cct || '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Rendering (CRI)</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.cri || '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Beam Angle</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.beam_angle || '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Ingress Protection</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.ip_rating || '—'}
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <CreditCard size={16} color="var(--text-success)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Payment terms</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.paymentTerms}</div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <Truck size={16} color="var(--text-warning)" />
-                          <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Fulfillment / Shipping</div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.shippingMethod}</div>
+                        {/* Physical & Fitting Parameters */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📐 Physical Dimensions & Finishes
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Ceiling Cutout Dimension</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.cutout || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Dimensions (L x W x H)</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.dimensions || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Fixture Color / Finish</span>
+                              <strong>{activeProduct.color || activeProduct.finish || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Material</span>
+                              <strong>{activeProduct.material || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Origin / Sourcing</span>
+                              <strong>{activeProduct.origin || '—'}</strong>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Account representative contact details */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                      <div>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Account Manager Contact</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, border: '1px solid var(--border)' }}>
-                            {activeProduct.supplierDetails.contactPerson.split(' ').map(n => n[0]).join('')}
+                      {/* 3. CONTROL, DRIVERS & INTEGRATION */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            ⚡ Dimming & Driver Control
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Dimming Protocol</span>
+                              <strong className={activeProduct.dimming_protocol || activeProduct.dimming ? "badge b-info" : ""} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                                {activeProduct.dimming_protocol || activeProduct.dimming || '—'}
+                              </strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Driver Included</span>
+                              <strong>{activeProduct.driver_incl || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Driver Location</span>
+                              <strong>{activeProduct.driver_location || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Linked Driver SKU</span>
+                              <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>
+                                {activeProduct.linked_driver_sku || activeProduct.driver_spec || '—'}
+                              </strong>
+                            </div>
                           </div>
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{activeProduct.supplierDetails.contactPerson}</div>
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>{activeProduct.supplierDetails.role}</div>
+                        </div>
+
+                        {/* ERP Classification & Metadata */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            🏷️ Catalog & Family Classification
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>ERP SKU / Code</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.sku}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Family / Collection</span>
+                              <strong>{activeProduct.family || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Category</span>
+                              <strong>{activeProduct.category || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Brand</span>
+                              <strong>{activeProduct.brand || activeProduct.family || '—'}</strong>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <a href={`mailto:${activeProduct.supplierDetails.email}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Mail size={12} /> Email Representative
-                        </a>
-                        <a href={`tel:${activeProduct.supplierDetails.phone}`} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Phone size={12} /> Call Direct ({activeProduct.supplierDetails.phone})
-                        </a>
-                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* 4. STOCK HISTORY VIEW */}
+                {/* 2. COSTING & COMMERCIAL STRUCTURE VIEW */}
+                {activeTab === 'costing' && (
+                  <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    
+                    {/* 1. TOP COMMERCIAL KPI SUMMARY CARDS */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                      
+                      {/* Supplier Unit Cost */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          📦 Supplier Cost Price
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                          R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Palladium Price List Cost (Last PP)
+                        </span>
+                      </div>
+
+                      {/* RRP Selling Price */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          🏷️ RRP Selling Price (Excl. VAT)
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-info)', marginTop: '6px' }}>
+                          R {(activeProduct.retailPrice || activeProduct.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          R {((activeProduct.retailPrice || activeProduct.retail_price || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Incl. 15% VAT)
+                        </span>
+                      </div>
+
+                      {/* Gross Profit Margin % & Markup */}
+                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                          📈 Profit Margin & Mark-Up
+                        </span>
+                        <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', marginTop: '6px' }}>
+                          {activeProduct.retailPrice > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.retailPrice) * 100).toFixed(1) : '0.0'}% Margin
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Mark-Up: {activeProduct.unitCost > 0 ? (((activeProduct.retailPrice - activeProduct.unitCost) / activeProduct.unitCost) * 100).toFixed(1) : '0.0'}%
+                        </span>
+                      </div>
+
+                      {/* Total Warehouse Stock Valuation */}
+                      {(() => {
+                        const onHandVal = typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0);
+                        const unitCostVal = activeProduct.unitCost || activeProduct.cost_price || 0;
+
+                        return (
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              🏢 Total Stock Valuation
+                            </span>
+                            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                              R {(onHandVal * unitCostVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                              {onHandVal} {activeProduct.unit_of_measure || 'EA'} Physical On Hand
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+
+                    {/* 2. VENDOR & COMMERCIAL PROCUREMENT DETAILS (LIST TABLE) */}
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          🏢 Vendor & Commercial Procurement List
+                        </h4>
+                        <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                          Source: Palladium tblInvVend
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const rawVendors = activeProduct.supplier_details_json;
+                        const vendorList = Array.isArray(rawVendors) 
+                          ? rawVendors 
+                          : (rawVendors && typeof rawVendors === 'object' && Object.keys(rawVendors).length > 0 ? [rawVendors] : []);
+
+                        if (vendorList.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '24px 16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                              <div style={{ fontSize: '20px', marginBottom: '4px' }}>📦</div>
+                              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                No alternate vendors or procurement price lists linked in Palladium.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="table" style={{ width: '100%', fontSize: '11.5px', margin: 0, textAlign: 'left', whiteSpace: 'nowrap' }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-secondary)' }}>
+                                  <th style={{ padding: '8px 12px' }}>Number</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Name</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Item Code</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Item Description</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Warranty</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Vendor Price</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Exchange</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Local Price</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Disc %</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Landed Cost Factor %</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Estimated Landed</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Preferred</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {vendorList.map((vend, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ padding: '9px 12px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                      {vend.vendor_number || vend.vend_code || vend.vendor_name || '-'}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      {vend.vendor_name || vend.vend_code || '-'}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                                      {vend.vendor_item_code || vend.vend_item_code || '-'}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', color: 'var(--text-secondary)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {vend.vendor_item_desc || vend.vend_item_desc || '-'}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {vend.warranty_days !== undefined ? vend.warranty_days : 0}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>
+                                      {(vend.vendor_price !== undefined ? vend.vendor_price : (vend.vend_price || 0)).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.exchange_rate !== undefined ? vend.exchange_rate : 1.0).toFixed(4)}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {(vend.local_price !== undefined ? vend.local_price : (vend.vend_local_price || 0)).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.discount_pct !== undefined ? vend.discount_pct : 0).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {(vend.landed_cost_factor_pct !== undefined ? vend.landed_cost_factor_pct : 0).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {(vend.estimated_landed !== undefined ? vend.estimated_landed : (vend.local_price || 0)).toFixed(2)}
+                                    </td>
+                                    <td style={{ padding: '9px 10px', textAlign: 'center' }}>
+                                      {vend.is_preferred ? (
+                                        <span style={{ color: '#10b981', fontSize: '14px', fontWeight: 700 }}>
+                                          ☑
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>☐</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* 3. LIVE INVENTORY & WAREHOUSE LOCATION BREAKDOWN */}
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>🏢 Live Warehouse Stock & Allocations</h4>
+                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                          Unit of Measure: <strong>{activeProduct.unit_of_measure || 'EA'}</strong> | Lead Time: <strong>{activeProduct.lead_time || 'In Stock'}</strong>
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const availVal = typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (activeProduct.stock ?? 0);
+                        const onHandVal = typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : 0;
+                        const allocVal = activeProduct.stock_allocated || 0;
+                        const onOrderVal = activeProduct.stock_on_order || 0;
+
+                        return (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Available to Sell</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: availVal > 0 ? '#10b981' : (availVal === 0 ? 'var(--text-secondary)' : 'var(--text-danger)'), marginTop: '4px' }}>
+                                {availVal}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Physical On Hand</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+                                {onHandVal}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Allocated to Orders</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>
+                                {allocVal}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Incoming (On PO)</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
+                                {onOrderVal}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Detailed Location & Bin Breakdown Rows */}
+                      {(() => {
+                        const rawLocs = activeProduct.stock_locations_json;
+                        let locList = [];
+                        if (Array.isArray(rawLocs)) {
+                          locList = rawLocs;
+                        } else if (rawLocs && typeof rawLocs === 'object') {
+                          locList = Object.entries(rawLocs).map(([locName, locData]) => ({
+                            location: locName,
+                            bin_code: 'DEFAULT',
+                            bin_desc: 'General Location',
+                            on_hand: locData.on_hand || 0,
+                            avail: locData.avail || 0,
+                            alloc: locData.alloc || 0
+                          }));
+                        }
+
+                        if (locList.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                              No location or bin allocation records found. All stock managed under standard inventory.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                              Warehouse & Bin Breakdown
+                            </div>
+                            <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0 }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-primary)' }}>
+                                  <th style={{ padding: '8px 12px' }}>Warehouse / Location</th>
+                                  <th style={{ padding: '8px 12px' }}>Bin / Shelf / Zone</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Physical On Hand</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Available to Sell</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Allocated</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {locList.map((loc, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ fontWeight: 600, padding: '9px 12px' }}>
+                                      {loc.location === 'STOCK' ? '🏢 Main Warehouse (STOCK)' : loc.location === 'PROJECT' ? '📋 Project Allocated (PROJECT)' : loc.location === 'FAULT' ? '⚠️ Fault / QA (FAULT)' : (loc.location || 'Warehouse')}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                                      {loc.bin_code && loc.bin_code !== 'DEFAULT' ? `📍 ${loc.bin_code}` : 'Standard Bin'}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '9px 12px' }}>
+                                      {loc.on_hand || 0}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 700, padding: '9px 12px' }}>
+                                      {loc.avail || 0}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: 'var(--text-warning)', fontWeight: 600, padding: '9px 12px' }}>
+                                      {loc.alloc || 0}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* 4. DISCREET ERP SYNC FOOTER */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '14px', fontSize: '11px', color: 'var(--text-secondary)', padding: '2px 4px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span>
+                        ERP Data Source: <strong>paldbOnetoOneLive</strong>
+                      </span>
+                      <span>•</span>
+                      <span>Last Synced: <strong>{(() => {
+                        const d = activeProduct.palladium_last_synced_at;
+                        if (!d) return 'Live';
+                        const str = String(d);
+                        const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()}</strong></span>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* 3. STOCK HISTORY VIEW (LIVE PALLADIUM AUDIT TRAIL) */}
                 {activeTab === 'history' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
                     {/* SVG Stock level Trend Area Chart */}
-                    <StockTrendChart history={activeProduct.stockHistory} />
+                    <StockTrendChart 
+                      chartPoints={stockHistoryData?.chart_points || []} 
+                      currentStock={activeProduct.stock_on_hand || activeProduct.stock || 0} 
+                    />
 
                     {/* Stock Movements Log ledger */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Stock Movement Transaction Log</h4>
-                      <table className="table" style={{ width: '100%', fontSize: '12px' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-secondary)' }}>
-                            <th>Date</th>
-                            <th>Transaction Type</th>
-                            <th>Reference Document</th>
-                            <th style={{ textAlign: 'center' }}>Quantity Changed</th>
-                            <th style={{ textAlign: 'center' }}>Running Balance</th>
-                            <th>Handled By</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeProduct.stockHistory.map((h, idx) => (
-                            <tr key={idx}>
-                              <td>{h.date}</td>
-                              <td>
-                                <span className={`badge ${h.type === 'Stock In' ? 'b-success' : h.type === 'Stock Out' ? 'b-danger' : 'b-warning'}`} style={{ fontSize: '9px', padding: '2px 8px' }}>
-                                  {h.type}
-                                </span>
-                              </td>
-                              <td style={{ fontFamily: 'monospace' }}>{h.reference}</td>
-                              <td style={{ textAlign: 'center', fontWeight: 600, color: h.qty.startsWith('+') ? 'var(--text-success)' : 'var(--text-danger)' }}>
-                                {h.qty}
-                              </td>
-                              <td style={{ textAlign: 'center', fontWeight: 700 }}>{h.balance}</td>
-                              <td>{h.staff}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* 5. AUDIT TRAIL VIEW */}
-                {activeTab === 'audit' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
+                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>📜 Product Modification Audit Trail (Cloud SQL Log)</h4>
-                        <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }} onClick={() => fetchAuditLogs(activeProduct.id)}>🔄 Refresh Log</button>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          📦 Stock Movement Transaction Log
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button 
+                            className="btn btn-ghost btn-sm" 
+                            style={{ fontSize: '11px', padding: '4px 10px', height: '28px' }}
+                            onClick={() => fetchStockHistory(activeProduct.sku)}
+                            disabled={isLoadingStockHistory}
+                          >
+                            <RefreshCw size={12} className={isLoadingStockHistory ? 'spin' : ''} /> Refresh History
+                          </button>
+                          <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                            Source: Palladium ERP Ledger
+                          </span>
+                        </div>
                       </div>
 
-                      {isLoadingAuditLogs ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading database audit history...</div>
-                      ) : auditLogs.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                          No audit log entries recorded for this SKU yet. Any cell edits made in Bulk Grid or Workspace will log here permanently.
+                      {isLoadingStockHistory ? (
+                        <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          <RefreshCw size={20} className="spin" style={{ marginBottom: '8px' }} />
+                          <div>Loading live stock movement transactions from Palladium ERP...</div>
+                        </div>
+                      ) : stockHistoryData?.transactions && stockHistoryData.transactions.length > 0 ? (
+                        <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                          <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0, textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg-secondary)' }}>
+                                <th style={{ padding: '8px 12px' }}>Date</th>
+                                <th style={{ padding: '8px 12px' }}>Transaction Type</th>
+                                <th style={{ padding: '8px 12px' }}>Reference Document</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Quantity Changed</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Running Balance</th>
+                                <th style={{ padding: '8px 12px' }}>Handled By</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stockHistoryData.transactions.map((t, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{t.date}</td>
+                                  <td style={{ padding: '10px 12px' }}>
+                                    <span className={`badge ${
+                                      t.type.includes('Receipt') || t.type.includes('GRV') ? 'b-success' : 
+                                      t.type.includes('Sales') || t.type.includes('Invoice') ? 'b-danger' : 
+                                      'b-warning'
+                                    }`} style={{ fontSize: '9.5px', padding: '2px 8px', fontWeight: 700 }}>
+                                      {t.type}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 600 }}>
+                                    {t.doc_number} {t.reference && t.reference !== 'Supplier' && t.reference !== 'Customer' ? `(${t.reference})` : ''}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: t.qty > 0 ? '#10b981' : 'var(--text-danger)' }}>
+                                    {t.qty_display}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {t.balance}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
+                                    {t.handled_by || 'System'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ) : (
-                        <table className="table" style={{ width: '100%', fontSize: '12px' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-secondary)' }}>
-                              <th>Timestamp</th>
-                              <th>Field Changed</th>
-                              <th>Old Value</th>
-                              <th>New Value</th>
-                              <th>Modified By</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {auditLogs.map((log) => (
-                              <tr key={log.id}>
-                                <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{log.timestamp}</td>
-                                <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{log.field_changed}</td>
-                                <td style={{ color: 'var(--text-danger)', fontFamily: 'monospace' }}>{log.old_value || '(empty)'}</td>
-                                <td style={{ color: 'var(--text-success)', fontFamily: 'monospace', fontWeight: 600 }}>{log.new_value}</td>
-                                <td>{log.updated_by_name}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <div style={{ textAlign: 'center', padding: '36px 16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                          <div style={{ fontSize: '24px', marginBottom: '6px' }}>📦</div>
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            No stock movement transactions recorded in Palladium ERP for this item.
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* 6. LINKED ACCESSORIES & DRIVERS VIEW */}
+                {/* 4. LINKED ACCESSORIES & DRIVERS VIEW */}
                 {activeTab === 'accessories' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
@@ -2969,247 +2760,10 @@ export default function ProductsPage() {
                     </div>
                   </div>
                 )}
-
               </div>
-
             </div>
           </div>
         </>
-      )}
-
-      {/* BULK SUPPLIER RE-PRICING MODAL */}
-      {showBulkRepricingModal && (
-        <div className="modal-bg active" style={{ display: 'flex' }}>
-          <div className="modal" style={{ maxWidth: '480px', padding: '20px' }}>
-            <div className="modal-head" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>🏷️ Bulk Supplier Re-Pricing (% Shift)</h3>
-              <button className="modal-close" onClick={() => setShowBulkRepricingModal(false)}>×</button>
-            </div>
-            
-            <div className="modal-body" style={{ padding: 0 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div className="form-row">
-                  <label className="form-label">Target Supplier:</label>
-                  <select 
-                    className="form-control" 
-                    value={bulkSupplier} 
-                    onChange={e => setBulkSupplier(e.target.value)}
-                  >
-                    <option value="All Suppliers">All Suppliers</option>
-                    {[...new Set(products.map(p => p.supplier_name || p.supplier).filter(Boolean))].map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label">Target Category:</label>
-                  <select 
-                    className="form-control" 
-                    value={bulkCategory} 
-                    onChange={e => setBulkCategory(e.target.value)}
-                  >
-                    <option value="All Categories">All Categories</option>
-                    {[...new Set(products.map(p => p.category).filter(Boolean))].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-row">
-                    <label className="form-label">Cost Price Shift (%):</label>
-                    <input 
-                      type="number" 
-                      step="0.1" 
-                      className="form-control" 
-                      placeholder="e.g. 5.0 for +5%"
-                      value={bulkCostShift} 
-                      onChange={e => setBulkCostShift(e.target.value)} 
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label className="form-label">Retail Price Shift (%):</label>
-                    <input 
-                      type="number" 
-                      step="0.1" 
-                      className="form-control" 
-                      placeholder="e.g. 5.0 for +5%"
-                      value={bulkRetailShift} 
-                      onChange={e => setBulkRetailShift(e.target.value)} 
-                    />
-                  </div>
-                </div>
-
-                <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
-                  💡 <strong>ERP Audit Impact:</strong> This action will update all matching products inside Cloud SQL inside an atomic transaction and log an audit trail entry for every modified price.
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-foot" style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkRepricingModal(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={handleExecuteBulkRepricing}>⚡ Execute Re-Pricing</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* EXCEL IMPORT PROGRESS MODAL */}
-      {importProgress.isImporting && (
-        <div className="modal-bg active" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
-          <div className="modal" style={{ maxWidth: '420px', padding: '24px', textAlign: 'center', borderRadius: '16px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '10px' }}>📦</div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: 700 }}>Importing Product Database...</h3>
-            <p style={{ margin: '0 0 18px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Reconciling products in Cloud SQL. Please keep this tab open.
-            </p>
-
-            {/* PROGRESS BAR */}
-            <div style={{ background: 'var(--bg-secondary)', height: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', marginBottom: '14px' }}>
-              <div 
-                style={{ 
-                  height: '100%', 
-                  background: 'linear-gradient(90deg, #3b82f6, #10b981)', 
-                  width: `${importProgress.totalRows > 0 ? Math.round((importProgress.processedRows / importProgress.totalRows) * 100) : 0}%`,
-                  transition: 'width 0.3s ease'
-                }} 
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '14px' }}>
-              <span>{Math.round((importProgress.processedRows / (importProgress.totalRows || 1)) * 100)}% Complete</span>
-              <span>{importProgress.processedRows} / {importProgress.totalRows} Rows</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px' }}>
-              <div style={{ color: 'var(--text-success)', fontWeight: 600 }}>🟢 Added: {importProgress.added}</div>
-              <div style={{ color: 'var(--text-info)', fontWeight: 600 }}>🔵 Updated: {importProgress.updated}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CREATE NEW PRODUCT SKU MODAL */}
-      {showCreateModal && (
-        <div className="modal-bg active" style={{ display: 'flex' }}>
-          <div className="modal" style={{ maxWidth: '520px', padding: '20px' }}>
-            <div className="modal-head" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>📦 Create New Product SKU</h3>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
-            </div>
-            
-            <div className="modal-body" style={{ padding: 0 }}>
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>SKU Code (Required)</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 28402 9240 FW" 
-                    className="form-control"
-                    value={newSku}
-                    onChange={e => setNewSku(e.target.value)}
-                  />
-                </div>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Product Name (Required)</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Downlight - Entero SQ-S White" 
-                    className="form-control"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Category</label>
-                  <select 
-                    className="form-control"
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                  >
-                    <option value="Downlight">Downlight</option>
-                    <option value="Starlight">Starlight</option>
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label className="form-label">Brand</label>
-                  <input 
-                    type="text" 
-                    className="form-control"
-                    value={newBrand}
-                    onChange={e => setNewBrand(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Supplier Vendor</label>
-                  <select 
-                    className="form-control"
-                    value={newSupplier}
-                    onChange={e => setNewSupplier(e.target.value)}
-                  >
-                    <option value="ELDC">ELDC</option>
-                    <option value="Molecule Lighting">Molecule Lighting</option>
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Supplier Cost EXCL. (R)</label>
-                  <input 
-                    type="number" 
-                    placeholder="2416.37"
-                    className="form-control"
-                    value={newUnitCost}
-                    onChange={e => setNewUnitCost(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>RRP Target Price EXCL. (R)</label>
-                  <input 
-                    type="number" 
-                    placeholder="3835.50"
-                    className="form-control"
-                    value={newRetailPrice}
-                    onChange={e => setNewRetailPrice(e.target.value)}
-                  />
-                </div>
-                <div className="form-row">
-                  <label className="form-label">Initial Stock Qty</label>
-                  <input 
-                    type="number" 
-                    className="form-control"
-                    value={newStock}
-                    onChange={e => setNewStock(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row" style={{ flex: '0 0 50%' }}>
-                  <label className="form-label">Reorder Limit Threshold</label>
-                  <input 
-                    type="number" 
-                    className="form-control"
-                    value={newReorder}
-                    onChange={e => setNewReorder(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '16px' }}>
-              <button className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateProduct}>Create Product</button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
