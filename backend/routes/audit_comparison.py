@@ -902,23 +902,23 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
             sheets_service.spreadsheets().values().batchUpdate(
                 spreadsheetId=audit_sheet_id,
-                body={'valueInputOption': 'USER_ENTERED', 'data': data_payload}
+                body={'valueInputOption': 'RAW', 'data': data_payload}
             ).execute()
 
             # Apply cell-level red highlight formatting on Tab 1
             cell_format_requests = []
             
-            total_data_rows = max(len(heatmap_rows), len(legacy_tab_2d), len(portal_tab_2d), 30000)
+            total_data_rows = max(len(heatmap_rows), 100)
 
-            # 1. Reset all data cells to clean white background and normal text across the entire sheet
+            # 1. Reset all data cells to clean white background and normal text across the actual sheet range
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
                         'sheetId': 101,
                         'startRowIndex': 0,
-                        'endRowIndex': 50000,
+                        'endRowIndex': total_data_rows + 100,
                         'startColumnIndex': 0,
-                        'endColumnIndex': 50
+                        'endColumnIndex': len(heatmap_headers) + 2
                     },
                     'cell': {
                         'userEnteredFormat': {
