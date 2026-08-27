@@ -398,9 +398,17 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Fetch Cloud SQL Database items in identical 41-column format
+    # Fetch Cloud SQL Database items in identical 41-column format using batch queries
     db_orders = db.query(Order).all()
     all_projects = db.query(Project).all()
+    all_items = db.query(OrderItem).all()
+
+    # Map order items in memory by order_id (1 query instead of 600+)
+    order_items_map: Dict[str, List[OrderItem]] = {}
+    for item in all_items:
+        if item.order_id:
+            order_items_map.setdefault(item.order_id, []).append(item)
+
     db_projects_map = {p.project_key: p.name for p in all_projects}
     db_projects_client_map = {p.project_key: (p.client_name or "") for p in all_projects}
     db_projects_pm_map = {p.project_key: (p.pm_name or "Dani") for p in all_projects}
@@ -415,7 +423,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         delivery_address = getattr(o, 'delivery_address', None) or getattr(o, 'notes', None) or db_projects_delivery_map.get(o.project_key, "") or "7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941"
         order_status = getattr(o, 'status', None) or db_projects_status_map.get(o.project_key, "Processing") or "Processing"
 
-        items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
+        items = order_items_map.get(o.po_number, [])
 
         if items:
             for item in items:
