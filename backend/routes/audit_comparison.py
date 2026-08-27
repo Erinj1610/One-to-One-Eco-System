@@ -902,15 +902,15 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             
             total_data_rows = max(len(heatmap_rows), len(legacy_tab_2d), len(portal_tab_2d), 30000)
 
-            # 1. Reset all data cells to white background and normal text
+            # 1. Reset all data cells to clean white background and normal text across the entire sheet
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
                         'sheetId': 101,
-                        'startRowIndex': 1,
-                        'endRowIndex': total_data_rows + 500,
+                        'startRowIndex': 0,
+                        'endRowIndex': 50000,
                         'startColumnIndex': 0,
-                        'endColumnIndex': len(heatmap_headers) + 1
+                        'endColumnIndex': 50
                     },
                     'cell': {
                         'userEnteredFormat': {
