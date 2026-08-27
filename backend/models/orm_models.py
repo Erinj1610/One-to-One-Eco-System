@@ -421,6 +421,15 @@ class Product(Base):
     technical_image_url = Column(String, nullable=True)  # Technical drawing/spec image URL
     is_active = Column(Boolean, default=True)  # Enterprise soft-delete flag
     
+    # Palladium ERP Synchronization Fields
+    stock_available = Column(Float, default=0.0)
+    stock_on_hand = Column(Float, default=0.0)
+    stock_allocated = Column(Float, default=0.0)
+    stock_on_order = Column(Float, default=0.0)
+    stock_locations_json = Column(JSON, nullable=True)
+    unit_of_measure = Column(String, nullable=True)
+    palladium_last_synced_at = Column(DateTime, nullable=True)
+    
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")

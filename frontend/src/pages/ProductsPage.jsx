@@ -3,7 +3,8 @@ import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
-  Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings
+  Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
+  RefreshCw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -585,6 +586,9 @@ export default function ProductsPage() {
     }
   };
 
+  const [palladiumStatus, setPalladiumStatus] = useState(null);
+  const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
+
   // Fetch lightweight KPI summary counts
   const fetchSummary = async () => {
     try {
@@ -593,14 +597,45 @@ export default function ProductsPage() {
     } catch (_) {}
   };
 
+  const fetchPalladiumStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/status`);
+      if (res.ok) setPalladiumStatus(await res.json());
+    } catch (_) {}
+  };
+
+  const handleTriggerPalladiumSync = async () => {
+    setIsSyncingPalladium(true);
+    triggerToast("Starting 100% read-only Palladium ERP synchronization...");
+    try {
+      const res = await fetch(`${API_BASE}/api/palladium/sync`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`🎉 ${data.message || 'Palladium sync completed successfully!'}`);
+        fetchPage({ page: 1 });
+        fetchSummary();
+        fetchPalladiumStatus();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Palladium Sync Notice: ${err.detail || 'Failed to sync with Palladium ERP.'}`);
+      }
+    } catch (e) {
+      alert(`Palladium Connection Error: ${e.message}`);
+    } finally {
+      setIsSyncingPalladium(false);
+    }
+  };
+
   // Backwards-compat alias used by import handler
   const fetchProducts = () => {
     fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
     fetchSummary();
+    fetchPalladiumStatus();
   };
 
   useEffect(() => {
     fetchSummary();
+    fetchPalladiumStatus();
     fetchPage({ page: 1 });
   }, []);
 
@@ -1478,12 +1513,38 @@ export default function ProductsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
+                  {palladiumStatus?.last_synced_at && (
+                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                      ● Palladium ERP Synced ({new Date(palladiumStatus.last_synced_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                    </span>
+                  )}
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
                   📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={handleTriggerPalladiumSync}
+                  disabled={isSyncingPalladium}
+                  className="btn btn-ghost"
+                  title="100% Read-Only Sync from Palladium ERP Database"
+                  style={{ 
+                    border: '1px solid #10b981', 
+                    color: '#10b981', 
+                    background: 'rgba(16, 185, 129, 0.08)', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    fontSize: '12px', 
+                    height: '36px',
+                    fontWeight: 600
+                  }}
+                >
+                  <RefreshCw size={14} className={isSyncingPalladium ? 'animate-spin' : ''} />
+                  {isSyncingPalladium ? 'Syncing Palladium...' : 'Sync Palladium ERP'}
+                </button>
+
                 <button
                   onClick={() => setShowBulkRepricingModal(true)}
                   className="btn btn-ghost"
