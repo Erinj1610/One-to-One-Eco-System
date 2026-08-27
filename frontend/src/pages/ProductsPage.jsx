@@ -4,7 +4,7 @@ import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
-  RefreshCw
+  RefreshCw, ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
