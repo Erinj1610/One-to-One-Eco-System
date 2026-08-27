@@ -65,20 +65,50 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
     products = db.query(Product).order_by(Product.sku.asc()).all()
     logger.info(f"Generating specs sheet for {len(products)} products...")
 
-    # 2. Create Spreadsheet inside target Drive folder
-    file_metadata = {
-        'name': SHEET_TITLE,
-        'mimeType': 'application/vnd.google-apps.spreadsheet',
-        'parents': [folder_id]
-    }
-    file = drive_service.files().create(
-        body=file_metadata, 
-        supportsAllDrives=True, 
-        fields='id, webViewLink'
-    ).execute()
+    # 2. Check for existing files and remove duplicate copies
+    spreadsheet_id = None
+    web_view_link = None
     
-    spreadsheet_id = file.get('id')
-    web_view_link = file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+    try:
+        query = f"name='{SHEET_TITLE}' and '{folder_id}' in parents and trashed=false"
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name, webViewLink)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        existing_files = res.get('files', [])
+        
+        if existing_files:
+            # Keep the first one
+            primary_file = existing_files[0]
+            spreadsheet_id = primary_file.get('id')
+            web_view_link = primary_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+            logger.info(f"Found existing Master Sheet {spreadsheet_id}. Cleaning {len(existing_files)-1} duplicate(s)...")
+            
+            # Trash duplicate copies
+            for dup in existing_files[1:]:
+                try:
+                    drive_service.files().delete(fileId=dup['id'], supportsAllDrives=True).execute()
+                except Exception as del_err:
+                    logger.warning(f"Could not trash duplicate {dup['id']}: {del_err}")
+    except Exception as search_err:
+        logger.warning(f"Error checking existing files: {search_err}")
+
+    if not spreadsheet_id:
+        file_metadata = {
+            'name': SHEET_TITLE,
+            'mimeType': 'application/vnd.google-apps.spreadsheet',
+            'parents': [folder_id]
+        }
+        file = drive_service.files().create(
+            body=file_metadata, 
+            supportsAllDrives=True, 
+            fields='id, webViewLink'
+        ).execute()
+        
+        spreadsheet_id = file.get('id')
+        web_view_link = file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
 
     # 3. Build data rows
     rows = [HEADERS]
