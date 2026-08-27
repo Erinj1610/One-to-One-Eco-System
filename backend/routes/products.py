@@ -888,3 +888,12 @@ def sync_sheet_specs_endpoint(db: Session = Depends(get_db)):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@public_router.post("/sync-new-items-to-inbox")
+def sync_new_items_to_inbox_endpoint(db: Session = Depends(get_db)):
+    try:
+        from services.google_sheet_specs_service import sync_new_items_to_inbox
+        res = sync_new_items_to_inbox(db=db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

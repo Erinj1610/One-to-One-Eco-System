@@ -2149,28 +2149,28 @@ export default function ProductsPage() {
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Temperature</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.kelvin || activeProduct.cct || '3000K'}
+                                {activeProduct.kelvin || activeProduct.cct || '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Rendering (CRI)</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.cri || 'CRI 90+'}
+                                {activeProduct.cri || '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Beam Angle</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.beam_angle || '36°'}
+                                {activeProduct.beam_angle || '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Ingress Protection</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.ip_rating || 'IP20'}
+                                {activeProduct.ip_rating || '—'}
                               </div>
                             </div>
                           </div>
@@ -2192,15 +2192,15 @@ export default function ProductsPage() {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Fixture Color / Finish</span>
-                              <strong>{activeProduct.color || activeProduct.finish || 'Standard'}</strong>
+                              <strong>{activeProduct.color || activeProduct.finish || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Material</span>
-                              <strong>{activeProduct.material || 'Die-cast Aluminium'}</strong>
+                              <strong>{activeProduct.material || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Origin / Sourcing</span>
-                              <strong>{activeProduct.origin || 'Import'}</strong>
+                              <strong>{activeProduct.origin || '—'}</strong>
                             </div>
                           </div>
                         </div>
@@ -2215,22 +2215,22 @@ export default function ProductsPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Dimming Protocol</span>
-                              <strong className="badge b-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
-                                {activeProduct.dimming_protocol || activeProduct.dimming || 'Non-Dim / Standard'}
+                              <strong className={activeProduct.dimming_protocol || activeProduct.dimming ? "badge b-info" : ""} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                                {activeProduct.dimming_protocol || activeProduct.dimming || '—'}
                               </strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Driver Included</span>
-                              <strong>{activeProduct.driver_incl || 'No'}</strong>
+                              <strong>{activeProduct.driver_incl || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Driver Location</span>
-                              <strong>{activeProduct.driver_location || 'Remote / External'}</strong>
+                              <strong>{activeProduct.driver_location || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Linked Driver SKU</span>
                               <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                                {activeProduct.linked_driver_sku || 'DRV-700-15W-DALI'}
+                                {activeProduct.linked_driver_sku || activeProduct.driver_spec || '—'}
                               </strong>
                             </div>
                           </div>
