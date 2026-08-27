@@ -211,15 +211,6 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             vend_list = vend_map.get(sku) or []
             primary_vendor = vend_list[0]['vendor_name'] if len(vend_list) > 0 else None
 
-            # Calculate accurate location & bin totals to prevent 0 on-hand when warehouse bins have stock
-            loc_on_hand = sum(l.get('on_hand', 0.0) for l in loc_json) if loc_json else 0.0
-            loc_avail = sum(l.get('avail', 0.0) for l in loc_json) if loc_json else 0.0
-            loc_alloc = sum(l.get('alloc', 0.0) for l in loc_json) if loc_json else 0.0
-
-            final_on_hand = max(sum_on_hand, loc_on_hand)
-            final_alloc = max(sum_alloc, loc_alloc)
-            final_avail = loc_avail if loc_avail > 0 else (final_on_hand - final_alloc if sum_avail <= 0 and final_on_hand > 0 else sum_avail)
-
             if sku in existing_products:
                 prod = existing_products[sku]
                 prod.name = name
@@ -232,10 +223,10 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 prod.cost_price = cost_val
                 prod.retail_price = selling_val
                 prod.trade_price = selling_val
-                prod.stock_level = int(final_avail)
-                prod.stock_available = final_avail
-                prod.stock_on_hand = final_on_hand
-                prod.stock_allocated = final_alloc
+                prod.stock_level = int(sum_avail)
+                prod.stock_available = sum_avail
+                prod.stock_on_hand = sum_on_hand
+                prod.stock_allocated = sum_alloc
                 prod.stock_on_order = sum_on_order
                 prod.is_active = is_active
                 prod.unit_of_measure = uom

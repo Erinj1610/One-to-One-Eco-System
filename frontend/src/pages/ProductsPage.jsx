@@ -2314,21 +2314,7 @@ export default function ProductsPage() {
 
                       {/* Total Warehouse Stock Valuation */}
                       {(() => {
-                        const rawLocs = activeProduct.stock_locations_json;
-                        let locOnHandSum = 0;
-                        let locAvailSum = 0;
-                        let hasLocs = false;
-                        if (Array.isArray(rawLocs) && rawLocs.length > 0) {
-                          locOnHandSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.on_hand) || 0), 0);
-                          locAvailSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.avail) || 0), 0);
-                          hasLocs = true;
-                        }
-                        const effectiveOnHand = hasLocs && locOnHandSum > 0 
-                          ? locOnHandSum 
-                          : (typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0));
-                        const effectiveAvail = hasLocs && locAvailSum > 0 
-                          ? locAvailSum 
-                          : (typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (effectiveOnHand - (activeProduct.stock_allocated || 0)));
+                        const onHandVal = typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0);
                         const unitCostVal = activeProduct.unitCost || activeProduct.cost_price || 0;
 
                         return (
@@ -2337,10 +2323,10 @@ export default function ProductsPage() {
                               🏢 Total Stock Valuation
                             </span>
                             <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
-                              R {(effectiveOnHand * unitCostVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              R {(onHandVal * unitCostVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                             <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
-                              {effectiveOnHand} {activeProduct.unit_of_measure || 'Units'} Physical On Hand
+                              {onHandVal} {activeProduct.unit_of_measure || 'EA'} Physical On Hand
                             </span>
                           </div>
                         );
@@ -2459,49 +2445,38 @@ export default function ProductsPage() {
                       </div>
 
                       {(() => {
-                        const rawLocs = activeProduct.stock_locations_json;
-                        let locOnHandSum = 0;
-                        let locAvailSum = 0;
-                        let hasLocs = false;
-                        if (Array.isArray(rawLocs) && rawLocs.length > 0) {
-                          locOnHandSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.on_hand) || 0), 0);
-                          locAvailSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.avail) || 0), 0);
-                          hasLocs = true;
-                        }
-                        const effectiveOnHand = hasLocs && locOnHandSum > 0 
-                          ? locOnHandSum 
-                          : (typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0));
-                        const effectiveAvail = hasLocs && locAvailSum > 0 
-                          ? locAvailSum 
-                          : (typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (effectiveOnHand - (activeProduct.stock_allocated || 0)));
+                        const availVal = typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (activeProduct.stock ?? 0);
+                        const onHandVal = typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : 0;
+                        const allocVal = activeProduct.stock_allocated || 0;
+                        const onOrderVal = activeProduct.stock_on_order || 0;
 
                         return (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
                             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Available to Sell</span>
-                              <div style={{ fontSize: '20px', fontWeight: 700, color: effectiveAvail > 0 ? '#10b981' : (effectiveAvail === 0 ? 'var(--text-secondary)' : 'var(--text-danger)'), marginTop: '4px' }}>
-                                {effectiveAvail}
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: availVal > 0 ? '#10b981' : (availVal === 0 ? 'var(--text-secondary)' : 'var(--text-danger)'), marginTop: '4px' }}>
+                                {availVal}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Physical On Hand</span>
                               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
-                                {effectiveOnHand}
+                                {onHandVal}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Allocated to Orders</span>
                               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>
-                                {activeProduct.stock_allocated || 0}
+                                {allocVal}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                               <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Incoming (On PO)</span>
                               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
-                                {activeProduct.stock_on_order || 0}
+                                {onOrderVal}
                               </div>
                             </div>
                           </div>
