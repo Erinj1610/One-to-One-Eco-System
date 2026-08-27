@@ -1612,7 +1612,12 @@ export default function ProductsPage() {
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
                   {palladiumStatus?.last_synced_at && (
                     <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                      ● Palladium ERP Synced ({new Date(palladiumStatus.last_synced_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                      ● Palladium ERP Synced ({(() => {
+                        const d = palladiumStatus.last_synced_at;
+                        const str = String(d);
+                        const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()})
                     </span>
                   )}
                 </div>
@@ -2557,7 +2562,13 @@ export default function ProductsPage() {
                         ERP Data Source: <strong>paldbOnetoOneLive</strong>
                       </span>
                       <span>•</span>
-                      <span>Last Synced: <strong>{activeProduct.palladium_last_synced_at ? new Date(activeProduct.palladium_last_synced_at).toLocaleString() : 'Live'}</strong></span>
+                      <span>Last Synced: <strong>{(() => {
+                        const d = activeProduct.palladium_last_synced_at;
+                        if (!d) return 'Live';
+                        const str = String(d);
+                        const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()}</strong></span>
                     </div>
 
                   </div>
