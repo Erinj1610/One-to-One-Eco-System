@@ -136,6 +136,36 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     if not template_id:
         raise ValueError(f"Invalid Master Google Sheet URL or ID: {template_source}")
 
+    # Auto-normalize and enrich missing token aliases
+    rep_phone = tokens.get('ONEONE_REP_PHONE') or tokens.get('PM_PHONE') or tokens.get('REP_PHONE') or '078 452 5643'
+    rep_email = tokens.get('ONEONE_REP_EMAIL') or tokens.get('PM_EMAIL') or tokens.get('REP_EMAIL') or 'ryan.mccarthy@1-to-1.world'
+    rep_name = tokens.get('ONEONE_REP') or tokens.get('PM_NAME') or tokens.get('REP_NAME') or 'Ryan McCarthy'
+    
+    tokens.setdefault('ONEONE_REP', rep_name)
+    tokens.setdefault('PM_NAME', rep_name)
+    tokens.setdefault('PROJECT_PM', rep_name)
+    tokens.setdefault('REP_NAME', rep_name)
+    
+    tokens.setdefault('ONEONE_REP_PHONE', rep_phone)
+    tokens.setdefault('PM_PHONE', rep_phone)
+    tokens.setdefault('PM_PPHONE', rep_phone)
+    tokens.setdefault('REP_PHONE', rep_phone)
+    
+    tokens.setdefault('ONEONE_REP_EMAIL', rep_email)
+    tokens.setdefault('PM_EMAIL', rep_email)
+    tokens.setdefault('REP_EMAIL', rep_email)
+
+    if 'TOTAL_RETAIL' in tokens and ('DEPOSIT' not in tokens or not tokens.get('DEPOSIT')):
+        tot_num = safe_float(tokens['TOTAL_RETAIL'])
+        if tot_num > 0:
+            dep_50 = tot_num * 0.5
+            dep_70 = tot_num * 0.7
+            tokens.setdefault('DEPOSIT', f"R {dep_50:,.2f}")
+            tokens.setdefault('DEPOSIT_50', f"R {dep_50:,.2f}")
+            tokens.setdefault('DEPOSIT_70', f"R {dep_70:,.2f}")
+            tokens.setdefault('DEPOSIT_AMOUNT', f"R {dep_50:,.2f}")
+            tokens.setdefault('DEPOSIT_REQUIRED', f"R {dep_50:,.2f}")
+
     # Extract client, project, and document info for folder vaulting
     client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
     project_name = str(tokens.get('PROJECT_NAME') or tokens.get('PROJECT_NAME_LOCATION') or 'Project').strip()
