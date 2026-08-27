@@ -539,6 +539,7 @@ export default function ProductsPage() {
       reorderLevel: p.reorder_level || 100,
       status: p.status || (p.is_active === false ? 'Inactive' : 'Active'),
       is_active: p.is_active !== undefined ? p.is_active : p.status !== 'Inactive',
+      supplier_details_json: p.supplier_details_json || [],
       costing: p.costing || {
         supplierSku: p.sku,
         supplierUnitCost: p.cost_price || 0.0,
@@ -2476,60 +2477,97 @@ export default function ProductsPage() {
 
                     </div>
 
-                    {/* 2. VENDOR & COMMERCIAL PROCUREMENT DETAILS */}
+                    {/* 2. VENDOR & COMMERCIAL PROCUREMENT DETAILS (LIST TABLE) */}
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                         <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          🏢 Vendor & Commercial Procurement Details
+                          🏢 Vendor & Commercial Procurement List
                         </h4>
                         <span className="badge b-success" style={{ fontSize: '10px', padding: '3px 8px' }}>
-                          Source: Palladium Vendor Master
+                          Source: Palladium tblInvVend
                         </span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-                        
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor / Supplier</span>
-                          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px', color: 'var(--text-primary)' }}>
-                            {activeProduct.supplier_details_json?.vend_code || activeProduct.supplier_name || activeProduct.brand || 'Standard Vendor'}
-                          </div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                            {activeProduct.supplier_details_json?.city ? `${activeProduct.supplier_details_json.city}, ${activeProduct.supplier_details_json.province || 'SA'}` : 'Registered Palladium Supplier'}
-                          </span>
-                        </div>
+                      {(() => {
+                        const rawVendors = activeProduct.supplier_details_json;
+                        const vendorList = Array.isArray(rawVendors) 
+                          ? rawVendors 
+                          : (rawVendors && typeof rawVendors === 'object' && Object.keys(rawVendors).length > 0 ? [rawVendors] : []);
 
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Item Code</span>
-                          <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px', fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                            {activeProduct.supplier_details_json?.vend_item_code || activeProduct.sku}
-                          </div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                            Supplier Catalogue Reference
-                          </span>
-                        </div>
+                        if (vendorList.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '24px 16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                              <div style={{ fontSize: '20px', marginBottom: '4px' }}>📦</div>
+                              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                                No vendor procurement links configured in Palladium ERP for this item.
+                              </span>
+                            </div>
+                          );
+                        }
 
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Contact Email</span>
-                          <div style={{ fontSize: '13px', fontWeight: 600, marginTop: '4px', color: 'var(--text-primary)', wordBreak: 'break-all' }}>
-                            {activeProduct.supplier_details_json?.email || '-'}
+                        return (
+                          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                            <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0, textAlign: 'left' }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-secondary)' }}>
+                                  <th style={{ padding: '8px 10px', width: '40px', textAlign: 'center' }}>#</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Name</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Item Code</th>
+                                  <th style={{ padding: '8px 12px' }}>Vendor Item Description</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Warranty</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Vendor Price</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>Local Price</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Disc %</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Landed Factor %</th>
+                                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Preferred</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {vendorList.map((vend, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                      {idx + 1}
+                                    </td>
+                                    <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {vend.vendor_name || vend.vend_code || '-'}
+                                    </td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                                      {vend.vendor_item_code || vend.vend_item_code || '-'}
+                                    </td>
+                                    <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '280px' }}>
+                                      {vend.vendor_item_desc || vend.vend_item_desc || '-'}
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {vend.warranty_days ? `${vend.warranty_days} Days` : '-'}
+                                    </td>
+                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
+                                      R {(vend.vendor_price !== undefined ? vend.vendor_price : (vend.vend_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      R {(vend.local_price !== undefined ? vend.local_price : (vend.vend_local_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {vend.discount_pct || 0}%
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                      {vend.landed_cost_factor_pct || 0}%
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                                      {vend.is_preferred ? (
+                                        <span className="badge b-success" style={{ fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
+                                          ⭐ Preferred
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>-</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                            Orders & Procurement
-                          </span>
-                        </div>
-
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 16px' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Vendor Contact Phone</span>
-                          <div style={{ fontSize: '14px', fontWeight: 600, marginTop: '4px', color: 'var(--text-primary)' }}>
-                            {activeProduct.supplier_details_json?.phone || activeProduct.supplier_details_json?.cell || '-'}
-                          </div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                            Direct Vendor Line
-                          </span>
-                        </div>
-
-                      </div>
+                        );
+                      })()}
                     </div>
 
                     {/* 3. LIVE INVENTORY & WAREHOUSE LOCATION BREAKDOWN */}

@@ -93,19 +93,22 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         p_cursor.execute("""
             SELECT 
                 iv.strPartNumber AS sku,
-                iv.strVendName AS vend_code,
-                v.strCity AS city,
-                v.strProvince AS province,
+                iv.strVendName AS vendor_name,
+                iv.strItemCode AS vendor_item_code,
+                iv.strItemDesc AS vendor_item_desc,
+                iv.intWarrantyDays AS warranty_days,
+                iv.decPrice AS vendor_price,
+                iv.decLocalPrice AS local_price,
+                iv.decDiscPerc AS discount_pct,
+                iv.decLandedCostFactor AS landed_cost_factor_pct,
+                iv.bitPreferred AS is_preferred,
                 v.strPhone AS phone,
-                v.strCellPhone AS cell,
                 v.strEmail AS email,
-                iv.strItemCode AS vend_item_code,
-                iv.strItemDesc AS vend_item_desc,
-                iv.decPrice AS vend_price,
-                iv.decLocalPrice AS vend_local_price,
-                iv.bitPreferred AS is_preferred
+                v.strCity AS city,
+                v.strProvince AS province
             FROM tblInvVend iv
             LEFT JOIN tblVendors v ON iv.strVendName = v.strVendName
+            ORDER BY iv.strPartNumber, iv.bitPreferred DESC;
         """)
         vend_rows = p_cursor.fetchall()
         p_conn.close()
@@ -122,23 +125,27 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 "alloc": float(lr['alloc'] or 0.0)
             }
 
-        # Map vendor details by SKU
+        # Map list of vendors by SKU
         vend_map = {}
         for vr in vend_rows:
             sku = str(vr['sku']).strip()
-            vend_map[sku] = {
-                "vend_code": str(vr.get('vend_code') or '').strip(),
-                "city": str(vr.get('city') or '').strip(),
-                "province": str(vr.get('province') or '').strip(),
+            if sku not in vend_map:
+                vend_map[sku] = []
+            vend_map[sku].append({
+                "vendor_name": str(vr.get('vendor_name') or '').strip(),
+                "vendor_item_code": str(vr.get('vendor_item_code') or '').strip(),
+                "vendor_item_desc": str(vr.get('vendor_item_desc') or '').strip(),
+                "warranty_days": int(vr.get('warranty_days') or 0),
+                "vendor_price": float(vr.get('vendor_price') or 0.0),
+                "local_price": float(vr.get('local_price') or 0.0),
+                "discount_pct": float(vr.get('discount_pct') or 0.0),
+                "landed_cost_factor_pct": float(vr.get('landed_cost_factor_pct') or 0.0),
+                "is_preferred": bool(vr.get('is_preferred')),
                 "phone": str(vr.get('phone') or '').strip(),
-                "cell": str(vr.get('cell') or '').strip(),
                 "email": str(vr.get('email') or '').strip(),
-                "vend_item_code": str(vr.get('vend_item_code') or '').strip(),
-                "vend_item_desc": str(vr.get('vend_item_desc') or '').strip(),
-                "vend_price": float(vr.get('vend_price') or 0.0),
-                "vend_local_price": float(vr.get('vend_local_price') or 0.0),
-                "is_preferred": bool(vr.get('is_preferred'))
-            }
+                "city": str(vr.get('city') or '').strip(),
+                "province": str(vr.get('province') or '').strip()
+            })
 
         # 5. Fetch existing products from Portal Cloud SQL for matching
         existing_products = {p.sku.strip(): p for p in db.query(Product).all() if p.sku}
@@ -170,8 +177,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             lead_days = item.get('lead_time_days')
             lead_str = f"{int(lead_days)} days" if lead_days and float(lead_days) > 0 else None
             loc_json = loc_map.get(sku)
-            vend_json = vend_map.get(sku)
-            vend_name = vend_json['vend_code'] if vend_json and vend_json.get('vend_code') else None
+            vend_list = vend_map.get(sku) or []
+            primary_vendor = vend_list[0]['vendor_name'] if len(vend_list) > 0 else None
 
             if sku in existing_products:
                 prod = existing_products[sku]
@@ -180,10 +187,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     prod.category = category
                 if family:
                     prod.family = family
-                if vend_name:
-                    prod.supplier_name = vend_name
-                if vend_json:
-                    prod.supplier_details_json = vend_json
+                prod.supplier_name = primary_vendor
+                prod.supplier_details_json = vend_list
                 prod.cost_price = cost_val
                 prod.retail_price = selling_val
                 prod.trade_price = selling_val
@@ -206,8 +211,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     name=name,
                     category=category,
                     family=family,
-                    supplier_name=vend_name,
-                    supplier_details_json=vend_json,
+                    supplier_name=primary_vendor,
+                    supplier_details_json=vend_list,
                     cost_price=cost_val,
                     retail_price=selling_val,
                     trade_price=selling_val,
