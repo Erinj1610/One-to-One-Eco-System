@@ -2065,10 +2065,15 @@ export default function OrdersPage() {
         }
       }
 
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+      const orderMarginPct = totalRetail > 0 ? Math.round(((totalRetail - totalCost) / totalRetail) * 100) : 0;
+
       if (errors.length > 0) {
-        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
+        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
       } else {
-        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
       }
     } catch (vaultErr) {
       alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);

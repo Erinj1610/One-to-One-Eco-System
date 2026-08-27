@@ -118,11 +118,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     try:
         if credentials_json:
             creds = service_account.Credentials.from_service_account_info(credentials_json, scopes=SCOPES_SHEETS)
-            try:
-                creds = creds.with_subject('erin.jones@1-to-1.world')
-                logger.info("Domain-Wide Delegation active: Impersonating erin.jones@1-to-1.world.")
-            except Exception as subject_err:
-                logger.warn(f"Impersonation notice: {subject_err}")
         else:
             creds, project = default(scopes=SCOPES_SHEETS)
             
@@ -136,35 +131,45 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     if not template_id:
         raise ValueError(f"Invalid Master Google Sheet URL or ID: {template_source}")
 
-    # Auto-normalize and enrich missing token aliases
-    rep_phone = tokens.get('ONEONE_REP_PHONE') or tokens.get('PM_PHONE') or tokens.get('REP_PHONE') or '078 452 5643'
-    rep_email = tokens.get('ONEONE_REP_EMAIL') or tokens.get('PM_EMAIL') or tokens.get('REP_EMAIL') or 'ryan.mccarthy@1-to-1.world'
-    rep_name = tokens.get('ONEONE_REP') or tokens.get('PM_NAME') or tokens.get('REP_NAME') or 'Ryan McCarthy'
+    # Auto-normalize and enrich missing/empty token aliases
+    rep_phone = str(tokens.get('ONEONE_REP_PHONE') or tokens.get('PM_PHONE') or tokens.get('REP_PHONE') or '078 452 5643').strip()
+    if not rep_phone:
+        rep_phone = '078 452 5643'
+        
+    rep_email = str(tokens.get('ONEONE_REP_EMAIL') or tokens.get('PM_EMAIL') or tokens.get('REP_EMAIL') or 'ryan.mccarthy@1-to-1.world').strip()
+    if not rep_email:
+        rep_email = 'ryan.mccarthy@1-to-1.world'
+        
+    rep_name = str(tokens.get('ONEONE_REP') or tokens.get('PM_NAME') or tokens.get('REP_NAME') or 'Ryan McCarthy').strip()
+    if not rep_name:
+        rep_name = 'Ryan McCarthy'
     
-    tokens.setdefault('ONEONE_REP', rep_name)
-    tokens.setdefault('PM_NAME', rep_name)
-    tokens.setdefault('PROJECT_PM', rep_name)
-    tokens.setdefault('REP_NAME', rep_name)
-    
-    tokens.setdefault('ONEONE_REP_PHONE', rep_phone)
-    tokens.setdefault('PM_PHONE', rep_phone)
-    tokens.setdefault('PM_PPHONE', rep_phone)
-    tokens.setdefault('REP_PHONE', rep_phone)
-    
-    tokens.setdefault('ONEONE_REP_EMAIL', rep_email)
-    tokens.setdefault('PM_EMAIL', rep_email)
-    tokens.setdefault('REP_EMAIL', rep_email)
+    for k in ['ONEONE_REP', 'PM_NAME', 'PROJECT_PM', 'REP_NAME']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_name
+            
+    for k in ['ONEONE_REP_PHONE', 'PM_PHONE', 'PM_PPHONE', 'REP_PHONE']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_phone
+            
+    for k in ['ONEONE_REP_EMAIL', 'PM_EMAIL', 'REP_EMAIL']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_email
 
-    if 'TOTAL_RETAIL' in tokens and ('DEPOSIT' not in tokens or not tokens.get('DEPOSIT')):
-        tot_num = safe_float(tokens['TOTAL_RETAIL'])
-        if tot_num > 0:
-            dep_50 = tot_num * 0.5
-            dep_70 = tot_num * 0.7
-            tokens.setdefault('DEPOSIT', f"R {dep_50:,.2f}")
-            tokens.setdefault('DEPOSIT_50', f"R {dep_50:,.2f}")
-            tokens.setdefault('DEPOSIT_70', f"R {dep_70:,.2f}")
-            tokens.setdefault('DEPOSIT_AMOUNT', f"R {dep_50:,.2f}")
-            tokens.setdefault('DEPOSIT_REQUIRED', f"R {dep_50:,.2f}")
+    tot_num = safe_float(tokens.get('TOTAL_RETAIL', 0))
+    if tot_num > 0:
+        dep_50 = f"R {tot_num * 0.5:,.2f}"
+        dep_70 = f"R {tot_num * 0.7:,.2f}"
+        if not tokens.get('DEPOSIT') or not str(tokens['DEPOSIT']).strip():
+            tokens['DEPOSIT'] = dep_50
+        if not tokens.get('DEPOSIT_50') or not str(tokens['DEPOSIT_50']).strip():
+            tokens['DEPOSIT_50'] = dep_50
+        if not tokens.get('DEPOSIT_70') or not str(tokens['DEPOSIT_70']).strip():
+            tokens['DEPOSIT_70'] = dep_70
+        if not tokens.get('DEPOSIT_AMOUNT') or not str(tokens['DEPOSIT_AMOUNT']).strip():
+            tokens['DEPOSIT_AMOUNT'] = dep_50
+        if not tokens.get('DEPOSIT_REQUIRED') or not str(tokens['DEPOSIT_REQUIRED']).strip():
+            tokens['DEPOSIT_REQUIRED'] = dep_50
 
     # Extract client, project, and document info for folder vaulting
     client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
