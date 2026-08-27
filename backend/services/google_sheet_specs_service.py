@@ -70,14 +70,15 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
     web_view_link = None
     
     try:
-        query = f"name='{SHEET_TITLE}' and '{folder_id}' in parents and trashed=false"
+        query = f"'{folder_id}' in parents and trashed=false"
         res = drive_service.files().list(
             q=query,
-            fields="files(id, name, webViewLink)",
+            fields="files(id, name, webViewLink, mimeType)",
+            corpora='allDrives',
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-        existing_files = res.get('files', [])
+        existing_files = [f for f in res.get('files', []) if f.get('name') == SHEET_TITLE]
         
         if existing_files:
             # Keep the first one
@@ -86,12 +87,12 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
             web_view_link = primary_file.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
             logger.info(f"Found existing Master Sheet {spreadsheet_id}. Cleaning {len(existing_files)-1} duplicate(s)...")
             
-            # Trash duplicate copies
+            # Delete all duplicate copies
             for dup in existing_files[1:]:
                 try:
                     drive_service.files().delete(fileId=dup['id'], supportsAllDrives=True).execute()
                 except Exception as del_err:
-                    logger.warning(f"Could not trash duplicate {dup['id']}: {del_err}")
+                    logger.warning(f"Could not delete duplicate {dup['id']}: {del_err}")
     except Exception as search_err:
         logger.warning(f"Error checking existing files: {search_err}")
 
@@ -136,7 +137,31 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
             str(getattr(p, 'client_description', '') or getattr(p, 'notes', '') or '')
         ])
 
-    # 4. Insert data in chunks
+    # 4. Expand grid dimensions before inserting rows
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                'requests': [
+                    {
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": 0,
+                                "gridProperties": {
+                                    "rowCount": len(rows) + 50,
+                                    "columnCount": len(HEADERS)
+                                }
+                            },
+                            "fields": "gridProperties.rowCount,gridProperties.columnCount"
+                        }
+                    }
+                ]
+            }
+        ).execute()
+    except Exception as resize_err:
+        logger.warning(f"Grid resize notice: {resize_err}")
+
+    # 5. Insert data in chunks
     CHUNK_SIZE = 1500
     for i in range(0, len(rows), CHUNK_SIZE):
         chunk = rows[i:i + CHUNK_SIZE]
@@ -151,7 +176,7 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
             body={'values': chunk}
         ).execute()
 
-    # 5. Format Header (Freeze row 1, dark navy styling, auto-size)
+    # 6. Format Header (Freeze row 1, dark navy styling, auto-size)
     format_requests = [
         {
             "updateSheetProperties": {
