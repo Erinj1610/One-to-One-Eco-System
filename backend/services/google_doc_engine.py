@@ -197,6 +197,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise RuntimeError(f"Could not access Master Google Sheet template. Verify sharing permissions. Error: {fetch_err}")
 
     sheets = spreadsheet.get('sheets', [])
+    valid_template_sheets = [
+        s for s in sheets 
+        if not s['properties']['title'].startswith('PDF_Render_') and not s['properties']['title'].startswith('PDF_')
+    ]
     target_sheet = None
     target_gid = 0
     
@@ -208,13 +212,21 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         if clean_target in ('quotation', 'quote'):
             alias_set.update(['quotation', 'quote', 'quotes', 'summarizedquotation'])
         elif clean_target in ('boq', 'boqdoc'):
-            alias_set.update(['boq', 'boqdoc', 'detailedboq', 'billofquantities'])
+            alias_set.update(['boq', 'boqdoc', 'demoboq', 'detailedboq', 'billofquantities'])
         elif clean_target in ('schedule', 'lightingschedule'):
             alias_set.update(['schedule', 'lightingschedule'])
+        elif 'deposit' in clean_target:
+            alias_set.update(['depositinvoice', 'deposit', 'proformainvoice', 'proforma', 'proformainv', 'taxinvoice', 'invoice'])
         elif 'proforma' in clean_target or 'proform' in clean_target:
-            alias_set.update(['proformainvoice', 'proforma', 'proformainv'])
+            alias_set.update(['proformainvoice', 'proforma', 'proformainv', 'depositinvoice', 'deposit', 'taxinvoice'])
+        elif 'balance' in clean_target:
+            alias_set.update(['balanceinvoice', 'balance', 'taxinvoice', 'invoice'])
+        elif 'tax' in clean_target:
+            alias_set.update(['taxinvoice', 'tax', 'invoice'])
+        elif 'statement' in clean_target:
+            alias_set.update(['progressstatement', 'statement', 'summary'])
 
-        for s in sheets:
+        for s in valid_template_sheets:
             raw_s = s['properties']['title'].strip().lower()
             clean_s = ''.join(c for c in raw_s if c.isalnum())
             if clean_s in alias_set or any(a in clean_s for a in alias_set):
@@ -223,8 +235,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 logger.info(f"Matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
                 break
     
-    if not target_sheet and sheets:
-        target_sheet = sheets[0]
+    if not target_sheet and valid_template_sheets:
+        target_sheet = valid_template_sheets[0]
         target_gid = target_sheet['properties']['sheetId']
         logger.warn(f"Fallback to default first tab '{target_sheet['properties']['title']}' (GID={target_gid})")
 
@@ -291,16 +303,19 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         # Re-fetch working spreadsheet metadata so target_gid matches tab GID in working_spreadsheet_id
         try:
             working_sp = sheets_service.spreadsheets().get(spreadsheetId=working_spreadsheet_id).execute()
-            working_sheets = working_sp.get('sheets', [])
+            working_sheets = [
+                ws for ws in working_sp.get('sheets', [])
+                if not ws['properties']['title'].startswith('PDF_Render_') and not ws['properties']['title'].startswith('PDF_')
+            ]
+            matched_working = False
             if sheet_name:
-                raw_t = str(sheet_name).strip().lower()
-                clean_t = ''.join(c for c in raw_t if c.isalnum())
                 for ws in working_sheets:
                     clean_ws = ''.join(c for c in ws['properties']['title'].strip().lower() if c.isalnum())
                     if clean_ws in alias_set or any(a in clean_ws for a in alias_set):
                         target_gid = ws['properties']['sheetId']
+                        matched_working = True
                         break
-            if not target_gid and working_sheets:
+            if not matched_working and working_sheets:
                 target_gid = working_sheets[0]['properties']['sheetId']
         except Exception as working_err:
             logger.warn(f"Re-fetch GID from working sheet notice: {working_err}")
@@ -1159,5 +1174,14 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             logger.info(f"Saved newest PDF '{new_vault_filename}' ({uploaded_vault_file.get('id')}) in Latest folder.")
         except Exception as vault_err:
             logger.error(f"Error archiving PDF in Drive Vault: {vault_err}")
+
+    # Clean up temporary tab so sheet tabs do not accumulate
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=working_spreadsheet_id,
+            body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+        ).execute()
+    except Exception as cleanup_err:
+        logger.debug(f"Temporary sheet tab cleanup notice: {cleanup_err}")
 
     return temp_pdf.name, working_spreadsheet_id, sheet_url
