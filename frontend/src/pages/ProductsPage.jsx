@@ -1545,41 +1545,8 @@ export default function ProductsPage() {
                   {isSyncingPalladium ? 'Syncing Palladium...' : 'Sync Palladium ERP'}
                 </button>
 
-                <button
-                  onClick={() => setShowBulkRepricingModal(true)}
-                  className="btn btn-ghost"
-                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
-                >
-                  🏷️ Bulk Re-Pricing (% Shift)
-                </button>
-
-                <button
-                  onClick={() => setIsBulkGridMode(!isBulkGridMode)}
-                  className={`btn ${isBulkGridMode ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
-                >
-                  ⚡ {isBulkGridMode ? 'Exit Bulk Grid' : 'Product Manager Bulk Grid'}
-                </button>
-
-                {isBulkGridMode && Object.keys(gridEdits).length > 0 && (
-                  <button 
-                    onClick={handleCommitGridEdits} 
-                    className="btn btn-success" 
-                    style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px' }}
-                  >
-                    💾 Save All Changes ({Object.keys(gridEdits).length} Row(s))
-                  </button>
-                )}
-
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <Download size={14} /> Download Template / Export
-                </button>
-                <label className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <FileText size={14} /> Bulk Import (Excel)
-                  <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleBulkImportExcel} />
-                </label>
-                <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-                  <Plus size={15} /> Create Product SKU
+                  <Download size={14} /> Export Product Database
                 </button>
               </div>
             </div>
@@ -1790,102 +1757,27 @@ export default function ProductsPage() {
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                       
                       {/* DESCRIPTION / NAME */}
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="text" 
-                            style={{ 
-                              width: '100%', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              background: gridEdits[p.id]?.name !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.name !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.name !== undefined ? gridEdits[p.id].name : p.name}
-                            onChange={e => handleGridCellChange(p.id, 'name', e.target.value)}
-                          />
-                        ) : (
-                          p.name
-                        )}
-                      </td>
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
 
                       <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
                       
-                      {/* UNIT COST */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            style={{ 
-                              width: '85px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'right',
-                              background: gridEdits[p.id]?.cost_price !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.cost_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.cost_price !== undefined ? gridEdits[p.id].cost_price : (p.unitCost || p.cost_price || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'cost_price', e.target.value)}
-                          />
-                        ) : (
-                          `R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        )}
+                      {/* SUPPLIER COST PRICE */}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                        {`R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </td>
 
                       {/* RRP RETAIL PRICE */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            style={{ 
-                              width: '85px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              background: gridEdits[p.id]?.retail_price !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.retail_price !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.retail_price !== undefined ? gridEdits[p.id].retail_price : (p.retailPrice || p.retail_price || p.recommended_retail_price || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'retail_price', e.target.value)}
-                          />
-                        ) : (
-                          `R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        )}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                        {`R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </td>
 
                       {/* STOCK LEVEL (CLEAN NUMERIC DISPLAY) */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                        {isBulkGridMode ? (
-                          <input 
-                            type="number" 
-                            style={{ 
-                              width: '65px', 
-                              height: '28px', 
-                              fontSize: '12px', 
-                              textAlign: 'center',
-                              fontWeight: 600,
-                              background: gridEdits[p.id]?.stock_level !== undefined ? '#fffbeb' : '#fff',
-                              border: gridEdits[p.id]?.stock_level !== undefined ? '1px solid #f59e0b' : '1px solid var(--border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px'
-                            }}
-                            value={gridEdits[p.id]?.stock_level !== undefined ? gridEdits[p.id].stock_level : (p.stock || p.stock_level || 0)}
-                            onChange={e => handleGridCellChange(p.id, 'stock_level', e.target.value)}
-                          />
-                        ) : (
-                          p.stock || p.stock_level || 0
-                        )}
+                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>
+                        <span className={`badge ${(p.stock || p.stock_level || 0) > 0 ? 'b-success' : 'b-secondary'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                          {p.stock || p.stock_level || 0}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -1965,95 +1857,20 @@ export default function ProductsPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: '8px' }}>
-                  {isEditing ? (
-                    <>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Item Availability:</span>
-                        <select
-                          className="form-control"
-                          style={{ width: '150px', height: '30px', padding: '2px 6px', fontSize: '12px', fontWeight: 600 }}
-                          value={editingStatus}
-                          onChange={e => setEditingStatus(e.target.value)}
-                        >
-                          <option value="Active">Active (Can be ordered)</option>
-                          <option value="Inactive">Inactive (Blocked from orders)</option>
-                        </select>
-                      </div>
+                  <span className={`badge ${activeProduct.status === 'Inactive' || !activeProduct.is_active ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                    {activeProduct.status === 'Inactive' || !activeProduct.is_active ? '🔴 Discontinued / Inactive in ERP' : '🟢 Active in Palladium ERP'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                    🔒 Palladium Single Source of Truth
+                  </span>
+                </div>
+              </div>
 
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stock Qty:</span>
-                        <input
-                          type="number"
-                          className="form-control"
-                          style={{ width: '85px', height: '30px', padding: '2px 6px', fontSize: '12px', textAlign: 'center' }}
-                          value={editingStock}
-                          onChange={e => setEditingStock(Math.max(0, parseInt(e.target.value) || 0))}
-                        />
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '6px', borderLeft: '1.5px solid var(--border)', paddingLeft: '12px' }}>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          style={{ height: '30px', fontSize: '11.5px', padding: '0 12px' }}
-                          onClick={() => { setIsEditing(false); setEditingStatus(activeProduct.status); setEditingStock(activeProduct.stock); }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          style={{ height: '30px', fontSize: '11.5px', padding: '0 14px' }}
-                          onClick={handleCommitChanges}
-                        >
-                          Save Changes
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`badge ${activeProduct.status === 'Inactive' ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
-                        {activeProduct.status === 'Inactive' ? '🔴 Inactive (Blocked from orders)' : '🟢 Active (Can be ordered)'}
-                      </span>
-                      
-                      <button
-                        className="btn btn-primary btn-sm"
-                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => setIsEditing(true)}
-                      >
-                        ✏️ Edit Item
-                      </button>
-
-                      <button
-                        className={`btn btn-sm ${activeProduct.status === 'Inactive' ? 'btn-success' : 'btn-secondary'}`}
-                        style={{ height: '30px', fontSize: '11.5px', padding: '0 14px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        title={activeProduct.status === 'Inactive' ? 'Make item Active for new orders' : 'Mark item Inactive (Block from new orders)'}
-                        onClick={async () => {
-                          const nextStatus = activeProduct.status === 'Inactive' ? 'Active' : 'Inactive';
-                          if (!window.confirm(`Set SKU '${activeProduct.sku}' to '${nextStatus}'? (Inactive items cannot be added to new orders while keeping past order history intact).`)) return;
-                          try {
-                            const res = await fetch(`${API_BASE}/api/products/${activeProduct.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ ...activeProduct, status: nextStatus, is_active: nextStatus === 'Active' })
-                            });
-                            if (res.ok) {
-                              const updatedData = await res.json();
-                              triggerToast(`Product SKU '${activeProduct.sku}' is now ${nextStatus}.`);
-                              setProducts(prev => prev.map(item => item.id === activeProduct.id ? { ...item, status: nextStatus, is_active: nextStatus === 'Active' } : item));
-                              fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
-                              fetchSummary();
-                            } else {
-                              const errData = await res.json().catch(() => ({}));
-                              alert("Could not update item status: " + (errData.detail || "Server error"));
-                            }
-                          } catch (e) {
-                            alert("Network error: " + e.message);
-                          }
-                        }}
-                      >
-                        {activeProduct.status === 'Inactive' ? '✅ Set to Active' : '🚫 Set to Inactive'}
-                      </button>
-                    </div>
-                  )}
+              {/* READ-ONLY ERP SAFETY BANNER */}
+              <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                <ShieldCheck size={20} color="#10b981" />
+                <div>
+                  <strong>Palladium ERP Managed Record:</strong> All product names, SKUs, selling prices, cost prices, categories, and stock quantities are live-synchronized from Palladium Accounting. Editing in the portal is disabled to protect database integrity.
                 </div>
               </div>
 
@@ -3030,247 +2847,10 @@ export default function ProductsPage() {
                     </div>
                   </div>
                 )}
-
               </div>
-
             </div>
           </div>
         </>
-      )}
-
-      {/* BULK SUPPLIER RE-PRICING MODAL */}
-      {showBulkRepricingModal && (
-        <div className="modal-bg active" style={{ display: 'flex' }}>
-          <div className="modal" style={{ maxWidth: '480px', padding: '20px' }}>
-            <div className="modal-head" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>🏷️ Bulk Supplier Re-Pricing (% Shift)</h3>
-              <button className="modal-close" onClick={() => setShowBulkRepricingModal(false)}>×</button>
-            </div>
-            
-            <div className="modal-body" style={{ padding: 0 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div className="form-row">
-                  <label className="form-label">Target Supplier:</label>
-                  <select 
-                    className="form-control" 
-                    value={bulkSupplier} 
-                    onChange={e => setBulkSupplier(e.target.value)}
-                  >
-                    <option value="All Suppliers">All Suppliers</option>
-                    {[...new Set(products.map(p => p.supplier_name || p.supplier).filter(Boolean))].map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <label className="form-label">Target Category:</label>
-                  <select 
-                    className="form-control" 
-                    value={bulkCategory} 
-                    onChange={e => setBulkCategory(e.target.value)}
-                  >
-                    <option value="All Categories">All Categories</option>
-                    {[...new Set(products.map(p => p.category).filter(Boolean))].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-row">
-                    <label className="form-label">Cost Price Shift (%):</label>
-                    <input 
-                      type="number" 
-                      step="0.1" 
-                      className="form-control" 
-                      placeholder="e.g. 5.0 for +5%"
-                      value={bulkCostShift} 
-                      onChange={e => setBulkCostShift(e.target.value)} 
-                    />
-                  </div>
-                  <div className="form-row">
-                    <label className="form-label">Retail Price Shift (%):</label>
-                    <input 
-                      type="number" 
-                      step="0.1" 
-                      className="form-control" 
-                      placeholder="e.g. 5.0 for +5%"
-                      value={bulkRetailShift} 
-                      onChange={e => setBulkRetailShift(e.target.value)} 
-                    />
-                  </div>
-                </div>
-
-                <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid #f59e0b', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
-                  💡 <strong>ERP Audit Impact:</strong> This action will update all matching products inside Cloud SQL inside an atomic transaction and log an audit trail entry for every modified price.
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-foot" style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowBulkRepricingModal(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={handleExecuteBulkRepricing}>⚡ Execute Re-Pricing</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* EXCEL IMPORT PROGRESS MODAL */}
-      {importProgress.isImporting && (
-        <div className="modal-bg active" style={{ display: 'flex', zIndex: 99999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
-          <div className="modal" style={{ maxWidth: '420px', padding: '24px', textAlign: 'center', borderRadius: '16px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '10px' }}>📦</div>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '17px', fontWeight: 700 }}>Importing Product Database...</h3>
-            <p style={{ margin: '0 0 18px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Reconciling products in Cloud SQL. Please keep this tab open.
-            </p>
-
-            {/* PROGRESS BAR */}
-            <div style={{ background: 'var(--bg-secondary)', height: '12px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', marginBottom: '14px' }}>
-              <div 
-                style={{ 
-                  height: '100%', 
-                  background: 'linear-gradient(90deg, #3b82f6, #10b981)', 
-                  width: `${importProgress.totalRows > 0 ? Math.round((importProgress.processedRows / importProgress.totalRows) * 100) : 0}%`,
-                  transition: 'width 0.3s ease'
-                }} 
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '14px' }}>
-              <span>{Math.round((importProgress.processedRows / (importProgress.totalRows || 1)) * 100)}% Complete</span>
-              <span>{importProgress.processedRows} / {importProgress.totalRows} Rows</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: '8px', fontSize: '11.5px' }}>
-              <div style={{ color: 'var(--text-success)', fontWeight: 600 }}>🟢 Added: {importProgress.added}</div>
-              <div style={{ color: 'var(--text-info)', fontWeight: 600 }}>🔵 Updated: {importProgress.updated}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CREATE NEW PRODUCT SKU MODAL */}
-      {showCreateModal && (
-        <div className="modal-bg active" style={{ display: 'flex' }}>
-          <div className="modal" style={{ maxWidth: '520px', padding: '20px' }}>
-            <div className="modal-head" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>📦 Create New Product SKU</h3>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
-            </div>
-            
-            <div className="modal-body" style={{ padding: 0 }}>
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>SKU Code (Required)</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 28402 9240 FW" 
-                    className="form-control"
-                    value={newSku}
-                    onChange={e => setNewSku(e.target.value)}
-                  />
-                </div>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Product Name (Required)</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Downlight - Entero SQ-S White" 
-                    className="form-control"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Category</label>
-                  <select 
-                    className="form-control"
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                  >
-                    <option value="Downlight">Downlight</option>
-                    <option value="Starlight">Starlight</option>
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label className="form-label">Brand</label>
-                  <input 
-                    type="text" 
-                    className="form-control"
-                    value={newBrand}
-                    onChange={e => setNewBrand(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Supplier Vendor</label>
-                  <select 
-                    className="form-control"
-                    value={newSupplier}
-                    onChange={e => setNewSupplier(e.target.value)}
-                  >
-                    <option value="ELDC">ELDC</option>
-                    <option value="Molecule Lighting">Molecule Lighting</option>
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>Supplier Cost EXCL. (R)</label>
-                  <input 
-                    type="number" 
-                    placeholder="2416.37"
-                    className="form-control"
-                    value={newUnitCost}
-                    onChange={e => setNewUnitCost(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label" style={{ fontWeight: 600 }}>RRP Target Price EXCL. (R)</label>
-                  <input 
-                    type="number" 
-                    placeholder="3835.50"
-                    className="form-control"
-                    value={newRetailPrice}
-                    onChange={e => setNewRetailPrice(e.target.value)}
-                  />
-                </div>
-                <div className="form-row">
-                  <label className="form-label">Initial Stock Qty</label>
-                  <input 
-                    type="number" 
-                    className="form-control"
-                    value={newStock}
-                    onChange={e => setNewStock(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="row-2">
-                <div className="form-row" style={{ flex: '0 0 50%' }}>
-                  <label className="form-label">Reorder Limit Threshold</label>
-                  <input 
-                    type="number" 
-                    className="form-control"
-                    value={newReorder}
-                    onChange={e => setNewReorder(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '16px' }}>
-              <button className="btn btn-ghost" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateProduct}>Create Product</button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
