@@ -113,18 +113,26 @@ with staging_eng.connect() as s_conn:
                 
                 print(f"[OK] Synced {t_name}: {len(data)} rows")
 
-    # 3. Fix sequence IDs if postgres serials are used
-    for t_name in tables_sync_order:
-        if t_name in staging_meta.tables:
-            try:
-                s_conn.execute(text(f"""
-                    SELECT setval(pg_get_serial_sequence('"{t_name}"', 'id'), 
-                                  COALESCE((SELECT MAX(id) FROM "{t_name}"), 1), 
-                                  true)
-                    WHERE pg_get_serial_sequence('"{t_name}"', 'id') IS NOT NULL;
-                """))
-                s_conn.commit()
-            except Exception:
-                pass
+    # 3. Fix sequence IDs across all tables
+    print("\n--- Resetting all sequence IDs in staging database ---")
+    seqs = s_conn.execute(text("""
+        SELECT 
+            table_name, 
+            column_name, 
+            column_default
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' AND column_default LIKE 'nextval%'
+    """)).fetchall()
+
+    for tbl, col, default_val in seqs:
+        try:
+            seq_name = default_val.split("'")[1]
+            max_id = s_conn.execute(text(f'SELECT COALESCE(MAX("{col}"), 0) FROM "{tbl}"')).scalar()
+            target_val = max(1, max_id)
+            s_conn.execute(text(f"SELECT setval('{seq_name}', {target_val}, true)"))
+            print(f"  [OK] Reset {seq_name} ({tbl}.{col}) to {target_val}")
+        except Exception as e:
+            print(f"  [WARN] Failed resetting sequence for {tbl}.{col}: {e}")
+    s_conn.commit()
 
 print("\n--- FULL SYNC COMPLETED SUCCESSFULLY ---")
