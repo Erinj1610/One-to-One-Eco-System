@@ -711,6 +711,136 @@ export default function OrdersPage() {
     }
   };
 
+  const buildOrderDocumentTokens = () => {
+    const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+    const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+    const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+    const vatAmount = discountedRetail * 0.15;
+    const finalTotalInclVat = discountedRetail * 1.15;
+
+    const finalItems = activeOrderItems.map((item, idx) => ({
+      index: (idx + 1).toString(),
+      isSpacer: !!(item.isSpacer || item.type === 'SPACER'),
+      code: item.code || '',
+      oneOneCode: item.oneOneCode || item.one_one_code || '',
+      type: item.type || '',
+      description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || ''),
+      qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
+      brand: item.brand || '',
+      retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      totalRetail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      floor: item.floor || '',
+      area: item.area || '',
+      dimming: item.dimming || 'Non-dim',
+      unitCost: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitCost || item.unit_cost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      stockStatus: item.stockStatus || item.stock_status || 'In Stock',
+      eta: item.eta || '4 weeks'
+    }));
+
+    // Resolve Representative & PM Info
+    const resolvedRep = oneOneRep || pmName || 'Martin Döller';
+    const matchedRepInfo = (projectManagers || []).find(pm => {
+      if (!pm || !pm.name) return false;
+      const pmLower = pm.name.toLowerCase();
+      const repLower = resolvedRep.toLowerCase();
+      return pmLower === repLower || pmLower.includes(repLower) || repLower.includes(pmLower);
+    });
+
+    const repPhone = pmPhone || (matchedRepInfo ? matchedRepInfo.phone : '078 452 5643');
+    const repEmail = pmEmail || (matchedRepInfo ? matchedRepInfo.email : `${resolvedRep.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world`);
+
+    // Deposit calculations
+    const deposit50Val = finalTotalInclVat * 0.50;
+    const deposit70Val = finalTotalInclVat * 0.70;
+    const depositFormatted50 = `R ${deposit50Val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const depositFormatted70 = `R ${deposit70Val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const totalPaidNum = Number(orderPaidAmount) || 0;
+    const balanceOutstandingNum = Math.max(0, finalTotalInclVat - totalPaidNum);
+
+    return {
+      PROJECT_NAME: projectFullName || 'Private Client Project',
+      CLIENT_NAME: clientContact || clientCompany || 'Client Name',
+      DATE: orderDate || new Date().toLocaleDateString('en-GB'),
+      DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
+      PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
+      ORDER_NUMBER: selectedOrderId || 'Q-2026-XXX',
+      FEE_NAME: quoteName || `Order ${selectedOrderId || 'Q-2026-XXX'}`,
+      ORDER_NAME: quoteName || selectedOrderId || '',
+      QUOTE_NAME: quoteName || '',
+      ORDER_STATUS: orderStatus || 'Draft',
+      
+      CLIENT_COMPANY: clientCompany || 'Private Client',
+      CLIENT_CONTACT_PERSON: clientContact || clientCompany || 'Client Name',
+      CLIENT_EMAIL: clientEmail || '',
+      CLIENT_PHONE: clientPhone || '',
+      CLIENT_VAT: '',
+      DELIVERY_ADDRESS: deliveryAddress || '',
+      DELIVERY_DETAILS: deliveryAddress || '',
+      BILLING_DETAILS: billingDetails || '',
+      
+      ONEONE_REP: resolvedRep,
+      ONEONE_REP_PHONE: repPhone,
+      ONEONE_REP_EMAIL: repEmail,
+      REP_NAME: resolvedRep,
+      REP_PHONE: repPhone,
+      REP_EMAIL: repEmail,
+      
+      PM_NAME: pmName || resolvedRep,
+      PM_EMAIL: repEmail,
+      PM_PHONE: repPhone,
+      PM_PPHONE: repPhone,
+      PROJECT_PM: pmName || resolvedRep,
+      PROJECT_SIZE: projectSize || '—',
+      PROJECT_TIER: projectTier || 'Signature',
+      
+      SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
+      
+      DEPOSIT: depositFormatted50,
+      DEPOSIT_50: depositFormatted50,
+      DEPOSIT_70: depositFormatted70,
+      DEPOSIT_AMOUNT: depositFormatted50,
+      DEPOSIT_REQUIRED: depositFormatted50,
+      DEPOSIT_VALUE: depositFormatted50,
+      
+      BALANCE: `R ${(finalTotalInclVat - deposit50Val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      BALANCE_OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      
+      items: finalItems,
+      payments: (orderPayments || []).map((p, idx) => ({
+        index: (idx + 1).toString(),
+        date: p.date || '',
+        reference: p.reference || '',
+        amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      })),
+      floors: (() => {
+        const floorMap = {};
+        finalItems.forEach(item => {
+          if (item.isSpacer || item.type === 'SPACER') return;
+          const fName = item.floor || 'Unspecified';
+          const aName = item.area || 'Unspecified';
+          if (!floorMap[fName]) {
+            floorMap[fName] = { name: fName, areas: {} };
+          }
+          if (!floorMap[fName].areas[aName]) {
+            floorMap[fName].areas[aName] = { name: aName, items: [] };
+          }
+          floorMap[fName].areas[aName].items.push(item);
+        });
+        return Object.values(floorMap).map(f => ({
+          name: f.name,
+          areas: Object.values(f.areas)
+        }));
+      })()
+    };
+  };
+
   const handleExportXlsxTemplate = async () => {
     let docType = activeDocType === 'boq_doc' ? 'BOQ' : activeDocType.toUpperCase();
     setExportingXlsx(true);
@@ -718,92 +848,7 @@ export default function OrdersPage() {
       logActivity('document_export', `Exported ${docType} Excel-rendered PDF for order ${selectedOrderId}`);
     }
     try {
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const vatAmount = discountedRetail * 0.15;
-      const finalTotalInclVat = discountedRetail * 1.15;
-
-      const finalItems = activeOrderItems.map((item, idx) => ({
-        index: (idx + 1).toString(),
-        code: item.code || '',
-        oneOneCode: item.oneOneCode || '',
-        type: item.type || '',
-        description: item.description || '',
-        qty: (item.qty || 0).toString(),
-        brand: item.brand || '',
-        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        floor: item.floor || '',
-        area: item.area || '',
-        dimming: item.dimming || 'Non-dim',
-        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        stockStatus: item.stockStatus || 'In Stock',
-        eta: item.eta || '4 weeks'
-      }));
-
-      const tokens = {
-        PROJECT_NAME: projectFullName || 'Private Client Project',
-        CLIENT_NAME: clientContact || 'Client Name',
-        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        ORDER_STATUS: orderStatus || 'Draft',
-        ORDER_NAME: quoteName || selectedOrderId || '',
-        QUOTE_NAME: quoteName || '',
-        
-        CLIENT_COMPANY: clientCompany || 'Private Client',
-        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-        CLIENT_EMAIL: clientEmail || '',
-        CLIENT_PHONE: clientPhone || '',
-        CLIENT_VAT: '',
-        DELIVERY_ADDRESS: deliveryAddress || '',
-        
-        ONEONE_REP: oneOneRep || 'Martin Döller',
-        PM_NAME: pmName || 'Merlyn Mittins',
-        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
-        PM_PHONE: pmPhone || '083 570 7795',
-        PM_PPHONE: pmPhone || '083 570 7795',
-        PROJECT_PM: pmName || 'Merlyn Mittins',
-        PROJECT_SIZE: projectSize || '—',
-        PROJECT_TIER: projectTier || 'Signature',
-        
-        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
-        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        
-        items: finalItems,
-        payments: (orderPayments || []).map((p, idx) => ({
-          index: (idx + 1).toString(),
-          date: p.date || '',
-          reference: p.reference || '',
-          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        })),
-        floors: (() => {
-          const floorMap = {};
-          finalItems.forEach(item => {
-            const fName = item.floor || 'Unspecified';
-            const aName = item.area || 'Unspecified';
-            if (!floorMap[fName]) {
-              floorMap[fName] = { name: fName, areas: {} };
-            }
-            if (!floorMap[fName].areas[aName]) {
-              floorMap[fName].areas[aName] = { name: aName, items: [] };
-            }
-            floorMap[fName].areas[aName].items.push(item);
-          });
-          return Object.values(floorMap).map(f => ({
-            name: f.name,
-            areas: Object.values(f.areas)
-          }));
-        })()
-      };
+      const tokens = buildOrderDocumentTokens();
 
       let res;
       let targetDocTypes = checkedDocTypes.length > 0 
@@ -857,90 +902,7 @@ export default function OrdersPage() {
       logActivity('document_export', `Exported ${docType} Excel file for order ${selectedOrderId}`);
     }
     try {
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const vatAmount = discountedRetail * 0.15;
-      const finalTotalInclVat = discountedRetail * 1.15;
-
-      const finalItems = activeOrderItems.map((item, idx) => ({
-        index: (idx + 1).toString(),
-        code: item.code || '',
-        oneOneCode: item.oneOneCode || '',
-        type: item.type || '',
-        description: item.description || '',
-        qty: (item.qty || 0).toString(),
-        brand: item.brand || '',
-        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        floor: item.floor || '',
-        area: item.area || '',
-        dimming: item.dimming || 'Non-dim',
-        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        stockStatus: item.stockStatus || 'In Stock',
-        eta: item.eta || '4 weeks'
-      }));
-
-      const tokens = {
-        PROJECT_NAME: projectFullName || 'Private Client Project',
-        CLIENT_NAME: clientContact || 'Client Name',
-        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        ORDER_STATUS: orderStatus || 'Draft',
-        
-        CLIENT_COMPANY: clientCompany || 'Private Client',
-        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-        CLIENT_EMAIL: clientEmail || '',
-        CLIENT_PHONE: clientPhone || '',
-        CLIENT_VAT: '',
-        DELIVERY_ADDRESS: deliveryAddress || '',
-        
-        ONEONE_REP: oneOneRep || 'Martin Döller',
-        PM_NAME: pmName || 'Merlyn Mittins',
-        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
-        PM_PHONE: pmPhone || '083 570 7795',
-        PM_PPHONE: pmPhone || '083 570 7795',
-        PROJECT_PM: pmName || 'Merlyn Mittins',
-        PROJECT_SIZE: projectSize || '—',
-        PROJECT_TIER: projectTier || 'Signature',
-        
-        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
-        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        
-        items: finalItems,
-        payments: (orderPayments || []).map((p, idx) => ({
-          index: (idx + 1).toString(),
-          date: p.date || '',
-          reference: p.reference || '',
-          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        })),
-        floors: (() => {
-          const floorMap = {};
-          finalItems.forEach(item => {
-            const fName = item.floor || 'Unspecified';
-            const aName = item.area || 'Unspecified';
-            if (!floorMap[fName]) {
-              floorMap[fName] = { name: fName, areas: {} };
-            }
-            if (!floorMap[fName].areas[aName]) {
-              floorMap[fName].areas[aName] = { name: aName, items: [] };
-            }
-            floorMap[fName].areas[aName].items.push(item);
-          });
-          return Object.values(floorMap).map(f => ({
-            name: f.name,
-            areas: Object.values(f.areas)
-          }));
-        })()
-      };
+      const tokens = buildOrderDocumentTokens();
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?format=xlsx`, {
         method: 'POST',
@@ -978,30 +940,37 @@ export default function OrdersPage() {
   // Helper to roll up items for the summarized Quotation
   const groupItemsForQuotation = (items) => {
     const grouped = {};
-    items.forEach(item => {
-      const code = (item.code || '').trim();
-      const oneOneCode = (item.oneOneCode || '').trim();
-      const itemType = (item.type || '').trim();
-      const desc = (item.description || '').trim();
-      
-      // Group uniquely by item.code + item.type (Plan Code)
-      const key = `${code}_${itemType}`.toLowerCase();
-      if (!key || key === '_') return;
-
+    (items || []).forEach(item => {
+      if (item.isSpacer || item.type === 'SPACER') return;
+      const key = `${item.code || item.description || 'Custom'}_${item.unitRetail || 0}`;
       if (!grouped[key]) {
         grouped[key] = {
-          ...item,
+          code: item.code || '',
+          description: item.description || '',
           qty: 0,
-          floor: '',
-          area: '',
+          unitRetail: Number(item.unitRetail) || 0,
+          totalRetail: 0,
+          brand: item.brand || '',
+          eta: item.eta || '4 weeks'
         };
       }
-      grouped[key].qty += (Number(item.qty) || 0);
+      const q = Number(item.qty) || 0;
+      grouped[key].qty += q;
+      grouped[key].totalRetail += (q * (Number(item.unitRetail) || 0));
     });
-    return Object.values(grouped).filter(item => item.qty > 0);
+    return Object.values(grouped).map(g => ({
+      ...g,
+      qty: g.qty.toString(),
+      retail: `R ${g.unitRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      totalRetail: `R ${g.totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }));
   };
 
   const triggerLivePreviewCompile = async (targetTab, pageNum = 1) => {
+    if (!selectedOrderId) {
+      setLivePreviewUrl(null);
+      return;
+    }
     let docType = '';
     if (targetTab === 'quote') {
       docType = 'QUOTATION';
@@ -1029,96 +998,7 @@ export default function OrdersPage() {
       logActivity('document_generation', `Initiated preview compile of ${docType} for order ${selectedOrderId}`);
     }
     try {
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const vatAmount = discountedRetail * 0.15;
-      const finalTotalInclVat = discountedRetail * 1.15;
-      
-      const finalItems = activeOrderItems.map((item, idx) => ({
-        index: (idx + 1).toString(),
-        isSpacer: !!(item.isSpacer || item.type === 'SPACER'),
-        code: item.code || '',
-        oneOneCode: item.oneOneCode || '',
-        type: item.type || '',
-        description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || ''),
-        qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
-        brand: item.brand || '',
-        retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        floor: item.floor || '',
-        area: item.area || '',
-        dimming: item.dimming || 'Non-dim',
-        unitCost: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        stockStatus: item.stockStatus || 'In Stock',
-        eta: item.eta || '4 weeks'
-      }));
-
-      const tokens = {
-        PROJECT_NAME: projectFullName || 'Private Client Project',
-        CLIENT_NAME: clientContact || 'Client Name',
-        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        PROPOSAL_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        FEE_NAME: `Order ${selectedOrderId || 'Q-2025-XXX'}`,
-        ORDER_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        ORDER_STATUS: orderStatus || 'Draft',
-        
-        CLIENT_COMPANY: clientCompany || 'Private Client',
-        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-        CLIENT_EMAIL: clientEmail || '',
-        CLIENT_PHONE: clientPhone || '',
-        CLIENT_VAT: '',
-        DELIVERY_ADDRESS: deliveryAddress || '',
-        
-        ONEONE_REP: oneOneRep || 'Martin Döller',
-        PM_NAME: pmName || 'Merlyn Mittins',
-        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
-        PM_PHONE: pmPhone || '083 570 7795',
-        PM_PPHONE: pmPhone || '083 570 7795',
-        PROJECT_PM: pmName || 'Merlyn Mittins',
-        PROJECT_SIZE: projectSize || '—',
-        PROJECT_TIER: projectTier || 'Signature',
-        
-        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
-        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        
-        items: finalItems,
-        payments: (orderPayments || []).map((p, idx) => ({
-          index: (idx + 1).toString(),
-          date: p.date || '',
-          reference: p.reference || '',
-          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        })),
-        // Hierarchical structure for custom docx loop formatting
-        floors: (() => {
-          const floorMap = {};
-          finalItems.forEach(item => {
-            if (item.isSpacer || item.type === 'SPACER') return;
-            const fName = item.floor || 'Unspecified';
-            const aName = item.area || 'Unspecified';
-            if (!floorMap[fName]) {
-              floorMap[fName] = { name: fName, areas: {} };
-            }
-            if (!floorMap[fName].areas[aName]) {
-              floorMap[fName].areas[aName] = { name: aName, items: [] };
-            }
-            floorMap[fName].areas[aName].items.push(item);
-          });
-          return Object.values(floorMap).map(f => ({
-            name: f.name,
-            areas: Object.values(f.areas)
-          }));
-        })()
-      };
+      const tokens = buildOrderDocumentTokens();
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?page=${pageNum}`, {
         method: 'POST',
@@ -1185,91 +1065,7 @@ export default function OrdersPage() {
       logActivity('document_export', `Exported ${docType} PDF for order ${selectedOrderId}`);
     }
     try {
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const vatAmount = discountedRetail * 0.15;
-      const finalTotalInclVat = discountedRetail * 1.15;
-      
-      const finalItems = activeOrderItems.map((item, idx) => ({
-        index: (idx + 1).toString(),
-        code: item.code || '',
-        oneOneCode: item.oneOneCode || '',
-        type: item.type || '',
-        description: item.description || '',
-        qty: (item.qty || 0).toString(),
-        brand: item.brand || '',
-        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        floor: item.floor || '',
-        area: item.area || '',
-        dimming: item.dimming || 'Non-dim',
-        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        stockStatus: item.stockStatus || 'In Stock',
-        eta: item.eta || '4 weeks'
-      }));
-
-      const tokens = {
-        PROJECT_NAME: projectFullName || 'Private Client Project',
-        CLIENT_NAME: clientContact || 'Client Name',
-        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'Q-2025-XXX',
-        ORDER_STATUS: orderStatus || 'Draft',
-        
-        CLIENT_COMPANY: clientCompany || 'Private Client',
-        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-        CLIENT_EMAIL: clientEmail || '',
-        CLIENT_PHONE: clientPhone || '',
-        CLIENT_VAT: '',
-        DELIVERY_ADDRESS: deliveryAddress || '',
-        
-        ONEONE_REP: oneOneRep || 'Martin Döller',
-        PM_NAME: pmName || 'Merlyn Mittins',
-        PM_EMAIL: pmEmail || 'merlyn.mittins@1-to-1.world',
-        PM_PHONE: pmPhone || '083 570 7795',
-        PM_PPHONE: pmPhone || '083 570 7795',
-        PROJECT_PM: pmName || 'Merlyn Mittins',
-        PROJECT_SIZE: projectSize || '—',
-        PROJECT_TIER: projectTier || 'Signature',
-        
-        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
-        DEPOSIT: `R ${(finalTotalInclVat * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE: `R ${(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_PAID: `R ${orderPaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        BALANCE_OUTSTANDING: `R ${(finalTotalInclVat - orderPaidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        
-        items: finalItems,
-        payments: (orderPayments || []).map((p, idx) => ({
-          index: (idx + 1).toString(),
-          date: p.date || '',
-          reference: p.reference || '',
-          amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        })),
-        floors: (() => {
-          const floorMap = {};
-          finalItems.forEach(item => {
-            if (item.isSpacer || item.type === 'SPACER') return;
-            const fName = item.floor || 'Unspecified';
-            const aName = item.area || 'Unspecified';
-            if (!floorMap[fName]) {
-              floorMap[fName] = { name: fName, areas: {} };
-            }
-            if (!floorMap[fName].areas[aName]) {
-              floorMap[fName].areas[aName] = { name: aName, items: [] };
-            }
-            floorMap[fName].areas[aName].items.push(item);
-          });
-          return Object.values(floorMap).map(f => ({
-            name: f.name,
-            areas: Object.values(f.areas)
-          }));
-        })()
-      };
+      const tokens = buildOrderDocumentTokens();
 
       const res = await fetch(`${API_BASE}/admin/generate/${docType}?is_save_action=false`, {
         method: 'POST',
@@ -2246,55 +2042,7 @@ export default function OrdersPage() {
     // Trigger Drive vault save with visible feedback
     try {
       const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const vatAmount = discountedRetail * 0.15;
-      const finalTotalInclVat = discountedRetail * 1.15;
-
-      const finalItems = activeOrderItems.map((item, idx) => ({
-        index: (idx + 1).toString(),
-        code: item.code || '',
-        oneOneCode: item.oneOneCode || '',
-        type: item.type || '',
-        description: item.description || '',
-        qty: (item.qty || 0).toString(),
-        brand: item.brand || '',
-        retail: `R ${(Number(item.unitRetail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        totalRetail: `R ${((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        floor: item.floor || '',
-        area: item.area || '',
-        dimming: item.dimming || 'Non-dim',
-        unitCost: `R ${(Number(item.unitCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        stockStatus: item.stockStatus || 'In Stock',
-        eta: item.eta || '4 weeks'
-      }));
-
-      const vaultTokens = {
-        PROJECT_NAME: projectFullName || proj.name || 'Private Client Project',
-        CLIENT_NAME: clientContact || clientCompany || proj.client || 'Client Name',
-        DATE: orderDate || new Date().toLocaleDateString('en-ZA'),
-        DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
-        PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
-        ORDER_NAME: quoteName || selectedOrderId || '',
-        QUOTE_NAME: quoteName || '',
-        FEE_NAME: quoteName || selectedOrderId || '',
-        ORDER_NUMBER: selectedOrderId,
-        ORDER_STATUS: orderStatus || 'Draft',
-        CLIENT_COMPANY: clientCompany || proj.client || 'Private Client',
-        CLIENT_CONTACT_PERSON: clientContact || 'Client Name',
-        CLIENT_EMAIL: clientEmail || '',
-        CLIENT_PHONE: clientPhone || '',
-        DELIVERY_ADDRESS: deliveryAddress || '',
-        ONEONE_REP: oneOneRep || 'Martin Döller',
-        PM_NAME: pmName || 'Merlyn Mittins',
-        SUBTOTAL: `R ${totalRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        DISCOUNT_AMOUNT: `R ${(totalRetail - discountedRetail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        items: finalItems
-      };
+      const vaultTokens = buildOrderDocumentTokens();
 
       let successCount = 0;
       let errors = [];
@@ -2317,10 +2065,15 @@ export default function OrdersPage() {
         }
       }
 
+      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+      const orderMarginPct = totalRetail > 0 ? Math.round(((totalRetail - totalCost) / totalRetail) * 100) : 0;
+
       if (errors.length > 0) {
-        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
+        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
       } else {
-        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
       }
     } catch (vaultErr) {
       alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);

@@ -118,11 +118,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     try:
         if credentials_json:
             creds = service_account.Credentials.from_service_account_info(credentials_json, scopes=SCOPES_SHEETS)
-            try:
-                creds = creds.with_subject('erin.jones@1-to-1.world')
-                logger.info("Domain-Wide Delegation active: Impersonating erin.jones@1-to-1.world.")
-            except Exception as subject_err:
-                logger.warn(f"Impersonation notice: {subject_err}")
         else:
             creds, project = default(scopes=SCOPES_SHEETS)
             
@@ -135,6 +130,46 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     template_id = extract_file_id(template_source)
     if not template_id:
         raise ValueError(f"Invalid Master Google Sheet URL or ID: {template_source}")
+
+    # Auto-normalize and enrich missing/empty token aliases
+    rep_phone = str(tokens.get('ONEONE_REP_PHONE') or tokens.get('PM_PHONE') or tokens.get('REP_PHONE') or '078 452 5643').strip()
+    if not rep_phone:
+        rep_phone = '078 452 5643'
+        
+    rep_email = str(tokens.get('ONEONE_REP_EMAIL') or tokens.get('PM_EMAIL') or tokens.get('REP_EMAIL') or 'ryan.mccarthy@1-to-1.world').strip()
+    if not rep_email:
+        rep_email = 'ryan.mccarthy@1-to-1.world'
+        
+    rep_name = str(tokens.get('ONEONE_REP') or tokens.get('PM_NAME') or tokens.get('REP_NAME') or 'Ryan McCarthy').strip()
+    if not rep_name:
+        rep_name = 'Ryan McCarthy'
+    
+    for k in ['ONEONE_REP', 'PM_NAME', 'PROJECT_PM', 'REP_NAME']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_name
+            
+    for k in ['ONEONE_REP_PHONE', 'PM_PHONE', 'PM_PPHONE', 'REP_PHONE']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_phone
+            
+    for k in ['ONEONE_REP_EMAIL', 'PM_EMAIL', 'REP_EMAIL']:
+        if not tokens.get(k) or not str(tokens[k]).strip():
+            tokens[k] = rep_email
+
+    tot_num = safe_float(tokens.get('TOTAL_RETAIL', 0))
+    if tot_num > 0:
+        dep_50 = f"R {tot_num * 0.5:,.2f}"
+        dep_70 = f"R {tot_num * 0.7:,.2f}"
+        if not tokens.get('DEPOSIT') or not str(tokens['DEPOSIT']).strip():
+            tokens['DEPOSIT'] = dep_50
+        if not tokens.get('DEPOSIT_50') or not str(tokens['DEPOSIT_50']).strip():
+            tokens['DEPOSIT_50'] = dep_50
+        if not tokens.get('DEPOSIT_70') or not str(tokens['DEPOSIT_70']).strip():
+            tokens['DEPOSIT_70'] = dep_70
+        if not tokens.get('DEPOSIT_AMOUNT') or not str(tokens['DEPOSIT_AMOUNT']).strip():
+            tokens['DEPOSIT_AMOUNT'] = dep_50
+        if not tokens.get('DEPOSIT_REQUIRED') or not str(tokens['DEPOSIT_REQUIRED']).strip():
+            tokens['DEPOSIT_REQUIRED'] = dep_50
 
     # Extract client, project, and document info for folder vaulting
     client_name = str(tokens.get('CLIENT_NAME') or tokens.get('COMPANY_NAME') or tokens.get('CONTACT_PERSON') or 'Clients').strip()
@@ -162,6 +197,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raise RuntimeError(f"Could not access Master Google Sheet template. Verify sharing permissions. Error: {fetch_err}")
 
     sheets = spreadsheet.get('sheets', [])
+    valid_template_sheets = [
+        s for s in sheets 
+        if not s['properties']['title'].startswith('PDF_Render_') and not s['properties']['title'].startswith('PDF_')
+    ]
     target_sheet = None
     target_gid = 0
     
@@ -173,13 +212,21 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         if clean_target in ('quotation', 'quote'):
             alias_set.update(['quotation', 'quote', 'quotes', 'summarizedquotation'])
         elif clean_target in ('boq', 'boqdoc'):
-            alias_set.update(['boq', 'boqdoc', 'detailedboq', 'billofquantities'])
+            alias_set.update(['boq', 'boqdoc', 'demoboq', 'detailedboq', 'billofquantities'])
         elif clean_target in ('schedule', 'lightingschedule'):
             alias_set.update(['schedule', 'lightingschedule'])
+        elif 'deposit' in clean_target:
+            alias_set.update(['depositinvoice', 'deposit', 'proformainvoice', 'proforma', 'proformainv', 'taxinvoice', 'invoice'])
         elif 'proforma' in clean_target or 'proform' in clean_target:
-            alias_set.update(['proformainvoice', 'proforma', 'proformainv'])
+            alias_set.update(['proformainvoice', 'proforma', 'proformainv', 'depositinvoice', 'deposit', 'taxinvoice'])
+        elif 'balance' in clean_target:
+            alias_set.update(['balanceinvoice', 'balance', 'taxinvoice', 'invoice'])
+        elif 'tax' in clean_target:
+            alias_set.update(['taxinvoice', 'tax', 'invoice'])
+        elif 'statement' in clean_target:
+            alias_set.update(['progressstatement', 'statement', 'summary'])
 
-        for s in sheets:
+        for s in valid_template_sheets:
             raw_s = s['properties']['title'].strip().lower()
             clean_s = ''.join(c for c in raw_s if c.isalnum())
             if clean_s in alias_set or any(a in clean_s for a in alias_set):
@@ -188,8 +235,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 logger.info(f"Matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
                 break
     
-    if not target_sheet and sheets:
-        target_sheet = sheets[0]
+    if not target_sheet and valid_template_sheets:
+        target_sheet = valid_template_sheets[0]
         target_gid = target_sheet['properties']['sheetId']
         logger.warn(f"Fallback to default first tab '{target_sheet['properties']['title']}' (GID={target_gid})")
 
@@ -256,16 +303,19 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         # Re-fetch working spreadsheet metadata so target_gid matches tab GID in working_spreadsheet_id
         try:
             working_sp = sheets_service.spreadsheets().get(spreadsheetId=working_spreadsheet_id).execute()
-            working_sheets = working_sp.get('sheets', [])
+            working_sheets = [
+                ws for ws in working_sp.get('sheets', [])
+                if not ws['properties']['title'].startswith('PDF_Render_') and not ws['properties']['title'].startswith('PDF_')
+            ]
+            matched_working = False
             if sheet_name:
-                raw_t = str(sheet_name).strip().lower()
-                clean_t = ''.join(c for c in raw_t if c.isalnum())
                 for ws in working_sheets:
                     clean_ws = ''.join(c for c in ws['properties']['title'].strip().lower() if c.isalnum())
                     if clean_ws in alias_set or any(a in clean_ws for a in alias_set):
                         target_gid = ws['properties']['sheetId']
+                        matched_working = True
                         break
-            if not target_gid and working_sheets:
+            if not matched_working and working_sheets:
                 target_gid = working_sheets[0]['properties']['sheetId']
         except Exception as working_err:
             logger.warn(f"Re-fetch GID from working sheet notice: {working_err}")
@@ -1124,5 +1174,14 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             logger.info(f"Saved newest PDF '{new_vault_filename}' ({uploaded_vault_file.get('id')}) in Latest folder.")
         except Exception as vault_err:
             logger.error(f"Error archiving PDF in Drive Vault: {vault_err}")
+
+    # Clean up temporary tab so sheet tabs do not accumulate
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=working_spreadsheet_id,
+            body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
+        ).execute()
+    except Exception as cleanup_err:
+        logger.debug(f"Temporary sheet tab cleanup notice: {cleanup_err}")
 
     return temp_pdf.name, working_spreadsheet_id, sheet_url
