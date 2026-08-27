@@ -13,7 +13,7 @@ from services.firebase_auth import verify_firebase_token
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(dependencies=[Depends(verify_firebase_token)])
+router = APIRouter()
 public_router = APIRouter()
 
 @public_router.get("/palladium/status")
