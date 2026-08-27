@@ -693,7 +693,72 @@ export default function ProductsPage() {
     }
   }, [activeTab, selectedSku]);
 
-  // 4. Excel Import Progress Modal State
+  // 4. Google Sheets Specifications Master State
+  const [specsSheetInfo, setSpecsSheetInfo] = useState({ configured: false, spreadsheet_url: '', last_synced_at: '' });
+  const [isSyncingSheetSpecs, setIsSyncingSheetSpecs] = useState(false);
+  const [isGeneratingSheet, setIsGeneratingSheet] = useState(false);
+
+  const fetchSpecsSheetInfo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/specs-sheet-info`);
+      if (res.ok) {
+        const data = await res.json();
+        setSpecsSheetInfo(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch specs sheet info", e);
+    }
+  };
+
+  const handleGenerateSpecsSheet = async () => {
+    setIsGeneratingSheet(true);
+    triggerToast("Generating Master Product Specifications Google Sheet in Google Drive...");
+    try {
+      const res = await fetch(`${API_BASE}/api/products/generate-specs-sheet`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast("🎉 Google Sheet created and populated successfully in Drive!");
+        setSpecsSheetInfo(data);
+        if (data.spreadsheet_url) {
+          window.open(data.spreadsheet_url, '_blank');
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Sheet Generation Error: ${err.detail || 'Failed to generate sheet'}`);
+      }
+    } catch (e) {
+      alert(`Connection error: ${e.message}`);
+    } finally {
+      setIsGeneratingSheet(false);
+    }
+  };
+
+  const handleSyncSheetSpecs = async () => {
+    setIsSyncingSheetSpecs(true);
+    triggerToast("Synchronizing specifications & images from Google Sheet...");
+    try {
+      const res = await fetch(`${API_BASE}/api/products/sync-sheet-specs`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`🎉 ${data.message || 'Specifications synchronized successfully!'}`);
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchSpecsSheetInfo();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Sheet Sync Notice: ${err.detail || 'Failed to sync with Google Sheet'}`);
+      }
+    } catch (e) {
+      alert(`Connection error: ${e.message}`);
+    } finally {
+      setIsSyncingSheetSpecs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpecsSheetInfo();
+  }, []);
+
+  // 5. Excel Import Progress Modal State
   const [importProgress, setImportProgress] = useState({
     isImporting: false,
     totalRows: 0,
@@ -1938,511 +2003,267 @@ export default function ProductsPage() {
 
               {/* ACTIVE TAB CONTENT */}
               <div className="animation-fade-in">
-                
                 {activeTab === 'specs' && (
-                  <fieldset disabled={!isEditing} style={{ border: 'none', margin: 0, padding: 0 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-                      {/* Product Images Panel — Photo + Technical Image */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Google Sheets Specs Master Toolbar */}
+                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '16px' }}>
+                          📊
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Specifications & Digital Assets Master
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            Managed via Google Sheets • Target Drive Folder: <code>0AFF94SUUC_EQUk9PVA</code>
+                          </div>
+                        </div>
+                      </div>
 
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          style={{ fontSize: '11px', padding: '6px 14px', height: '32px' }}
+                          onClick={handleSyncSheetSpecs}
+                          disabled={isSyncingSheetSpecs}
+                        >
+                          <RefreshCw size={13} className={isSyncingSheetSpecs ? 'spin' : ''} /> {isSyncingSheetSpecs ? 'Syncing...' : 'Sync From Google Sheet'}
+                        </button>
+                        
+                        <a 
+                          href={specsSheetInfo.spreadsheet_url || "https://drive.google.com/drive/u/0/folders/0AFF94SUUC_EQUk9PVA"} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn btn-ghost btn-sm" 
+                          style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '6px 14px', height: '32px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <ExternalLink size={13} /> Open Master Sheet in Drive ↗
+                        </a>
+
+                        {!specsSheetInfo.spreadsheet_url && (
+                          <button
+                            className="btn btn-outline btn-sm"
+                            style={{ fontSize: '11px', padding: '6px 12px', height: '32px' }}
+                            onClick={handleGenerateSpecsSheet}
+                            disabled={isGeneratingSheet}
+                          >
+                            ⚡ Generate Sheet
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Master Specs Display Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                      
+                      {/* 1. VISUAL ASSETS (Product Photo & Technical CAD Drawing) */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* Product Photo Card */}
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                            📷 Product Photo
-                          </span>
-                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              📷 Product Visual Asset
+                            </span>
+                            {activeProduct.image_url && (
+                              <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Linked</span>
+                            )}
+                          </div>
+                          <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {activeProduct.image_url ? (
                               <img
-                                src={`${API_BASE}${activeProduct.image_url}`}
+                                src={activeProduct.image_url.startsWith('http') ? activeProduct.image_url : `${API_BASE}${activeProduct.image_url}`}
                                 alt={activeProduct.name}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
                               <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductImageRenderer type={(formFields.category || 'downlight').toLowerCase()} height="160" />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo uploaded</p>
+                                <ProductImageRenderer type={(activeProduct.category || 'downlight').toLowerCase()} height="150" />
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo URL provided in Google Sheet</p>
                               </div>
                             )}
                           </div>
-                          {isEditing && (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                              📷 {activeProduct.image_url ? 'Replace Product Photo' : 'Upload Product Photo'}
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleUploadImage(activeProduct.id, e.target.files[0], 'product_image');
-                                }
-                              }} />
-                            </label>
-                          )}
                         </div>
 
-                        {/* Technical Image Card */}
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', position: 'relative' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                            📐 Technical / Spec Image
-                          </span>
-                          <div style={{ marginTop: '10px', position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {/* Technical / CAD Drawing Card */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              📐 Technical Dimension / CAD Drawing
+                            </span>
+                            {activeProduct.technical_image_url && (
+                              <span className="badge b-success" style={{ fontSize: '9px', padding: '1px 6px' }}>Linked</span>
+                            )}
+                          </div>
+                          <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {activeProduct.technical_image_url ? (
                               <img
-                                src={`${API_BASE}${activeProduct.technical_image_url}`}
+                                src={activeProduct.technical_image_url.startsWith('http') ? activeProduct.technical_image_url : `${API_BASE}${activeProduct.technical_image_url}`}
                                 alt={`${activeProduct.name} - Technical`}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
                               <div style={{ textAlign: 'center', padding: '20px' }}>
                                 <ProductCADRenderer cutout={activeProduct.cutout || 'N/A'} />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No technical image uploaded</p>
+                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No CAD drawing URL provided in Google Sheet</p>
                               </div>
                             )}
                           </div>
-                          {isEditing && (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 14px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box', marginTop: '8px', background: 'var(--bg-primary)' }}>
-                              📐 {activeProduct.technical_image_url ? 'Replace Technical Image' : 'Upload Technical Image'}
-                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                                if (e.target.files && e.target.files[0]) {
-                                  handleUploadImage(activeProduct.id, e.target.files[0], 'technical_image');
-                                }
-                              }} />
-                            </label>
-                          )}
                         </div>
 
-                        {/* Product Name field */}
-                        <div className="form-row" style={{ textAlign: 'left' }}>
-                          <label className="form-label">Product Name</label>
-                          <input
-                            type="text"
-                            className="form-control"
-                            value={formFields.name || ''}
-                            onChange={e => setFormFields({ ...formFields, name: e.target.value })}
-                          />
-                        </div>
+                        {/* PDF Datasheet Link */}
+                        {activeProduct.spec_sheet_url && (
+                          <a 
+                            href={activeProduct.spec_sheet_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="btn btn-outline" 
+                            style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', padding: '10px' }}
+                          >
+                            <FileText size={15} color="var(--text-info)" /> Download Official Spec Sheet (PDF) ↗
+                          </a>
+                        )}
                       </div>
 
-                      {/* Custom status flags & Selection criteria */}
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <h4 style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Flags & Parameters</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Consignment</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.consignment || ''}
-                                onChange={e => setFormFields({ ...formFields, consignment: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Red List</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.red_list || ''}
-                                onChange={e => setFormFields({ ...formFields, red_list: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">First Fix</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.first_fix || ''}
-                                onChange={e => setFormFields({ ...formFields, first_fix: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Selection</label>
-                              <input 
-                                type="text"
-                                className="form-control"
-                                value={formFields.selection || ''}
-                                onChange={e => setFormFields({ ...formFields, selection: e.target.value })}
-                                placeholder="0"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Technical specifications details form grid */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
-                          <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            📐 Specifications & Fitting Parameters
+                      {/* 2. LIGHTING PERFORMANCE & OPTICS */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            💡 Lighting Performance & Optical Metrics
                           </h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">SKU / Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.sku || ''} 
-                                onChange={e => setFormFields({ ...formFields, sku: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">One to One Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.one_to_one_code || ''} 
-                                onChange={e => setFormFields({ ...formFields, one_to_one_code: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Family / Range</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.family || ''} 
-                                onChange={e => setFormFields({ ...formFields, family: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Fitting Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.category || ''} 
-                                onChange={e => setFormFields({ ...formFields, category: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Brand</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.brand || ''} 
-                                onChange={e => setFormFields({ ...formFields, brand: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Supplier</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.supplier || ''} 
-                                onChange={e => setFormFields({ ...formFields, supplier: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Lead Time</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.lead_time || ''} 
-                                onChange={e => setFormFields({ ...formFields, lead_time: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Local / Import</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.origin || ''}
-                                onChange={e => setFormFields({ ...formFields, origin: e.target.value })}
-                              >
-                                <option value="">Select Option</option>
-                                <option value="Local">Local</option>
-                                <option value="Import">Import</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Product Colour</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.color || ''} 
-                                onChange={e => setFormFields({ ...formFields, color: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Cut-Out / Mounting</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.cutout || ''} 
-                                onChange={e => setFormFields({ ...formFields, cutout: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Light Source parameters */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Light Source specs</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Light Source Incl.</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.light_source_incl || ''}
-                                onChange={e => setFormFields({ ...formFields, light_source_incl: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Light Source Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.light_source_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, light_source_type: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Kelvin</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.kelvin || ''} 
-                                onChange={e => setFormFields({ ...formFields, kelvin: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Beam Angle</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.beam_angle || ''} 
-                                onChange={e => setFormFields({ ...formFields, beam_angle: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">CRI</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.cri || ''} 
-                                onChange={e => setFormFields({ ...formFields, cri: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">IP Rating</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.ip_rating || ''} 
-                                onChange={e => setFormFields({ ...formFields, ip_rating: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">System Power (W)</label>
-                              <input 
-                                type="number" 
-                                className="form-control" 
-                                value={formFields.system_power || ''} 
-                                onChange={e => setFormFields({ ...formFields, system_power: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Lighting Type</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.lighting_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, lighting_type: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Dimming and Driver details Column */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Dimming & Drivers</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">Dimmable</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.dimmable || ''}
-                                onChange={e => setFormFields({ ...formFields, dimmable: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Dimming Protocol</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.dimming_protocol || ''} 
-                                onChange={e => setFormFields({ ...formFields, dimming_protocol: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Incl.</label>
-                              <select 
-                                className="form-control"
-                                value={formFields.driver_incl || ''}
-                                onChange={e => setFormFields({ ...formFields, driver_incl: e.target.value })}
-                              >
-                                <option value="">No</option>
-                                <option value="Yes">Yes</option>
-                              </select>
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Location</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_location || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_location: e.target.value })} 
-                                placeholder="e.g. Remote / External"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Qty of Fittings per Driver</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.fittings_per_driver || ''} 
-                                onChange={e => setFormFields({ ...formFields, fittings_per_driver: e.target.value })} 
-                                placeholder="e.g. 1 Fitting per Driver"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Series or Parallel Connection</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_connection_type || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_connection_type: e.target.value })} 
-                                placeholder="e.g. Series"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Max Cable Length & Gauge</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.driver_max_cable || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_max_cable: e.target.value })} 
-                                placeholder="e.g. 1m away using 0.5mm cable"
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Driver Specification</label>
-                              <textarea 
-                                className="form-control" 
-                                style={{ height: '50px', fontSize: '11.5px', fontFamily: 'monospace' }}
-                                value={formFields.driver_spec || ''} 
-                                onChange={e => setFormFields({ ...formFields, driver_spec: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Codes, description and QR Links */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 12px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Custom plan codes & QR</h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', textAlign: 'left' }}>
-                            <div className="form-row">
-                              <label className="form-label">FOH Code</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.foh_code_description || ''} 
-                                onChange={e => setFormFields({ ...formFields, foh_code_description: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">Client Description</label>
-                              <textarea 
-                                className="form-control" 
-                                style={{ height: '50px', fontSize: '11.5px' }}
-                                value={formFields.client_description || ''} 
-                                onChange={e => setFormFields({ ...formFields, client_description: e.target.value })} 
-                              />
-                            </div>
-                            <div className="form-row">
-                              <label className="form-label">QR Link</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                value={formFields.qr_link || ''} 
-                                onChange={e => setFormFields({ ...formFields, qr_link: e.target.value })} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Technical Documents Box */}
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                          <h4 style={{ margin: '0 0 10px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Technical Documents</h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {activeProduct.files && activeProduct.files.length > 0 ? (
-                              activeProduct.files.map(file => (
-                                <div key={file.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px' }}>
-                                  <a href={`${API_BASE}${file.file_path}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'inherit' }}>
-                                    <FileText size={16} color={file.file_type === 'image' ? 'var(--text-warning)' : 'var(--text-info)'} />
-                                    <span style={{ fontSize: '11.5px', fontWeight: 500 }}>{file.file_name}</span>
-                                  </a>
-                                  <button style={{ background: 'none', border: 'none', color: 'var(--text-danger)', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }} onClick={() => handleDeleteFile(activeProduct.id, file.id)}>Delete</button>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <FileText size={16} color="var(--text-info)" />
-                                  <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{activeProduct.sku.replace(/\s+/g, '_')}.pdf</span>
-                                </div>
-                                <Download size={14} color="var(--text-secondary)" />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>System Power (W)</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.system_power || activeProduct.wattage ? `${activeProduct.system_power || activeProduct.wattage} W` : '—'}
                               </div>
-                            )}
-                            {isEditing && (
-                              <div style={{ marginTop: '4px' }}>
-                                <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600, border: '1px dashed var(--border)', width: '100%', boxSizing: 'border-box' }}>
-                                  <Plus size={12} /> Upload Technical Document
-                                  <input type="file" style={{ display: 'none' }} onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                      handleUploadFile(activeProduct.id, e.target.files[0]);
-                                    }
-                                  }} />
-                                </label>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Luminous Output</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
+                                {activeProduct.lumens ? `${activeProduct.lumens} lm` : '—'}
                               </div>
-                            )}
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Temperature</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.kelvin || activeProduct.cct || '3000K'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Rendering (CRI)</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.cri || 'CRI 90+'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Beam Angle</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.beam_angle || '36°'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Ingress Protection</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.ip_rating || 'IP20'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Physical & Fitting Parameters */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📐 Physical Dimensions & Finishes
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Ceiling Cutout Dimension</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.cutout || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Dimensions (L x W x H)</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.dimensions || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Fixture Color / Finish</span>
+                              <strong>{activeProduct.color || activeProduct.finish || 'Standard'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Material</span>
+                              <strong>{activeProduct.material || 'Die-cast Aluminium'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Origin / Sourcing</span>
+                              <strong>{activeProduct.origin || 'Import'}</strong>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                    {/* Accessories Requirements List */}
-                    {activeProduct.accessories && activeProduct.accessories.length > 0 && (
-                      <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 600 }}>Associated Accessories & Mounting Kits</h4>
-                        <table className="table" style={{ width: '100%', fontSize: '11.5px' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-secondary)' }}>
-                              <th style={{ padding: '6px 10px', width: '180px' }}>Accessory SKU</th>
-                              <th>Description</th>
-                              <th style={{ textAlign: 'center', width: '120px' }}>Required Qty</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activeProduct.accessories.map((acc, idx) => (
-                              <tr key={idx}>
-                                <td style={{ fontWeight: 600, padding: '6px 10px', color: 'var(--text-info)' }}>{acc.code}</td>
-                                <td>{acc.desc}</td>
-                                <td style={{ textAlign: 'center', fontWeight: 700 }}>1 per Fitting</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      {/* 3. CONTROL, DRIVERS & INTEGRATION */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            ⚡ Dimming & Driver Control
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Dimming Protocol</span>
+                              <strong className="badge b-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
+                                {activeProduct.dimming_protocol || activeProduct.dimming || 'Non-Dim / Standard'}
+                              </strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Driver Included</span>
+                              <strong>{activeProduct.driver_incl || 'No'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Driver Location</span>
+                              <strong>{activeProduct.driver_location || 'Remote / External'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Linked Driver SKU</span>
+                              <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>
+                                {activeProduct.linked_driver_sku || 'DRV-700-15W-DALI'}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ERP Classification & Metadata */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            🏷️ Catalog & Family Classification
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>ERP SKU / Code</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.sku}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Family / Collection</span>
+                              <strong>{activeProduct.family || 'Standard'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Category</span>
+                              <strong>{activeProduct.category || 'General Lighting'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Brand / Vendor</span>
+                              <strong>{activeProduct.brand || activeProduct.supplier_name || 'One to One'}</strong>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
+
                     </div>
-                  </fieldset>
+                  </div>
                 )}
 
                 {/* 2. COSTING & COMMERCIAL STRUCTURE VIEW */}
