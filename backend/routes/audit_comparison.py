@@ -38,12 +38,20 @@ def extract_spreadsheet_id(url_or_id: str) -> str:
         return match.group(1)
     return url_or_id.strip()
 
-def safe_float(val_str, default=0.0):
-    if val_str is None:
+def safe_float(val, default=0.0):
+    if val is None:
         return default
-    if isinstance(val_str, (int, float)):
-        return float(val_str)
-    clean = re.sub(r"[^\d.-]", "", str(val_str).replace(',', ''))
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).strip()
+    if not val_str or val_str in ("—", "-", "None", "null", "undefined"):
+        return default
+    # Handle European / South African comma decimal (e.g., "363,84" or "1 633,71")
+    if re.search(r',\d{1,2}$', val_str) and '.' not in val_str:
+        val_str = val_str.replace(' ', '').replace(',', '.')
+    else:
+        val_str = val_str.replace(',', '').replace(' ', '')
+    clean = re.sub(r"[^\d.-]", "", val_str)
     try:
         return float(clean)
     except:
@@ -558,14 +566,49 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         if v1_str in {"", "—", "None", "null", "undefined"} and v2_str in {"", "—", "None", "null", "undefined"}:
             return True
 
-        # Numeric columns (treat blank vs 0 as equal, tolerance 0.05)
-        if col_name in {"Qty", "Unit Cost Ex VAT", "Unit Retail Price Ex VAT", "Stock on Hand", "Qty Ordered (PO)", "Qty REC", "Qty INV", "Qty DEL", "Deposit Value", "Balance Value", "Amount Paid"}:
+        # Numeric columns or any monetary/quantity columns
+        col_lower = col_name.lower()
+        if any(w in col_lower for w in ["qty", "cost", "price", "retail", "stock", "deposit", "balance", "amount", "paid", "vat"]):
             n1 = safe_float(val1)
             n2 = safe_float(val2)
             return abs(n1 - n2) < 0.05
 
+        # Code / SKU columns (1:1 Code, Item Code)
+        if "code" in col_lower:
+            s1 = normalize_key(v1_str)
+            s2 = normalize_key(v2_str)
+            if s1 == s2:
+                return True
+            if len(s1) >= 4 and len(s2) >= 4 and (s1.startswith(s2) or s2.startswith(s1)):
+                return True
+            return False
+
+        # Supplier / PO Supplier / Brand columns
+        if "supplier" in col_lower or "brand" in col_lower:
+            s1 = normalize_key(v1_str)
+            s2 = normalize_key(v2_str)
+            if s1 == s2:
+                return True
+            if s1 in ("none", "undefined", "null", "") and s2 in ("none", "undefined", "null", ""):
+                return True
+            if s1 and s2 and (s1 in s2 or s2 in s1):
+                return True
+            if (not s1 or s1 == "none") or (not s2 or s2 == "none"):
+                return True
+            return False
+
+        # Description columns (handle truncation in legacy spreadsheets)
+        if "desc" in col_lower:
+            s1 = normalize_key(v1_str)
+            s2 = normalize_key(v2_str)
+            if s1 == s2:
+                return True
+            if len(s1) >= 6 and len(s2) >= 6 and (s1.startswith(s2[:10]) or s2.startswith(s1[:10]) or s1 in s2 or s2 in s1):
+                return True
+            return False
+
         # Date columns
-        if "Date" in col_name or col_name in {"Delivery ETA", "Date Ordered", "Date REC", "Date INV", "Date DEL", "Deposit Payment Date", "Balance Payment Date"}:
+        if "date" in col_lower or col_name in {"Delivery ETA", "Date Ordered", "Date REC", "Date INV", "Date DEL", "Deposit Payment Date", "Balance Payment Date"}:
             d1 = parse_excel_date(val1)
             d2 = parse_excel_date(val2)
             if not d1 and not d2:
@@ -602,7 +645,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             if normalize_key(v1_str) in normalize_key(v2_str) or normalize_key(v2_str) in normalize_key(v1_str):
                 return True
 
-        # Text columns: normalize whitespace, hyphens, and casing
+        # General Text columns: normalize whitespace, hyphens, and casing
         s1 = normalize_key(v1_str)
         s2 = normalize_key(v2_str)
         return s1 == s2
