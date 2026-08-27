@@ -2617,62 +2617,81 @@ export default function ProductsPage() {
                         </div>
                       </div>
 
-                      {/* Detailed Location Breakdown Rows */}
-                      {activeProduct.stock_locations_json && Object.keys(activeProduct.stock_locations_json).length > 0 ? (
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                          <div style={{ background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                            Warehouse Breakdown
-                          </div>
-                          <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0 }}>
-                            <thead>
-                              <tr style={{ background: 'var(--bg-primary)' }}>
-                                <th style={{ padding: '6px 12px' }}>Location / Bin</th>
-                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>On Hand</th>
-                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>Available</th>
-                                <th style={{ textAlign: 'center', padding: '6px 12px' }}>Allocated</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.entries(activeProduct.stock_locations_json).map(([locName, locData]) => (
-                                <tr key={locName}>
-                                  <td style={{ fontWeight: 600, padding: '8px 12px' }}>
-                                    {locName === 'STOCK' ? '🏢 Main Warehouse (STOCK)' : locName === 'PROJECT' ? '📋 Project Allocated (PROJECT)' : locName === 'FAULT' ? '⚠️ Fault / QA (FAULT)' : locName}
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600, padding: '8px 12px' }}>{locData.on_hand || 0}</td>
-                                  <td style={{ textAlign: 'center', color: '#10b981', fontWeight: 600, padding: '8px 12px' }}>{locData.avail || 0}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-warning)', padding: '8px 12px' }}>{locData.alloc || 0}</td>
+                      {/* Detailed Location & Bin Breakdown Rows */}
+                      {(() => {
+                        const rawLocs = activeProduct.stock_locations_json;
+                        let locList = [];
+                        if (Array.isArray(rawLocs)) {
+                          locList = rawLocs;
+                        } else if (rawLocs && typeof rawLocs === 'object') {
+                          locList = Object.entries(rawLocs).map(([locName, locData]) => ({
+                            location: locName,
+                            bin_code: 'DEFAULT',
+                            bin_desc: 'General Location',
+                            on_hand: locData.on_hand || 0,
+                            avail: locData.avail || 0,
+                            alloc: locData.alloc || 0
+                          }));
+                        }
+
+                        if (locList.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                              No location or bin allocation records found. All stock managed under standard inventory.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '8px 12px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                              Warehouse & Bin Breakdown
+                            </div>
+                            <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0 }}>
+                              <thead>
+                                <tr style={{ background: 'var(--bg-primary)' }}>
+                                  <th style={{ padding: '8px 12px' }}>Warehouse / Location</th>
+                                  <th style={{ padding: '8px 12px' }}>Bin / Shelf / Zone</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Physical On Hand</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Available to Sell</th>
+                                  <th style={{ textAlign: 'right', padding: '8px 12px' }}>Allocated</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div style={{ textAlign: 'center', padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                          No multi-warehouse allocation records. All stock managed under standard inventory.
-                        </div>
-                      )}
+                              </thead>
+                              <tbody>
+                                {locList.map((loc, idx) => (
+                                  <tr key={idx}>
+                                    <td style={{ fontWeight: 600, padding: '9px 12px' }}>
+                                      {loc.location === 'STOCK' ? '🏢 Main Warehouse (STOCK)' : loc.location === 'PROJECT' ? '📋 Project Allocated (PROJECT)' : loc.location === 'FAULT' ? '⚠️ Fault / QA (FAULT)' : (loc.location || 'Warehouse')}
+                                    </td>
+                                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                                      {loc.bin_code && loc.bin_code !== 'DEFAULT' ? `📍 ${loc.bin_code}` : 'Standard Bin'}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', padding: '9px 12px' }}>
+                                      {loc.on_hand || 0}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 700, padding: '9px 12px' }}>
+                                      {loc.avail || 0}
+                                    </td>
+                                    <td style={{ textAlign: 'right', color: 'var(--text-warning)', fontWeight: 600, padding: '9px 12px' }}>
+                                      {loc.alloc || 0}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {/* 4. PALLADIUM ERP METADATA & RECONCILIATION */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 18px', fontSize: '12px' }}>
-                      <div>
-                        <span style={{ color: 'var(--text-secondary)' }}>ERP Part Number / SKU:</span>
-                        <div style={{ fontWeight: 700, fontFamily: 'monospace', marginTop: '2px' }}>{activeProduct.sku}</div>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-secondary)' }}>ERP Category:</span>
-                        <div style={{ fontWeight: 700, marginTop: '2px' }}>{activeProduct.category || '-'} ({activeProduct.family || 'Standard'})</div>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-secondary)' }}>Last Synced with Palladium:</span>
-                        <div style={{ fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
-                          {activeProduct.palladium_last_synced_at ? new Date(activeProduct.palladium_last_synced_at).toLocaleString() : 'Live'}
-                        </div>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-secondary)' }}>ERP Data Source:</span>
-                        <div style={{ fontWeight: 700, marginTop: '2px' }}>paldbOnetoOneLive (MS SQL)</div>
-                      </div>
+                    {/* 4. DISCREET ERP SYNC FOOTER */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '14px', fontSize: '11px', color: 'var(--text-secondary)', padding: '2px 4px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span>
+                        ERP Data Source: <strong>paldbOnetoOneLive</strong>
+                      </span>
+                      <span>•</span>
+                      <span>Last Synced: <strong>{activeProduct.palladium_last_synced_at ? new Date(activeProduct.palladium_last_synced_at).toLocaleString() : 'Live'}</strong></span>
                     </div>
 
                   </div>

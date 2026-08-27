@@ -76,7 +76,24 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         """)
         palladium_items = p_cursor.fetchall()
 
-        # 3. Fetch location-specific stock breakdown
+        # 3. Fetch bin-level stock breakdown (tblInvExtBin + tblInvLocBin)
+        p_cursor.execute("""
+            SELECT 
+                b.strPartNumber AS sku,
+                b.strLocName AS loc_name,
+                COALESCE(lb.strBinCode, 'DEFAULT') AS bin_code,
+                COALESCE(lb.strDescription, 'Default Bin') AS bin_desc,
+                b.decOnHand AS on_hand,
+                b.decAvail AS avail,
+                b.decAlloc AS alloc
+            FROM tblInvExtBin b
+            LEFT JOIN tblInvLocBin lb ON b.lngBinID = lb.lngID
+            WHERE b.decOnHand > 0 OR b.decAvail > 0 OR b.decAlloc > 0
+            ORDER BY b.strPartNumber, b.strLocName, lb.strBinCode;
+        """)
+        bin_rows = p_cursor.fetchall()
+
+        # Location-level stock fallback (tblInvExt)
         p_cursor.execute("""
             SELECT 
                 strPartNumber AS sku, 
@@ -112,17 +129,33 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         vend_rows = p_cursor.fetchall()
         p_conn.close()
 
-        # Group location breakdown by SKU
+        # Group location and bin breakdown by SKU as an Array
         loc_map = {}
+        for br in bin_rows:
+            sku = str(br['sku']).strip()
+            if sku not in loc_map:
+                loc_map[sku] = []
+            loc_map[sku].append({
+                "location": str(br['loc_name']).strip(),
+                "bin_code": str(br['bin_code']).strip(),
+                "bin_desc": str(br['bin_desc']).strip(),
+                "on_hand": float(br['on_hand'] or 0.0),
+                "avail": float(br['avail'] or 0.0),
+                "alloc": float(br['alloc'] or 0.0)
+            })
+
         for lr in loc_rows:
             sku = str(lr['sku']).strip()
             if sku not in loc_map:
-                loc_map[sku] = {}
-            loc_map[sku][lr['loc']] = {
-                "on_hand": float(lr['on_hand'] or 0.0),
-                "avail": float(lr['avail'] or 0.0),
-                "alloc": float(lr['alloc'] or 0.0)
-            }
+                loc_map[sku] = []
+                loc_map[sku].append({
+                    "location": str(lr['loc']).strip(),
+                    "bin_code": "DEFAULT",
+                    "bin_desc": "Main Location",
+                    "on_hand": float(lr['on_hand'] or 0.0),
+                    "avail": float(lr['avail'] or 0.0),
+                    "alloc": float(lr['alloc'] or 0.0)
+                })
 
         # Map list of vendors with complete 12 columns by SKU
         vend_map = {}
