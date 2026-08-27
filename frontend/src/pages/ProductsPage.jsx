@@ -2313,17 +2313,38 @@ export default function ProductsPage() {
                       </div>
 
                       {/* Total Warehouse Stock Valuation */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          🏢 Total Stock Valuation
-                        </span>
-                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
-                          R {((activeProduct.stock_on_hand || activeProduct.stock || 0) * (activeProduct.unitCost || activeProduct.cost_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
-                          {activeProduct.stock_on_hand || activeProduct.stock || 0} {activeProduct.unit_of_measure || 'Units'} Physical On Hand
-                        </span>
-                      </div>
+                      {(() => {
+                        const rawLocs = activeProduct.stock_locations_json;
+                        let locOnHandSum = 0;
+                        let locAvailSum = 0;
+                        let hasLocs = false;
+                        if (Array.isArray(rawLocs) && rawLocs.length > 0) {
+                          locOnHandSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.on_hand) || 0), 0);
+                          locAvailSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.avail) || 0), 0);
+                          hasLocs = true;
+                        }
+                        const effectiveOnHand = hasLocs && locOnHandSum > 0 
+                          ? locOnHandSum 
+                          : (typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0));
+                        const effectiveAvail = hasLocs && locAvailSum > 0 
+                          ? locAvailSum 
+                          : (typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (effectiveOnHand - (activeProduct.stock_allocated || 0)));
+                        const unitCostVal = activeProduct.unitCost || activeProduct.cost_price || 0;
+
+                        return (
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                              🏢 Total Stock Valuation
+                            </span>
+                            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                              R {(effectiveOnHand * unitCostVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                              {effectiveOnHand} {activeProduct.unit_of_measure || 'Units'} Physical On Hand
+                            </span>
+                          </div>
+                        );
+                      })()}
 
                     </div>
 
@@ -2348,15 +2369,15 @@ export default function ProductsPage() {
                           return (
                             <div style={{ textAlign: 'center', padding: '24px 16px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
                               <div style={{ fontSize: '20px', marginBottom: '4px' }}>📦</div>
-                              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                No vendor procurement links configured in Palladium ERP for this item.
-                              </span>
+                              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                No alternate vendors or procurement price lists linked in Palladium.
+                              </p>
                             </div>
                           );
                         }
 
                         return (
-                          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                          <div style={{ overflowX: 'auto' }}>
                             <table className="table" style={{ width: '100%', fontSize: '11.5px', margin: 0, textAlign: 'left', whiteSpace: 'nowrap' }}>
                               <thead>
                                 <tr style={{ background: 'var(--bg-secondary)' }}>
@@ -2437,35 +2458,55 @@ export default function ProductsPage() {
                         </span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Available to Sell</span>
-                          <div style={{ fontSize: '20px', fontWeight: 700, color: (activeProduct.stock_available || activeProduct.stock || 0) > 0 ? '#10b981' : 'var(--text-danger)', marginTop: '4px' }}>
-                            {activeProduct.stock_available !== undefined ? activeProduct.stock_available : (activeProduct.stock || 0)}
-                          </div>
-                        </div>
+                      {(() => {
+                        const rawLocs = activeProduct.stock_locations_json;
+                        let locOnHandSum = 0;
+                        let locAvailSum = 0;
+                        let hasLocs = false;
+                        if (Array.isArray(rawLocs) && rawLocs.length > 0) {
+                          locOnHandSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.on_hand) || 0), 0);
+                          locAvailSum = rawLocs.reduce((acc, l) => acc + (parseFloat(l.avail) || 0), 0);
+                          hasLocs = true;
+                        }
+                        const effectiveOnHand = hasLocs && locOnHandSum > 0 
+                          ? locOnHandSum 
+                          : (typeof activeProduct.stock_on_hand === 'number' ? activeProduct.stock_on_hand : (activeProduct.stock ?? 0));
+                        const effectiveAvail = hasLocs && locAvailSum > 0 
+                          ? locAvailSum 
+                          : (typeof activeProduct.stock_available === 'number' ? activeProduct.stock_available : (effectiveOnHand - (activeProduct.stock_allocated || 0)));
 
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Physical On Hand</span>
-                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
-                            {activeProduct.stock_on_hand !== undefined ? activeProduct.stock_on_hand : (activeProduct.stock || 0)}
-                          </div>
-                        </div>
+                        return (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Available to Sell</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: effectiveAvail > 0 ? '#10b981' : (effectiveAvail === 0 ? 'var(--text-secondary)' : 'var(--text-danger)'), marginTop: '4px' }}>
+                                {effectiveAvail}
+                              </div>
+                            </div>
 
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Allocated to Orders</span>
-                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>
-                            {activeProduct.stock_allocated || 0}
-                          </div>
-                        </div>
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Physical On Hand</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+                                {effectiveOnHand}
+                              </div>
+                            </div>
 
-                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Incoming (On PO)</span>
-                          <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
-                            {activeProduct.stock_on_order || 0}
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Allocated to Orders</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)', marginTop: '4px' }}>
+                                {activeProduct.stock_allocated || 0}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Incoming (On PO)</span>
+                              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>
+                                {activeProduct.stock_on_order || 0}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       {/* Detailed Location & Bin Breakdown Rows */}
                       {(() => {
