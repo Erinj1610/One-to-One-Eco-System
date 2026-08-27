@@ -212,6 +212,9 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
             continue
 
         # Extract values — if cell is missing/blank, value is None
+        name_desc = str(r[1]).strip() if len(r) > 1 and r[1] and str(r[1]).strip() else None
+        category = str(r[2]).strip() if len(r) > 2 and r[2] and str(r[2]).strip() else None
+        family_brand = str(r[3]).strip() if len(r) > 3 and r[3] and str(r[3]).strip() else None
         photo_url = str(r[4]).strip() if len(r) > 4 and r[4] and str(r[4]).strip() else None
         tech_image_url = str(r[5]).strip() if len(r) > 5 and r[5] and str(r[5]).strip() else None
         wattage_str = str(r[7]).strip() if len(r) > 7 and r[7] and str(r[7]).strip() else None
@@ -229,6 +232,11 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
             # Overwrite specification fields cleanly from the sheet
             prod.image_url = photo_url
             prod.technical_image_url = tech_image_url
+            
+            if category: prod.category = category
+            if family_brand: 
+                prod.family = family_brand
+                prod.brand = family_brand
             
             if wattage_str:
                 try:

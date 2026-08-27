@@ -2248,15 +2248,15 @@ export default function ProductsPage() {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Family / Collection</span>
-                              <strong>{activeProduct.family || 'Standard'}</strong>
+                              <strong>{activeProduct.family || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Category</span>
-                              <strong>{activeProduct.category || 'General Lighting'}</strong>
+                              <strong>{activeProduct.category || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Brand / Vendor</span>
-                              <strong>{activeProduct.brand || activeProduct.supplier_name || 'One to One'}</strong>
+                              <span style={{ color: 'var(--text-secondary)' }}>Brand</span>
+                              <strong>{activeProduct.brand || activeProduct.family || '—'}</strong>
                             </div>
                           </div>
                         </div>
