@@ -88,22 +88,22 @@ def generate_specs_master_sheet(db: Session, folder_id: str = ROOT_DRIVE_FOLDER_
             p.name or "",
             p.category or "",
             p.family or "",
-            p.image_url or "",
-            p.technical_image_url or "",
-            p.spec_sheet_url or "",
-            str(getattr(p, 'wattage', '') or ''),
+            getattr(p, 'image_url', '') or "",
+            getattr(p, 'technical_image_url', '') or "",
+            getattr(p, 'spec_sheet_url', '') or "",
+            str(getattr(p, 'system_power', '') or getattr(p, 'wattage', '') or ''),
             str(getattr(p, 'lumens', '') or ''),
-            str(getattr(p, 'cct', '') or ''),
+            str(getattr(p, 'kelvin', '') or getattr(p, 'cct', '') or ''),
             str(getattr(p, 'cri', '') or ''),
             str(getattr(p, 'beam_angle', '') or ''),
             str(getattr(p, 'ip_rating', '') or ''),
-            str(getattr(p, 'dimming', '') or ''),
+            str(getattr(p, 'dimming_protocol', '') or getattr(p, 'dimming', '') or ''),
             str(getattr(p, 'cutout', '') or ''),
             str(getattr(p, 'dimensions', '') or ''),
-            str(getattr(p, 'finish', '') or ''),
+            str(getattr(p, 'color', '') or getattr(p, 'finish', '') or ''),
             str(getattr(p, 'material', '') or ''),
-            str(getattr(p, 'linked_driver_sku', '') or ''),
-            str(getattr(p, 'notes', '') or '')
+            str(getattr(p, 'driver_spec', '') or getattr(p, 'linked_driver_sku', '') or ''),
+            str(getattr(p, 'client_description', '') or getattr(p, 'notes', '') or '')
         ])
 
     # 4. Insert data in chunks
@@ -263,19 +263,20 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         if prod:
             if photo_url is not None: prod.image_url = photo_url
             if tech_image_url is not None: prod.technical_image_url = tech_image_url
-            if spec_pdf_url is not None: prod.spec_sheet_url = spec_pdf_url
-            if wattage is not None and hasattr(prod, 'wattage'): prod.wattage = wattage
-            if lumens is not None and hasattr(prod, 'lumens'): prod.lumens = lumens
-            if cct is not None and hasattr(prod, 'cct'): prod.cct = cct
-            if cri is not None and hasattr(prod, 'cri'): prod.cri = cri
-            if beam_angle is not None and hasattr(prod, 'beam_angle'): prod.beam_angle = beam_angle
-            if ip_rating is not None and hasattr(prod, 'ip_rating'): prod.ip_rating = ip_rating
-            if dimming is not None and hasattr(prod, 'dimming'): prod.dimming = dimming
-            if cutout is not None and hasattr(prod, 'cutout'): prod.cutout = cutout
-            if dimensions is not None and hasattr(prod, 'dimensions'): prod.dimensions = dimensions
-            if finish is not None and hasattr(prod, 'finish'): prod.finish = finish
-            if material is not None and hasattr(prod, 'material'): prod.material = material
-            if linked_driver is not None and hasattr(prod, 'linked_driver_sku'): prod.linked_driver_sku = linked_driver
+            if wattage is not None:
+                try:
+                    clean_w = re.sub(r"[^\d.-]", "", wattage)
+                    if clean_w: prod.system_power = float(clean_w)
+                except:
+                    pass
+            if cct is not None: prod.kelvin = cct
+            if cri is not None: prod.cri = cri
+            if beam_angle is not None: prod.beam_angle = beam_angle
+            if ip_rating is not None: prod.ip_rating = ip_rating
+            if dimming is not None: prod.dimming_protocol = dimming
+            if cutout is not None: prod.cutout = cutout
+            if finish is not None: prod.color = finish
+            if linked_driver is not None: prod.driver_spec = linked_driver
             
             updated_count += 1
 
