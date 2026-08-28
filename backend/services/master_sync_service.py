@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from database.cloud_sql import SessionLocal
 from models.orm_models import Product, PortalSetting
-from services.palladium_sync import sync_palladium_to_cloud_sql
+from services.palladium_sync import sync_palladium_to_cloud_sql, sync_palladium_purchase_orders, sync_palladium_goods_received
 from services.google_sheet_specs_service import sync_specs_from_sheet, sync_new_items_to_inbox
 
 logger = logging.getLogger("master_sync")
@@ -23,6 +23,8 @@ _last_sync_info = {
     "last_synced_at": None,
     "last_status": "Idle",
     "last_erp_count": 0,
+    "last_po_count": 0,
+    "last_grn_count": 0,
     "last_sheet_count": 0,
     "last_inbox_count": 0,
     "last_error": None,
@@ -35,10 +37,10 @@ SYNC_INTERVAL_SECONDS = 900  # 15 minutes
 def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
     """
     Executes a unified, complete master synchronization:
-      1. Reads 100% read-only ERP data from Palladium MS SQL (costs, retail prices, stock on hand, suppliers).
-      2. Reads 30-column architectural specifications, images, CAD drawings, wetworks, and 1-to-1 codes from Google Sheets.
-      3. Automatically routes newly discovered ERP items to the 'NEW ITEMS' Google Sheet inbox tab for team enrichment.
-      4. Reconciles both sources into the central Cloud SQL PostgreSQL database.
+      1. Reads 100% read-only ERP items & stock from Palladium MS SQL.
+      2. Ingests read-only Purchase Orders and GRNs from Palladium MS SQL.
+      3. Reads 30-column architectural specifications from Google Sheets.
+      4. Automatically routes newly discovered ERP items to the 'NEW ITEMS' Google Sheet inbox tab.
     """
     global _last_sync_info
 
@@ -56,17 +58,19 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
 
     _last_sync_info["is_syncing"] = True
     _last_sync_info["sync_start_time"] = start_time
-    _last_sync_info["current_step"] = "Step 1/3: Reading live stock & prices from Palladium ERP..."
+    _last_sync_info["current_step"] = "Step 1/4: Reading live stock & prices from Palladium ERP..."
     _last_sync_info["last_status"] = "Syncing..."
     _last_sync_info["last_error"] = None
 
     erp_result = {"status": "skipped", "synced_count": 0}
+    po_result = {"status": "skipped", "po_lines_synced": 0}
+    grn_result = {"status": "skipped", "grn_lines_synced": 0}
     sheet_result = {"status": "skipped", "updated_count": 0}
     inbox_result = {"status": "skipped", "new_items_added": 0}
 
     try:
-        # 1. Synchronize Palladium ERP
-        logger.info("[MasterSync] Step 1/3: Starting Palladium ERP synchronization...")
+        # 1. Synchronize Palladium ERP Inventory
+        logger.info("[MasterSync] Step 1/4: Starting Palladium ERP inventory synchronization...")
         try:
             erp_result = sync_palladium_to_cloud_sql(db_session=db)
             logger.info(f"[MasterSync] Step 1 Complete: Synced {erp_result.get('synced_count', 0)} ERP items.")
@@ -74,22 +78,33 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             logger.error(f"[MasterSync] Palladium ERP sync error: {erp_err}")
             erp_result = {"status": "error", "error": str(erp_err), "synced_count": 0}
 
-        # 2. Synchronize Google Sheet Specifications (30 Columns)
-        _last_sync_info["current_step"] = "Step 2/3: Pulling 30-column specifications from Google Sheets..."
-        logger.info("[MasterSync] Step 2/3: Starting Google Sheets 30-column specifications sync...")
+        # 2. Synchronize Palladium Purchase Orders and GRNs (Read-Only)
+        _last_sync_info["current_step"] = "Step 2/4: Ingesting Purchase Orders & GRNs from Palladium ERP..."
+        logger.info("[MasterSync] Step 2/4: Starting PO & GRN ingestion from Palladium ERP...")
+        try:
+            po_result = sync_palladium_purchase_orders(db_session=db)
+            grn_result = sync_palladium_goods_received(db_session=db)
+            logger.info(f"[MasterSync] Step 2 Complete: Synced {po_result.get('po_lines_synced', 0)} PO lines & {grn_result.get('grn_lines_synced', 0)} GRN lines.")
+        except Exception as proc_err:
+            logger.error(f"[MasterSync] Procurement sync error: {proc_err}")
+            po_result = {"status": "error", "error": str(proc_err), "po_lines_synced": 0}
+
+        # 3. Synchronize Google Sheet Specifications (30 Columns)
+        _last_sync_info["current_step"] = "Step 3/4: Pulling 30-column specifications from Google Sheets..."
+        logger.info("[MasterSync] Step 3/4: Starting Google Sheets 30-column specifications sync...")
         try:
             sheet_result = sync_specs_from_sheet(db=db)
-            logger.info(f"[MasterSync] Step 2 Complete: Synced {sheet_result.get('updated_count', 0)} product specifications.")
+            logger.info(f"[MasterSync] Step 3 Complete: Synced {sheet_result.get('updated_count', 0)} product specifications.")
         except Exception as sheet_err:
             logger.error(f"[MasterSync] Google Sheet specs sync error: {sheet_err}")
             sheet_result = {"status": "error", "error": str(sheet_err), "updated_count": 0}
 
-        # 3. Synchronize Newly Added ERP Products to 'NEW ITEMS' Google Sheet Inbox Tab
-        _last_sync_info["current_step"] = "Step 3/3: Routing newly discovered products to Google Sheets NEW ITEMS inbox..."
-        logger.info("[MasterSync] Step 3/3: Checking for newly added ERP products to append to 'NEW ITEMS' inbox...")
+        # 4. Synchronize Newly Added ERP Products to 'NEW ITEMS' Google Sheet Inbox Tab
+        _last_sync_info["current_step"] = "Step 4/4: Routing newly discovered products to Google Sheets NEW ITEMS inbox..."
+        logger.info("[MasterSync] Step 4/4: Checking for newly added ERP products to append to 'NEW ITEMS' inbox...")
         try:
             inbox_result = sync_new_items_to_inbox(db=db)
-            logger.info(f"[MasterSync] Step 3 Complete: Added {inbox_result.get('new_items_added', 0)} new products to 'NEW ITEMS' tab.")
+            logger.info(f"[MasterSync] Step 4 Complete: Added {inbox_result.get('new_items_added', 0)} new products to 'NEW ITEMS' tab.")
         except Exception as inbox_err:
             logger.error(f"[MasterSync] Google Sheet inbox sync error: {inbox_err}")
             inbox_result = {"status": "error", "error": str(inbox_err), "new_items_added": 0}
@@ -106,6 +121,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             setting.value = {
                 "last_synced_at": now_iso,
                 "erp_synced_count": erp_result.get("synced_count", 0),
+                "po_lines_count": po_result.get("po_lines_synced", 0),
+                "grn_lines_count": grn_result.get("grn_lines_synced", 0),
                 "sheet_updated_count": sheet_result.get("updated_count", 0),
                 "inbox_added_count": inbox_result.get("new_items_added", 0),
                 "duration_seconds": duration,
@@ -121,6 +138,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
         _last_sync_info["last_synced_at"] = now_iso
         _last_sync_info["last_status"] = "Success"
         _last_sync_info["last_erp_count"] = erp_result.get("synced_count", 0)
+        _last_sync_info["last_po_count"] = po_result.get("po_lines_synced", 0)
+        _last_sync_info["last_grn_count"] = grn_result.get("grn_lines_synced", 0)
         _last_sync_info["last_sheet_count"] = sheet_result.get("updated_count", 0)
         _last_sync_info["last_inbox_count"] = inbox_result.get("new_items_added", 0)
         _last_sync_info["next_sync_timestamp"] = time.time() + SYNC_INTERVAL_SECONDS
@@ -128,6 +147,7 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
         msg = (
             f"Master sync finished in {duration}s. "
             f"Palladium ERP: {erp_result.get('synced_count', 0)} items synced. "
+            f"POs: {po_result.get('po_lines_synced', 0)} lines. GRNs: {grn_result.get('grn_lines_synced', 0)} lines. "
             f"Google Sheet Specs: {sheet_result.get('updated_count', 0)} products updated. "
             f"New Items Inbox: {inbox_result.get('new_items_added', 0)} products added to 'NEW ITEMS'."
         )
@@ -139,6 +159,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             "duration_seconds": duration,
             "synced_at": now_iso,
             "erp": erp_result,
+            "pos": po_result,
+            "grns": grn_result,
             "sheet": sheet_result,
             "inbox": inbox_result,
             "next_sync_in_seconds": SYNC_INTERVAL_SECONDS

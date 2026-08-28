@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from database.cloud_sql import SessionLocal, get_db
-from models.orm_models import Product
+from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +281,186 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         db.rollback()
         logger.error(f"Palladium Sync Error: {e}", exc_info=True)
         raise RuntimeError(f"Palladium Synchronization Failed: {e}")
+    finally:
+        if should_close_db:
+            db.close()
+
+
+def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict[str, Any]:
+    """
+    100% read-only synchronization of Purchase Orders from Palladium ERP (biPurchaseOrders)
+    into Cloud SQL (palladium_po_lines).
+    """
+    start_time = time.time()
+    db = db_session if db_session else SessionLocal()
+    should_close_db = db_session is None
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=25
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+
+        p_cursor.execute("""
+            SELECT 
+                [Document #] AS document_no,
+                [Vendor Name] AS vendor_name,
+                [Item Code] AS item_code,
+                [Item Description (Line)] AS item_description,
+                [Item Unit] AS item_unit,
+                [Original Order Qty] AS order_qty,
+                [Open Order Qty] AS open_qty,
+                [Shipped Order Qty] AS shipped_qty,
+                [Last Unit Cost] AS unit_cost,
+                [Original Order Value] AS total_value_excl,
+                [Currency Code] AS currency_code,
+                [Exchange Rate] AS exchange_rate,
+                [Transaction Date] AS transaction_date,
+                [Order Required Date] AS order_required_date,
+                [Status] AS status,
+                [Customer Name] AS customer_name,
+                [Copied From Document] AS copied_from_document
+            FROM biPurchaseOrders
+        """)
+        po_rows = p_cursor.fetchall()
+        p_conn.close()
+
+        db.query(PalladiumPOLine).delete()
+        now_dt = datetime.now(timezone.utc)
+
+        po_objects = []
+        for r in po_rows:
+            doc_no = str(r.get("document_no") or "").strip()
+            item_code = str(r.get("item_code") or "").strip()
+            if not doc_no or not item_code:
+                continue
+
+            po_obj = PalladiumPOLine(
+                document_no=doc_no,
+                vendor_name=str(r.get("vendor_name") or "").strip() or None,
+                item_code=item_code,
+                item_description=str(r.get("item_description") or "").strip() or None,
+                item_unit=str(r.get("item_unit") or "").strip() or "EA",
+                order_qty=float(r.get("order_qty") or 0.0),
+                open_qty=float(r.get("open_qty") or 0.0),
+                shipped_qty=float(r.get("shipped_qty") or 0.0),
+                unit_cost=float(r.get("unit_cost") or 0.0),
+                total_value_excl=float(r.get("total_value_excl") or 0.0),
+                currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                exchange_rate=float(r.get("exchange_rate") or 1.0),
+                transaction_date=r.get("transaction_date"),
+                order_required_date=r.get("order_required_date"),
+                status=str(r.get("status") or "Open").strip(),
+                customer_name=str(r.get("customer_name") or "").strip() or None,
+                copied_from_document=str(r.get("copied_from_document") or "").strip() or None,
+                last_synced_at=now_dt
+            )
+            po_objects.append(po_obj)
+
+        db.bulk_save_objects(po_objects)
+        db.commit()
+
+        duration = round(time.time() - start_time, 2)
+        logger.info(f"Synced {len(po_objects)} PO lines from Palladium in {duration}s.")
+        return {
+            "status": "success",
+            "po_lines_synced": len(po_objects),
+            "duration_seconds": duration
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to sync POs from Palladium: {e}")
+        return {"status": "error", "error": str(e), "po_lines_synced": 0}
+    finally:
+        if should_close_db:
+            db.close()
+
+
+def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[str, Any]:
+    """
+    100% read-only synchronization of Goods Received / Purchase Invoices from Palladium ERP (biPurchaseInvoice)
+    into Cloud SQL (palladium_grn_lines).
+    """
+    start_time = time.time()
+    db = db_session if db_session else SessionLocal()
+    should_close_db = db_session is None
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=25
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+
+        p_cursor.execute("""
+            SELECT 
+                [Document #] AS document_no,
+                [Vendor Name] AS vendor_name,
+                [Item Code] AS item_code,
+                [Item Description (Line)] AS item_description,
+                [Item Unit] AS item_unit,
+                [Original Invoice Qty] AS received_qty,
+                [Last Unit Cost] AS unit_cost,
+                [Line Tot Excl] AS line_total_excl,
+                [Line Tot Incl] AS line_total_incl,
+                [Transaction Date] AS transaction_date,
+                [Location] AS location,
+                [Currency Code] AS currency_code
+            FROM biPurchaseInvoice
+        """)
+        grn_rows = p_cursor.fetchall()
+        p_conn.close()
+
+        db.query(PalladiumGRNLine).delete()
+        now_dt = datetime.now(timezone.utc)
+
+        grn_objects = []
+        for r in grn_rows:
+            doc_no = str(r.get("document_no") or "").strip()
+            item_code = str(r.get("item_code") or "").strip()
+            if not doc_no or not item_code:
+                continue
+
+            grn_obj = PalladiumGRNLine(
+                document_no=doc_no,
+                vendor_name=str(r.get("vendor_name") or "").strip() or None,
+                item_code=item_code,
+                item_description=str(r.get("item_description") or "").strip() or None,
+                item_unit=str(r.get("item_unit") or "").strip() or "EA",
+                received_qty=float(r.get("received_qty") or 0.0),
+                unit_cost=float(r.get("unit_cost") or 0.0),
+                line_total_excl=float(r.get("line_total_excl") or 0.0),
+                line_total_incl=float(r.get("line_total_incl") or 0.0),
+                transaction_date=r.get("transaction_date"),
+                location=str(r.get("location") or "").strip() or None,
+                currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                last_synced_at=now_dt
+            )
+            grn_objects.append(grn_obj)
+
+        db.bulk_save_objects(grn_objects)
+        db.commit()
+
+        duration = round(time.time() - start_time, 2)
+        logger.info(f"Synced {len(grn_objects)} GRN lines from Palladium in {duration}s.")
+        return {
+            "status": "success",
+            "grn_lines_synced": len(grn_objects),
+            "duration_seconds": duration
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to sync GRNs from Palladium: {e}")
+        return {"status": "error", "error": str(e), "grn_lines_synced": 0}
     finally:
         if should_close_db:
             db.close()

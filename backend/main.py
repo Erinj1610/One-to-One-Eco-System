@@ -23,6 +23,7 @@ from routes.audit_comparison import router as audit_comparison_router
 from routes.project_tickets import router as project_tickets_router
 from routes.clients import router as clients_router
 from routes.palladium import router as palladium_router, public_router as palladium_public_router
+from routes.procurement import router as procurement_router, public_router as procurement_public_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -89,6 +90,8 @@ app.include_router(project_tickets_router, prefix="/api/project-tickets", tags=[
 app.include_router(clients_router, prefix="/api/clients", tags=["clients"])
 app.include_router(palladium_router, prefix="/api", tags=["palladium"])
 app.include_router(palladium_public_router, prefix="/api", tags=["palladium"])
+app.include_router(procurement_router, prefix="/api", tags=["procurement"])
+app.include_router(procurement_public_router, prefix="/api", tags=["procurement"])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -98,7 +101,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
-    from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier, LookupValue
+    from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier, LookupValue, PalladiumPOLine, PalladiumGRNLine, ProcurementAllocation
     try:
         Base.metadata.create_all(bind=engine)
         
