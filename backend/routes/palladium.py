@@ -8,8 +8,7 @@ from sqlalchemy import func
 
 from database.cloud_sql import get_db
 from models.orm_models import Product
-from services.palladium_sync import sync_palladium_to_cloud_sql
-from services.firebase_auth import verify_firebase_token
+from services.master_sync_service import execute_master_sync, get_master_sync_status
 
 logger = logging.getLogger(__name__)
 
@@ -20,46 +19,37 @@ public_router = APIRouter()
 @router.get("/palladium/status")
 def get_palladium_status(db: Session = Depends(get_db)):
     """
-    Returns live Palladium synchronization status and metrics.
+    Returns live unified synchronization status and metrics across Palladium ERP and Google Sheets.
     """
     try:
-        total_products = db.query(Product).count()
-        synced_products = db.query(Product).filter(Product.palladium_last_synced_at.isnot(None)).count()
+        status_data = get_master_sync_status(db=db)
         products_with_stock = db.query(Product).filter(Product.stock_on_hand > 0).count()
         products_with_price = db.query(Product).filter(Product.retail_price > 0).count()
         
-        last_sync_record = db.query(Product.palladium_last_synced_at)\
-            .filter(Product.palladium_last_synced_at.isnot(None))\
-            .order_by(Product.palladium_last_synced_at.desc())\
-            .first()
-            
-        last_synced_at = last_sync_record[0].isoformat() if last_sync_record and last_sync_record[0] else None
-
-        return {
-            "status": "connected",
+        status_data.update({
             "erp_source": "Palladium Accounting (Kerridge MS SQL)",
             "database": "paldbOnetoOneLive",
-            "total_products": total_products,
-            "synced_products": synced_products,
             "products_with_stock": products_with_stock,
-            "products_with_price": products_with_price,
-            "last_synced_at": last_synced_at
-        }
+            "products_with_price": products_with_price
+        })
+        return status_data
     except Exception as e:
         logger.error(f"Failed to fetch Palladium status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @public_router.post("/palladium/sync")
 @router.post("/palladium/sync")
+@public_router.post("/sync/all")
+@router.post("/sync/all")
 def trigger_palladium_sync(db: Session = Depends(get_db)):
     """
-    Triggers an immediate 100% read-only synchronization from Palladium into Cloud SQL.
+    Triggers an immediate unified synchronization across Palladium ERP and Master Google Sheets into Cloud SQL.
     """
     try:
-        result = sync_palladium_to_cloud_sql(db_session=db)
+        result = execute_master_sync(db_session=db)
         return result
     except Exception as e:
-        logger.error(f"Failed to trigger Palladium sync: {e}")
+        logger.error(f"Failed to trigger master sync: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @public_router.get("/palladium/products/{sku:path}/stock-history")

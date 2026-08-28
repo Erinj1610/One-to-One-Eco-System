@@ -66,6 +66,7 @@ class ProductBase(BaseModel):
     client_code: Optional[str] = None
     image_url: Optional[str] = None
     technical_image_url: Optional[str] = None
+    wetworks: Optional[str] = None
     is_active: Optional[bool] = True
     status: Optional[str] = 'Active'
 
@@ -105,7 +106,7 @@ def serialize_product(product: Product):
 
 @public_router.get("/summary")
 def products_summary(db: Session = Depends(get_db)):
-    """Lightweight endpoint – returns just aggregate counts for the KPI cards."""
+    """Global aggregate metrics and real stock valuations across the entire master database."""
     from sqlalchemy import func
     total = db.query(func.count(Product.id)).scalar() or 0
     low_stock = db.query(func.count(Product.id)).filter(
@@ -113,9 +114,38 @@ def products_summary(db: Session = Depends(get_db)):
         Product.stock_level <= Product.reorder_level
     ).scalar() or 0
     out_of_stock = db.query(func.count(Product.id)).filter(
-        Product.stock_level == 0
+        Product.stock_level <= 0
     ).scalar() or 0
-    return {"total": total, "low_stock": low_stock, "out_of_stock": out_of_stock}
+
+    # True global stock valuation (positive stock on hand * unit cost)
+    total_valuation = db.query(
+        func.sum(Product.cost_price * Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0.0
+
+    # True global retail valuation (positive stock on hand * retail price)
+    total_retail_val = db.query(
+        func.sum(Product.retail_price * Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0.0
+
+    # True global stock margin
+    total_margin_val = max(0.0, total_retail_val - total_valuation)
+    avg_margin_pct = round((total_margin_val / total_retail_val * 100)) if total_retail_val > 0 else 37
+
+    # Total physical units on hand
+    total_units = db.query(
+        func.sum(Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0
+
+    return {
+        "total": total,
+        "low_stock": low_stock,
+        "out_of_stock": out_of_stock,
+        "total_valuation": round(total_valuation, 2),
+        "total_retail_valuation": round(total_retail_val, 2),
+        "total_margin_val": round(total_margin_val, 2),
+        "avg_margin_pct": avg_margin_pct,
+        "total_units": total_units
+    }
 
 @public_router.get("/filter-options")
 def get_filter_options(db: Session = Depends(get_db)):
@@ -152,6 +182,9 @@ def list_products(
         query = query.filter(
             (Product.name.ilike(f"%{q}%")) | 
             (Product.sku.ilike(f"%{q}%")) | 
+            (Product.one_to_one_code.ilike(f"%{q}%")) |
+            (Product.foh_code_description.ilike(f"%{q}%")) |
+            (Product.client_description.ilike(f"%{q}%")) |
             (Product.brand.ilike(f"%{q}%")) |
             (Product.category.ilike(f"%{q}%")) |
             (Product.supplier_name.ilike(f"%{q}%")) |
@@ -188,6 +221,7 @@ def list_products(
         "sku": Product.sku,
         "name": Product.name,
         "description": Product.name,
+        "category": Product.category,
         "family": Product.family,
         "brand": Product.brand,
         "supplier": Product.supplier_name,
@@ -939,8 +973,8 @@ def create_specs_sheet_endpoint(db: Session = Depends(get_db)):
 @public_router.post("/sync-sheet-specs")
 def sync_sheet_specs_endpoint(db: Session = Depends(get_db)):
     try:
-        from services.google_sheet_specs_service import sync_specs_from_sheet
-        res = sync_specs_from_sheet(db=db)
+        from services.master_sync_service import execute_master_sync
+        res = execute_master_sync(db_session=db)
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

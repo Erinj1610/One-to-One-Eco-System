@@ -681,22 +681,23 @@ export default function ProductsPage() {
 
   const handleTriggerPalladiumSync = async () => {
     setIsSyncingPalladium(true);
-    triggerToast("Starting 100% read-only Palladium ERP synchronization...");
+    triggerToast("Starting unified master synchronization (Palladium ERP + Google Sheets)...");
     try {
       const res = await fetch(`${API_BASE}/api/palladium/sync`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        triggerToast(`🎉 ${data.message || 'Palladium sync completed successfully!'}`);
+        triggerToast(`🎉 ${data.message || 'Master sync completed successfully!'}`);
         fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSummary();
         fetchPalladiumStatus();
         fetchFilterOptions();
+        fetchSpecsSheetInfo();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Palladium Sync Notice: ${err.detail || 'Failed to sync with Palladium ERP.'}`);
+        alert(`Master Sync Notice: ${err.detail || 'Failed to complete master synchronization.'}`);
       }
     } catch (e) {
-      alert(`Palladium Connection Error: ${e.message}`);
+      alert(`Sync Connection Error: ${e.message}`);
     } finally {
       setIsSyncingPalladium(false);
     }
@@ -715,6 +716,12 @@ export default function ProductsPage() {
     fetchPalladiumStatus();
     fetchFilterOptions();
     fetchPage({ page: 1, q: '', cat: 'All Categories', sup: 'All Suppliers', sort_by: 'name', sort_dir: 'asc' });
+
+    // Poll master sync status every 30 seconds
+    const statusTimer = setInterval(() => {
+      fetchPalladiumStatus();
+    }, 30000);
+    return () => clearInterval(statusTimer);
   }, []);
 
   // Workspace Local Editing States
@@ -1132,6 +1139,10 @@ export default function ProductsPage() {
         qr: activeProduct.qr || '',
         qr_link: activeProduct.qr_link || '',
         client_code: activeProduct.client_code || '',
+        one_to_one_code: activeProduct.one_to_one_code || '',
+        foh_code_description: activeProduct.foh_code_description || '',
+        client_description: activeProduct.client_description || '',
+        wetworks: activeProduct.wetworks || '',
         image_url: activeProduct.image_url || activeProduct.image || '',
         technical_image_url: activeProduct.technical_image_url || '',
         status: activeProduct.status || 'Active',
@@ -1218,17 +1229,17 @@ export default function ProductsPage() {
   // Products already filtered server-side; expose sorted list
   const filteredProducts = sortedProducts;
 
-  // Aggregate stats — use lightweight summary for global counts
+  // Aggregate stats — use global database summary across all 6,367+ products
   const kpis = useMemo(() => {
     const totalSku = summary.total || totalCount;
     const lowStock = summary.low_stock || 0;
     const outStock = summary.out_of_stock || 0;
-    const sumMargin = products.reduce((acc, p) => acc + (p.margin || 37), 0);
-    const avgMargin = products.length > 0 ? Math.round(sumMargin / products.length) : 37;
-    const totalVal = products.reduce((acc, p) => acc + (p.unitCost * p.stock), 0);
-    const totalMargin = products.reduce((acc, p) => acc + ((p.retailPrice - p.unitCost) * p.stock), 0);
-    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin };
-  }, [summary, totalCount, products]);
+    const avgMargin = summary.avg_margin_pct !== undefined ? summary.avg_margin_pct : 37;
+    const totalVal = summary.total_valuation !== undefined ? summary.total_valuation : 0;
+    const totalMargin = summary.total_margin_val !== undefined ? summary.total_margin_val : 0;
+    const totalUnits = summary.total_units !== undefined ? summary.total_units : 0;
+    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin, totalUnits };
+  }, [summary, totalCount]);
 
   // Commit changes from Workspace Engine (Save button trigger)
   const handleCommitChanges = async () => {
@@ -1274,6 +1285,10 @@ export default function ProductsPage() {
       red_list: formFields.red_list,
       markup: formFields.markup,
       recommended_retail_price: parseFloat(formFields.recommended_retail_price) || 0.0,
+      local_or_import: formFields.local_or_import,
+      wetworks: formFields.wetworks,
+      image_url: formFields.image_url,
+      technical_image_url: formFields.technical_image_url,
       qr: formFields.qr,
       qr_link: formFields.qr_link,
       client_code: activeProduct.client_code
@@ -1723,17 +1738,18 @@ export default function ProductsPage() {
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Dual Feed: Palladium ERP & Master Google Sheets</span>
                   {palladiumStatus?.last_synced_at && (
-                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                      ● Palladium ERP Synced ({(() => {
+                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                      Auto-Sync Active (Every 15m) • Last Synced: {(() => {
                         const d = palladiumStatus.last_synced_at;
                         const str = String(d);
                         const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
-                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit', hour12: false });
-                      })()})
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()}
                     </span>
                   )}
                 </div>
@@ -1746,7 +1762,7 @@ export default function ProductsPage() {
                   onClick={handleTriggerPalladiumSync}
                   disabled={isSyncingPalladium}
                   className="btn btn-ghost"
-                  title="100% Read-Only Sync from Palladium ERP Database"
+                  title="Unified Sync from Palladium ERP and Master Google Sheet"
                   style={{ 
                     border: '1px solid #10b981', 
                     color: '#10b981', 
@@ -1760,7 +1776,7 @@ export default function ProductsPage() {
                   }}
                 >
                   <RefreshCw size={14} className={isSyncingPalladium ? 'animate-spin' : ''} />
-                  {isSyncingPalladium ? 'Syncing Palladium...' : 'Sync Palladium ERP'}
+                  {isSyncingPalladium ? 'Syncing ERP & Google Sheets...' : '⚡ Sync Master (ERP + Google Sheets)'}
                 </button>
 
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
@@ -1817,11 +1833,11 @@ export default function ProductsPage() {
                 <Package size={15} color="var(--text-info)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.totalSku} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
+                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Value: <strong>R {kpis.totalVal.toLocaleString()}</strong></span>
-                <span>Margin: <strong>R {kpis.totalMargin.toLocaleString()}</strong></span>
+                <span>Total Stock Value: <strong>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                <span>Units: <strong>{kpis.totalUnits.toLocaleString()}</strong></span>
               </div>
             </div>
 
@@ -1831,7 +1847,7 @@ export default function ProductsPage() {
                 <AlertTriangle size={15} color="var(--text-warning)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)' }}>
-                {kpis.lowStock} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
                 <span className="badge b-warning" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Warned</span> reorder threshold reached
@@ -1844,23 +1860,23 @@ export default function ProductsPage() {
                 <AlertTriangle size={15} color="var(--text-danger)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-danger)' }}>
-                {kpis.outStock} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+                {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Badly</span> critical stock count
+                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Stock Alert</span> zero or negative inventory
               </div>
             </div>
 
             <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Avg Margin %</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Stock Margin Potential</span>
                 <Percent size={15} color="var(--text-success)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-success)' }}>
-                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg</span>
+                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg Margin</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                Standard target target threshold: <strong>37%</strong>
+                Stock Profit Potential: <strong>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
             </div>
           </div>
@@ -1937,7 +1953,7 @@ export default function ProductsPage() {
                     </th>
                     <th 
                       onClick={() => handleSort('image')} 
-                      style={{ width: '60px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                      style={{ width: '56px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
                         IMAGE {renderSortIcon('image')}
@@ -1957,6 +1973,14 @@ export default function ProductsPage() {
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         DESCRIPTION / PRODUCT {renderSortIcon('name')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('category')} 
+                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        CATEGORY {renderSortIcon('category')}
                       </div>
                     </th>
                     <th 
@@ -2029,28 +2053,38 @@ export default function ProductsPage() {
                         />
                       </td>
                       <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
-                        <div style={{ width: '44px', height: '44px', position: 'relative', margin: '0 auto', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                          {p.image_url ? (
+                        {p.image_url ? (
+                          <div style={{ width: '40px', height: '40px', position: 'relative', margin: '0 auto', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                              src={`${API_BASE}${p.image_url}`}
+                              src={p.image_url.startsWith('http') ? p.image_url : `${API_BASE}${p.image_url}`}
                               alt={p.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                              onError={e => { e.target.style.display = 'none'; }}
                             />
-                          ) : null}
-                          <div style={{ display: p.image_url ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)' }}>
-                            <ProductImageRenderer type={(p.category || 'downlight').toLowerCase()} width="44" height="44" />
                           </div>
-                        </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>—</span>
+                        )}
                       </td>
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                       
                       {/* DESCRIPTION / NAME */}
                       <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
 
-                      <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                      {/* CATEGORY */}
+                      <td style={{ verticalAlign: 'middle' }}>
+                        {p.category ? (
+                          <span className="badge b-secondary" style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 600 }}>
+                            {p.category}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                        )}
+                      </td>
+
+                      <td style={{ verticalAlign: 'middle' }}>{p.family || '—'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '—'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '—'}</td>
                       
                       {/* SUPPLIER COST PRICE */}
                       <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
@@ -2072,7 +2106,7 @@ export default function ProductsPage() {
                   ))}
                   {filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                         {isLoadingProducts ? 'Loading page products...' : 'No products found matching the search and filter criteria.'}
                       </td>
                     </tr>
@@ -2196,7 +2230,7 @@ export default function ProductsPage() {
               {/* ACTIVE TAB CONTENT */}
               <div className="animation-fade-in">
                 {activeTab === 'specs' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     {/* Google Sheets Specs Master Toolbar */}
                     <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2208,7 +2242,7 @@ export default function ProductsPage() {
                             Specifications & Digital Assets Master
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            Managed via Google Sheets • Target Drive Folder: <code>0AFF94SUUC_EQUk9PVA</code>
+                            Synchronized with 30-Column Master Google Sheet • Tab: <code>ITEM DATABASE</code>
                           </div>
                         </div>
                       </div>
@@ -2224,13 +2258,13 @@ export default function ProductsPage() {
                         </button>
                         
                         <a 
-                          href={specsSheetInfo.spreadsheet_url || "https://drive.google.com/drive/u/0/folders/0AFF94SUUC_EQUk9PVA"} 
+                          href={specsSheetInfo.spreadsheet_url || "https://docs.google.com/spreadsheets/d/15A8TQ-BAXITQy7-BWfg6O8zeg71K3_lRITuWxIDYMYU/edit"} 
                           target="_blank" 
                           rel="noopener noreferrer" 
                           className="btn btn-ghost btn-sm" 
                           style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '6px 14px', height: '32px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                         >
-                          <ExternalLink size={13} /> Open Master Sheet in Drive ↗
+                          <ExternalLink size={13} /> Open Master Sheet ↗
                         </a>
 
                         {!specsSheetInfo.spreadsheet_url && (
@@ -2246,10 +2280,70 @@ export default function ProductsPage() {
                       </div>
                     </div>
 
-                    {/* Master Specs Display Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                    {/* Hero Product Summary Header Card */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                        <div>
+                          <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>
+                            {activeProduct.name || activeProduct.sku}
+                          </div>
+                          {activeProduct.client_description && activeProduct.client_description !== activeProduct.name && (
+                            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              {activeProduct.client_description}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {activeProduct.one_to_one_code && (
+                            <span className="badge b-info" style={{ fontSize: '11px', padding: '4px 10px', fontWeight: 700, fontFamily: 'monospace' }}>
+                              {activeProduct.one_to_one_code}
+                            </span>
+                          )}
+                          <span className="badge b-ghost" style={{ fontSize: '11px', padding: '4px 8px', fontFamily: 'monospace' }}>
+                            SKU: {activeProduct.sku}
+                          </span>
+                          <span className={`badge ${activeProduct.selection?.toLowerCase().includes('non') ? 'b-ghost' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px', fontWeight: 700 }}>
+                            {activeProduct.selection || 'Selection'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick Specs Badges */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid var(--border)' }}>
+                        {activeProduct.brand && (
+                          <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '6px', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                            Brand: <strong>{activeProduct.brand}</strong>
+                          </span>
+                        )}
+                        {activeProduct.family && (
+                          <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '6px', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                            Family: <strong>{activeProduct.family}</strong>
+                          </span>
+                        )}
+                        {activeProduct.category && (
+                          <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '6px', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                            Category: <strong>{activeProduct.category}</strong>
+                          </span>
+                        )}
+                        {activeProduct.lighting_type && (
+                          <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '6px', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                            Type: <strong>{activeProduct.lighting_type}</strong>
+                          </span>
+                        )}
+                        {activeProduct.local_or_import && (
+                          <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '2px 8px', borderRadius: '6px', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                            Origin: <strong>{activeProduct.local_or_import}</strong>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Master 3-Column Specifications Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
                       
-                      {/* 1. VISUAL ASSETS (Product Photo & Technical CAD Drawing) */}
+                      {/* ========================================================
+                          COLUMN 1: VISUAL ASSETS & PDF DATASHEET
+                          ======================================================== */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* Product Photo Card */}
                         <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
@@ -2269,9 +2363,10 @@ export default function ProductsPage() {
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
-                              <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductImageRenderer type={(activeProduct.category || 'downlight').toLowerCase()} height="150" />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo URL provided in Google Sheet</p>
+                              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.6 }}>📷</span>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>No Visual Photo Provided</div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Add a photo URL in column F of the Google Sheet</div>
                               </div>
                             )}
                           </div>
@@ -2295,120 +2390,97 @@ export default function ProductsPage() {
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
-                              <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductCADRenderer cutout={activeProduct.cutout || 'N/A'} />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No CAD drawing URL provided in Google Sheet</p>
+                              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.6 }}>📐</span>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>No CAD Drawing Provided</div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Add a technical drawing URL in column G of the Google Sheet</div>
                               </div>
                             )}
                           </div>
                         </div>
 
-                        {/* PDF Datasheet Link */}
-                        {activeProduct.spec_sheet_url && (
+                        {/* Official PDF Datasheet Button */}
+                        {(activeProduct.qr_link || activeProduct.spec_sheet_url) && (
                           <a 
-                            href={activeProduct.spec_sheet_url} 
+                            href={activeProduct.qr_link || activeProduct.spec_sheet_url} 
                             target="_blank" 
                             rel="noopener noreferrer" 
                             className="btn btn-outline" 
                             style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', padding: '10px' }}
                           >
-                            <FileText size={15} color="var(--text-info)" /> Download Official Spec Sheet (PDF) ↗
+                            <FileText size={15} color="var(--text-info)" /> Open Official Spec Sheet (PDF) ↗
                           </a>
                         )}
                       </div>
 
-                      {/* 2. LIGHTING PERFORMANCE & OPTICS */}
+                      {/* ========================================================
+                          COLUMN 2: LIGHTING PERFORMANCE & ELECTRICAL
+                          ======================================================== */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {/* Optical Metrics KPI Grid */}
                         <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
                           <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             💡 Lighting Performance & Optical Metrics
                           </h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>System Power (W)</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>System Power (W)</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.system_power || activeProduct.wattage ? `${activeProduct.system_power || activeProduct.wattage} W` : '—'}
+                                {activeProduct.system_power ? `${activeProduct.system_power} W` : '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Luminous Output</span>
-                              <div style={{ fontSize: '14px', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
-                                {activeProduct.lumens ? `${activeProduct.lumens} lm` : '—'}
-                              </div>
-                            </div>
-
-                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Temperature</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Color Temp (CCT)</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.kelvin || activeProduct.cct || '—'}
+                                {activeProduct.kelvin || '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Color Rendering (CRI)</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Color Rendering</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.cri || '—'}
+                                {activeProduct.cri ? (String(activeProduct.cri).toUpperCase().startsWith('CRI') ? activeProduct.cri : `CRI ${activeProduct.cri}`) : '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Beam Angle</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Beam Angle</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
                                 {activeProduct.beam_angle || '—'}
                               </div>
                             </div>
 
                             <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Ingress Protection</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Ingress Protection</span>
                               <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {activeProduct.ip_rating || '—'}
+                                {activeProduct.ip_rating ? (String(activeProduct.ip_rating).toUpperCase().startsWith('IP') || String(activeProduct.ip_rating).toLowerCase().includes('non') ? activeProduct.ip_rating : `IP${activeProduct.ip_rating}`) : '—'}
+                              </div>
+                            </div>
+
+                            <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Lighting Type</span>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {activeProduct.lighting_type || '—'}
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Physical & Fitting Parameters */}
-                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
-                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            📐 Physical Dimensions & Finishes
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Ceiling Cutout Dimension</span>
-                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.cutout || '—'}</strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Dimensions (L x W x H)</span>
-                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.dimensions || '—'}</strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Fixture Color / Finish</span>
-                              <strong>{activeProduct.color || activeProduct.finish || '—'}</strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Material</span>
-                              <strong>{activeProduct.material || '—'}</strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Origin / Sourcing</span>
-                              <strong>{activeProduct.origin || '—'}</strong>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 3. CONTROL, DRIVERS & INTEGRATION */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {/* Dimming, Driver & Light Source Specifications */}
                         <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
                           <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            ⚡ Dimming & Driver Control
+                            ⚡ Dimming, Drivers & Light Source
                           </h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Dimmable</span>
+                              <strong>{activeProduct.dimmable || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Dimming Protocol</span>
-                              <strong className={activeProduct.dimming_protocol || activeProduct.dimming ? "badge b-info" : ""} style={{ fontSize: '11px', padding: '2px 8px' }}>
-                                {activeProduct.dimming_protocol || activeProduct.dimming || '—'}
+                              <strong className={activeProduct.dimming_protocol ? "badge b-info" : ""} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                                {activeProduct.dimming_protocol || 'On-Off'}
                               </strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
@@ -2416,30 +2488,49 @@ export default function ProductsPage() {
                               <strong>{activeProduct.driver_incl || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Driver Location</span>
-                              <strong>{activeProduct.driver_location || '—'}</strong>
+                              <span style={{ color: 'var(--text-secondary)' }}>Light Source Included</span>
+                              <strong>{activeProduct.light_source_incl || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Linked Driver SKU</span>
-                              <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                                {activeProduct.linked_driver_sku || activeProduct.driver_spec || '—'}
-                              </strong>
+                              <span style={{ color: 'var(--text-secondary)' }}>Light Source Type</span>
+                              <strong>{activeProduct.light_source_type || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Ceiling Cutout</span>
+                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.cutout || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Finish / Color</span>
+                              <strong>{activeProduct.color || '—'}</strong>
                             </div>
                           </div>
                         </div>
+                      </div>
 
-                        {/* ERP Classification & Metadata */}
+                      {/* ========================================================
+                          COLUMN 3: PROJECT SPECIFICATIONS & WETWORKS
+                          ======================================================== */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {/* Project & 1-to-1 Specifications Card */}
                         <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
-                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            🏷️ Catalog & Family Classification
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📋 Project & Catalog Classification
                           </h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>ERP SKU / Code</span>
-                              <strong style={{ fontFamily: 'monospace' }}>{activeProduct.sku}</strong>
+                              <span style={{ color: 'var(--text-secondary)' }}>1-to-1 Code</span>
+                              <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{activeProduct.one_to_one_code || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Family / Collection</span>
+                              <span style={{ color: 'var(--text-secondary)' }}>FOH Code</span>
+                              <strong>{activeProduct.foh_code_description || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Client Description</span>
+                              <strong>{activeProduct.client_description || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Family</span>
                               <strong>{activeProduct.family || '—'}</strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
@@ -2448,8 +2539,57 @@ export default function ProductsPage() {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Brand</span>
-                              <strong>{activeProduct.brand || activeProduct.family || '—'}</strong>
+                              <strong>{activeProduct.brand || '—'}</strong>
                             </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Selection Status</span>
+                              <strong>{activeProduct.selection || '—'}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Procurement & Sourcing Card */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📦 Procurement & Compliance
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Local / Import</span>
+                              <strong>{activeProduct.local_or_import || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Consignment</span>
+                              <strong>{activeProduct.consignment || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Redlist</span>
+                              <strong>{activeProduct.red_list || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>First Fix</span>
+                              <strong>{activeProduct.first_fix || '—'}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Wetworks & Installation Specifications Card */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            🌊 Wetworks & Installation Constraints
+                          </h4>
+                          <div style={{ 
+                            background: 'rgba(245, 158, 11, 0.06)', 
+                            border: '1px solid rgba(245, 158, 11, 0.25)', 
+                            borderRadius: '8px', 
+                            padding: '12px 14px', 
+                            fontSize: '12px', 
+                            lineHeight: '1.6', 
+                            color: 'var(--text-primary)',
+                            whiteSpace: 'pre-line',
+                            fontFamily: activeProduct.wetworks ? 'inherit' : 'sans-serif'
+                          }}>
+                            {activeProduct.wetworks ? activeProduct.wetworks : 'No special wetworks or installation constraints specified.'}
                           </div>
                         </div>
                       </div>

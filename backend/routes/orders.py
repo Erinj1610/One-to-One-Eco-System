@@ -300,7 +300,19 @@ def delete_order(po_number: str, db: Session = Depends(get_db)):
 
 @router.get("/{po_number}/items")
 def get_order_items(po_number: str, db: Session = Depends(get_db)):
-    items = db.query(OrderItem).filter(OrderItem.order_id == po_number).all()
+    from models.orm_models import Product
+    items = db.query(OrderItem).filter(OrderItem.order_id == po_number).order_by(OrderItem.sort_order.asc(), OrderItem.id.asc()).all()
+    
+    # Pre-fetch matching products in memory for O(1) specification enrichment
+    prods_by_sku = {}
+    prods_by_1to1 = {}
+    prods = db.query(Product).all()
+    for p in prods:
+        if p.sku:
+            prods_by_sku[p.sku.strip().upper()] = p
+        if p.one_to_one_code:
+            prods_by_1to1[p.one_to_one_code.strip().upper()] = p
+
     res = []
     for item in items:
         def parse_history(h_val):
@@ -325,6 +337,36 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         item_dict['invoice_history'] = inv_hist
         if '_sa_instance_state' in item_dict:
             del item_dict['_sa_instance_state']
+
+        # Match product specifications from Google Sheet / Palladium sync
+        prod = None
+        if item.code and item.code.strip().upper() in prods_by_sku:
+            prod = prods_by_sku[item.code.strip().upper()]
+        elif item.one_one_code and item.one_one_code.strip().upper() in prods_by_1to1:
+            prod = prods_by_1to1[item.one_one_code.strip().upper()]
+
+        if prod:
+            item_dict['image_url'] = prod.image_url or item_dict.get('image_url')
+            item_dict['technical_image_url'] = prod.technical_image_url
+            item_dict['spec_sheet_url'] = prod.qr_link
+            item_dict['foh_code_description'] = prod.foh_code_description
+            item_dict['wetworks'] = getattr(prod, 'wetworks', None)
+            item_dict['system_power'] = prod.system_power
+            item_dict['kelvin'] = prod.kelvin
+            item_dict['cri'] = prod.cri
+            item_dict['ip_rating'] = prod.ip_rating
+            item_dict['beam_angle'] = prod.beam_angle
+            item_dict['dimming_protocol'] = prod.dimming_protocol
+            item_dict['cutout'] = prod.cutout
+            item_dict['product_family'] = prod.family
+            item_dict['product_category'] = prod.category
+            item_dict['consignment'] = prod.consignment
+            item_dict['red_list'] = prod.red_list
+            item_dict['first_fix'] = prod.first_fix
+            item_dict['local_or_import'] = prod.local_or_import
+            if not item_dict.get('one_one_code') and prod.one_to_one_code:
+                item_dict['one_one_code'] = prod.one_to_one_code
+
         res.append(item_dict)
     return res
 

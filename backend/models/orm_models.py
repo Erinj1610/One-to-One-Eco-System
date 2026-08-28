@@ -419,6 +419,7 @@ class Product(Base):
     client_code = Column(String, nullable=True)
     image_url = Column(String, nullable=True)        # Main product photo URL
     technical_image_url = Column(String, nullable=True)  # Technical drawing/spec image URL
+    wetworks = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)  # Enterprise soft-delete flag
     
     # Palladium ERP Synchronization Fields
