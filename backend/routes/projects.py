@@ -784,11 +784,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             po_groups = {}
             grn_groups = {}
+            inv_groups = {}
             for a in order_allocs:
                 if a.allocation_type == 'PO':
                     po_groups.setdefault(a.source_doc_no, []).append(a)
                 elif a.allocation_type == 'GRN':
                     grn_groups.setdefault(a.source_doc_no, []).append(a)
+                elif a.allocation_type == 'INVOICE':
+                    inv_groups.setdefault(a.source_doc_no, []).append(a)
 
             purchase_orders_parsed = []
             for doc_no, doc_items in po_groups.items():
@@ -832,10 +835,27 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     ]
                 })
 
-            try:
-                client_invoices_parsed = json.loads(order.client_invoices) if isinstance(order.client_invoices, str) else (order.client_invoices or [])
-            except Exception:
-                client_invoices_parsed = []
+            dynamic_client_invoices = []
+            for doc_no, doc_items in inv_groups.items():
+                first_a = doc_items[0]
+                doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
+                dynamic_client_invoices.append({
+                    "id": doc_no,
+                    "date": doc_date_str,
+                    "notes": first_a.notes or "Allocated from Palladium ERP",
+                    "allocated_by": first_a.allocated_by_name,
+                    "items": [
+                        {
+                            "code": a.fitting_code or a.sku,
+                            "description": a.sku,
+                            "qtyAction": a.allocated_qty,
+                            "unitPrice": a.unit_cost
+                        }
+                        for a in doc_items
+                    ]
+                })
+
+            # Client Invoices are strictly dynamic from authentic Palladium ERP allocations
 
             try:
                 payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
@@ -858,7 +878,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "deliveryNotes": delivery_notes_parsed,
                 "purchaseOrders": purchase_orders_parsed,
                 "goodsReceivedNotes": goods_received_notes_parsed,
-                "clientInvoices": client_invoices_parsed,
+                "clientInvoices": dynamic_client_invoices,
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,

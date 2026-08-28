@@ -1,813 +1,1363 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
+import { API_BASE } from '../api_config';
 import { 
-  FileText, Plus, Search, CheckCircle, Trash2, Eye, Printer, ClipboardList 
+  FileText, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  CheckCircle2, Clock, Trash2, Package, CheckSquare, Square, DollarSign, Receipt
 } from 'lucide-react';
 
-const statusColor = { Paid: 'b-success', Unpaid: 'b-warning', Overdue: 'b-danger', Draft: 'b-default' };
-
 export default function InvoicesPage() {
-  const { invoices, setInvoices, projects, updateProject } = useStore();
-  const [activeTab, setActiveTab] = useState('design'); // 'design' | 'order'
-  
-  // Ledger filtering & preview state
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { projects, getModuleName } = useStore();
+
+  // Toast notifications
+  const [toastMessage, setToastMessage] = useState(null);
+  const triggerToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  // -------------------------------------------------------------
+  // PALLADIUM INVOICING STATE
+  // -------------------------------------------------------------
+  const [invoicingSummary, setInvoicingSummary] = useState({
+    unallocated_count: 0,
+    partially_allocated_count: 0,
+    fully_allocated_count: 0,
+    total_documents: 0,
+    total_lines: 0,
+    total_invoiced_value: 0.0
+  });
+
+  // Selected Document for Deep Workspace View (null = show all documents list)
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [isLoadingDocumentDetails, setIsLoadingDocumentDetails] = useState(false);
+
+  // Multi-selection checkboxes in Document Workspace
+  const [selectedLineIds, setSelectedLineIds] = useState(new Set());
+
+  const [invoicingDocs, setInvoicingDocs] = useState([]);
+  const [isLoadingInvoicing, setIsLoadingInvoicing] = useState(false);
+  const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'IN' | 'CN' | 'ALL'
+  const [customerFilter, setCustomerFilter] = useState('All Clients');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
-  
-  // Modal display states
-  const [showIssueInvoiceModal, setShowIssueInvoiceModal] = useState(false);
-  const [orderSearchQuery, setOrderSearchQuery] = useState('');
-  const [orderDropdownOpen, setOrderDropdownOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [jumpPageInput, setJumpPageInput] = useState('');
+  const [expandedLineId, setExpandedLineId] = useState(null);
+  const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
 
-  // Form states for creating a Client Invoice
-  const [invoiceOrderKey, setInvoiceOrderKey] = useState(''); // "projectKey_orderId"
-  const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [invoiceItemInputs, setInvoiceItemInputs] = useState({}); // { itemId: { qty } }
-  const [customInvoiceId, setCustomInvoiceId] = useState('');
-  const [customInvoiceDate, setCustomInvoiceDate] = useState('');
+  // Single Allocation Modal State
+  const [allocModalOpen, setAllocModalOpen] = useState(false);
+  const [allocTargetItem, setAllocTargetItem] = useState(null);
+  const [candidateOrders, setCandidateOrders] = useState([]);
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState(null);
+  const [manualProjectId, setManualProjectId] = useState('');
+  const [manualOrderId, setManualOrderId] = useState('');
+  const [allocQty, setAllocQty] = useState(1);
+  const [allocNotes, setAllocNotes] = useState('');
+  const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
-  // Form states for editing a Client Invoice
-  const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
-  const [editInvoiceDoc, setEditInvoiceDoc] = useState(null);
-  const [editInvoiceNotes, setEditInvoiceNotes] = useState('');
-  const [editInvoiceId, setEditInvoiceId] = useState('');
-  const [editInvoiceDate, setEditInvoiceDate] = useState('');
-  const [editInvoiceItemInputs, setEditInvoiceItemInputs] = useState({});
+  // Batch Allocation Modal State
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchProjectId, setBatchProjectId] = useState('');
+  const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchNotes, setBatchNotes] = useState('');
+  const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
-  // Grouping and Filtering states
-  const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
-  const [filterPm, setFilterPm] = useState('All');
-  const [collapsedProjects, setCollapsedProjects] = useState({}); // { projectKey: boolean }
+  // -------------------------------------------------------------
+  // FETCH SUMMARY & DOCUMENTS
+  // -------------------------------------------------------------
+  const fetchSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/summary`);
+      if (res.ok) {
+        const data = await res.json();
+        setInvoicingSummary(data);
+      }
+    } catch (_) {}
+  };
 
-  // Gather all project orders to populate the invoice generation dropdown
-  const allOrders = Object.values(projects).flatMap(p => 
-    (p.orders || []).map(o => ({
-      ...o,
-      projectKey: p.key,
-      projectName: p.name,
-      projectClient: p.client,
-      projectPm: p.pm || o.pmName || '',
-    }))
-  );
+  const fetchInvoicingDocuments = async (
+    newPage = page, 
+    newTab = activeFilterTab, 
+    newCustomer = customerFilter, 
+    newQ = searchQuery,
+    newLimit = limit
+  ) => {
+    setIsLoadingInvoicing(true);
+    try {
+      let tabParam = 'all';
+      if (newTab === 'NEEDS_ALLOCATION') tabParam = 'needs_allocation';
+      else if (newTab === 'PARTIAL') tabParam = 'partially_allocated';
+      else if (newTab === 'FULLY_ALLOCATED') tabParam = 'fully_allocated';
 
-  // 1. Gather all design invoices (those without type: 'order_invoice')
-  const designInvoices = invoices.filter(i => i.type !== 'order_invoice').map(i => {
-    // Map project PM name to invoice for filtering
-    const matchingProj = Object.values(projects).find(p => p.name === i.project);
-    return { ...i, projectPm: matchingProj?.pm || '' };
-  });
-
-  // 2. Gather all order invoices (either from global invoices state or from project orders)
-  const orderInvoices = invoices.filter(i => i.type === 'order_invoice').map(i => {
-    const matchingProj = Object.values(projects).find(p => p.key === i.projectKey);
-    return { ...i, projectPm: matchingProj?.pm || '' };
-  });
-
-  // Filter based on active tab
-  const activeInvoices = activeTab === 'design' ? designInvoices : orderInvoices;
-
-  // Extract unique PMs list for filter dropdown
-  const uniquePms = React.useMemo(() => {
-    const set = new Set();
-    Object.values(projects || {}).forEach(p => {
-      if (p.pm && p.pm.trim()) set.add(p.pm.trim());
-    });
-    return Array.from(set).sort();
-  }, [projects]);
-
-  // Search filter
-  const filteredInvoices = activeInvoices.filter(inv => {
-    const q = searchQuery.trim().toLowerCase();
-    
-    // Multi-word search matching: verify that every token typed is present in at least one field of the invoice
-    let matchesSearch = true;
-    if (q) {
-      const searchTokens = q.split(/\s+/);
-      matchesSearch = searchTokens.every(token => {
-        const idMatch = (inv.id || '').toLowerCase().includes(token);
-        const projectMatch = (inv.project || '').toLowerCase().includes(token);
-        const clientMatch = (inv.client || '').toLowerCase().includes(token);
-        const orderMatch = (inv.orderId || '').toLowerCase().includes(token);
-        
-        // Also check if matches item codes or descriptions inside the invoice items list to prevent random omissions
-        const itemMatch = (inv.items || []).some(item => 
-          (item.code || '').toLowerCase().includes(token) ||
-          (item.description || '').toLowerCase().includes(token)
-        );
-
-        return idMatch || projectMatch || clientMatch || orderMatch || itemMatch;
+      const params = new URLSearchParams({
+        tab: tabParam,
+        page: newPage.toString(),
+        page_size: newLimit.toString()
       });
-    }
 
-    // Direct string PM comparison (trim and lowercase check to ensure match regardless of case/spacing)
-    const matchesPm = filterPm === 'All' || 
-      (inv.projectPm && inv.projectPm.trim().toLowerCase() === filterPm.trim().toLowerCase());
-
-    return matchesSearch && matchesPm;
-  });
-
-  // Selected invoice for detail view
-  const selectedInvoice = invoices.find(i => i.id === selectedInvoiceId);
-
-  // Helper: Count total invoice documents issued to generate next ID
-  const getNextInvoiceId = () => {
-    const count = invoices.length + 1;
-    return `INV-2026-${String(count).padStart(3, '0')}`;
-  };
-
-  // Helper: Calculate previously invoiced quantities for an order
-  const getOrderInvoicedQtys = (order, excludeInvoiceId = null) => {
-    const map = {};
-    (order.itemsList || []).forEach(item => {
-      const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-      map[item.id] = history
-        .filter(h => !excludeInvoiceId || h.ref !== excludeInvoiceId)
-        .reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-    });
-    return map;
-  };
-
-  const getConsolidatedInvoiceItems = (order) => {
-    if (!order) return [];
-    const invoicedQtys = getOrderInvoicedQtys(order);
-    const grouped = {};
-    (order.itemsList || []).forEach(item => {
-      const code = item.code || 'NO-CODE';
-      const isService = (item.itemType || item.item_type) === 'Service';
-      // Calculate readyQty for individual item
-      let readyQty = 0;
-      if (isService) {
-        // Services are always ready to invoice - no procurement needed
-        readyQty = item.qty || 0;
-      } else if (item.stockStatus === 'All Stock on Hand') {
-        readyQty = item.qty || 0;
-      } else if (item.stockStatus === 'Partial Stock on Hand') {
-        const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
-        readyQty = (item.receivedQty || 0) + inStock;
-      } else {
-        readyQty = item.receivedQty || 0;
+      if (newCustomer && newCustomer !== 'All Clients') {
+        params.append('customer_filter', newCustomer);
       }
-      const alreadyInv = invoicedQtys[item.id] || 0;
-      const maxAvailable = Math.max(0, readyQty - alreadyInv);
-
-      if (!grouped[code]) {
-        grouped[code] = {
-          code: code,
-          description: item.description,
-          unitRetail: item.unitRetail || 0,
-          qty: 0,
-          readyQty: 0,
-          alreadyInv: 0,
-          maxAvailable: 0,
-          originalItems: []
-        };
+      if (newQ && newQ.trim()) {
+        params.append('search', newQ.trim());
       }
-      grouped[code].qty += Number(item.qty) || 0;
-      grouped[code].readyQty += readyQty;
-      grouped[code].alreadyInv += alreadyInv;
-      grouped[code].maxAvailable += maxAvailable;
-      grouped[code].originalItems.push(item);
-    });
-    return Object.values(grouped);
-  };
 
-  // Issue Client Invoice for order
-  const handleSaveInvoice = (e) => {
-    e.preventDefault();
-    if (!invoiceOrderKey) return;
-    const [pKey, oId] = invoiceOrderKey.split('_');
-    const project = projects[pKey];
-    const order = (project?.orders || []).find(o => o.id === oId);
-    if (!order) return;
-
-    const formattedDate = customInvoiceDate || new Date().toISOString().split('T')[0];
-    const newInvId = customInvoiceId.trim() || getNextInvoiceId();
-    const dateObj = new Date(formattedDate);
-    const dateStr = isNaN(dateObj.getTime()) 
-      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
-      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
-    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-
-    const invoiceItems = [];
-    let invoiceTotalValue = 0;
-    let hasQuantities = false;
-
-    const consolidated = getConsolidatedInvoiceItems(order);
-    const updatedItemsList = [...(order.itemsList || [])];
-    const invoicedQtys = getOrderInvoicedQtys(order);
-
-    consolidated.forEach(cItem => {
-      const input = invoiceItemInputs[cItem.code] || {};
-      const qtyAction = Math.max(0, parseInt(input.qty) || 0);
-
-      if (qtyAction > 0) {
-        hasQuantities = true;
-        const lineVal = qtyAction * (cItem.unitRetail || 0);
-        invoiceTotalValue += lineVal;
-        
-        invoiceItems.push({
-          code: cItem.code,
-          description: cItem.description,
-          qtyAction,
-          unitRetail: cItem.unitRetail || 0,
-          value: lineVal
-        });
-
-        // Distribute to individual items
-        let remainingToAllocate = qtyAction;
-        cItem.originalItems.forEach(origItem => {
-          if (remainingToAllocate <= 0) return;
-          
-          let readyQty = 0;
-          if (origItem.stockStatus === 'All Stock on Hand') {
-            readyQty = origItem.qty || 0;
-          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-            readyQty = (origItem.receivedQty || 0) + inStock;
-          } else {
-            readyQty = origItem.receivedQty || 0;
-          }
-          const alreadyInv = invoicedQtys[origItem.id] || 0;
-          const avail = Math.max(0, readyQty - alreadyInv);
-          const toAlloc = Math.min(avail, remainingToAllocate);
-
-          if (toAlloc > 0) {
-            remainingToAllocate -= toAlloc;
-            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-            if (targetIdx !== -1) {
-              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-              const syncTransaction = {
-                qty: toAlloc,
-                ref: newInvId,
-                date: formattedDate,
-                value: toAlloc * (origItem.unitRetail || 0)
-              };
-              updatedItemsList[targetIdx] = {
-                ...updatedItemsList[targetIdx],
-                invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + toAlloc,
-                invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (toAlloc * (origItem.unitRetail || 0)),
-                invoiceHistory: [...history, syncTransaction]
-              };
-            }
-          }
-        });
-
-        // Overflow fallback
-        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
-          const origItem = cItem.originalItems[0];
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const syncTransaction = {
-              qty: remainingToAllocate,
-              ref: newInvId,
-              date: formattedDate,
-              value: remainingToAllocate * (origItem.unitRetail || 0)
-            };
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + remainingToAllocate,
-              invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (remainingToAllocate * (origItem.unitRetail || 0)),
-              invoiceHistory: [...history, syncTransaction]
-            };
-          }
+      const res = await fetch(`${API_BASE}/api/invoicing/documents?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        let items = data.documents || [];
+        if (newTab === 'IN') {
+          items = items.filter(d => d.doc_type === 'INVOICE');
+        } else if (newTab === 'CN') {
+          items = items.filter(d => d.doc_type === 'CREDIT_NOTE');
         }
+        setInvoicingDocs(items);
+        setTotalCount(data.total_documents || 0);
+        setTotalPages(data.total_pages || 1);
+        setPage(data.page || 1);
       }
-    });
-
-    if (!hasQuantities) {
-      alert('Please enter at least one quantity to invoice.');
-      return;
+    } catch (err) {
+      console.error('Failed to fetch invoicing documents:', err);
+    } finally {
+      setIsLoadingInvoicing(false);
     }
+  };
 
-    const newInvDoc = {
-      id: newInvId,
-      date: dateStr,
-      notes: invoiceNotes,
-      items: invoiceItems,
-      totalValue: invoiceTotalValue
-    };
-
-    // Update order items & documents
-    const updatedOrders = project.orders.map(o => {
-      if (o.id === oId) {
-        return {
-          ...o,
-          clientInvoices: [...(o.clientInvoices || []), newInvDoc],
-          itemsList: updatedItemsList
-        };
+  // Fetch full details of an individual document when opened
+  const fetchSingleDocumentDetails = async (docNo) => {
+    setIsLoadingDocumentDetails(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/document/${encodeURIComponent(docNo)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedDocument(data);
+        setSelectedLineIds(new Set());
       }
-      return o;
+    } catch (err) {
+      console.error('Failed to fetch invoice details:', err);
+    } finally {
+      setIsLoadingDocumentDetails(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // SYNC FROM PALLADIUM
+  // -------------------------------------------------------------
+  const handleTriggerSync = async () => {
+    setIsSyncingPalladium(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/sync`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        triggerToast(`🎉 Sync complete: ${data.invoice_lines_synced} invoice lines read in ${data.duration_seconds}s!`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
+        }
+      } else {
+        alert('Sync notice: Could not complete synchronization.');
+      }
+    } catch (e) {
+      alert(`Sync error: ${e.message}`);
+    } finally {
+      setIsSyncingPalladium(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSummary();
+  }, []);
+
+  // Debounced Search & Tab Change Effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeFilterTab, customerFilter, searchQuery]);
+
+  // Filter change handlers
+  const handleTabChange = (newTab) => {
+    setActiveFilterTab(newTab);
+    setPage(1);
+  };
+
+  const handleCustomerChange = (newCust) => {
+    setCustomerFilter(newCust);
+    setPage(1);
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setPage(1);
+    fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
+  };
+
+  // Distinct clients list for filtering
+  const uniqueCustomers = useMemo(() => {
+    const custs = new Set();
+    invoicingDocs.forEach(d => {
+      if (d.customer_name) custs.add(d.customer_name);
     });
+    return Array.from(custs).sort();
+  }, [invoicingDocs]);
 
-    // Add to global invoices state
-    const globalInvoiceRecord = {
-      id: newInvId,
-      project: project.name,
-      client: project.client,
-      amount: `R ${Math.round(invoiceTotalValue).toLocaleString()}`,
-      issued: dateStr,
-      due: dueStr,
-      status: 'Unpaid',
-      paid: false,
-      type: 'order_invoice',
-      projectKey: pKey,
-      orderId: oId,
-      items: invoiceItems,
-      notes: invoiceNotes
-    };
+  // -------------------------------------------------------------
+  // ALLOCATION ACTIONS
+  // -------------------------------------------------------------
+  const handleOpenAllocModal = (line) => {
+    const unalloc = Number(line.unallocated_qty || 0);
+    setAllocTargetItem(line);
+    setAllocQty(unalloc > 0 ? unalloc : 1);
+    setAllocNotes('');
 
-    updateProject(pKey, 'orders', updatedOrders);
-    setInvoices(prev => [globalInvoiceRecord, ...prev]);
-    setShowIssueInvoiceModal(false);
-    setSelectedInvoiceId(newInvId);
-  };
+    const cleanSku = (line.item_code || '').trim().toUpperCase();
+    const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
+    const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
+    const candidates = [];
 
-  // Mark invoice as paid
-  const handleMarkPaid = (id) => {
-    setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: 'Paid', paid: true } : i));
-  };
+    Object.values(projects || {}).forEach(p => {
+      const pName = (p.name || '').toLowerCase();
+      const pKey = (p.key || '').toLowerCase();
+      let projMatchScore = 0;
+      if (docRef && (pName.includes(docRef) || docRef.includes(pName) || pKey.includes(docRef) || docRef.includes(pKey))) {
+        projMatchScore += 50;
+      }
+      if (custName && (pName.includes(custName) || custName.includes(pName))) {
+        projMatchScore += 30;
+      }
 
-  // Delete/Reverse Client Invoice
-  const handleDeleteInvoice = (inv) => {
-    if (!window.confirm(`Are you sure you want to delete ${inv.id}? This will reverse its invoiced quantities.`)) return;
+      (p.orders || []).forEach(o => {
+        (o.itemsList || []).forEach(it => {
+          const itemCode = (it.code || '').trim().toUpperCase();
+          const oneOneCode = (it.oneOneCode || '').trim().toUpperCase();
+          const isDirectSkuMatch = itemCode === cleanSku || oneOneCode === cleanSku;
+          const isDescMatch = it.description && cleanSku && it.description.toUpperCase().includes(cleanSku);
 
-    if (inv.type === 'order_invoice') {
-      const project = projects[inv.projectKey];
-      if (project) {
-        const updatedOrders = project.orders.map(o => {
-          if (o.id === inv.orderId) {
-            // Reverse quantities
-            const updatedItemsList = (o.itemsList || []).map(item => {
-              const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== inv.id);
-              const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-              const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-              return {
-                ...item,
-                invoiceQty: newInvQty,
-                invoiceValue: newInvVal,
-                invoiceHistory: cleanedHistory
-              };
+          if (isDirectSkuMatch || isDescMatch || projMatchScore > 0) {
+            let itemScore = projMatchScore;
+            if (isDirectSkuMatch) itemScore += 100;
+            else if (isDescMatch) itemScore += 20;
+
+            candidates.push({
+              project_id: p.id || 1,
+              project_name: p.name,
+              project_key: p.key,
+              order_id: o.id,
+              order_po_number: o.id || o.po_number,
+              order_item_id: it.id,
+              fitting_code: it.code || it.oneOneCode || line.item_code,
+              description: it.description || it.name,
+              needed_qty: it.qty || it.quantity || 1,
+              invoiced_qty: it.invoice_qty || 0,
+              is_direct_sku_match: isDirectSkuMatch,
+              match_score: itemScore
             });
-
-            return {
-              ...o,
-              clientInvoices: (o.clientInvoices || []).filter(i => i.id !== inv.id),
-              itemsList: updatedItemsList
-            };
           }
-          return o;
         });
-        updateProject(inv.projectKey, 'orders', updatedOrders);
-      }
-    }
-
-    setInvoices(prev => prev.filter(i => i.id !== inv.id));
-    if (selectedInvoiceId === inv.id) {
-      setSelectedInvoiceId(null);
-    }
-  };
-
-  const handleOpenEditInvoiceModal = (inv) => {
-    setEditInvoiceDoc(inv);
-    setEditInvoiceNotes(inv.notes || '');
-    setEditInvoiceId(inv.id);
-    let rawDate = '';
-    if (inv.date) {
-      const parsed = Date.parse(inv.date);
-      if (!isNaN(parsed)) {
-        rawDate = new Date(parsed).toISOString().split('T')[0];
-      }
-    }
-    setEditInvoiceDate(rawDate || new Date().toISOString().split('T')[0]);
-
-    const inputs = {};
-    (inv.items || []).forEach(item => {
-      inputs[item.code] = item.qtyAction;
+      });
     });
-    setEditInvoiceItemInputs(inputs);
-    setShowEditInvoiceModal(true);
+
+    candidates.sort((a, b) => b.match_score - a.match_score);
+    setCandidateOrders(candidates);
+
+    if (candidates.length > 0) {
+      setSelectedCandidateKey(String(candidates[0].order_item_id));
+      setManualProjectId(candidates[0].project_id || '');
+      setManualOrderId(candidates[0].order_id || '');
+    } else {
+      setSelectedCandidateKey('MANUAL');
+      setManualProjectId('');
+      setManualOrderId('');
+    }
+
+    setAllocModalOpen(true);
   };
 
-  const handleSaveEditInvoice = (e) => {
+  const handleSubmitSingleAllocation = async (e) => {
     e.preventDefault();
-    if (!editInvoiceDoc) return;
+    if (!allocTargetItem || !selectedDocument) return;
 
-    const pKey = editInvoiceDoc.projectKey;
-    const oId = editInvoiceDoc.orderId;
-    const project = projects[pKey];
-    if (!project) return;
-    const order = (project.orders || []).find(o => o.id === oId);
-    if (!order) return;
+    let payload = {
+      source_doc_no: selectedDocument.document_no,
+      doc_date: selectedDocument.transaction_date,
+      source_line_id: allocTargetItem.line_id,
+      sku: allocTargetItem.item_code,
+      allocated_qty: Number(allocQty),
+      unit_cost: Number(allocTargetItem.unit_price_excl || 0),
+      notes: allocNotes,
+      allocated_by_name: 'Staff'
+    };
 
-    const formattedDate = editInvoiceDate || new Date().toISOString().split('T')[0];
-    const newInvId = editInvoiceId.trim() || editInvoiceDoc.id;
-    const dateObj = new Date(formattedDate);
-    const dateStr = isNaN(dateObj.getTime()) 
-      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
-      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
-    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
+      const cand = candidateOrders.find(c => String(c.order_item_id) === String(selectedCandidateKey));
+      if (cand) {
+        payload.project_id = cand.project_id;
+        payload.project_name = cand.project_name;
+        payload.order_id = cand.order_id;
+        payload.order_item_id = cand.order_item_id;
+        payload.fitting_code = cand.fitting_code;
+      }
+    } else {
+      if (!manualProjectId) {
+        alert("Please select a target Project to allocate to.");
+        return;
+      }
+      const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+      payload.project_id = proj ? (proj.id || 1) : 1;
+      payload.project_name = proj ? proj.name : 'Selected Project';
+      payload.order_id = manualOrderId ? Number(manualOrderId) : null;
+      payload.fitting_code = allocTargetItem.item_code;
+    }
 
-    const invoiceItems = [];
-    let invoiceTotalValue = 0;
-    let hasQuantities = false;
-
-    const consolidated = getConsolidatedInvoiceItems(order);
-    const updatedItemsList = [...(order.itemsList || [])];
-    const otherInvoicedQtys = getOrderInvoicedQtys(order, editInvoiceDoc.id);
-
-    consolidated.forEach(cItem => {
-      const qtyAction = Math.max(0, parseInt(editInvoiceItemInputs[cItem.code]) || 0);
-
-      if (qtyAction > 0) {
-        hasQuantities = true;
-        const lineVal = qtyAction * (cItem.unitRetail || 0);
-        invoiceTotalValue += lineVal;
-        
-        invoiceItems.push({
-          code: cItem.code,
-          description: cItem.description,
-          qtyAction,
-          unitRetail: cItem.unitRetail || 0,
-          value: lineVal
-        });
-
-        let remainingToAllocate = qtyAction;
-        cItem.originalItems.forEach(origItem => {
-          if (remainingToAllocate <= 0) return;
-          
-          let readyQty = 0;
-          if (origItem.stockStatus === 'All Stock on Hand') {
-            readyQty = origItem.qty || 0;
-          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-            readyQty = (origItem.receivedQty || 0) + inStock;
-          } else {
-            readyQty = origItem.receivedQty || 0;
-          }
-          const avail = Math.max(0, readyQty - (otherInvoicedQtys[origItem.id] || 0));
-          const toAlloc = Math.min(avail, remainingToAllocate);
-
-          if (toAlloc > 0) {
-            remainingToAllocate -= toAlloc;
-            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-            if (targetIdx !== -1) {
-              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-              const syncTransaction = {
-                qty: toAlloc,
-                ref: newInvId,
-                date: formattedDate,
-                value: toAlloc * (origItem.unitRetail || 0)
-              };
-              const nextHistory = [...cleanedHistory, syncTransaction];
-              const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-              const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-
-              updatedItemsList[targetIdx] = {
-                ...updatedItemsList[targetIdx],
-                invoiceQty: newInvQty,
-                invoiceValue: newInvVal,
-                invoiceHistory: nextHistory
-              };
-            }
-          }
-        });
-
-        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
-          const origItem = cItem.originalItems[0];
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-            const syncTransaction = {
-              qty: remainingToAllocate,
-              ref: newInvId,
-              date: formattedDate,
-              value: remainingToAllocate * (origItem.unitRetail || 0)
-            };
-            const nextHistory = [...cleanedHistory, syncTransaction];
-            const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: newInvQty,
-              invoiceValue: newInvVal,
-              invoiceHistory: nextHistory
-            };
-          }
+    setIsSavingAlloc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Invoice allocated successfully!'}`);
+        setAllocModalOpen(false);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
         }
       } else {
-        cItem.originalItems.forEach(origItem => {
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-            const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: newInvQty,
-              invoiceValue: newInvVal,
-              invoiceHistory: cleanedHistory
-            };
+        alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      setIsSavingAlloc(false);
+    }
+  };
+
+  // Open Batch Allocation Modal with Intelligent Destination Pre-selection
+  const handleOpenBatchModal = () => {
+    if (selectedLineIds.size === 0 || !selectedDocument) return;
+
+    const selectedSkus = new Set(
+      (selectedDocument.lines || [])
+        .filter(l => selectedLineIds.has(l.line_id))
+        .map(l => (l.item_code || '').trim().toUpperCase())
+    );
+
+    const docRef = (selectedDocument.reference || '').trim().toLowerCase();
+    let bestProjId = '';
+    let bestMatchCount = -1;
+
+    Object.values(projects || {}).forEach(p => {
+      let score = 0;
+      if (docRef && p.name && (docRef.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(docRef))) {
+        score += 10;
+      }
+      (p.orders || []).forEach(o => {
+        (o.itemsList || []).forEach(it => {
+          const code = (it.code || '').trim().toUpperCase();
+          const oneOne = (it.oneOneCode || '').trim().toUpperCase();
+          if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
+            score += 2;
           }
         });
+      });
+      if (score > bestMatchCount) {
+        bestMatchCount = score;
+        bestProjId = p.id || p.key;
       }
     });
 
-    if (!hasQuantities) {
-      alert('Please enter at least one quantity to invoice.');
+    setBatchProjectId(bestProjId || '');
+    setBatchOrderId('');
+    setBatchNotes('');
+    setBatchModalOpen(true);
+  };
+
+  // Submit Batch Allocation
+  const handleSubmitBatchAllocation = async (e) => {
+    e.preventDefault();
+    if (!selectedDocument || selectedLineIds.size === 0) return;
+
+    if (!batchProjectId) {
+      alert("Please select a destination Project.");
       return;
     }
 
-    const updatedInvDoc = {
-      ...editInvoiceDoc,
-      id: newInvId,
-      date: dateStr,
-      notes: editInvoiceNotes,
-      items: invoiceItems,
-      totalValue: invoiceTotalValue
+    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id) && (l.unallocated_qty || 0) > 0);
+
+    if (selectedLines.length === 0) {
+      alert("None of the selected items have unallocated quantities available.");
+      return;
+    }
+
+    const payload = {
+      source_doc_no: selectedDocument.document_no,
+      doc_date: selectedDocument.transaction_date,
+      project_id: proj ? (proj.id || 1) : 1,
+      project_name: proj ? proj.name : 'Selected Project',
+      order_id: batchOrderId ? Number(batchOrderId) : null,
+      allocated_by_name: 'Staff',
+      notes: batchNotes || `Batch allocated ${selectedLines.length} invoice items`,
+      items: selectedLines.map(l => ({
+        source_line_id: l.line_id,
+        sku: l.item_code,
+        allocated_qty: Number(l.unallocated_qty || 1),
+        unit_cost: Number(l.unit_price_excl || 0),
+        fitting_code: l.item_code
+      }))
     };
 
-    const updatedOrders = project.orders.map(o => {
-      if (o.id === oId) {
-        return {
-          ...o,
-          clientInvoices: (o.clientInvoices || []).map(i => i.id === editInvoiceDoc.id ? updatedInvDoc : i),
-          itemsList: updatedItemsList
-        };
+    setIsSavingBatchAlloc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/batch-allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        setBatchModalOpen(false);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        fetchSingleDocumentDetails(selectedDocument.document_no);
+      } else {
+        alert(`Batch allocation notice: ${data.detail || 'Could not complete batch allocation.'}`);
       }
-      return o;
-    });
-
-    setInvoices(prev => prev.map(inv => {
-      if (inv.id === editInvoiceDoc.id) {
-        return {
-          ...inv,
-          id: newInvId,
-          amount: `R ${Math.round(invoiceTotalValue).toLocaleString()}`,
-          issued: dateStr,
-          due: dueStr,
-          notes: editInvoiceNotes,
-          items: invoiceItems,
-          totalValue: invoiceTotalValue
-        };
-      }
-      return inv;
-    }));
-
-    updateProject(pKey, 'orders', updatedOrders);
-    setShowEditInvoiceModal(false);
-    setSelectedInvoiceId(null);
-    setTimeout(() => {
-      setSelectedInvoiceId(newInvId);
-    }, 50);
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      setIsSavingBatchAlloc(false);
+    }
   };
 
-  // Calculations for selected order in Invoice form
-  const selectedInvoiceOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === invoiceOrderKey);
-  const selectedInvoiceInvoicedQtys = selectedInvoiceOrder ? getOrderInvoicedQtys(selectedInvoiceOrder) : {};
+  // Unallocate Handler
+  const handleUnallocate = async (allocationId, docNo) => {
+    if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allocation_id: allocationId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Allocation released.'}`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
+        }
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not release allocation.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocation: ${e.message}`);
+    }
+  };
 
-  // Financial calculations
-  const outstanding = activeInvoices.filter(i => !i.paid).reduce((s, i) => s + parseFloat(i.amount.replace(/[^0-9.]/g, '') || 0), 0);
-  const paid = activeInvoices.filter(i => i.paid).reduce((s, i) => s + parseFloat(i.amount.replace(/[^0-9.]/g, '') || 0), 0);
+  // Multi-select helpers
+  const handleToggleSelectLine = (lineId) => {
+    const next = new Set(selectedLineIds);
+    if (next.has(lineId)) next.delete(lineId);
+    else next.add(lineId);
+    setSelectedLineIds(next);
+  };
+
+  const handleSelectAllUnallocated = () => {
+    if (!selectedDocument || !selectedDocument.lines) return;
+    const unallocated = selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+    if (selectedLineIds.size >= unallocated.length && unallocated.length > 0) {
+      setSelectedLineIds(new Set());
+    } else {
+      setSelectedLineIds(new Set(unallocated.map(l => l.line_id)));
+    }
+  };
+
+  const unallocatedLinesInDoc = useMemo(() => {
+    if (!selectedDocument || !selectedDocument.lines) return [];
+    return selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+  }, [selectedDocument]);
 
   return (
-    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
-      {/* Financial stats bar */}
-      <div className="stat-grid stat-grid-4" style={{ marginBottom: 18, flexShrink: 0 }}>
-        <div className="stat"><div className="stat-value">{activeInvoices.length}</div><div className="stat-label">Total invoices</div></div>
-        <div className="stat"><div className="stat-value stat-danger">{activeInvoices.filter(i => i.status === 'Overdue').length}</div><div className="stat-label">Overdue</div></div>
-        <div className="stat"><div className="stat-value stat-warning">R {(outstanding/1000).toFixed(0)}k</div><div className="stat-label">Outstanding</div></div>
-        <div className="stat"><div className="stat-value stat-success">R {(paid/1000).toFixed(0)}k</div><div className="stat-label">Paid YTD</div></div>
-      </div>
-
-      {/* Tabs & Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button className={`btn btn-sm ${activeTab === 'design' ? 'btn-primary' : ''}`} onClick={() => { setActiveTab('design'); setSelectedInvoiceId(null); }}>
-            📐 Design Invoices
-          </button>
-          <button className={`btn btn-sm ${activeTab === 'order' ? 'btn-primary' : ''}`} onClick={() => { setActiveTab('order'); setSelectedInvoiceId(null); }}>
-            📦 Order Product Invoices
-          </button>
+    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>
+      
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          border: '1px solid rgba(59, 130, 246, 0.4)',
+          color: '#f8fafc',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: '13px',
+          fontWeight: 600
+        }}>
+          <span>{toastMessage}</span>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {activeTab === 'order' && (
-            <button className="btn btn-sm btn-primary" onClick={() => { 
-              setInvoiceOrderKey(''); 
-              setInvoiceNotes(''); 
-              setInvoiceItemInputs({}); 
-              setCustomInvoiceId(getNextInvoiceId());
-              setCustomInvoiceDate(new Date().toISOString().split('T')[0]);
-              setShowIssueInvoiceModal(true); 
-            }}>
-              + New Client Invoice
+      )}
+
+      {/* HEADER SECTION */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '16px', 
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.5px' }}>
+              {getModuleName('invoicing', 'Client Invoicing & Allocations')} Suite
+            </span>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Read-Only Feed from Palladium ERP</span>
+          </div>
+          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Receipt size={22} style={{ color: '#3b82f6' }} />
+            {selectedDocument ? (
+              <span>
+                Document Workspace: <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{selectedDocument.document_no}</span>
+              </span>
+            ) : (
+              'Client Invoicing & Order Allocation Hub'
+            )}
+          </h1>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {selectedDocument && (
+            <button
+              onClick={() => setSelectedDocument(null)}
+              className="btn btn-sm btn-ghost"
+              style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
+            >
+              <ArrowLeft size={14} /> Back to All Documents
             </button>
           )}
+
+          <button
+            onClick={handleTriggerSync}
+            disabled={isSyncingPalladium}
+            className="btn btn-sm"
+            title="Read live Sales Invoices & Credit Notes from Palladium ERP"
+            style={{ 
+              border: '1px solid #10b981', 
+              color: '#10b981', 
+              background: 'rgba(16, 185, 129, 0.08)', 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              fontSize: '12px', 
+              height: '32px',
+              fontWeight: 600
+            }}
+          >
+            <RefreshCw size={13} className={isSyncingPalladium ? 'animate-spin' : ''} />
+            {isSyncingPalladium ? 'Syncing...' : 'Sync Palladium'}
+          </button>
         </div>
       </div>
 
-      {/* Main split dashboard */}
-      <div style={{ display: 'flex', gap: '16px', flex: 1, minHeight: 0 }}>
-        
-        {/* Left Side: Invoice Grid */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px', minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexShrink: 0 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-              <input 
-                type="text" 
-                placeholder="Search by invoice #, project or client..."
-                className="form-control"
-                style={{ paddingLeft: '30px', height: '34px', fontSize: '12px' }}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
+      {/* TOP 4 KPI CARDS (Always visible on Document list) */}
+      {!selectedDocument && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
+          gap: '12px', 
+          marginBottom: '16px' 
+        }}>
+          {/* CARD 1: NEEDS ALLOCATION (AMBER ALERT) */}
+          <div 
+            onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.25)',
+              background: activeFilterTab === 'NEEDS_ALLOCATION' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                🚨 Needs Allocation
+              </span>
+              <span style={{ background: '#f59e0b', color: '#000', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
+                ACTION
+              </span>
             </div>
-            {searchQuery && (
-              <button className="btn btn-sm" onClick={() => setSearchQuery('')}>Clear</button>
-            )}
-          </div>
-
-          {/* Grouping and Filter Controls Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
-              <select 
-                className="form-control"
-                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
-                value={groupingMode}
-                onChange={e => setGroupingMode(e.target.value)}
-              >
-                <option value="none">Show All Orders (List)</option>
-                <option value="project">Group Per Project</option>
-              </select>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#f59e0b', marginTop: '4px', lineHeight: 1.1 }}>
+              {invoicingSummary.unallocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
             </div>
-            
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Manager</label>
-              <select 
-                className="form-control"
-                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
-                value={filterPm}
-                onChange={e => setFilterPm(e.target.value)}
-              >
-                <option value="All">All PMs</option>
-                {uniquePms.map(pm => (
-                  <option key={pm} value={pm}>{pm}</option>
-                ))}
-              </select>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Invoices awaiting project order matching
             </div>
           </div>
 
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            {groupingMode === 'project' ? (
-              // Grouped Render
-              (() => {
-                const groups = {};
-                filteredInvoices.forEach(inv => {
-                  let projName = inv.project || 'Direct Client / Other';
-                  let groupKey = inv.projectKey || '';
-                  if (!groupKey) {
-                    const match = Object.values(projects).find(p => p.name === inv.project);
-                    groupKey = match?.key || 'unassigned';
-                  }
-                  if (!groups[groupKey]) {
-                    groups[groupKey] = {
-                      projectName: projName,
-                      client: inv.client || '',
-                      docs: []
-                    };
-                  }
-                  groups[groupKey].docs.push(inv);
-                });
+          {/* CARD 2: PARTIALLY ALLOCATED */}
+          <div 
+            onClick={() => setActiveFilterTab('PARTIAL')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'PARTIAL' ? '1.5px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.25)',
+              background: activeFilterTab === 'PARTIAL' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                ⏳ Partially Allocated
+              </span>
+              <Clock size={14} color="#3b82f6" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#3b82f6', marginTop: '4px', lineHeight: 1.1 }}>
+              {invoicingSummary.partially_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Invoices with split or in-progress line items
+            </div>
+          </div>
 
-                if (Object.keys(groups).length === 0) {
-                  return (
-                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
-                      No invoices found.
-                    </div>
-                  );
-                }
+          {/* CARD 3: FULLY ALLOCATED */}
+          <div 
+            onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)',
+              background: activeFilterTab === 'FULLY_ALLOCATED' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                ✅ Fully Allocated
+              </span>
+              <CheckCircle2 size={14} color="#10b981" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.1 }}>
+              {invoicingSummary.fully_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              100% matched to project orders
+            </div>
+          </div>
 
-                return Object.entries(groups).map(([projKey, group]) => {
-                  const isCollapsed = collapsedProjects[projKey] ?? true; // default to collapsed (true)
-                  return (
-                    <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
-                      <div 
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: isCollapsed ? '0' : '8px' }}
-                        onClick={() => {
-                          setCollapsedProjects(prev => ({
-                            ...prev,
-                            [projKey]: !prev[projKey]
-                          }));
-                        }}
-                      >
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textDecoration: 'underline' }}>
-                          📁 {group.projectName} {group.client && `(${group.client})`} ({group.docs.length})
-                        </span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          {isCollapsed ? '▶ Click to Expand' : '▼ Click to Collapse'}
-                        </span>
-                      </div>
+          {/* CARD 4: TOTAL VOLUME */}
+          <div 
+            onClick={() => setActiveFilterTab('ALL')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'ALL' ? '1.5px solid var(--text-tertiary)' : '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                📄 Total ERP Invoices
+              </span>
+              <FileText size={14} color="var(--text-tertiary)" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.1 }}>
+              {invoicingSummary.total_documents.toLocaleString()}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Totaling R {Number(invoicingSummary.total_invoiced_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          </div>
+        </div>
+      )}
 
-                      {!isCollapsed && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
-                          {group.docs.map(inv => {
-                            const isActive = inv.id === selectedInvoiceId;
-                            return (
-                              <div
-                                key={inv.id}
-                                onClick={() => setSelectedInvoiceId(inv.id)}
-                                style={{
-                                  background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                                  border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  padding: '8px',
-                                  cursor: 'pointer',
-                                  fontSize: '11px'
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{inv.id}</span>
-                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
-                                  <span>Issued: {inv.issued}</span>
-                                  {inv.orderId && <span>Order: {inv.orderId}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
-              })()
-            ) : (
-              // Standard Flat List Render
-              <table className="table" style={{ fontSize: '12px' }}>
+      {/* ============================================================ */}
+      {/* VIEW A: INDIVIDUAL DOCUMENT WORKSPACE (Opened Document View) */}
+      {/* ============================================================ */}
+      {selectedDocument ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
+          
+          {/* Document Header Card */}
+          <div className="card" style={{ padding: '16px 20px', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ 
+                    padding: '3px 8px', 
+                    borderRadius: '6px', 
+                    fontSize: '11px', 
+                    fontWeight: 700,
+                    background: selectedDocument.doc_type === 'CREDIT_NOTE' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                    color: selectedDocument.doc_type === 'CREDIT_NOTE' ? '#ef4444' : '#3b82f6',
+                    border: `1px solid ${selectedDocument.doc_type === 'CREDIT_NOTE' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+                  }}>
+                    {selectedDocument.doc_type === 'CREDIT_NOTE' ? 'Credit Note' : 'Tax Invoice'}
+                  </span>
+                  <span style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                    {selectedDocument.document_no}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                  <div>Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong></div>
+                  <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.transaction_date ? new Date(selectedDocument.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</strong></div>
+                  {selectedDocument.reference && (
+                    <div>Project Ref: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.reference}</strong></div>
+                  )}
+                  <div>Total (Excl): <strong style={{ color: 'var(--text-primary)' }}>R {Number(selectedDocument.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+              </div>
+
+              {/* Document Allocation Progress */}
+              <div style={{ textAlign: 'right', minWidth: '240px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Allocation Progress:</span>
+                  <strong style={{ color: selectedDocument.unallocated_qty === 0 ? '#10b981' : (selectedDocument.allocated_qty > 0 ? '#3b82f6' : '#f59e0b') }}>
+                    {selectedDocument.allocated_qty} / {selectedDocument.total_qty} units allocated
+                  </strong>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${selectedDocument.total_qty > 0 ? (selectedDocument.allocated_qty / selectedDocument.total_qty) * 100 : 0}%`,
+                    background: selectedDocument.unallocated_qty === 0 ? '#10b981' : '#3b82f6',
+                    borderRadius: '4px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BATCH ALLOCATION ACTION BAR (When items are selected) */}
+          {selectedLineIds.size > 0 && (
+            <div style={{ 
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
+              border: '1.5px solid #3b82f6', 
+              borderRadius: '10px', 
+              padding: '12px 18px', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+              color: '#fff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                  {selectedLineIds.size} items selected
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#cbd5e1' }}>
+                  Allocate all selected invoice lines to the same project order in one click:
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => setSelectedLineIds(new Set())}
+                  className="btn btn-xs btn-ghost"
+                  style={{ color: '#94a3b8', fontSize: '11.5px' }}
+                >
+                  Clear Selection
+                </button>
+                <button
+                  onClick={handleOpenBatchModal}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
+                  }}
+                >
+                  <Sparkles size={14} /> Allocate Selected to Project Order
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Document Line Items Table */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                  Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
+                </span>
+                {unallocatedLinesInDoc.length > 0 && (
+                  <button
+                    onClick={handleSelectAllUnallocated}
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 8px' }}
+                  >
+                    {selectedLineIds.size === unallocatedLinesInDoc.length ? 'Deselect All' : `Select All Unallocated (${unallocatedLinesInDoc.length})`}
+                  </button>
+                )}
+              </div>
+
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                Tip: Select multiple items to allocate them together, or allocate individually
+              </span>
+            </div>
+
+            <div style={{ overflowX: 'auto', flex: 1 }}>
+              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
-                    <th>Invoice #</th>
-                    <th>Project / Client</th>
-                    <th>Amount</th>
-                    <th>Issued</th>
-                    <th style={{ width: '70px' }}></th>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ width: '40px', textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={unallocatedLinesInDoc.length > 0 && selectedLineIds.size === unallocatedLinesInDoc.length}
+                        onChange={handleSelectAllUnallocated}
+                        disabled={unallocatedLinesInDoc.length === 0}
+                        title="Select/Deselect All Unallocated Items"
+                      />
+                    </th>
+                    <th style={{ width: '30px' }}></th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>SKU / Item Code</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Description</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>Unit Price (Excl)</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Invoiced Qty</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Allocated</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Unallocated</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Status</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.length === 0 ? (
+                  {(selectedDocument.lines || []).map((line) => {
+                    const isExpanded = expandedLineId === line.line_id;
+                    const hasAllocations = line.allocations && line.allocations.length > 0;
+                    const isSelected = selectedLineIds.has(line.line_id);
+                    const isUnallocated = (line.unallocated_qty || 0) > 0;
+
+                    return (
+                      <React.Fragment key={line.line_id}>
+                        <tr style={{ 
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
+                          background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (isExpanded ? 'rgba(59, 130, 246, 0.03)' : 'transparent'),
+                          transition: 'background 0.15s ease'
+                        }}>
+                          {/* Multi-select Checkbox */}
+                          <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              disabled={!isUnallocated}
+                              onChange={() => handleToggleSelectLine(line.line_id)}
+                            />
+                          </td>
+
+                          {/* Expand/Collapse Chevron */}
+                          <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                            {hasAllocations && (
+                              <button
+                                onClick={() => setExpandedLineId(isExpanded ? null : line.line_id)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
+                                title="View allocated projects & orders"
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Item Code */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '12px' }}>
+                              {line.item_code}
+                            </div>
+                          </td>
+
+                          {/* Description */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={line.item_description}>
+                              {line.item_description || 'No description'}
+                            </div>
+                          </td>
+
+                          {/* Unit Price Excl */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>
+                            R {Number(line.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Invoiced Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>
+                            {line.invoiced_qty} <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{line.item_unit}</span>
+                          </td>
+
+                          {/* Allocated Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 700, color: line.allocated_qty > 0 ? '#10b981' : 'var(--text-secondary)' }}>
+                            {line.allocated_qty}
+                          </td>
+
+                          {/* Unallocated Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 700, color: line.unallocated_qty > 0 ? '#f59e0b' : '#10b981' }}>
+                            {line.unallocated_qty}
+                          </td>
+
+                          {/* Allocation Status Badge */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {line.status === 'Unallocated' && (
+                              <span style={{ 
+                                background: 'rgba(245, 158, 11, 0.12)', 
+                                color: '#f59e0b', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <AlertTriangle size={10} /> Needs Allocation
+                              </span>
+                            )}
+                            {line.status === 'Partially Allocated' && (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.12)', 
+                                color: '#3b82f6', 
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700 
+                              }}>
+                                ⏳ Partial ({line.allocated_qty}/{line.invoiced_qty})
+                              </span>
+                            )}
+                            {line.status === 'Fully Allocated' && (
+                              <span style={{ 
+                                background: 'rgba(16, 185, 129, 0.12)', 
+                                color: '#10b981', 
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <Check size={10} /> Fully Allocated
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Action Button */}
+                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {line.unallocated_qty > 0 ? (
+                              <button
+                                onClick={() => handleOpenAllocModal(line)}
+                                className="btn btn-xs"
+                                style={{
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  padding: '5px 12px',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                              >
+                                <Sparkles size={11} /> Allocate
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setExpandedLineId(isExpanded ? null : line.line_id)}
+                                className="btn btn-xs btn-ghost"
+                                style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                              >
+                                View ({line.allocations?.length || 0})
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* EXPANDED ALLOCATION BREAKDOWN */}
+                        {isExpanded && hasAllocations && (
+                          <tr style={{ background: 'rgba(59, 130, 246, 0.02)', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={10} style={{ padding: '10px 20px 14px 44px' }}>
+                              <div style={{ 
+                                background: 'var(--bg-primary)', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '8px', 
+                                padding: '10px 14px' 
+                              }}>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Layers size={12} color="#3b82f6" />
+                                  Active Allocations for {line.item_code}:
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {line.allocations.map((alloc) => (
+                                    <div 
+                                      key={alloc.id} 
+                                      style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center', 
+                                        background: 'var(--bg-secondary)', 
+                                        padding: '6px 12px', 
+                                        borderRadius: '6px', 
+                                        fontSize: '11px' 
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span style={{ fontWeight: 700, color: '#3b82f6' }}>
+                                          {alloc.allocated_qty} {line.item_unit}
+                                        </span>
+                                        <span>→</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                          {alloc.project_name || `Project #${alloc.project_id}`}
+                                        </span>
+                                        {alloc.order_id && (
+                                          <span style={{ color: 'var(--text-secondary)' }}>
+                                            (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
+                                          </span>
+                                        )}
+                                        {alloc.notes && (
+                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                            "{alloc.notes}"
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                          Allocated by {alloc.allocated_by || 'Staff'} {alloc.allocated_at ? `on ${new Date(alloc.allocated_at).toLocaleDateString('en-ZA')}` : ''}
+                                        </span>
+                                        <button
+                                          onClick={() => handleUnallocate(alloc.id, selectedDocument.document_no)}
+                                          className="btn btn-xs"
+                                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', fontSize: '10px' }}
+                                          title="Release allocation back to unallocated pool"
+                                        >
+                                          <Trash2 size={10} style={{ marginRight: '3px' }} /> Unallocate
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ============================================================ */
+        /* VIEW B: PRIMARY DOCUMENT LIST (One row per Invoice Document) */
+        /* ============================================================ */
+        <>
+          {/* FILTER TABS & SEARCH BAR */}
+          <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              
+              {/* Tab Filters */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleTabChange('NEEDS_ALLOCATION')}
+                  className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
+                    color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)'
+                  }}
+                >
+                  🚨 Needs Allocation ({invoicingSummary.unallocated_count})
+                </button>
+                <button
+                  onClick={() => handleTabChange('PARTIAL')}
+                  className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  ⏳ Partially Allocated ({invoicingSummary.partially_allocated_count})
+                </button>
+                <button
+                  onClick={() => handleTabChange('FULLY_ALLOCATED')}
+                  className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  ✅ Fully Allocated ({invoicingSummary.fully_allocated_count})
+                </button>
+                <button
+                  onClick={() => handleTabChange('IN')}
+                  className={`btn btn-xs ${activeFilterTab === 'IN' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  📄 Tax Invoices (IN)
+                </button>
+                <button
+                  onClick={() => handleTabChange('CN')}
+                  className={`btn btn-xs ${activeFilterTab === 'CN' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  💳 Credit Notes (CN)
+                </button>
+                <button
+                  onClick={() => handleTabChange('ALL')}
+                  className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  All Invoices
+                </button>
+              </div>
+
+              {/* Search & Customer Filter */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '240px' }}>
+                  <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search Doc #, Client, Ref, SKU..."
+                    className="form-control"
+                    style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        fetchInvoicingDocuments(1, activeFilterTab, customerFilter, '', limit);
+                      }}
+                      style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  className="form-control"
+                  style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                  value={customerFilter}
+                  onChange={(e) => handleCustomerChange(e.target.value)}
+                >
+                  <option value="All Clients">All Clients</option>
+                  {uniqueCustomers.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          {/* DOCUMENTS LIST TABLE */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ overflowX: 'auto', flex: 1 }}>
+              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>Document #</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Type</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600 }}>Date</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Client Name</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Project Reference</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Items / Qty</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Total Value (Excl)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Allocation Status</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingInvoicing ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                        No invoices found.
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
+                        Loading live Palladium Invoices...
+                      </td>
+                    </tr>
+                  ) : invoicingDocs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
+                        <div style={{ fontWeight: 600, fontSize: '13px' }}>No invoice documents found</div>
+                        <div style={{ fontSize: '11px', marginTop: '4px' }}>All documents in this view may already be fully allocated or match no search query.</div>
                       </td>
                     </tr>
                   ) : (
-                    filteredInvoices.map(inv => {
-                      const isActive = inv.id === selectedInvoiceId;
+                    invoicingDocs.map((doc) => {
+                      const isCreditNote = doc.doc_type === 'CREDIT_NOTE';
                       return (
                         <tr 
-                          key={inv.id} 
-                          className="clickable"
-                          onClick={() => setSelectedInvoiceId(inv.id)}
-                          style={{
-                            background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                            borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
+                          key={doc.document_no}
+                          onClick={() => fetchSingleDocumentDetails(doc.document_no)}
+                          style={{ 
+                            borderBottom: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease'
                           }}
+                          className="hover-row"
                         >
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{inv.id}</td>
-                          <td>
-                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{inv.project}</div>
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{inv.client}</div>
-                            {inv.orderId && (
-                              <div style={{ fontSize: '10px', color: 'var(--text-info)', fontFamily: 'monospace', marginTop: '2px' }}>
-                                Order: {inv.orderId} {(() => {
-                                  const p = projects[inv.projectKey];
-                                  const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
-                                  return o?.quote_name ? `(${o.quote_name})` : '';
-                                })()}
-                              </div>
+                          {/* Document # */}
+                          <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Receipt size={14} color="#3b82f6" />
+                              <span style={{ fontSize: '12.5px' }}>{doc.document_no}</span>
+                            </div>
+                          </td>
+
+                          {/* Type */}
+                          <td style={{ padding: '10px 8px' }}>
+                            <span style={{ 
+                              padding: '2px 6px', 
+                              borderRadius: '4px', 
+                              fontSize: '10px', 
+                              fontWeight: 700,
+                              background: isCreditNote ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                              color: isCreditNote ? '#ef4444' : '#3b82f6',
+                              border: `1px solid ${isCreditNote ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+                            }}>
+                              {isCreditNote ? 'CN' : 'INV'}
+                            </span>
+                          </td>
+
+                          {/* Date */}
+                          <td style={{ padding: '10px 10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                            {doc.transaction_date ? new Date(doc.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                          </td>
+
+                          {/* Client Name */}
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {doc.customer_name}
+                          </td>
+
+                          {/* Project Reference */}
+                          <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={doc.reference}>
+                            {doc.reference || '—'}
+                          </td>
+
+                          {/* Items / Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-primary)', fontWeight: 600 }}>
+                            {doc.lines_count} <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>items</span> • {doc.total_qty} <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>units</span>
+                          </td>
+
+                          {/* Total Value */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            R {Number(doc.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Allocation Status */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {doc.allocation_status === 'Needs Allocation' && (
+                              <span style={{ 
+                                background: 'rgba(245, 158, 11, 0.12)', 
+                                color: '#f59e0b', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <AlertTriangle size={11} /> Needs Allocation
+                              </span>
+                            )}
+                            {doc.allocation_status === 'Partially Allocated' && (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.12)', 
+                                color: '#3b82f6', 
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700 
+                              }}>
+                                ⏳ Partial ({doc.allocated_qty}/{doc.total_qty})
+                              </span>
+                            )}
+                            {doc.allocation_status === 'Fully Allocated' && (
+                              <span style={{ 
+                                background: 'rgba(16, 185, 129, 0.12)', 
+                                color: '#10b981', 
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <Check size={11} /> Fully Allocated
+                              </span>
                             )}
                           </td>
-                          <td style={{ fontWeight: 600 }}>{inv.amount}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>
 
-                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                            <button 
-                              className="btn btn-ghost text-danger" 
-                              style={{ padding: '4px' }} 
-                              title="Delete Invoice"
-                              onClick={() => handleDeleteInvoice(inv)}
+                          {/* Action Button */}
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetchSingleDocumentDetails(doc.document_no);
+                              }}
+                              className="btn btn-xs"
+                              style={{
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                fontWeight: 600,
+                                fontSize: '11px',
+                                padding: '4px 10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
                             >
-                              <Trash2 size={13} />
+                              Open Workspace <ArrowRight size={11} />
                             </button>
                           </td>
                         </tr>
@@ -816,462 +1366,536 @@ export default function InvoicesPage() {
                   )}
                 </tbody>
               </table>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* Right Side: Detail & Action Panel */}
-        <div className="card" style={{ width: '400px', display: 'flex', flexDirection: 'column', padding: '16px', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-          {selectedInvoice ? (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '12px', flexShrink: 0 }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                    {selectedInvoice.type === 'order_invoice' ? 'Client Product Invoice' : 'Design Fee Invoice'}
-                  </div>
-                  <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                    {selectedInvoice.id}
-                  </h3>
-                </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {selectedInvoice.type === 'order_invoice' && (
-                    <button className="btn btn-xs btn-outline" onClick={() => handleOpenEditInvoiceModal(selectedInvoice)} style={{ fontSize: '11px', padding: '2px 8px' }}>
-                      ✍️ Edit
-                    </button>
-                  )}
-                  <button className="btn btn-xs btn-ghost" onClick={() => window.print()}>
-                    <Printer size={13} /> Print
+            {/* Pagination Controls */}
+            <div style={{ 
+              padding: '10px 16px', 
+              borderTop: '1px solid var(--border)', 
+              background: 'var(--bg-secondary)', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                Showing <strong>{invoicingDocs.length}</strong> of <strong>{totalCount}</strong> documents
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  onClick={() => {
+                    setPage(1);
+                    fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
+                  }}
+                  disabled={page <= 1}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to First Page"
+                >
+                  ⏮ First
+                </button>
+
+                <button
+                  onClick={() => {
+                    const prev = Math.max(1, page - 1);
+                    setPage(prev);
+                    fetchInvoicingDocuments(prev, activeFilterTab, customerFilter, searchQuery, limit);
+                  }}
+                  disabled={page <= 1}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
+                >
+                  ◀ Prev
+                </button>
+
+                <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
+                  Page {page} of {totalPages}
+                </span>
+
+                <button
+                  onClick={() => {
+                    const next = Math.min(totalPages, page + 1);
+                    setPage(next);
+                    fetchInvoicingDocuments(next, activeFilterTab, customerFilter, searchQuery, limit);
+                  }}
+                  disabled={page >= totalPages}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
+                >
+                  Next ▶
+                </button>
+
+                <button
+                  onClick={() => {
+                    setPage(totalPages);
+                    fetchInvoicingDocuments(totalPages, activeFilterTab, customerFilter, searchQuery, limit);
+                  }}
+                  disabled={page >= totalPages}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to Last Page"
+                >
+                  Last ⏭
+                </button>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const targetPage = Number(jumpPageInput);
+                    if (targetPage >= 1 && targetPage <= totalPages) {
+                      setPage(targetPage);
+                      fetchInvoicingDocuments(targetPage, activeFilterTab, customerFilter, searchQuery, limit);
+                      setJumpPageInput('');
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}
+                >
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Go to:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    placeholder={page}
+                    className="form-control"
+                    style={{ width: '50px', height: '28px', fontSize: '11px', padding: '2px 4px', textAlign: 'center', fontWeight: 600 }}
+                    value={jumpPageInput}
+                    onChange={(e) => setJumpPageInput(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid var(--border)', height: '28px', fontSize: '10.5px', padding: '2px 8px', fontWeight: 700 }}
+                  >
+                    Go
                   </button>
-                </div>
+                </form>
               </div>
+            </div>
+          </div>
+        </>
+      )}
 
-
-
-              {/* Metadata */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '11px', background: 'var(--bg-primary)', padding: '10px', borderRadius: '6px', marginBottom: '12px', flexShrink: 0 }}>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Project Name:</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedInvoice.project}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Client:</div>
-                  <div style={{ fontWeight: 600 }}>{selectedInvoice.client}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Amount:</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-info)', fontSize: '12px' }}>{selectedInvoice.amount}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Due Date:</div>
-                  <div style={{ fontWeight: 600 }}>{selectedInvoice.due}</div>
-                </div>
+      {/* ============================================================ */}
+      {/* BATCH ALLOCATION MODAL (Multiple items to 1 Project Order)   */}
+      {/* ============================================================ */}
+      {batchModalOpen && selectedDocument && (
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+            
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '16px 20px', 
+              borderBottom: '1px solid var(--border)', 
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={16} color="#3b82f6" />
+                  Batch Allocate {selectedLineIds.size} Invoice Lines from {selectedDocument.document_no}
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  Client: <strong>{selectedDocument.customer_name}</strong> • Reference: <strong>{selectedDocument.reference || 'General'}</strong>
+                </p>
               </div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setBatchModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
 
-              {/* Items List (if order invoice) */}
-              {selectedInvoice.type === 'order_invoice' && (
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '6px', flexShrink: 0 }}>Invoiced Items:</div>
-                  <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border)', borderRadius: '6px' }}>
-                    <table className="table" style={{ fontSize: '11.5px', margin: 0 }}>
-                      <thead style={{ background: 'var(--bg-primary)', position: 'sticky', top: 0 }}>
-                        <tr>
-                          <th>Item</th>
-                          <th style={{ width: '40px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ width: '80px', textAlign: 'right' }}>Total</th>
+            {/* Modal Body */}
+            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                
+                {/* Target Project & Order Selectors */}
+                <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '14px 16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px' }}>
+                    🎯 Destination Project & Order
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Project *</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '34px', fontSize: '12px', fontWeight: 600 }}
+                        value={batchProjectId}
+                        onChange={(e) => {
+                          setBatchProjectId(e.target.value);
+                          setBatchOrderId('');
+                        }}
+                        required
+                      >
+                        <option value="">-- Select Destination Project --</option>
+                        {Object.values(projects || {}).map(p => (
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Order (Optional)</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '34px', fontSize: '12px' }}
+                        value={batchOrderId}
+                        onChange={(e) => setBatchOrderId(e.target.value)}
+                        disabled={!batchProjectId}
+                      >
+                        <option value="">-- General Project Allocation --</option>
+                        {(() => {
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          return (proj?.orders || []).map(o => (
+                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Being Allocated List */}
+                <div>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    Invoice Lines to be Allocated ({selectedLineIds.size}):
+                  </div>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
+                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 10px' }}>SKU</th>
+                          <th style={{ padding: '6px 10px' }}>Description</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Price (Excl)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(selectedInvoice.items || []).map((item, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td>
-                              <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
-                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{item.description}</div>
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.qtyAction}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>R {Math.round(item.value).toLocaleString()}</td>
+                        {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id)).map(l => (
+                          <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
-              <Eye size={28} style={{ marginBottom: '8px', opacity: 0.5 }} />
-              <div style={{ fontSize: '12px' }}>Select an invoice from the list to preview details.</div>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* NEW CLIENT INVOICE MODAL */}
-      {showIssueInvoiceModal && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Issue Client Product Invoice</h3>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowIssueInvoiceModal(false)}>✕</button>
-            </div>
-            
-            <form onSubmit={handleSaveInvoice} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                
+                {/* Notes Input */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Select Order Reference</label>
-                  <div style={{ position: 'relative' }}>
-                    {(() => {
-                      const selectedOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === invoiceOrderKey);
-                      return (
-                        <>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            placeholder="🔍 Type to search orders by Project, ID, Supplier..."
-                            value={orderDropdownOpen ? orderSearchQuery : (selectedOrder ? `[${selectedOrder.projectKey.toUpperCase()}] ${selectedOrder.id} — ${selectedOrder.supplier || 'No Supplier'}` : '')}
-                            onFocus={() => {
-                              setOrderDropdownOpen(true);
-                            }}
-                            onChange={e => {
-                              setOrderSearchQuery(e.target.value);
-                            }}
-                            style={{ cursor: 'pointer', paddingRight: '30px' }}
-                          />
-                          <div 
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '11px' }}
-                          >
-                            {orderDropdownOpen ? '▲' : '▼'}
-                          </div>
-
-                          {orderDropdownOpen && (
-                            <>
-                              <div 
-                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
-                                onClick={() => setOrderDropdownOpen(false)}
-                              />
-                              <div 
-                                style={{ 
-                                  position: 'absolute', 
-                                  top: '100%', 
-                                  left: 0, 
-                                  right: 0, 
-                                  background: 'var(--bg-secondary)', 
-                                  border: '1px solid var(--border-strong)', 
-                                  borderRadius: '6px', 
-                                  maxHeight: '220px', 
-                                  overflowY: 'auto', 
-                                  zIndex: 1000, 
-                                  boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
-                                  marginTop: '4px'
-                                }}
-                              >
-                                {(() => {
-                                  const searchLower = orderSearchQuery.toLowerCase();
-                                  const filtered = allOrders.filter(o => {
-                                    const projectKeyMatch = o.projectKey.toLowerCase().includes(searchLower);
-                                    const idMatch = o.id.toLowerCase().includes(searchLower);
-                                    const supplierMatch = (o.supplier || '').toLowerCase().includes(searchLower);
-                                    const quoteNameMatch = (o.quote_name || '').toLowerCase().includes(searchLower);
-                                    return projectKeyMatch || idMatch || supplierMatch || quoteNameMatch;
-                                  });
-
-                                  if (filtered.length === 0) {
-                                    return (
-                                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                                        No orders found matching "{orderSearchQuery}"
-                                      </div>
-                                    );
-                                  }
-
-                                  return filtered.map(o => {
-                                    const key = `${o.projectKey}_${o.id}`;
-                                    const isSelected = invoiceOrderKey === key;
-                                    return (
-                                      <div 
-                                        key={key}
-                                        onClick={() => {
-                                          setInvoiceOrderKey(key);
-                                          setInvoiceItemInputs({});
-                                          setOrderSearchQuery('');
-                                          setOrderDropdownOpen(false);
-                                        }}
-                                        style={{ 
-                                          padding: '10px 14px', 
-                                          cursor: 'pointer', 
-                                          background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                          borderBottom: '1px solid var(--border)',
-                                          fontSize: '12px',
-                                          color: isSelected ? 'var(--text-info)' : 'var(--text-primary)',
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          gap: '2px'
-                                        }}
-                                        className="dropdown-item-hover"
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}
-                                      >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                                          <span>[{o.projectKey.toUpperCase()}] {o.id}</span>
-                                          {o.quote_name && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '11px' }}>{o.quote_name}</span>}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                                          <span>Supplier: {o.supplier || 'No Supplier'}</span>
-                                          <span>R {Number(o.value || 0).toLocaleString()}</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  });
-                                })()}
-                              </div>
-                            </>
-                          )}
-                        </>
-                      );
-                    })()}
-                    <input type="hidden" name="orderKey" value={invoiceOrderKey} required />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. INV-2026-001" 
-                      className="form-control" 
-                      value={customInvoiceId} 
-                      onChange={e => setCustomInvoiceId(e.target.value)} 
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
-                    <input 
-                      type="date" 
-                      className="form-control" 
-                      value={customInvoiceDate} 
-                      onChange={e => setCustomInvoiceDate(e.target.value)} 
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Terms</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Standard 15-day payment terms..." 
-                    className="form-control" 
-                    value={invoiceNotes} 
-                    onChange={e => setInvoiceNotes(e.target.value)} 
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    Internal Allocation Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Invoiced as per deposit invoice / Progress claim #1..."
+                    className="form-control"
+                    style={{ height: '34px', fontSize: '12px' }}
+                    value={batchNotes}
+                    onChange={(e) => setBatchNotes(e.target.value)}
                   />
                 </div>
 
-                {selectedInvoiceOrder ? (
-                  <div>
-                    <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Invoice Quantity Allocation:</div>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                      <table className="table" style={{ fontSize: '11px', margin: 0 }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-primary)' }}>
-                            <th>Item Code</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Total Spec</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Packed/Rec</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Already Inv</th>
-                            <th style={{ width: '100px', textAlign: 'center' }}>Qty to Invoice</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getConsolidatedInvoiceItems(selectedInvoiceOrder).map(cItem => {
-                            const inputs = invoiceItemInputs[cItem.code] || { qty: 0 };
-
-                            return (
-                              <tr key={cItem.code}>
-                                <td>
-                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
-                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>{cItem.qty || 0}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{cItem.readyQty}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyInv}</td>
-                                <td style={{ padding: '2px' }}>
-                                  <input 
-                                    type="number" 
-                                    className="form-control" 
-                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                    min={0}
-                                    max={cItem.maxAvailable}
-                                    value={inputs.qty || ''}
-                                    placeholder={`Max ${cItem.maxAvailable}`}
-                                    disabled={cItem.maxAvailable === 0}
-                                    onChange={e => {
-                                      const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                      setInvoiceItemInputs(prev => ({
-                                        ...prev,
-                                        [cItem.code]: { qty: val }
-                                      }));
-                                    }}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ padding: '24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '6px', color: 'var(--text-tertiary)', fontSize: '11.5px' }}>
-                    Select an order above to invoice items.
-                  </div>
-                )}
-
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                <button type="button" className="btn btn-sm" onClick={() => setShowIssueInvoiceModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-sm btn-primary" disabled={!selectedInvoiceOrder}>Issue Invoice</button>
+
+              {/* Modal Footer */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: '10px', 
+                padding: '14px 20px', 
+                borderTop: '1px solid var(--border)', 
+                background: 'var(--bg-secondary)', 
+                flexShrink: 0 
+              }}>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-ghost" 
+                  onClick={() => setBatchModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSavingBatchAlloc}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  {isSavingBatchAlloc ? 'Allocating...' : `Confirm Allocation (${selectedLineIds.size} items)`}
+                </button>
               </div>
             </form>
+
           </div>
         </div>
       )}
-      {/* EDIT CLIENT INVOICE MODAL */}
-      {showEditInvoiceModal && editInvoiceDoc && (() => {
-        const project = projects[editInvoiceDoc.projectKey];
-        const order = (project?.orders || []).find(o => o.id === editInvoiceDoc.orderId);
-        const consolidated = order ? getConsolidatedInvoiceItems(order) : [];
-        const otherInvoicedQtys = order ? getOrderInvoicedQtys(order, editInvoiceDoc.id) : {};
 
-        return (
-          <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Edit Client Product Invoice</h3>
-                <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowEditInvoiceModal(false)}>✕</button>
+      {/* ============================================================ */}
+      {/* SINGLE ALLOCATION MODAL (1 Item to 1 Order)                  */}
+      {/* ============================================================ */}
+      {allocModalOpen && allocTargetItem && (
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" style={{ width: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+            
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '16px 20px', 
+              borderBottom: '1px solid var(--border)', 
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={16} color="#3b82f6" />
+                  Allocate {allocTargetItem.item_code}
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  From Invoice: <strong>{selectedDocument?.document_no}</strong> • Client: <strong>{selectedDocument?.customer_name}</strong>
+                </p>
               </div>
-              
-              <form onSubmit={handleSaveEditInvoice} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. INV-2026-001" 
-                        className="form-control" 
-                        value={editInvoiceId} 
-                        onChange={e => setEditInvoiceId(e.target.value)} 
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        value={editInvoiceDate} 
-                        onChange={e => setEditInvoiceDate(e.target.value)} 
-                        required
-                      />
-                    </div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setAllocModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                
+                {/* Quantity & Unit Price */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                      Quantity to Allocate *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={allocTargetItem.unallocated_qty || 9999}
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '13px', fontWeight: 700 }}
+                      value={allocQty}
+                      onChange={(e) => setAllocQty(Number(e.target.value))}
+                      required
+                    />
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+                      Max available: <strong>{allocTargetItem.unallocated_qty} {allocTargetItem.item_unit}</strong>
+                    </span>
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Terms</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Standard 15-day payment terms..." 
-                      className="form-control" 
-                      value={editInvoiceNotes} 
-                      onChange={e => setEditInvoiceNotes(e.target.value)} 
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                      Unit Price (Excl)
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
                     />
                   </div>
+                </div>
 
-                  {order ? (
-                    <div>
-                      <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Update Invoice Quantity Allocation:</div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                        <table className="table" style={{ fontSize: '11px', margin: 0 }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-primary)' }}>
-                              <th>Item Code</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Total Spec</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Packed/Rec</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Other Inv</th>
-                              <th style={{ width: '100px', textAlign: 'center' }}>Qty to Invoice</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {consolidated.map(cItem => {
-                              let readyQtySum = 0;
-                              cItem.originalItems.forEach(origItem => {
-                                if (origItem.stockStatus === 'All Stock on Hand') {
-                                  readyQtySum += origItem.qty || 0;
-                                } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-                                  const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-                                  readyQtySum += (origItem.receivedQty || 0) + inStock;
-                                } else {
-                                  readyQtySum += origItem.receivedQty || 0;
-                                }
-                              });
+                {/* Candidate Orders List */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 700 }}>
+                    Select Destination Match:
+                  </label>
+                  
+                  {candidateOrders.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                      {candidateOrders.map((cand) => {
+                        const isSelected = selectedCandidateKey === String(cand.order_item_id);
+                        return (
+                          <div
+                            key={cand.order_item_id}
+                            onClick={() => {
+                              setSelectedCandidateKey(String(cand.order_item_id));
+                              setManualProjectId(cand.project_id);
+                              setManualOrderId(cand.order_id);
+                            }}
+                            style={{
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}>
+                                {cand.project_name} — Order #{cand.order_po_number}
+                              </div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                Fitting: <strong style={{ color: '#3b82f6' }}>{cand.fitting_code}</strong> ({cand.description})
+                              </div>
+                            </div>
 
-                              let otherInvQty = 0;
-                              cItem.originalItems.forEach(origItem => {
-                                otherInvQty += otherInvoicedQtys[origItem.id] || 0;
-                              });
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ 
+                                padding: '2px 6px', 
+                                borderRadius: '4px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                background: cand.is_direct_sku_match ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                                color: cand.is_direct_sku_match ? '#10b981' : '#3b82f6'
+                              }}>
+                                {cand.is_direct_sku_match ? 'Exact SKU Match' : 'Project Ref Match'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
 
-                              const maxAvailable = Math.max(0, readyQtySum - otherInvQty);
-                              const currentVal = editInvoiceItemInputs[cItem.code] || 0;
-
-                              return (
-                                <tr key={cItem.code}>
-                                  <td>
-                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
-                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)' }}>{cItem.description}</div>
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{readyQtySum}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{otherInvQty}</td>
-                                  <td style={{ padding: '2px' }}>
-                                    <input 
-                                      type="number" 
-                                      className="form-control" 
-                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                      min={0}
-                                      max={maxAvailable}
-                                      value={currentVal || ''}
-                                      placeholder={`Max ${maxAvailable}`}
-                                      disabled={maxAvailable === 0}
-                                      onChange={e => {
-                                        const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                        setEditInvoiceItemInputs(prev => ({
-                                          ...prev,
-                                          [cItem.code]: val
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                      {/* Manual Option */}
+                      <div
+                        onClick={() => setSelectedCandidateKey('MANUAL')}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          border: selectedCandidateKey === 'MANUAL' ? '1.5px solid #3b82f6' : '1px dashed var(--border)',
+                          background: selectedCandidateKey === 'MANUAL' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        + Select a different project/order manually...
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      No automatic matching orders found for this SKU. Please select destination manually:
+                    </div>
+                  )}
 
+                  {/* Manual Dropdown Pickers */}
+                  {(selectedCandidateKey === 'MANUAL' || candidateOrders.length === 0) && (
+                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project *</label>
+                        <select
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '11.5px', fontWeight: 600 }}
+                          value={manualProjectId}
+                          onChange={(e) => {
+                            setManualProjectId(e.target.value);
+                            setManualOrderId('');
+                          }}
+                          required
+                        >
+                          <option value="">-- Select Project --</option>
+                          {Object.values(projects || {}).map(p => (
+                            <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
+                        <select
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '11.5px' }}
+                          value={manualOrderId}
+                          onChange={(e) => setManualOrderId(e.target.value)}
+                          disabled={!manualProjectId}
+                        >
+                          <option value="">-- General Project Order --</option>
+                          {(() => {
+                            const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+                            return (proj?.orders || []).map(o => (
+                              <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                  <button type="button" className="btn btn-sm" onClick={() => setShowEditInvoiceModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-sm btn-primary">Save Changes</button>
+
+                {/* Notes Input */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    Internal Allocation Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Deposit invoice allocation, Progress invoice..."
+                    className="form-control"
+                    style={{ height: '34px', fontSize: '12px' }}
+                    value={allocNotes}
+                    onChange={(e) => setAllocNotes(e.target.value)}
+                  />
                 </div>
-              </form>
-            </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: '10px', 
+                padding: '14px 20px', 
+                borderTop: '1px solid var(--border)', 
+                background: 'var(--bg-secondary)', 
+                flexShrink: 0 
+              }}>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-ghost" 
+                  onClick={() => setAllocModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSavingAlloc}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                </button>
+              </div>
+            </form>
+
           </div>
-        );
-      })()}
+        </div>
+      )}
+
     </div>
   );
 }
