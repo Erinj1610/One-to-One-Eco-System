@@ -8,7 +8,12 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from database.cloud_sql import SessionLocal
 from models.orm_models import Product, PortalSetting
-from services.palladium_sync import sync_palladium_to_cloud_sql, sync_palladium_purchase_orders, sync_palladium_goods_received
+from services.palladium_sync import (
+    sync_palladium_to_cloud_sql,
+    sync_palladium_purchase_orders,
+    sync_palladium_goods_received,
+    sync_palladium_sales_invoices
+)
 from services.google_sheet_specs_service import sync_specs_from_sheet, sync_new_items_to_inbox
 
 logger = logging.getLogger("master_sync")
@@ -78,15 +83,16 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             logger.error(f"[MasterSync] Palladium ERP sync error: {erp_err}")
             erp_result = {"status": "error", "error": str(erp_err), "synced_count": 0}
 
-        # 2. Synchronize Palladium Purchase Orders and GRNs (Read-Only)
-        _last_sync_info["current_step"] = "Step 2/4: Ingesting Purchase Orders & GRNs from Palladium ERP..."
-        logger.info("[MasterSync] Step 2/4: Starting PO & GRN ingestion from Palladium ERP...")
+        # 2. Synchronize Palladium Purchase Orders, GRNs, and Sales Invoices (Read-Only)
+        _last_sync_info["current_step"] = "Step 2/4: Ingesting Procurement & Invoices from Palladium ERP..."
+        logger.info("[MasterSync] Step 2/4: Starting PO, GRN & Invoice ingestion from Palladium ERP...")
         try:
             po_result = sync_palladium_purchase_orders(db_session=db)
             grn_result = sync_palladium_goods_received(db_session=db)
-            logger.info(f"[MasterSync] Step 2 Complete: Synced {po_result.get('po_lines_synced', 0)} PO lines & {grn_result.get('grn_lines_synced', 0)} GRN lines.")
+            inv_result = sync_palladium_sales_invoices(db_session=db)
+            logger.info(f"[MasterSync] Step 2 Complete: Synced {po_result.get('po_lines_synced', 0)} PO lines, {grn_result.get('grn_lines_synced', 0)} GRN lines, & {inv_result.get('invoice_lines_synced', 0)} Invoice lines.")
         except Exception as proc_err:
-            logger.error(f"[MasterSync] Procurement sync error: {proc_err}")
+            logger.error(f"[MasterSync] Procurement & Invoicing sync error: {proc_err}")
             po_result = {"status": "error", "error": str(proc_err), "po_lines_synced": 0}
 
         # 3. Synchronize Google Sheet Specifications (30 Columns)

@@ -1,1277 +1,1230 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
-  FileText, Plus, Search, CheckCircle, Trash2, Eye, Printer, ClipboardList 
+  FileText, Search, CheckCircle, Clock, AlertTriangle, 
+  Layers, ArrowRight, RefreshCw, X, ChevronLeft, ChevronRight, CheckSquare, Square
 } from 'lucide-react';
 
-const statusColor = { Paid: 'b-success', Unpaid: 'b-warning', Overdue: 'b-danger', Draft: 'b-default' };
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 export default function InvoicesPage() {
-  const { invoices, setInvoices, projects, updateProject } = useStore();
-  const [activeTab, setActiveTab] = useState('design'); // 'design' | 'order'
-  
-  // Ledger filtering & preview state
+  const { projects } = useStore();
+
+  // Primary State
+  const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all' | 'needs_allocation' | 'partially_allocated' | 'fully_allocated'
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
-  
-  // Modal display states
-  const [showIssueInvoiceModal, setShowIssueInvoiceModal] = useState(false);
-  const [orderSearchQuery, setOrderSearchQuery] = useState('');
-  const [orderDropdownOpen, setOrderDropdownOpen] = useState(false);
+  const [customerFilter, setCustomerFilter] = useState('All');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [jumpPageInput, setJumpPageInput] = useState('');
 
-  // Form states for creating a Client Invoice
-  const [invoiceOrderKey, setInvoiceOrderKey] = useState(''); // "projectKey_orderId"
-  const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [invoiceItemInputs, setInvoiceItemInputs] = useState({}); // { itemId: { qty } }
-  const [customInvoiceId, setCustomInvoiceId] = useState('');
-  const [customInvoiceDate, setCustomInvoiceDate] = useState('');
+  // API Data State
+  const [summaryData, setSummaryData] = useState(null);
+  const [documentsData, setDocumentsData] = useState({ total_documents: 0, total_pages: 0, documents: [] });
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Form states for editing a Client Invoice
-  const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
-  const [editInvoiceDoc, setEditInvoiceDoc] = useState(null);
-  const [editInvoiceNotes, setEditInvoiceNotes] = useState('');
-  const [editInvoiceId, setEditInvoiceId] = useState('');
-  const [editInvoiceDate, setEditInvoiceDate] = useState('');
-  const [editInvoiceItemInputs, setEditInvoiceItemInputs] = useState({});
+  // Selected Document & Detail Workspace
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [selectedLineIds, setSelectedLineIds] = useState(new Set());
 
-  // Grouping and Filtering states
-  const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
-  const [filterPm, setFilterPm] = useState('All');
-  const [collapsedProjects, setCollapsedProjects] = useState({}); // { projectKey: boolean }
+  // Single Item Allocation Modal
+  const [allocModalOpen, setAllocModalOpen] = useState(false);
+  const [allocTargetItem, setAllocTargetItem] = useState(null);
+  const [allocQty, setAllocQty] = useState(1);
+  const [allocNotes, setAllocNotes] = useState('');
+  const [candidateOrders, setCandidateOrders] = useState([]);
+  const [selectedCandidateKey, setSelectedCandidateKey] = useState('');
+  const [manualProjectId, setManualProjectId] = useState('');
+  const [manualOrderId, setManualOrderId] = useState('');
+  const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
-  // Gather all project orders to populate the invoice generation dropdown
-  const allOrders = Object.values(projects).flatMap(p => 
-    (p.orders || []).map(o => ({
-      ...o,
-      projectKey: p.key,
-      projectName: p.name,
-      projectClient: p.client,
-      projectPm: p.pm || o.pmName || '',
-    }))
-  );
+  // Batch Allocation Modal
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchProjectId, setBatchProjectId] = useState('');
+  const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchNotes, setBatchNotes] = useState('');
+  const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
-  // 1. Gather all design invoices (those without type: 'order_invoice')
-  const designInvoices = invoices.filter(i => i.type !== 'order_invoice').map(i => {
-    // Map project PM name to invoice for filtering
-    const matchingProj = Object.values(projects).find(p => p.name === i.project);
-    return { ...i, projectPm: matchingProj?.pm || '' };
-  });
+  // Toast Notification
+  const [toastMessage, setToastMessage] = useState(null);
 
-  // 2. Gather all order invoices (either from global invoices state or from project orders)
-  const orderInvoices = invoices.filter(i => i.type === 'order_invoice').map(i => {
-    const matchingProj = Object.values(projects).find(p => p.key === i.projectKey);
-    return { ...i, projectPm: matchingProj?.pm || '' };
-  });
+  const triggerToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
-  // Filter based on active tab
-  const activeInvoices = activeTab === 'design' ? designInvoices : orderInvoices;
+  // 1. Fetch KPI Summary
+  const fetchSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/summary`);
+      if (res.ok) {
+        const data = await res.json();
+        setSummaryData(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch invoicing summary:", e);
+    }
+  };
 
-  // Extract unique PMs list for filter dropdown
-  const uniquePms = React.useMemo(() => {
-    const set = new Set();
-    Object.values(projects || {}).forEach(p => {
-      if (p.pm && p.pm.trim()) set.add(p.pm.trim());
-    });
-    return Array.from(set).sort();
-  }, [projects]);
-
-  // Search filter
-  const filteredInvoices = activeInvoices.filter(inv => {
-    const q = searchQuery.trim().toLowerCase();
-    
-    // Multi-word search matching: verify that every token typed is present in at least one field of the invoice
-    let matchesSearch = true;
-    if (q) {
-      const searchTokens = q.split(/\s+/);
-      matchesSearch = searchTokens.every(token => {
-        const idMatch = (inv.id || '').toLowerCase().includes(token);
-        const projectMatch = (inv.project || '').toLowerCase().includes(token);
-        const clientMatch = (inv.client || '').toLowerCase().includes(token);
-        const orderMatch = (inv.orderId || '').toLowerCase().includes(token);
-        
-        // Also check if matches item codes or descriptions inside the invoice items list to prevent random omissions
-        const itemMatch = (inv.items || []).some(item => 
-          (item.code || '').toLowerCase().includes(token) ||
-          (item.description || '').toLowerCase().includes(token)
-        );
-
-        return idMatch || projectMatch || clientMatch || orderMatch || itemMatch;
+  // 2. Fetch Document List
+  const fetchInvoicingDocuments = async (targetPage = 1, tab = activeFilterTab, cust = customerFilter, q = searchQuery) => {
+    setIsLoadingDocs(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(targetPage),
+        page_size: String(pageSize),
+        tab: tab,
       });
+      if (cust && cust !== 'All') params.append('customer_filter', cust);
+      if (q && q.trim()) params.append('search', q.trim());
+
+      const res = await fetch(`${API_BASE}/api/invoicing/documents?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDocumentsData(data);
+        setPage(data.page || 1);
+      }
+    } catch (e) {
+      console.error("Failed to fetch invoicing documents:", e);
+    } finally {
+      setIsLoadingDocs(false);
     }
-
-    // Direct string PM comparison (trim and lowercase check to ensure match regardless of case/spacing)
-    const matchesPm = filterPm === 'All' || 
-      (inv.projectPm && inv.projectPm.trim().toLowerCase() === filterPm.trim().toLowerCase());
-
-    return matchesSearch && matchesPm;
-  });
-
-  // Selected invoice for detail view
-  const selectedInvoice = invoices.find(i => i.id === selectedInvoiceId);
-
-  // Helper: Count total invoice documents issued to generate next ID
-  const getNextInvoiceId = () => {
-    const count = invoices.length + 1;
-    return `INV-2026-${String(count).padStart(3, '0')}`;
   };
 
-  // Helper: Calculate previously invoiced quantities for an order
-  const getOrderInvoicedQtys = (order, excludeInvoiceId = null) => {
-    const map = {};
-    (order.itemsList || []).forEach(item => {
-      const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-      map[item.id] = history
-        .filter(h => !excludeInvoiceId || h.ref !== excludeInvoiceId)
-        .reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-    });
-    return map;
-  };
-
-  const getConsolidatedInvoiceItems = (order) => {
-    if (!order) return [];
-    const invoicedQtys = getOrderInvoicedQtys(order);
-    const grouped = {};
-    (order.itemsList || []).forEach(item => {
-      const code = item.code || 'NO-CODE';
-      const isService = (item.itemType || item.item_type) === 'Service';
-      // Calculate readyQty for individual item
-      let readyQty = 0;
-      if (isService) {
-        // Services are always ready to invoice - no procurement needed
-        readyQty = item.qty || 0;
-      } else if (item.stockStatus === 'All Stock on Hand') {
-        readyQty = item.qty || 0;
-      } else if (item.stockStatus === 'Partial Stock on Hand') {
-        const inStock = Math.max(0, (item.qty || 0) - (item.poQtyOrdered || 0));
-        readyQty = (item.receivedQty || 0) + inStock;
-      } else {
-        readyQty = item.receivedQty || 0;
+  // 3. Fetch Single Document Workspace Details
+  const fetchSingleDocumentDetails = async (docNo) => {
+    setIsLoadingDetails(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/document/${encodeURIComponent(docNo)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedDocument(data);
+        setSelectedLineIds(new Set());
       }
-      const alreadyInv = invoicedQtys[item.id] || 0;
-      const maxAvailable = Math.max(0, readyQty - alreadyInv);
-
-      if (!grouped[code]) {
-        grouped[code] = {
-          code: code,
-          description: item.description,
-          unitRetail: item.unitRetail || 0,
-          qty: 0,
-          readyQty: 0,
-          alreadyInv: 0,
-          maxAvailable: 0,
-          originalItems: []
-        };
-      }
-      grouped[code].qty += Number(item.qty) || 0;
-      grouped[code].readyQty += readyQty;
-      grouped[code].alreadyInv += alreadyInv;
-      grouped[code].maxAvailable += maxAvailable;
-      grouped[code].originalItems.push(item);
-    });
-    return Object.values(grouped);
+    } catch (e) {
+      console.error("Failed to fetch document details:", e);
+    } finally {
+      setIsLoadingDetails(false);
+    }
   };
 
-  // Issue Client Invoice for order
-  const handleSaveInvoice = (e) => {
-    e.preventDefault();
-    if (!invoiceOrderKey) return;
-    const [pKey, oId] = invoiceOrderKey.split('_');
-    const project = projects[pKey];
-    const order = (project?.orders || []).find(o => o.id === oId);
-    if (!order) return;
-
-    const formattedDate = customInvoiceDate || new Date().toISOString().split('T')[0];
-    const newInvId = customInvoiceId.trim() || getNextInvoiceId();
-    const dateObj = new Date(formattedDate);
-    const dateStr = isNaN(dateObj.getTime()) 
-      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
-      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
-    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-
-    const invoiceItems = [];
-    let invoiceTotalValue = 0;
-    let hasQuantities = false;
-
-    const consolidated = getConsolidatedInvoiceItems(order);
-    const updatedItemsList = [...(order.itemsList || [])];
-    const invoicedQtys = getOrderInvoicedQtys(order);
-
-    consolidated.forEach(cItem => {
-      const input = invoiceItemInputs[cItem.code] || {};
-      const qtyAction = Math.max(0, parseInt(input.qty) || 0);
-
-      if (qtyAction > 0) {
-        hasQuantities = true;
-        const lineVal = qtyAction * (cItem.unitRetail || 0);
-        invoiceTotalValue += lineVal;
-        
-        invoiceItems.push({
-          code: cItem.code,
-          description: cItem.description,
-          qtyAction,
-          unitRetail: cItem.unitRetail || 0,
-          value: lineVal
-        });
-
-        // Distribute to individual items
-        let remainingToAllocate = qtyAction;
-        cItem.originalItems.forEach(origItem => {
-          if (remainingToAllocate <= 0) return;
-          
-          let readyQty = 0;
-          if (origItem.stockStatus === 'All Stock on Hand') {
-            readyQty = origItem.qty || 0;
-          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-            readyQty = (origItem.receivedQty || 0) + inStock;
-          } else {
-            readyQty = origItem.receivedQty || 0;
-          }
-          const alreadyInv = invoicedQtys[origItem.id] || 0;
-          const avail = Math.max(0, readyQty - alreadyInv);
-          const toAlloc = Math.min(avail, remainingToAllocate);
-
-          if (toAlloc > 0) {
-            remainingToAllocate -= toAlloc;
-            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-            if (targetIdx !== -1) {
-              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-              const syncTransaction = {
-                qty: toAlloc,
-                ref: newInvId,
-                date: formattedDate,
-                value: toAlloc * (origItem.unitRetail || 0)
-              };
-              updatedItemsList[targetIdx] = {
-                ...updatedItemsList[targetIdx],
-                invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + toAlloc,
-                invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (toAlloc * (origItem.unitRetail || 0)),
-                invoiceHistory: [...history, syncTransaction]
-              };
-            }
-          }
-        });
-
-        // Overflow fallback
-        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
-          const origItem = cItem.originalItems[0];
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const syncTransaction = {
-              qty: remainingToAllocate,
-              ref: newInvId,
-              date: formattedDate,
-              value: remainingToAllocate * (origItem.unitRetail || 0)
-            };
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: (Number(updatedItemsList[targetIdx].invoiceQty) || 0) + remainingToAllocate,
-              invoiceValue: (Number(updatedItemsList[targetIdx].invoiceValue) || 0) + (remainingToAllocate * (origItem.unitRetail || 0)),
-              invoiceHistory: [...history, syncTransaction]
-            };
-          }
+  // 4. Trigger Live Read-Only Sync from Palladium
+  const handleTriggerSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`✅ Invoices Synced: ${data.invoice_lines_synced} lines read in ${data.duration_seconds}s!`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
         }
+      } else {
+        alert(`Sync failed: ${data.error || 'Unknown error'}`);
       }
-    });
-
-    if (!hasQuantities) {
-      alert('Please enter at least one quantity to invoice.');
-      return;
+    } catch (e) {
+      alert(`Sync error: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
     }
+  };
 
-    const newInvDoc = {
-      id: newInvId,
-      date: dateStr,
-      notes: invoiceNotes,
-      items: invoiceItems,
-      totalValue: invoiceTotalValue
-    };
+  // Initial Load
+  useEffect(() => {
+    fetchSummary();
+    fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery);
+  }, []);
 
-    // Update order items & documents
-    const updatedOrders = project.orders.map(o => {
-      if (o.id === oId) {
-        return {
-          ...o,
-          clientInvoices: [...(o.clientInvoices || []), newInvDoc],
-          itemsList: updatedItemsList
-        };
-      }
-      return o;
+  // Filter tab change
+  const handleTabChange = (tab) => {
+    setActiveFilterTab(tab);
+    setPage(1);
+    fetchInvoicingDocuments(1, tab, customerFilter, searchQuery);
+  };
+
+  // Search debounce / submit
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setPage(1);
+    fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery);
+  };
+
+  // Jump to page handler
+  const handleJumpPage = (e) => {
+    e.preventDefault();
+    const target = parseInt(jumpPageInput, 10);
+    if (!isNaN(target) && target >= 1 && target <= (documentsData.total_pages || 1)) {
+      setPage(target);
+      fetchInvoicingDocuments(target, activeFilterTab, customerFilter, searchQuery);
+      setJumpPageInput('');
+    }
+  };
+
+  // Unique customers list for filtering
+  const uniqueCustomers = useMemo(() => {
+    const custs = new Set();
+    (documentsData.documents || []).forEach(d => {
+      if (d.customer_name) custs.add(d.customer_name);
     });
+    return Array.from(custs).sort();
+  }, [documentsData.documents]);
 
-    // Add to global invoices state
-    const globalInvoiceRecord = {
-      id: newInvId,
-      project: project.name,
-      client: project.client,
-      amount: `R ${Math.round(invoiceTotalValue).toLocaleString()}`,
-      issued: dateStr,
-      due: dueStr,
-      status: 'Unpaid',
-      paid: false,
-      type: 'order_invoice',
-      projectKey: pKey,
-      orderId: oId,
-      items: invoiceItems,
-      notes: invoiceNotes
-    };
+  // Open Single Allocation Modal
+  const handleOpenSingleAllocModal = (item) => {
+    const unalloc = Number(item.unallocated_qty || 0);
+    setAllocTargetItem(item);
+    setAllocQty(unalloc > 0 ? unalloc : 1);
+    setAllocNotes('');
 
-    updateProject(pKey, 'orders', updatedOrders);
-    setInvoices(prev => [globalInvoiceRecord, ...prev]);
-    setShowIssueInvoiceModal(false);
-    setSelectedInvoiceId(newInvId);
-  };
+    // Find candidate project orders matching this item SKU or Document Reference
+    const cleanSku = (item.item_code || '').trim().toUpperCase();
+    const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
+    const candidates = [];
 
-  // Mark invoice as paid
-  const handleMarkPaid = (id) => {
-    setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: 'Paid', paid: true } : i));
-  };
-
-  // Delete/Reverse Client Invoice
-  const handleDeleteInvoice = (inv) => {
-    if (!window.confirm(`Are you sure you want to delete ${inv.id}? This will reverse its invoiced quantities.`)) return;
-
-    if (inv.type === 'order_invoice') {
-      const project = projects[inv.projectKey];
-      if (project) {
-        const updatedOrders = project.orders.map(o => {
-          if (o.id === inv.orderId) {
-            // Reverse quantities
-            const updatedItemsList = (o.itemsList || []).map(item => {
-              const history = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== inv.id);
-              const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-              const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-              return {
-                ...item,
-                invoiceQty: newInvQty,
-                invoiceValue: newInvVal,
-                invoiceHistory: cleanedHistory
-              };
+    Object.values(projects || {}).forEach(p => {
+      const isRefMatch = docRef && p.name && (docRef.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(docRef));
+      (p.orders || []).forEach(o => {
+        (o.itemsList || []).forEach(it => {
+          const itemCode = (it.code || '').trim().toUpperCase();
+          const oneOneCode = (it.oneOneCode || '').trim().toUpperCase();
+          if (itemCode === cleanSku || oneOneCode === cleanSku || (it.description && cleanSku && it.description.toUpperCase().includes(cleanSku)) || isRefMatch) {
+            candidates.push({
+              project_id: p.id || 1,
+              project_name: p.name,
+              project_key: p.key,
+              order_id: o.id,
+              order_po_number: o.id || o.po_number,
+              order_item_id: it.id,
+              fitting_code: it.code || it.oneOneCode || item.item_code,
+              description: it.description || it.name,
+              needed_qty: it.qty || it.quantity || 1,
+              invoiced_qty: it.invoice_qty || 0,
+              is_direct_sku_match: itemCode === cleanSku || oneOneCode === cleanSku
             });
-
-            return {
-              ...o,
-              clientInvoices: (o.clientInvoices || []).filter(i => i.id !== inv.id),
-              itemsList: updatedItemsList
-            };
           }
-          return o;
         });
-        updateProject(inv.projectKey, 'orders', updatedOrders);
-      }
-    }
-
-    setInvoices(prev => prev.filter(i => i.id !== inv.id));
-    if (selectedInvoiceId === inv.id) {
-      setSelectedInvoiceId(null);
-    }
-  };
-
-  const handleOpenEditInvoiceModal = (inv) => {
-    setEditInvoiceDoc(inv);
-    setEditInvoiceNotes(inv.notes || '');
-    setEditInvoiceId(inv.id);
-    let rawDate = '';
-    if (inv.date) {
-      const parsed = Date.parse(inv.date);
-      if (!isNaN(parsed)) {
-        rawDate = new Date(parsed).toISOString().split('T')[0];
-      }
-    }
-    setEditInvoiceDate(rawDate || new Date().toISOString().split('T')[0]);
-
-    const inputs = {};
-    (inv.items || []).forEach(item => {
-      inputs[item.code] = item.qtyAction;
+      });
     });
-    setEditInvoiceItemInputs(inputs);
-    setShowEditInvoiceModal(true);
+
+    // Sort direct SKU matches first
+    candidates.sort((a, b) => (b.is_direct_sku_match ? 1 : 0) - (a.is_direct_sku_match ? 1 : 0));
+
+    setCandidateOrders(candidates);
+    if (candidates.length > 0) {
+      setSelectedCandidateKey(String(candidates[0].order_item_id));
+      setManualProjectId(candidates[0].project_id || '');
+      setManualOrderId(candidates[0].order_id || '');
+    } else {
+      setSelectedCandidateKey('MANUAL');
+      setManualProjectId('');
+      setManualOrderId('');
+    }
+
+    setAllocModalOpen(true);
   };
 
-  const handleSaveEditInvoice = (e) => {
+  // Submit Single Allocation
+  const handleSubmitSingleAllocation = async (e) => {
     e.preventDefault();
-    if (!editInvoiceDoc) return;
+    if (!allocTargetItem || !selectedDocument) return;
 
-    const pKey = editInvoiceDoc.projectKey;
-    const oId = editInvoiceDoc.orderId;
-    const project = projects[pKey];
-    if (!project) return;
-    const order = (project.orders || []).find(o => o.id === oId);
-    if (!order) return;
+    let payload = {
+      source_doc_no: selectedDocument.document_no,
+      doc_date: selectedDocument.transaction_date,
+      source_line_id: allocTargetItem.line_id,
+      sku: allocTargetItem.item_code,
+      allocated_qty: Number(allocQty),
+      unit_cost: Number(allocTargetItem.unit_price_excl || 0),
+      notes: allocNotes,
+      allocated_by_name: 'Staff'
+    };
 
-    const formattedDate = editInvoiceDate || new Date().toISOString().split('T')[0];
-    const newInvId = editInvoiceId.trim() || editInvoiceDoc.id;
-    const dateObj = new Date(formattedDate);
-    const dateStr = isNaN(dateObj.getTime()) 
-      ? new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
-      : dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const dueObj = isNaN(dateObj.getTime()) ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : new Date(dateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
-    const dueStr = dueObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
+      const cand = candidateOrders.find(c => String(c.order_item_id) === String(selectedCandidateKey));
+      if (cand) {
+        payload.project_id = cand.project_id;
+        payload.project_name = cand.project_name;
+        payload.order_id = cand.order_id;
+        payload.order_item_id = cand.order_item_id;
+        payload.fitting_code = cand.fitting_code;
+      }
+    } else {
+      if (!manualProjectId) {
+        alert("Please select a target Project to allocate to.");
+        return;
+      }
+      const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+      payload.project_id = proj ? (proj.id || 1) : 1;
+      payload.project_name = proj ? proj.name : 'Selected Project';
+      payload.order_id = manualOrderId ? Number(manualOrderId) : null;
+      payload.fitting_code = allocTargetItem.item_code;
+    }
 
-    const invoiceItems = [];
-    let invoiceTotalValue = 0;
-    let hasQuantities = false;
-
-    const consolidated = getConsolidatedInvoiceItems(order);
-    const updatedItemsList = [...(order.itemsList || [])];
-    const otherInvoicedQtys = getOrderInvoicedQtys(order, editInvoiceDoc.id);
-
-    consolidated.forEach(cItem => {
-      const qtyAction = Math.max(0, parseInt(editInvoiceItemInputs[cItem.code]) || 0);
-
-      if (qtyAction > 0) {
-        hasQuantities = true;
-        const lineVal = qtyAction * (cItem.unitRetail || 0);
-        invoiceTotalValue += lineVal;
-        
-        invoiceItems.push({
-          code: cItem.code,
-          description: cItem.description,
-          qtyAction,
-          unitRetail: cItem.unitRetail || 0,
-          value: lineVal
-        });
-
-        let remainingToAllocate = qtyAction;
-        cItem.originalItems.forEach(origItem => {
-          if (remainingToAllocate <= 0) return;
-          
-          let readyQty = 0;
-          if (origItem.stockStatus === 'All Stock on Hand') {
-            readyQty = origItem.qty || 0;
-          } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-            const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-            readyQty = (origItem.receivedQty || 0) + inStock;
-          } else {
-            readyQty = origItem.receivedQty || 0;
-          }
-          const avail = Math.max(0, readyQty - (otherInvoicedQtys[origItem.id] || 0));
-          const toAlloc = Math.min(avail, remainingToAllocate);
-
-          if (toAlloc > 0) {
-            remainingToAllocate -= toAlloc;
-            const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-            if (targetIdx !== -1) {
-              const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-              const syncTransaction = {
-                qty: toAlloc,
-                ref: newInvId,
-                date: formattedDate,
-                value: toAlloc * (origItem.unitRetail || 0)
-              };
-              const nextHistory = [...cleanedHistory, syncTransaction];
-              const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-              const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-
-              updatedItemsList[targetIdx] = {
-                ...updatedItemsList[targetIdx],
-                invoiceQty: newInvQty,
-                invoiceValue: newInvVal,
-                invoiceHistory: nextHistory
-              };
-            }
-          }
-        });
-
-        if (remainingToAllocate > 0 && cItem.originalItems.length > 0) {
-          const origItem = cItem.originalItems[0];
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-            const syncTransaction = {
-              qty: remainingToAllocate,
-              ref: newInvId,
-              date: formattedDate,
-              value: remainingToAllocate * (origItem.unitRetail || 0)
-            };
-            const nextHistory = [...cleanedHistory, syncTransaction];
-            const newInvQty = nextHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvVal = nextHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: newInvQty,
-              invoiceValue: newInvVal,
-              invoiceHistory: nextHistory
-            };
-          }
+    setIsSavingAlloc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Invoice allocated successfully!'}`);
+        setAllocModalOpen(false);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
         }
       } else {
-        cItem.originalItems.forEach(origItem => {
-          const targetIdx = updatedItemsList.findIndex(x => x.id === origItem.id);
-          if (targetIdx !== -1) {
-            const history = Array.isArray(updatedItemsList[targetIdx].invoiceHistory) ? updatedItemsList[targetIdx].invoiceHistory : [];
-            const cleanedHistory = history.filter(h => h.ref !== editInvoiceDoc.id);
-            const newInvQty = cleanedHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
-            const newInvVal = cleanedHistory.reduce((sum, h) => sum + (Number(h.value) || 0), 0);
-            updatedItemsList[targetIdx] = {
-              ...updatedItemsList[targetIdx],
-              invoiceQty: newInvQty,
-              invoiceValue: newInvVal,
-              invoiceHistory: cleanedHistory
-            };
+        alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      setIsSavingAlloc(false);
+    }
+  };
+
+  // Open Batch Allocation Modal with Intelligent Destination Pre-selection
+  const handleOpenBatchModal = () => {
+    if (selectedLineIds.size === 0 || !selectedDocument) return;
+
+    const selectedSkus = new Set(
+      (selectedDocument.lines || [])
+        .filter(l => selectedLineIds.has(l.line_id))
+        .map(l => (l.item_code || '').trim().toUpperCase())
+    );
+
+    const docRef = (selectedDocument.reference || '').trim().toLowerCase();
+
+    let bestProjId = '';
+    let bestMatchCount = -1;
+
+    Object.values(projects || {}).forEach(p => {
+      let score = 0;
+      if (docRef && p.name && (docRef.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(docRef))) {
+        score += 10;
+      }
+      (p.orders || []).forEach(o => {
+        (o.itemsList || []).forEach(it => {
+          const code = (it.code || '').trim().toUpperCase();
+          const oneOne = (it.oneOneCode || '').trim().toUpperCase();
+          if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
+            score += 2;
           }
         });
+      });
+      if (score > bestMatchCount) {
+        bestMatchCount = score;
+        bestProjId = p.id || p.key;
       }
     });
 
-    if (!hasQuantities) {
-      alert('Please enter at least one quantity to invoice.');
+    setBatchProjectId(bestProjId || '');
+    setBatchOrderId('');
+    setBatchNotes('');
+    setBatchModalOpen(true);
+  };
+
+  // Submit Batch Allocation
+  const handleSubmitBatchAllocation = async (e) => {
+    e.preventDefault();
+    if (!selectedDocument || selectedLineIds.size === 0) return;
+
+    if (!batchProjectId) {
+      alert("Please select a destination Project.");
       return;
     }
 
-    const updatedInvDoc = {
-      ...editInvoiceDoc,
-      id: newInvId,
-      date: dateStr,
-      notes: editInvoiceNotes,
-      items: invoiceItems,
-      totalValue: invoiceTotalValue
+    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id) && (l.unallocated_qty || 0) > 0);
+
+    if (selectedLines.length === 0) {
+      alert("None of the selected items have unallocated quantities available.");
+      return;
+    }
+
+    const payload = {
+      source_doc_no: selectedDocument.document_no,
+      doc_date: selectedDocument.transaction_date,
+      project_id: proj ? (proj.id || 1) : 1,
+      project_name: proj ? proj.name : 'Selected Project',
+      order_id: batchOrderId ? Number(batchOrderId) : null,
+      allocated_by_name: 'Staff',
+      notes: batchNotes || `Batch allocated ${selectedLines.length} invoice items`,
+      items: selectedLines.map(l => ({
+        source_line_id: l.line_id,
+        sku: l.item_code,
+        allocated_qty: Number(l.unallocated_qty || 1),
+        unit_cost: Number(l.unit_price_excl || 0),
+        fitting_code: l.item_code
+      }))
     };
 
-    const updatedOrders = project.orders.map(o => {
-      if (o.id === oId) {
-        return {
-          ...o,
-          clientInvoices: (o.clientInvoices || []).map(i => i.id === editInvoiceDoc.id ? updatedInvDoc : i),
-          itemsList: updatedItemsList
-        };
+    setIsSavingBatchAlloc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/batch-allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        setBatchModalOpen(false);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery);
+        fetchSingleDocumentDetails(selectedDocument.document_no);
+      } else {
+        alert(`Batch allocation notice: ${data.detail || 'Could not complete batch allocation.'}`);
       }
-      return o;
-    });
-
-    setInvoices(prev => prev.map(inv => {
-      if (inv.id === editInvoiceDoc.id) {
-        return {
-          ...inv,
-          id: newInvId,
-          amount: `R ${Math.round(invoiceTotalValue).toLocaleString()}`,
-          issued: dateStr,
-          due: dueStr,
-          notes: editInvoiceNotes,
-          items: invoiceItems,
-          totalValue: invoiceTotalValue
-        };
-      }
-      return inv;
-    }));
-
-    updateProject(pKey, 'orders', updatedOrders);
-    setShowEditInvoiceModal(false);
-    setSelectedInvoiceId(null);
-    setTimeout(() => {
-      setSelectedInvoiceId(newInvId);
-    }, 50);
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      setIsSavingBatchAlloc(false);
+    }
   };
 
-  // Calculations for selected order in Invoice form
-  const selectedInvoiceOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === invoiceOrderKey);
-  const selectedInvoiceInvoicedQtys = selectedInvoiceOrder ? getOrderInvoicedQtys(selectedInvoiceOrder) : {};
+  // Unallocate Line Handler
+  const handleUnallocate = async (allocationId, docNo) => {
+    if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allocation_id: allocationId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Allocation released.'}`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
+        }
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not release allocation.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocation: ${e.message}`);
+    }
+  };
 
-  // Financial calculations
-  const outstanding = activeInvoices.filter(i => !i.paid).reduce((s, i) => s + parseFloat(i.amount.replace(/[^0-9.]/g, '') || 0), 0);
-  const paid = activeInvoices.filter(i => i.paid).reduce((s, i) => s + parseFloat(i.amount.replace(/[^0-9.]/g, '') || 0), 0);
+  // Multi-Select Toggle Helpers
+  const toggleSelectLine = (lineId) => {
+    const next = new Set(selectedLineIds);
+    if (next.has(lineId)) next.delete(lineId);
+    else next.add(lineId);
+    setSelectedLineIds(next);
+  };
+
+  const toggleSelectAllUnallocated = () => {
+    if (!selectedDocument || !selectedDocument.lines) return;
+    const unallocatedLines = selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+    if (selectedLineIds.size >= unallocatedLines.length && unallocatedLines.length > 0) {
+      setSelectedLineIds(new Set());
+    } else {
+      setSelectedLineIds(new Set(unallocatedLines.map(l => l.line_id)));
+    }
+  };
 
   return (
-    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
-      {/* Financial stats bar */}
-      <div className="stat-grid stat-grid-4" style={{ marginBottom: 18, flexShrink: 0 }}>
-        <div className="stat"><div className="stat-value">{activeInvoices.length}</div><div className="stat-label">Total invoices</div></div>
-        <div className="stat"><div className="stat-value stat-danger">{activeInvoices.filter(i => i.status === 'Overdue').length}</div><div className="stat-label">Overdue</div></div>
-        <div className="stat"><div className="stat-value stat-warning">R {(outstanding/1000).toFixed(0)}k</div><div className="stat-label">Outstanding</div></div>
-        <div className="stat"><div className="stat-value stat-success">R {(paid/1000).toFixed(0)}k</div><div className="stat-label">Paid YTD</div></div>
-      </div>
-
-      {/* Tabs & Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button className={`btn btn-sm ${activeTab === 'design' ? 'btn-primary' : ''}`} onClick={() => { setActiveTab('design'); setSelectedInvoiceId(null); }}>
-            📐 Design Invoices
-          </button>
-          <button className={`btn btn-sm ${activeTab === 'order' ? 'btn-primary' : ''}`} onClick={() => { setActiveTab('order'); setSelectedInvoiceId(null); }}>
-            📦 Order Product Invoices
+    <div className="space-y-6 pb-16">
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-neutral-900 text-white px-5 py-3 rounded-xl shadow-2xl border border-neutral-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <span>{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-neutral-400 hover:text-white">
+            <X className="w-4 h-4" />
           </button>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {activeTab === 'order' && (
-            <button className="btn btn-sm btn-primary" onClick={() => { 
-              setInvoiceOrderKey(''); 
-              setInvoiceNotes(''); 
-              setInvoiceItemInputs({}); 
-              setCustomInvoiceId(getNextInvoiceId());
-              setCustomInvoiceDate(new Date().toISOString().split('T')[0]);
-              setShowIssueInvoiceModal(true); 
-            }}>
-              + New Client Invoice
+      )}
+
+      {/* Header & KPI Summary */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2.5">
+            <FileText className="w-7 h-7 text-primary-600 dark:text-primary-400" />
+            Client Invoicing & Allocations
+          </h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+            100% Read-Only ERP Sync from Palladium <span className="font-semibold text-neutral-700 dark:text-neutral-300">biSalesAnalysis</span>. Allocate invoices directly to project orders.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleTriggerSync}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-750 font-medium rounded-xl shadow-sm text-sm transition-all disabled:opacity-50"
+            title="Read latest Sales Invoices and Credit Notes from Palladium ERP"
+          >
+            <RefreshCw className={`w-4 h-4 text-primary-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Reading Palladium...' : 'Sync from Palladium ERP'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl border border-neutral-200/80 dark:border-neutral-700 shadow-sm">
+          <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">Total Invoices</span>
+          <span className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1 block">
+            {summaryData?.total_documents ?? '...'}
+          </span>
+          <span className="text-xs text-neutral-400 mt-0.5 block">{summaryData?.total_lines || 0} line items</span>
+        </div>
+
+        <div className="bg-amber-50/50 dark:bg-amber-950/20 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 shadow-sm">
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider block">Needs Allocation</span>
+          <span className="text-2xl font-bold text-amber-900 dark:text-amber-300 mt-1 block">
+            {summaryData?.unallocated_count ?? '...'}
+          </span>
+          <span className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5 block">0% assigned</span>
+        </div>
+
+        <div className="bg-blue-50/50 dark:bg-blue-950/20 p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 shadow-sm">
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider block">Partially Allocated</span>
+          <span className="text-2xl font-bold text-blue-900 dark:text-blue-300 mt-1 block">
+            {summaryData?.partially_allocated_count ?? '...'}
+          </span>
+          <span className="text-xs text-blue-600/80 dark:text-blue-400/70 mt-0.5 block">In-progress</span>
+        </div>
+
+        <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-sm">
+          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">Fully Allocated</span>
+          <span className="text-2xl font-bold text-emerald-900 dark:text-emerald-300 mt-1 block">
+            {summaryData?.fully_allocated_count ?? '...'}
+          </span>
+          <span className="text-xs text-emerald-600/80 dark:text-emerald-400/70 mt-0.5 block">100% assigned</span>
+        </div>
+
+        <div className="bg-white dark:bg-neutral-800 p-4 rounded-xl border border-neutral-200/80 dark:border-neutral-700 shadow-sm col-span-2 md:col-span-1">
+          <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">Total Invoiced (Excl)</span>
+          <span className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mt-1.5 block truncate" title={`R ${Number(summaryData?.total_invoiced_value || 0).toLocaleString()}`}>
+            R {Number(summaryData?.total_invoiced_value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-xs text-neutral-400 mt-0.5 block">ZAR Invoiced</span>
+        </div>
+      </div>
+
+      {/* Filter Tabs & Search Controls */}
+      <div className="bg-white dark:bg-neutral-800 rounded-2xl border border-neutral-200/80 dark:border-neutral-700 shadow-sm p-4 space-y-4">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          {/* Status Tabs */}
+          <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-900 p-1.5 rounded-xl overflow-x-auto text-sm font-medium">
+            <button
+              onClick={() => handleTabChange('all')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                activeFilterTab === 'all'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'
+              }`}
+            >
+              All Invoices
             </button>
-          )}
-        </div>
-      </div>
+            <button
+              onClick={() => handleTabChange('needs_allocation')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all ${
+                activeFilterTab === 'needs_allocation'
+                  ? 'bg-amber-500 text-white shadow-sm font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-amber-600'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Needs Allocation</span>
+            </button>
+            <button
+              onClick={() => handleTabChange('partially_allocated')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all ${
+                activeFilterTab === 'partially_allocated'
+                  ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-blue-600'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Partially Allocated</span>
+            </button>
+            <button
+              onClick={() => handleTabChange('fully_allocated')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all ${
+                activeFilterTab === 'fully_allocated'
+                  ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:text-emerald-600'
+              }`}
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Fully Allocated</span>
+            </button>
+          </div>
 
-      {/* Main split dashboard */}
-      <div style={{ display: 'flex', gap: '16px', flex: 1, minHeight: 0 }}>
-        
-        {/* Left Side: Invoice Grid */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px', minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexShrink: 0 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-              <input 
-                type="text" 
-                placeholder="Search by invoice #, project or client..."
-                className="form-control"
-                style={{ paddingLeft: '30px', height: '34px', fontSize: '12px' }}
+          {/* Search & Customer Filter */}
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={customerFilter}
+              onChange={(e) => {
+                setCustomerFilter(e.target.value);
+                setPage(1);
+                fetchInvoicingDocuments(1, activeFilterTab, e.target.value, searchQuery);
+              }}
+              className="text-sm px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium"
+            >
+              <option value="All">All Clients</option>
+              {uniqueCustomers.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search Invoice #, Client, Ref, or SKU..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-sm pl-10 pr-3.5 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
-            </div>
-            {searchQuery && (
-              <button className="btn btn-sm" onClick={() => setSearchQuery('')}>Clear</button>
-            )}
+            </form>
           </div>
+        </div>
 
-          {/* Grouping and Filter Controls Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11px', marginBottom: '12px', flexShrink: 0 }}>
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Group By</label>
-              <select 
-                className="form-control"
-                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
-                value={groupingMode}
-                onChange={e => setGroupingMode(e.target.value)}
-              >
-                <option value="none">Show All Orders (List)</option>
-                <option value="project">Group Per Project</option>
-              </select>
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project Manager</label>
-              <select 
-                className="form-control"
-                style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-primary)' }}
-                value={filterPm}
-                onChange={e => setFilterPm(e.target.value)}
-              >
-                <option value="All">All PMs</option>
-                {uniquePms.map(pm => (
-                  <option key={pm} value={pm}>{pm}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            {groupingMode === 'project' ? (
-              // Grouped Render
-              (() => {
-                const groups = {};
-                filteredInvoices.forEach(inv => {
-                  let projName = inv.project || 'Direct Client / Other';
-                  let groupKey = inv.projectKey || '';
-                  if (!groupKey) {
-                    const match = Object.values(projects).find(p => p.name === inv.project);
-                    groupKey = match?.key || 'unassigned';
-                  }
-                  if (!groups[groupKey]) {
-                    groups[groupKey] = {
-                      projectName: projName,
-                      client: inv.client || '',
-                      docs: []
-                    };
-                  }
-                  groups[groupKey].docs.push(inv);
-                });
-
-                if (Object.keys(groups).length === 0) {
+        {/* Documents Table */}
+        <div className="overflow-x-auto border border-neutral-200/80 dark:border-neutral-700/80 rounded-xl">
+          <table className="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr className="bg-neutral-50 dark:bg-neutral-900/60 border-b border-neutral-200 dark:border-neutral-700 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                <th className="py-3 px-4">Document #</th>
+                <th className="py-3 px-4">Date Issued</th>
+                <th className="py-3 px-4">Client Name</th>
+                <th className="py-3 px-4">Project Reference</th>
+                <th className="py-3 px-4 text-right">Items Count</th>
+                <th className="py-3 px-4 text-right">Total Excl</th>
+                <th className="py-3 px-4 text-center">Status</th>
+                <th className="py-3 px-4 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-200/60 dark:divide-neutral-700/60 bg-white dark:bg-neutral-800">
+              {isLoadingDocs ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-neutral-400 font-medium">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-primary-500" />
+                    Loading Palladium Invoices...
+                  </td>
+                </tr>
+              ) : (documentsData.documents || []).length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-neutral-400">
+                    No invoice documents match the current filter or search criteria.
+                  </td>
+                </tr>
+              ) : (
+                (documentsData.documents || []).map((doc) => {
+                  const isCreditNote = doc.doc_type === 'CREDIT_NOTE';
                   return (
-                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
-                      No invoices found.
-                    </div>
-                  );
-                }
-
-                return Object.entries(groups).map(([projKey, group]) => {
-                  const isCollapsed = collapsedProjects[projKey] ?? true; // default to collapsed (true)
-                  return (
-                    <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', marginBottom: '8px' }}>
-                      <div 
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: isCollapsed ? '0' : '8px' }}
-                        onClick={() => {
-                          setCollapsedProjects(prev => ({
-                            ...prev,
-                            [projKey]: !prev[projKey]
-                          }));
-                        }}
-                      >
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textDecoration: 'underline' }}>
-                          📁 {group.projectName} {group.client && `(${group.client})`} ({group.docs.length})
+                    <tr
+                      key={doc.document_no}
+                      onClick={() => fetchSingleDocumentDetails(doc.document_no)}
+                      className="hover:bg-primary-50/40 dark:hover:bg-primary-950/20 cursor-pointer transition-colors group"
+                    >
+                      <td className="py-3.5 px-4 font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                        <span className="group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                          {doc.document_no}
                         </span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          {isCollapsed ? '▶ Click to Expand' : '▼ Click to Collapse'}
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                          isCreditNote
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                            : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
+                        }`}>
+                          {isCreditNote ? 'Credit Note' : 'Tax Invoice'}
                         </span>
-                      </div>
-
-                      {!isCollapsed && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', borderLeft: '2px dashed var(--border)' }}>
-                          {group.docs.map(inv => {
-                            const isActive = inv.id === selectedInvoiceId;
-                            return (
-                              <div
-                                key={inv.id}
-                                onClick={() => setSelectedInvoiceId(inv.id)}
-                                style={{
-                                  background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                                  border: isActive ? '1px solid var(--text-info)' : '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  padding: '8px',
-                                  cursor: 'pointer',
-                                  fontSize: '11px'
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>{inv.id}</span>
-                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inv.amount}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '10px' }}>
-                                  <span>Issued: {inv.issued}</span>
-                                  {inv.orderId && <span>Order: {inv.orderId}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
-              })()
-            ) : (
-              // Standard Flat List Render
-              <table className="table" style={{ fontSize: '12px' }}>
-                <thead>
-                  <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-secondary)' }}>
-                    <th>Invoice #</th>
-                    <th>Project / Client</th>
-                    <th>Amount</th>
-                    <th>Issued</th>
-                    <th style={{ width: '70px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                        No invoices found.
+                      </td>
+                      <td className="py-3.5 px-4 text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
+                        {doc.transaction_date ? doc.transaction_date.split('T')[0] : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-neutral-800 dark:text-neutral-200 font-medium">
+                        {doc.customer_name}
+                      </td>
+                      <td className="py-3.5 px-4 text-neutral-600 dark:text-neutral-400 max-w-[220px] truncate" title={doc.reference || ''}>
+                        {doc.reference || '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-medium text-neutral-700 dark:text-neutral-300">
+                        {doc.lines_count} lines
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-semibold text-neutral-900 dark:text-neutral-100">
+                        R {Number(doc.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          doc.allocation_status === 'Fully Allocated'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : doc.allocation_status === 'Partially Allocated'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                        }`}>
+                          {doc.allocation_status === 'Fully Allocated' ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                          {doc.allocation_status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchSingleDocumentDetails(doc.document_no);
+                          }}
+                          className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-700 hover:bg-primary-600 hover:text-white dark:hover:bg-primary-500 text-neutral-700 dark:text-neutral-200 text-xs font-medium rounded-lg transition-all inline-flex items-center gap-1.5 shadow-sm"
+                        >
+                          <span>Open</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
-                  ) : (
-                    filteredInvoices.map(inv => {
-                      const isActive = inv.id === selectedInvoiceId;
-                      return (
-                        <tr 
-                          key={inv.id} 
-                          className="clickable"
-                          onClick={() => setSelectedInvoiceId(inv.id)}
-                          style={{
-                            background: isActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                            borderLeft: isActive ? '3px solid var(--text-info)' : '3px solid transparent'
-                          }}
-                        >
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{inv.id}</td>
-                          <td>
-                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{inv.project}</div>
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{inv.client}</div>
-                            {inv.orderId && (
-                              <div style={{ fontSize: '10px', color: 'var(--text-info)', fontFamily: 'monospace', marginTop: '2px' }}>
-                                Order: {inv.orderId} {(() => {
-                                  const p = projects[inv.projectKey];
-                                  const o = (p?.orders || []).find(ord => ord.id === inv.orderId);
-                                  return o?.quote_name ? `(${o.quote_name})` : '';
-                                })()}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ fontWeight: 600 }}>{inv.amount}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{inv.issued}</td>
-
-                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                            <button 
-                              className="btn btn-ghost text-danger" 
-                              style={{ padding: '4px' }} 
-                              title="Delete Invoice"
-                              onClick={() => handleDeleteInvoice(inv)}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
-        {/* Right Side: Detail & Action Panel */}
-        <div className="card" style={{ width: '400px', display: 'flex', flexDirection: 'column', padding: '16px', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-          {selectedInvoice ? (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '12px', flexShrink: 0 }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                    {selectedInvoice.type === 'order_invoice' ? 'Client Product Invoice' : 'Design Fee Invoice'}
-                  </div>
-                  <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                    {selectedInvoice.id}
-                  </h3>
-                </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {selectedInvoice.type === 'order_invoice' && (
-                    <button className="btn btn-xs btn-outline" onClick={() => handleOpenEditInvoiceModal(selectedInvoice)} style={{ fontSize: '11px', padding: '2px 8px' }}>
-                      ✍️ Edit
-                    </button>
-                  )}
-                  <button className="btn btn-xs btn-ghost" onClick={() => window.print()}>
-                    <Printer size={13} /> Print
-                  </button>
-                </div>
-              </div>
+        {/* Pagination & Jump Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <div>
+            Showing <span className="font-semibold text-neutral-900 dark:text-neutral-100">{documentsData.documents?.length || 0}</span> of{' '}
+            <span className="font-semibold text-neutral-900 dark:text-neutral-100">{documentsData.total_documents || 0}</span> documents
+          </div>
 
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const prev = Math.max(1, page - 1);
+                setPage(prev);
+                fetchInvoicingDocuments(prev, activeFilterTab, customerFilter, searchQuery);
+              }}
+              disabled={page <= 1}
+              className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
 
+            <span className="font-medium px-2">
+              Page {page} of {documentsData.total_pages || 1}
+            </span>
 
-              {/* Metadata */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '11px', background: 'var(--bg-primary)', padding: '10px', borderRadius: '6px', marginBottom: '12px', flexShrink: 0 }}>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Project Name:</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedInvoice.project}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Client:</div>
-                  <div style={{ fontWeight: 600 }}>{selectedInvoice.client}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Amount:</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-info)', fontSize: '12px' }}>{selectedInvoice.amount}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'var(--text-tertiary)' }}>Due Date:</div>
-                  <div style={{ fontWeight: 600 }}>{selectedInvoice.due}</div>
-                </div>
-              </div>
+            <button
+              onClick={() => {
+                const next = Math.min(documentsData.total_pages || 1, page + 1);
+                setPage(next);
+                fetchInvoicingDocuments(next, activeFilterTab, customerFilter, searchQuery);
+              }}
+              disabled={page >= (documentsData.total_pages || 1)}
+              className="p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
 
-              {/* Items List (if order invoice) */}
-              {selectedInvoice.type === 'order_invoice' && (
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '6px', flexShrink: 0 }}>Invoiced Items:</div>
-                  <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border)', borderRadius: '6px' }}>
-                    <table className="table" style={{ fontSize: '11.5px', margin: 0 }}>
-                      <thead style={{ background: 'var(--bg-primary)', position: 'sticky', top: 0 }}>
-                        <tr>
-                          <th>Item</th>
-                          <th style={{ width: '40px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ width: '80px', textAlign: 'right' }}>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(selectedInvoice.items || []).map((item, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td>
-                              <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{item.code}</div>
-                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{item.description}</div>
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.qtyAction}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>R {Math.round(item.value).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
-              <Eye size={28} style={{ marginBottom: '8px', opacity: 0.5 }} />
-              <div style={{ fontSize: '12px' }}>Select an invoice from the list to preview details.</div>
-            </div>
-          )}
+            {/* Jump to page */}
+            <form onSubmit={handleJumpPage} className="flex items-center gap-1 ml-3">
+              <span className="text-xs">Go to:</span>
+              <input
+                type="number"
+                min="1"
+                max={documentsData.total_pages || 1}
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                placeholder="#"
+                className="w-14 px-2 py-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+              <button
+                type="submit"
+                className="px-2 py-1 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 text-xs font-medium rounded-lg"
+              >
+                Go
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
-      {/* NEW CLIENT INVOICE MODAL */}
-      {showIssueInvoiceModal && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Issue Client Product Invoice</h3>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowIssueInvoiceModal(false)}>✕</button>
+      {/* ========================================================================= */}
+      {/* DOCUMENT WORKSPACE DRAWER / MODAL */}
+      {/* ========================================================================= */}
+      {selectedDocument && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-5xl bg-white dark:bg-neutral-850 h-full shadow-2xl flex flex-col border-l border-neutral-200 dark:border-neutral-700 animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="p-6 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/60 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+                    {selectedDocument.document_no}
+                  </span>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary-100 text-primary-800 dark:bg-primary-950/60 dark:text-primary-300">
+                    {selectedDocument.doc_type === 'CREDIT_NOTE' ? 'Credit Note' : 'Tax Invoice'}
+                  </span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Date: {selectedDocument.transaction_date ? selectedDocument.transaction_date.split('T')[0] : '—'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  <div>
+                    <span className="font-semibold text-neutral-900 dark:text-neutral-200">Client: </span>
+                    {selectedDocument.customer_name}
+                  </div>
+                  {selectedDocument.reference && (
+                    <div>
+                      <span className="font-semibold text-neutral-900 dark:text-neutral-200">Ref: </span>
+                      {selectedDocument.reference}
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-semibold text-neutral-900 dark:text-neutral-200">Total (Excl): </span>
+                    R {Number(selectedDocument.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedDocument(null)}
+                className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-700 rounded-xl transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            
-            <form onSubmit={handleSaveInvoice} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Select Order Reference</label>
-                  <div style={{ position: 'relative' }}>
-                    {(() => {
-                      const selectedOrder = allOrders.find(o => `${o.projectKey}_${o.id}` === invoiceOrderKey);
-                      return (
-                        <>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            placeholder="🔍 Type to search orders by Project, ID, Supplier..."
-                            value={orderDropdownOpen ? orderSearchQuery : (selectedOrder ? `[${selectedOrder.projectKey.toUpperCase()}] ${selectedOrder.id} — ${selectedOrder.supplier || 'No Supplier'}` : '')}
-                            onFocus={() => {
-                              setOrderDropdownOpen(true);
-                            }}
-                            onChange={e => {
-                              setOrderSearchQuery(e.target.value);
-                            }}
-                            style={{ cursor: 'pointer', paddingRight: '30px' }}
-                          />
-                          <div 
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)', fontSize: '11px' }}
-                          >
-                            {orderDropdownOpen ? '▲' : '▼'}
-                          </div>
 
-                          {orderDropdownOpen && (
-                            <>
-                              <div 
-                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
-                                onClick={() => setOrderDropdownOpen(false)}
-                              />
-                              <div 
-                                style={{ 
-                                  position: 'absolute', 
-                                  top: '100%', 
-                                  left: 0, 
-                                  right: 0, 
-                                  background: 'var(--bg-secondary)', 
-                                  border: '1px solid var(--border-strong)', 
-                                  borderRadius: '6px', 
-                                  maxHeight: '220px', 
-                                  overflowY: 'auto', 
-                                  zIndex: 1000, 
-                                  boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
-                                  marginTop: '4px'
-                                }}
-                              >
-                                {(() => {
-                                  const searchLower = orderSearchQuery.toLowerCase();
-                                  const filtered = allOrders.filter(o => {
-                                    const projectKeyMatch = o.projectKey.toLowerCase().includes(searchLower);
-                                    const idMatch = o.id.toLowerCase().includes(searchLower);
-                                    const supplierMatch = (o.supplier || '').toLowerCase().includes(searchLower);
-                                    const quoteNameMatch = (o.quote_name || '').toLowerCase().includes(searchLower);
-                                    return projectKeyMatch || idMatch || supplierMatch || quoteNameMatch;
-                                  });
+            {/* Batch Action Toolbar */}
+            <div className="px-6 py-3 bg-neutral-100/70 dark:bg-neutral-800/80 border-b border-neutral-200 dark:border-neutral-700 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleSelectAllUnallocated}
+                  className="flex items-center gap-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:text-primary-600 transition-colors"
+                >
+                  {selectedLineIds.size > 0 && selectedLineIds.size === (selectedDocument.lines || []).filter(l => (l.unallocated_qty || 0) > 0).length ? (
+                    <CheckSquare className="w-4 h-4 text-primary-600" />
+                  ) : (
+                    <Square className="w-4 h-4 text-neutral-400" />
+                  )}
+                  <span>Select All Unallocated</span>
+                </button>
+                {selectedLineIds.size > 0 && (
+                  <span className="text-xs bg-primary-100 text-primary-800 dark:bg-primary-950/80 dark:text-primary-300 px-2.5 py-0.5 rounded-full font-bold">
+                    {selectedLineIds.size} selected
+                  </span>
+                )}
+              </div>
 
-                                  if (filtered.length === 0) {
-                                    return (
-                                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                                        No orders found matching "{orderSearchQuery}"
-                                      </div>
-                                    );
-                                  }
+              {selectedLineIds.size > 0 && (
+                <button
+                  onClick={handleOpenBatchModal}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Allocate Selected Items ({selectedLineIds.size})</span>
+                </button>
+              )}
+            </div>
 
-                                  return filtered.map(o => {
-                                    const key = `${o.projectKey}_${o.id}`;
-                                    const isSelected = invoiceOrderKey === key;
-                                    return (
-                                      <div 
-                                        key={key}
-                                        onClick={() => {
-                                          setInvoiceOrderKey(key);
-                                          setInvoiceItemInputs({});
-                                          setOrderSearchQuery('');
-                                          setOrderDropdownOpen(false);
-                                        }}
-                                        style={{ 
-                                          padding: '10px 14px', 
-                                          cursor: 'pointer', 
-                                          background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                          borderBottom: '1px solid var(--border)',
-                                          fontSize: '12px',
-                                          color: isSelected ? 'var(--text-info)' : 'var(--text-primary)',
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          gap: '2px'
-                                        }}
-                                        className="dropdown-item-hover"
-                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}
-                                      >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                                          <span>[{o.projectKey.toUpperCase()}] {o.id}</span>
-                                          {o.quote_name && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '11px' }}>{o.quote_name}</span>}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                                          <span>Supplier: {o.supplier || 'No Supplier'}</span>
-                                          <span>R {Number(o.value || 0).toLocaleString()}</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  });
-                                })()}
-                              </div>
-                            </>
+            {/* Line Items Table */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 dark:border-neutral-700 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                    <th className="py-2.5 px-3 w-8"></th>
+                    <th className="py-2.5 px-3">SKU / Item Code</th>
+                    <th className="py-2.5 px-3">Description</th>
+                    <th className="py-2.5 px-3 text-right">Invoiced Qty</th>
+                    <th className="py-2.5 px-3 text-right">Unit Price (Excl)</th>
+                    <th className="py-2.5 px-3 text-right">Line Total (Excl)</th>
+                    <th className="py-2.5 px-3 text-center">Allocated</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                  {(selectedDocument.lines || []).map((line) => {
+                    const isSelected = selectedLineIds.has(line.line_id);
+                    const canAllocate = (line.unallocated_qty || 0) > 0;
+                    return (
+                      <tr
+                        key={line.line_id}
+                        className={`hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${
+                          isSelected ? 'bg-primary-50/50 dark:bg-primary-950/20' : ''
+                        }`}
+                      >
+                        <td className="py-3 px-3">
+                          {canAllocate ? (
+                            <button
+                              onClick={() => toggleSelectLine(line.line_id)}
+                              className="text-neutral-400 hover:text-primary-600"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-primary-600" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+                          ) : (
+                            <CheckCircle className="w-4 h-4 text-emerald-500 opacity-60" />
                           )}
-                        </>
-                      );
-                    })()}
-                    <input type="hidden" name="orderKey" value={invoiceOrderKey} required />
-                  </div>
-                </div>
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-neutral-900 dark:text-neutral-100">
+                          {line.item_code}
+                        </td>
+                        <td className="py-3 px-3 text-neutral-600 dark:text-neutral-400 max-w-[200px] truncate" title={line.item_description || ''}>
+                          {line.item_description || '—'}
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-neutral-800 dark:text-neutral-200">
+                          {line.invoiced_qty} {line.item_unit}
+                        </td>
+                        <td className="py-3 px-3 text-right text-neutral-700 dark:text-neutral-300">
+                          R {Number(line.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3 px-3 text-right font-semibold text-neutral-900 dark:text-neutral-100">
+                          R {Number(line.line_total_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <div className="text-xs">
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{line.allocated_qty}</span>
+                            <span className="text-neutral-400"> / {line.invoiced_qty}</span>
+                          </div>
+                          {/* Active Allocation Pills */}
+                          {(line.allocations || []).length > 0 && (
+                            <div className="mt-1 space-y-1">
+                              {line.allocations.map(a => (
+                                <div key={a.id} className="inline-flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-750 text-[11px] px-2 py-0.5 rounded-md border border-neutral-200 dark:border-neutral-600">
+                                  <span className="font-medium text-neutral-800 dark:text-neutral-200 truncate max-w-[100px]" title={a.project_name}>
+                                    {a.project_name} ({a.allocated_qty})
+                                  </span>
+                                  <button
+                                    onClick={() => handleUnallocate(a.id, selectedDocument.document_no)}
+                                    className="text-neutral-400 hover:text-rose-600"
+                                    title="Unallocate"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                            line.status === 'Fully Allocated'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : line.status === 'Partially Allocated'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          }`}>
+                            {line.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {canAllocate && (
+                            <button
+                              onClick={() => handleOpenSingleAllocModal(line)}
+                              className="px-2.5 py-1 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg shadow-sm transition-all"
+                            >
+                              Allocate
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. INV-2026-001" 
-                      className="form-control" 
-                      value={customInvoiceId} 
-                      onChange={e => setCustomInvoiceId(e.target.value)} 
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
-                    <input 
-                      type="date" 
-                      className="form-control" 
-                      value={customInvoiceDate} 
-                      onChange={e => setCustomInvoiceDate(e.target.value)} 
-                      required
-                    />
-                  </div>
+      {/* ========================================================================= */}
+      {/* SINGLE ALLOCATION MODAL */}
+      {/* ========================================================================= */}
+      {allocModalOpen && allocTargetItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-neutral-850 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-neutral-200 dark:border-neutral-700 space-y-5">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-3.5">
+              <div>
+                <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                  Allocate Invoice Item
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  From {selectedDocument?.document_no} ({allocTargetItem.item_code})
+                </p>
+              </div>
+              <button onClick={() => setAllocModalOpen(false)} className="text-neutral-400 hover:text-neutral-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitSingleAllocation} className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                    Allocation Qty
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={allocTargetItem.unallocated_qty || 9999}
+                    value={allocQty}
+                    onChange={(e) => setAllocQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold text-neutral-900 dark:text-neutral-100"
+                    required
+                  />
+                  <span className="text-[11px] text-neutral-400">
+                    Max available: {allocTargetItem.unallocated_qty}
+                  </span>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Terms</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Standard 15-day payment terms..." 
-                    className="form-control" 
-                    value={invoiceNotes} 
-                    onChange={e => setInvoiceNotes(e.target.value)} 
+                  <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                    Unit Price (Excl)
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString()}`}
+                    className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-500 font-medium"
                   />
                 </div>
+              </div>
 
-                {selectedInvoiceOrder ? (
-                  <div>
-                    <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Invoice Quantity Allocation:</div>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                      <table className="table" style={{ fontSize: '11px', margin: 0 }}>
-                        <thead>
-                          <tr style={{ background: 'var(--bg-primary)' }}>
-                            <th>Item Code</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Total Spec</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Packed/Rec</th>
-                            <th style={{ width: '80px', textAlign: 'center' }}>Already Inv</th>
-                            <th style={{ width: '100px', textAlign: 'center' }}>Qty to Invoice</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getConsolidatedInvoiceItems(selectedInvoiceOrder).map(cItem => {
-                            const inputs = invoiceItemInputs[cItem.code] || { qty: 0 };
+              {/* Destination Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                  Destination Match
+                </label>
+                {candidateOrders.length > 0 ? (
+                  <div className="space-y-2 mb-3">
+                    {candidateOrders.map(cand => (
+                      <label
+                        key={cand.order_item_id}
+                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                          selectedCandidateKey === String(cand.order_item_id)
+                            ? 'border-primary-500 bg-primary-50/40 dark:bg-primary-950/20'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="candidate"
+                          checked={selectedCandidateKey === String(cand.order_item_id)}
+                          onChange={() => {
+                            setSelectedCandidateKey(String(cand.order_item_id));
+                            setManualProjectId(cand.project_id);
+                            setManualOrderId(cand.order_id);
+                          }}
+                          className="mt-1"
+                        />
+                        <div className="flex-1 text-xs">
+                          <div className="font-bold text-neutral-900 dark:text-neutral-100">
+                            {cand.project_name} — Order #{cand.order_po_number}
+                          </div>
+                          <div className="text-neutral-500 mt-0.5">
+                            Fitting: <span className="font-semibold text-neutral-700 dark:text-neutral-300">{cand.fitting_code}</span> ({cand.description})
+                          </div>
+                        </div>
+                      </label>
+                    ))}
 
-                            return (
-                              <tr key={cItem.code}>
-                                <td>
-                                  <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
-                                  <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: '200px' }}>{cItem.description}</div>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>{cItem.qty || 0}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{cItem.readyQty}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{cItem.alreadyInv}</td>
-                                <td style={{ padding: '2px' }}>
-                                  <input 
-                                    type="number" 
-                                    className="form-control" 
-                                    style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                    min={0}
-                                    max={cItem.maxAvailable}
-                                    value={inputs.qty || ''}
-                                    placeholder={`Max ${cItem.maxAvailable}`}
-                                    disabled={cItem.maxAvailable === 0}
-                                    onChange={e => {
-                                      const val = Math.min(cItem.maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                      setInvoiceItemInputs(prev => ({
-                                        ...prev,
-                                        [cItem.code]: { qty: val }
-                                      }));
-                                    }}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer text-xs ${
+                      selectedCandidateKey === 'MANUAL'
+                        ? 'border-primary-500 bg-primary-50/30'
+                        : 'border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="candidate"
+                        checked={selectedCandidateKey === 'MANUAL'}
+                        onChange={() => setSelectedCandidateKey('MANUAL')}
+                      />
+                      <span>Select different project manually...</span>
+                    </label>
                   </div>
-                ) : (
-                  <div style={{ padding: '24px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '6px', color: 'var(--text-tertiary)', fontSize: '11.5px' }}>
-                    Select an order above to invoice items.
+                ) : null}
+
+                {/* Manual Project Picker Fallback */}
+                {selectedCandidateKey === 'MANUAL' && (
+                  <div className="space-y-3 p-3 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-500 mb-1">Target Project</label>
+                      <select
+                        value={manualProjectId}
+                        onChange={(e) => {
+                          setManualProjectId(e.target.value);
+                          setManualOrderId('');
+                        }}
+                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-medium"
+                        required
+                      >
+                        <option value="">Select Project...</option>
+                        {Object.values(projects || {}).map(p => (
+                          <option key={p.id || p.key} value={p.id || p.key}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {manualProjectId && (
+                      <div>
+                        <label className="block text-xs font-medium text-neutral-500 mb-1">Target Order</label>
+                        <select
+                          value={manualOrderId}
+                          onChange={(e) => setManualOrderId(e.target.value)}
+                          className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl font-medium"
+                        >
+                          <option value="">Auto-assign or General Order</option>
+                          {(() => {
+                            const p = Object.values(projects || {}).find(proj => String(proj.id) === String(manualProjectId) || proj.key === manualProjectId);
+                            return (p?.orders || []).map(o => (
+                              <option key={o.id} value={o.id}>{o.id || o.po_number} ({o.supplier || 'Order'})</option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
-
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                <button type="button" className="btn btn-sm" onClick={() => setShowIssueInvoiceModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-sm btn-primary" disabled={!selectedInvoiceOrder}>Issue Invoice</button>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                  Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Invoiced as per deposit invoice"
+                  value={allocNotes}
+                  onChange={(e) => setAllocNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-900 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
+                <button
+                  type="button"
+                  onClick={() => setAllocModalOpen(false)}
+                  className="px-4 py-2 text-neutral-600 dark:text-neutral-400 font-medium hover:bg-neutral-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingAlloc}
+                  className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                >
+                  {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
-      {/* EDIT CLIENT INVOICE MODAL */}
-      {showEditInvoiceModal && editInvoiceDoc && (() => {
-        const project = projects[editInvoiceDoc.projectKey];
-        const order = (project?.orders || []).find(o => o.id === editInvoiceDoc.orderId);
-        const consolidated = order ? getConsolidatedInvoiceItems(order) : [];
-        const otherInvoicedQtys = order ? getOrderInvoicedQtys(order, editInvoiceDoc.id) : {};
 
-        return (
-          <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div className="modal-content" style={{ width: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>✍️ Edit Client Product Invoice</h3>
-                <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowEditInvoiceModal(false)}>✕</button>
+      {/* ========================================================================= */}
+      {/* BATCH ALLOCATION MODAL */}
+      {/* ========================================================================= */}
+      {batchModalOpen && selectedDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-neutral-850 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-neutral-200 dark:border-neutral-700 space-y-5">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-3.5">
+              <div>
+                <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-primary-600" />
+                  Batch Allocate {selectedLineIds.size} Items
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  From {selectedDocument.document_no} ({selectedDocument.customer_name})
+                </p>
               </div>
-              
-              <form onSubmit={handleSaveEditInvoice} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Reference *</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. INV-2026-001" 
-                        className="form-control" 
-                        value={editInvoiceId} 
-                        onChange={e => setEditInvoiceId(e.target.value)} 
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Invoice Date *</label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        value={editInvoiceDate} 
-                        onChange={e => setEditInvoiceDate(e.target.value)} 
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Notes / Terms</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Standard 15-day payment terms..." 
-                      className="form-control" 
-                      value={editInvoiceNotes} 
-                      onChange={e => setEditInvoiceNotes(e.target.value)} 
-                    />
-                  </div>
-
-                  {order ? (
-                    <div>
-                      <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Update Invoice Quantity Allocation:</div>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                        <table className="table" style={{ fontSize: '11px', margin: 0 }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-primary)' }}>
-                              <th>Item Code</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Total Spec</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Packed/Rec</th>
-                              <th style={{ width: '80px', textAlign: 'center' }}>Other Inv</th>
-                              <th style={{ width: '100px', textAlign: 'center' }}>Qty to Invoice</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {consolidated.map(cItem => {
-                              let readyQtySum = 0;
-                              cItem.originalItems.forEach(origItem => {
-                                if (origItem.stockStatus === 'All Stock on Hand') {
-                                  readyQtySum += origItem.qty || 0;
-                                } else if (origItem.stockStatus === 'Partial Stock on Hand') {
-                                  const inStock = Math.max(0, (origItem.qty || 0) - (origItem.poQtyOrdered || 0));
-                                  readyQtySum += (origItem.receivedQty || 0) + inStock;
-                                } else {
-                                  readyQtySum += origItem.receivedQty || 0;
-                                }
-                              });
-
-                              let otherInvQty = 0;
-                              cItem.originalItems.forEach(origItem => {
-                                otherInvQty += otherInvoicedQtys[origItem.id] || 0;
-                              });
-
-                              const maxAvailable = Math.max(0, readyQtySum - otherInvQty);
-                              const currentVal = editInvoiceItemInputs[cItem.code] || 0;
-
-                              return (
-                                <tr key={cItem.code}>
-                                  <td>
-                                    <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{cItem.code}</div>
-                                    <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)' }}>{cItem.description}</div>
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{cItem.qty || 0}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-info)', fontWeight: 600 }}>{readyQtySum}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{otherInvQty}</td>
-                                  <td style={{ padding: '2px' }}>
-                                    <input 
-                                      type="number" 
-                                      className="form-control" 
-                                      style={{ height: '26px', fontSize: '11px', padding: '2px 6px', textAlign: 'center' }}
-                                      min={0}
-                                      max={maxAvailable}
-                                      value={currentVal || ''}
-                                      placeholder={`Max ${maxAvailable}`}
-                                      disabled={maxAvailable === 0}
-                                      onChange={e => {
-                                        const val = Math.min(maxAvailable, Math.max(0, parseInt(e.target.value) || 0));
-                                        setEditInvoiceItemInputs(prev => ({
-                                          ...prev,
-                                          [cItem.code]: val
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ) : null}
-
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
-                  <button type="button" className="btn btn-sm" onClick={() => setShowEditInvoiceModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-sm btn-primary">Save Changes</button>
-                </div>
-              </form>
+              <button onClick={() => setBatchModalOpen(false)} className="text-neutral-400 hover:text-neutral-600">
+                <X className="w-5 h-5" />
+              </button>
             </div>
+
+            <form onSubmit={handleSubmitBatchAllocation} className="space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                  Destination Project
+                </label>
+                <select
+                  value={batchProjectId}
+                  onChange={(e) => {
+                    setBatchProjectId(e.target.value);
+                    setBatchOrderId('');
+                  }}
+                  className="w-full px-3 py-2.5 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 font-semibold text-neutral-900 dark:text-neutral-100"
+                  required
+                >
+                  <option value="">Select Project...</option>
+                  {Object.values(projects || {}).map(p => (
+                    <option key={p.id || p.key} value={p.id || p.key}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {batchProjectId && (
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                    Destination Order (Optional)
+                  </label>
+                  <select
+                    value={batchOrderId}
+                    onChange={(e) => setBatchOrderId(e.target.value)}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl font-medium"
+                  >
+                    <option value="">Auto-match items or General Spec Order</option>
+                    {(() => {
+                      const p = Object.values(projects || {}).find(proj => String(proj.id) === String(batchProjectId) || proj.key === batchProjectId);
+                      return (p?.orders || []).map(o => (
+                        <option key={o.id} value={o.id}>{o.id || o.po_number} ({o.supplier || 'Order'})</option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 uppercase mb-1">
+                  Staff Notes
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Invoiced as per final invoice from Palladium"
+                  value={batchNotes}
+                  onChange={(e) => setBatchNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-900 dark:text-neutral-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
+                <button
+                  type="button"
+                  onClick={() => setBatchModalOpen(false)}
+                  className="px-4 py-2 text-neutral-600 dark:text-neutral-400 font-medium hover:bg-neutral-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingBatchAlloc}
+                  className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                >
+                  {isSavingBatchAlloc ? 'Allocating...' : `Allocate ${selectedLineIds.size} Items`}
+                </button>
+              </div>
+            </form>
           </div>
-        );
-      })()}
+        </div>
+      )}
     </div>
   );
 }

@@ -760,5 +760,28 @@ class ProcurementAllocation(Base):
     notes = Column(Text, nullable=True)
 
 
+class PalladiumInvoiceLine(Base):
+    __tablename__ = "palladium_invoice_lines"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    document_no = Column(String, index=True, nullable=False) # e.g. "IN-000000483", "CN-000000001"
+    customer_code = Column(String, index=True, nullable=True)
+    customer_name = Column(String, index=True, nullable=True)
+    reference = Column(String, index=True, nullable=True)     # e.g. "Rietspruit (LED Lighting)"
+    item_code = Column(String, index=True, nullable=False)    # SKU
+    item_description = Column(Text, nullable=True)
+    item_unit = Column(String, nullable=True)
+    qty = Column(Float, default=0.0)
+    unit_price_excl = Column(Float, default=0.0)
+    unit_price_incl = Column(Float, default=0.0)
+    line_total_excl = Column(Float, default=0.0)
+    line_total_incl = Column(Float, default=0.0)
+    document_total = Column(Float, default=0.0)
+    transaction_date = Column(DateTime, nullable=True)
+    currency_code = Column(String, default="ZAR")
+    sales_rep = Column(String, nullable=True)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
 
 

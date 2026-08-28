@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from database.cloud_sql import SessionLocal, get_db
-from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine
+from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine, PalladiumInvoiceLine
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +461,100 @@ def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[
         db.rollback()
         logger.error(f"Failed to sync GRNs from Palladium: {e}")
         return {"status": "error", "error": str(e), "grn_lines_synced": 0}
+    finally:
+        if should_close_db:
+            db.close()
+
+
+def sync_palladium_sales_invoices(db_session: Optional[Session] = None) -> Dict[str, Any]:
+    """
+    100% read-only synchronization of Sales Invoices and Credit Notes from Palladium ERP (biSalesAnalysis)
+    into Cloud SQL (palladium_invoice_lines).
+    """
+    start_time = time.time()
+    db = db_session if db_session else SessionLocal()
+    should_close_db = db_session is None
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=35
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+
+        p_cursor.execute("""
+            SELECT 
+                [Document #] AS document_no,
+                [Customer Code] AS customer_code,
+                [Customer Name] AS customer_name,
+                [Reference] AS reference,
+                [Item Code] AS item_code,
+                [Item Description (Line)] AS item_description,
+                [Item Location] AS item_unit,
+                [Qty] AS qty,
+                [Unit Price Excl] AS unit_price_excl,
+                [Unit Price Incl] AS unit_price_incl,
+                [Line Total Excl] AS line_total_excl,
+                [Line Total Incl] AS line_total_incl,
+                [Document Total] AS document_total,
+                [Transaction Date] AS transaction_date,
+                [Currency Code] AS currency_code,
+                [Sales Rep] AS sales_rep
+            FROM biSalesAnalysis
+            ORDER BY [Transaction Date] DESC
+        """)
+        inv_rows = p_cursor.fetchall()
+        p_conn.close()
+
+        db.query(PalladiumInvoiceLine).delete()
+        now_dt = datetime.now(timezone.utc)
+
+        inv_objects = []
+        for r in inv_rows:
+            doc_no = str(r.get("document_no") or "").strip()
+            item_code = str(r.get("item_code") or "").strip()
+            if not doc_no or not item_code:
+                continue
+
+            inv_obj = PalladiumInvoiceLine(
+                document_no=doc_no,
+                customer_code=str(r.get("customer_code") or "").strip() or None,
+                customer_name=str(r.get("customer_name") or "").strip() or None,
+                reference=str(r.get("reference") or "").strip() or None,
+                item_code=item_code,
+                item_description=str(r.get("item_description") or "").strip() or None,
+                item_unit=str(r.get("item_unit") or "").strip() or "EA",
+                qty=float(r.get("qty") or 0.0),
+                unit_price_excl=float(r.get("unit_price_excl") or 0.0),
+                unit_price_incl=float(r.get("unit_price_incl") or 0.0),
+                line_total_excl=float(r.get("line_total_excl") or 0.0),
+                line_total_incl=float(r.get("line_total_incl") or 0.0),
+                document_total=float(r.get("document_total") or 0.0),
+                transaction_date=r.get("transaction_date"),
+                currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                sales_rep=str(r.get("sales_rep") or "").strip() or None,
+                last_synced_at=now_dt
+            )
+            inv_objects.append(inv_obj)
+
+        db.bulk_save_objects(inv_objects)
+        db.commit()
+
+        duration = round(time.time() - start_time, 2)
+        logger.info(f"Synced {len(inv_objects)} Invoice lines from Palladium in {duration}s.")
+        return {
+            "status": "success",
+            "invoice_lines_synced": len(inv_objects),
+            "duration_seconds": duration
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to sync Invoices from Palladium: {e}")
+        return {"status": "error", "error": str(e), "invoice_lines_synced": 0}
     finally:
         if should_close_db:
             db.close()
