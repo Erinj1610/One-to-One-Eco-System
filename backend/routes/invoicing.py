@@ -17,8 +17,8 @@ from services.palladium_sync import sync_palladium_sales_invoices
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/invoicing", tags=["Invoicing"])
-public_router = APIRouter(prefix="/api/invoicing", tags=["Invoicing Public"])
+router = APIRouter(prefix="/invoicing", tags=["Invoicing"])
+public_router = APIRouter(prefix="/invoicing", tags=["Invoicing Public"])
 
 
 @public_router.post("/sync")
