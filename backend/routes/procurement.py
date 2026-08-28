@@ -1035,6 +1035,7 @@ def unallocate_procurement_item(
 ):
     """
     Removes an allocation, releasing the quantity back to the unallocated pool.
+    Fully synchronizes OrderItem quantities, histories, po_ref, and dates for SalesTracker.
     """
     try:
         allocation_id = payload.get("allocation_id")
@@ -1046,15 +1047,61 @@ def unallocate_procurement_item(
             raise HTTPException(status_code=404, detail="Allocation not found.")
 
         # Revert order item if linked
+        order_item = None
         if alloc.order_item_id:
             order_item = db.query(OrderItem).filter(OrderItem.id == str(alloc.order_item_id)).first()
-            if order_item:
-                if alloc.allocation_type == "PO":
-                    order_item.po_qty_ordered = max(0, (order_item.po_qty_ordered or 0) - int(alloc.allocated_qty))
-                    if order_item.po_ref == alloc.source_doc_no:
-                        order_item.po_ref = None
-                elif alloc.allocation_type == "GRN":
-                    order_item.received_qty = max(0, (order_item.received_qty or 0) - int(alloc.allocated_qty))
+        elif alloc.project_id:
+            # Fallback search by SKU in project
+            proj = db.query(Project).filter(Project.id == alloc.project_id).first()
+            if proj:
+                clean_sku = alloc.sku.strip().upper()
+                proj_items = db.query(OrderItem).filter(OrderItem.order_id.ilike(f"{proj.project_key}%")).all()
+                for it in proj_items:
+                    if (it.code and it.code.strip().upper() == clean_sku) or \
+                       (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
+                        order_item = it
+                        break
+
+        if order_item:
+            if alloc.allocation_type == "PO":
+                # Remove matching records from purchase_history
+                cur_hist = list(order_item.purchase_history or [])
+                new_hist = [
+                    h for h in cur_hist 
+                    if str(h.get("id") or h.get("ref") or "") != str(alloc.source_doc_no)
+                ]
+                order_item.purchase_history = new_hist
+                new_qty = sum(float(h.get("qty") or 0) for h in new_hist)
+                order_item.po_qty_ordered = int(new_qty)
+                if new_hist:
+                    order_item.po_ref = "; ".join(set(str(h.get("ref")) for h in new_hist if h.get("ref")))
+                    dates = [h.get("date") for h in new_hist if h.get("date")]
+                    order_item.po_date = max(dates) if dates else None
+                    etas = [h.get("eta") for h in new_hist if h.get("eta")]
+                    order_item.po_eta = max(etas) if etas else None
+                    order_item.eta = order_item.po_eta
+                else:
+                    order_item.po_ref = None
+                    order_item.po_date = None
+                    order_item.po_eta = None
+                    order_item.eta = None
+                    order_item.po_qty_ordered = 0
+            elif alloc.allocation_type == "GRN":
+                # Remove matching records from receiving_history
+                cur_hist = list(order_item.receiving_history or [])
+                new_hist = [
+                    h for h in cur_hist 
+                    if str(h.get("id") or h.get("ref") or "") != str(alloc.source_doc_no)
+                ]
+                order_item.receiving_history = new_hist
+                new_qty = sum(float(h.get("qty") or 0) for h in new_hist)
+                order_item.received_qty = int(new_qty)
+                if new_hist:
+                    dates = [h.get("date") for h in new_hist if h.get("date")]
+                    order_item.received_date = max(dates) if dates else None
+                else:
+                    order_item.received_date = None
+                    order_item.received_qty = 0
 
         alloc.status = "Cancelled"
         db.commit()
