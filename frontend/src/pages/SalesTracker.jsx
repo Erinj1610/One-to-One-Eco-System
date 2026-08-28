@@ -1088,6 +1088,24 @@ export default function SalesTracker() {
     return ((retail - cost) / retail) * 100 < 39;
   }).length;
 
+  const currentSelectedOrder = useMemo(() => {
+    if (!selectedOrderId) return null;
+    return allOrders.find(o => o.id === selectedOrderId) || null;
+  }, [allOrders, selectedOrderId]);
+
+  const orderCreditNotes = useMemo(() => {
+    if (!currentSelectedOrder) return [];
+    return (currentSelectedOrder.creditNotes && currentSelectedOrder.creditNotes.length > 0)
+      ? currentSelectedOrder.creditNotes
+      : (currentSelectedOrder.clientInvoices || []).filter(i => i.is_credit || String(i.id).toUpperCase().startsWith('CN-') || String(i.id).toUpperCase().startsWith('CR-'));
+  }, [currentSelectedOrder]);
+
+  const totalCreditVal = useMemo(() => {
+    const fromErp = orderCreditNotes.reduce((s, cn) => s + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
+    if (fromErp > 0) return fromErp;
+    return activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1;
+  }, [orderCreditNotes, activeOrderItems]);
+
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
     setSelectedOrderId(order.id);
@@ -3548,13 +3566,6 @@ export default function SalesTracker() {
                   }
 
                   const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
-
-                  const currentOrderObj = allOrders.find(o => o.id === selectedOrderId) || {};
-                  const orderCreditNotes = (currentOrderObj?.creditNotes && currentOrderObj.creditNotes.length > 0)
-                    ? currentOrderObj.creditNotes
-                    : (currentOrderObj?.clientInvoices || []).filter(i => i.is_credit || String(i.id).toUpperCase().startsWith('CN-') || String(i.id).toUpperCase().startsWith('CR-'));
-                  const totalCreditVal = orderCreditNotes.reduce((s, cn) => s + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0) ||
-                    activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1;
 
                   return (
                     <>
