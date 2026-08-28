@@ -1132,6 +1132,10 @@ export default function ProductsPage() {
         qr: activeProduct.qr || '',
         qr_link: activeProduct.qr_link || '',
         client_code: activeProduct.client_code || '',
+        one_to_one_code: activeProduct.one_to_one_code || '',
+        foh_code_description: activeProduct.foh_code_description || '',
+        client_description: activeProduct.client_description || '',
+        wetworks: activeProduct.wetworks || '',
         image_url: activeProduct.image_url || activeProduct.image || '',
         technical_image_url: activeProduct.technical_image_url || '',
         status: activeProduct.status || 'Active',
@@ -1274,6 +1278,10 @@ export default function ProductsPage() {
       red_list: formFields.red_list,
       markup: formFields.markup,
       recommended_retail_price: parseFloat(formFields.recommended_retail_price) || 0.0,
+      local_or_import: formFields.local_or_import,
+      wetworks: formFields.wetworks,
+      image_url: formFields.image_url,
+      technical_image_url: formFields.technical_image_url,
       qr: formFields.qr,
       qr_link: formFields.qr_link,
       client_code: activeProduct.client_code
@@ -2449,6 +2457,43 @@ export default function ProductsPage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Brand</span>
                               <strong>{activeProduct.brand || activeProduct.family || '—'}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Project & 1-to-1 Specifications Metadata */}
+                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                          <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            📋 Custom Project & Specification Specs
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>1-to-1 Code</span>
+                              <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{activeProduct.one_to_one_code || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>FOH Code</span>
+                              <strong>{activeProduct.foh_code_description || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Client Description</span>
+                              <strong>{activeProduct.client_description || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Selection Status</span>
+                              <strong>{activeProduct.selection || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Wetworks</span>
+                              <strong>{activeProduct.wetworks || '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>First Fix / Redlist</span>
+                              <strong>{activeProduct.first_fix ? `First Fix: ${activeProduct.first_fix}` : ''}{activeProduct.red_list ? ` • Redlist: ${activeProduct.red_list}` : (activeProduct.first_fix ? '' : '—')}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Consignment / Sourcing</span>
+                              <strong>{activeProduct.consignment ? `Consignment: ${activeProduct.consignment}` : ''}{activeProduct.local_or_import ? ` • ${activeProduct.local_or_import}` : (activeProduct.consignment ? '' : '—')}</strong>
                             </div>
                           </div>
                         </div>

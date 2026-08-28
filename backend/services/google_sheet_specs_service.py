@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
+from typing import Any, Optional
 
 from models.orm_models import Product, PortalSetting
 
@@ -25,23 +26,33 @@ HEADERS = [
     "SKU",
     "Product Name / Description",
     "Category",
-    "Family / Brand",
+    "FOH Codes",
+    "Family",
     "Product Photo URL",
     "Technical Drawing URL",
     "Spec Sheet PDF URL",
-    "Wattage (W)",
-    "Lumens (lm)",
-    "Color Temp (CCT)",
-    "CRI",
-    "Beam Angle",
-    "IP Rating",
-    "Dimming Protocol",
-    "Cutout (mm)",
-    "Dimensions (mm)",
+    "Consignment",
+    "Redlist",
+    "First Fix",
+    "Brand",
+    "Local / Import",
     "Finish / Color",
-    "Material",
-    "Linked Driver SKU",
-    "Notes / Features"
+    "Dimmable",
+    "Dimming Protocol",
+    "Driver Incl.",
+    "Light Source Incl.",
+    "Light Source Type",
+    "Color Temp (CCT)",
+    "Beam Angle",
+    "CRI",
+    "IP Rating",
+    "Wattage (W)",
+    "Lighting Type",
+    "Cutout (mm)",
+    "Client Description",
+    "1-to-1 Code",
+    "Wetworks",
+    "Selection"
 ]
 
 def get_google_clients():
@@ -58,9 +69,53 @@ def extract_spreadsheet_id(url_or_id: str) -> str:
         return match.group(1)
     return url_or_id.strip()
 
+def parse_field(val: Any) -> Optional[str]:
+    """Helper to parse sheet cell value. Treats NOT FOUND, None, null, empty strings as None."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s or s in ("NOT FOUND", "None", "null", "undefined", "—", "-"):
+        return None
+    return s
+
+def product_to_row(p: Product) -> list:
+    """Serializes a Product ORM instance to a 30-column sheet row matching HEADERS."""
+    return [
+        p.sku or "",
+        p.name or "",
+        p.category or "",
+        p.foh_code_description or "",
+        p.family or "",
+        p.image_url or "",
+        p.technical_image_url or "",
+        p.qr_link or "",
+        p.consignment or "",
+        p.red_list or "",
+        p.first_fix or "",
+        p.brand or "",
+        p.local_or_import or "",
+        p.color or "",
+        p.dimmable or "",
+        p.dimming_protocol or "",
+        p.driver_incl or "",
+        p.light_source_incl or "",
+        p.light_source_type or "",
+        p.kelvin or "",
+        p.beam_angle or "",
+        p.cri or "",
+        p.ip_rating or "",
+        str(p.system_power) if (p.system_power is not None and p.system_power > 0) else "",
+        p.lighting_type or "",
+        p.cutout or "",
+        p.client_description or "",
+        p.one_to_one_code or "",
+        getattr(p, 'wetworks', '') or "",
+        p.selection or ""
+    ]
+
 def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
     """
-    Ensures 'ITEM DATABASE' and 'NEW ITEMS' tabs exist with proper headers and formatting.
+    Ensures 'ITEM DATABASE' and 'NEW ITEMS' tabs exist with proper 30-column headers and formatting.
     """
     ss = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     existing_sheets = ss.get('sheets', [])
@@ -99,7 +154,7 @@ def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
         })
 
     if requests:
-        res = sheets_service.spreadsheets().batchUpdate(
+        sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body={'requests': requests}
         ).execute()
@@ -114,7 +169,7 @@ def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
             # Write Header
             sheets_service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range=f"'{TAB_INBOX}'!A1:T1",
+                range=f"'{TAB_INBOX}'!A1:AD1",
                 valueInputOption='RAW',
                 body={'values': [HEADERS]}
             ).execute()
@@ -171,10 +226,121 @@ def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
 
     return sheet_map
 
+def generate_specs_master_sheet(db: Session, spreadsheet_id: str = None) -> dict:
+    """
+    Creates or populates the Google Sheet with all products from Cloud SQL using the 30-column format.
+    """
+    if not spreadsheet_id:
+        setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
+        if setting and setting.value and isinstance(setting.value, dict):
+            spreadsheet_id = setting.value.get("spreadsheet_id")
+
+    clean_id = extract_spreadsheet_id(spreadsheet_id) if spreadsheet_id else ""
+    sheets_service, drive_service = get_google_clients()
+
+    if not clean_id:
+        # Create a new spreadsheet in Drive
+        file_meta = {
+            'name': SHEET_TITLE,
+            'mimeType': 'application/vnd.google-apps.spreadsheet',
+            'parents': [ROOT_DRIVE_FOLDER_ID]
+        }
+        created = drive_service.files().create(
+            body=file_meta,
+            supportsAllDrives=True,
+            fields='id, webViewLink'
+        ).execute()
+        clean_id = created.get('id')
+        spreadsheet_url = created.get('webViewLink') or f"https://docs.google.com/spreadsheets/d/{clean_id}/edit"
+    else:
+        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{clean_id}/edit"
+
+    sheet_map = ensure_workbook_tabs(sheets_service, clean_id)
+    target_tab = TAB_MASTER if TAB_MASTER in sheet_map else "Sheet1"
+
+    # Fetch all products from Cloud SQL
+    all_products = db.query(Product).order_by(Product.sku.asc()).all()
+    rows = [HEADERS] + [product_to_row(p) for p in all_products if p.sku]
+
+    # Write data to ITEM DATABASE
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=clean_id,
+        range=f"'{target_tab}'!A1:AD",
+        valueInputOption='RAW',
+        body={'values': rows}
+    ).execute()
+
+    # Format master tab header
+    master_sheet_id = sheet_map.get(target_tab, 0)
+    fmt_requests = [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": master_sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {
+                            "red": 0.117,
+                            "green": 0.160,
+                            "blue": 0.231
+                        },
+                        "textFormat": {
+                            "foregroundColor": {
+                                "red": 1.0,
+                                "green": 1.0,
+                                "blue": 1.0
+                            },
+                            "fontSize": 10,
+                            "bold": True
+                        },
+                        "horizontalAlignment": "LEFT"
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+            }
+        }
+    ]
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=clean_id,
+            body={'requests': fmt_requests}
+        ).execute()
+    except Exception as err:
+        logger.warning(f"Formatting notice: {err}")
+
+    now = datetime.utcnow()
+    setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
+    if not setting:
+        setting = PortalSetting(key="google_sheet_product_specs", value={})
+        db.add(setting)
+
+    setting.value = {
+        "spreadsheet_id": clean_id,
+        "spreadsheet_url": spreadsheet_url,
+        "total_skus": len(all_products),
+        "created_at": now.isoformat(),
+        "last_synced_at": now.isoformat(),
+        "last_synced_count": len(all_products),
+        "synced_tab": target_tab
+    }
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Successfully generated Master Specifications Sheet with {len(all_products)} products.",
+        "spreadsheet_id": clean_id,
+        "spreadsheet_url": spreadsheet_url,
+        "total_skus": len(all_products),
+        "synced_at": now.isoformat()
+    }
+
 def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
     """
-    Pulls specification & image data STRICTLY from the 'ITEM DATABASE' tab.
-    If fields in the sheet are blank, the database values will be set to blank/None.
+    Pulls specification & image data STRICTLY from the 'ITEM DATABASE' tab (30 columns).
+    If fields in the sheet are blank or NOT FOUND, valid non-empty updates are applied cleanly.
     """
     if not spreadsheet_id:
         setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
@@ -191,10 +357,10 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
     sheet_map = ensure_workbook_tabs(sheets_service, clean_id)
     target_tab = TAB_MASTER if TAB_MASTER in sheet_map else "Sheet1"
 
-    # Read strictly from the curated Master tab
+    # Read strictly from the curated Master tab (columns A through AD)
     res = sheets_service.spreadsheets().values().get(
         spreadsheetId=clean_id,
-        range=f"'{target_tab}'!A2:T"
+        range=f"'{target_tab}'!A2:AD"
     ).execute()
     
     rows = res.get('values', [])
@@ -204,6 +370,9 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
     # 1. Fetch all products into an in-memory dictionary for O(1) instant lookup
     all_products = {p.sku.strip().upper(): p for p in db.query(Product).all() if p.sku}
     logger.info(f"Loaded {len(all_products)} products into memory for instant sheet sync.")
+
+    updated_count = 0
+    now = datetime.utcnow()
 
     for r in rows:
         if not r or not r[0]:
@@ -216,48 +385,73 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         if not prod:
             continue
 
-        # Extract values — if cell is missing/blank, value is None
-        name_desc = str(r[1]).strip() if len(r) > 1 and r[1] and str(r[1]).strip() else None
-        category = str(r[2]).strip() if len(r) > 2 and r[2] and str(r[2]).strip() else None
-        family_brand = str(r[3]).strip() if len(r) > 3 and r[3] and str(r[3]).strip() else None
-        photo_url = str(r[4]).strip() if len(r) > 4 and r[4] and str(r[4]).strip() else None
-        tech_image_url = str(r[5]).strip() if len(r) > 5 and r[5] and str(r[5]).strip() else None
-        wattage_str = str(r[7]).strip() if len(r) > 7 and r[7] and str(r[7]).strip() else None
-        cct = str(r[9]).strip() if len(r) > 9 and r[9] and str(r[9]).strip() else None
-        cri = str(r[10]).strip() if len(r) > 10 and r[10] and str(r[10]).strip() else None
-        beam_angle = str(r[11]).strip() if len(r) > 11 and r[11] and str(r[11]).strip() else None
-        ip_rating = str(r[12]).strip() if len(r) > 12 and r[12] and str(r[12]).strip() else None
-        dimming = str(r[13]).strip() if len(r) > 13 and r[13] and str(r[13]).strip() else None
-        cutout = str(r[14]).strip() if len(r) > 14 and r[14] and str(r[14]).strip() else None
-        finish = str(r[16]).strip() if len(r) > 16 and r[16] and str(r[16]).strip() else None
-        driver_spec = str(r[18]).strip() if len(r) > 18 and r[18] and str(r[18]).strip() else None
+        # Extract values according to the 30-column specification
+        name_desc = parse_field(r[1]) if len(r) > 1 else None
+        category = parse_field(r[2]) if len(r) > 2 else None
+        foh_codes = parse_field(r[3]) if len(r) > 3 else None
+        family = parse_field(r[4]) if len(r) > 4 else None
+        photo_url = parse_field(r[5]) if len(r) > 5 else None
+        tech_image_url = parse_field(r[6]) if len(r) > 6 else None
+        spec_pdf_url = parse_field(r[7]) if len(r) > 7 else None
+        consignment = parse_field(r[8]) if len(r) > 8 else None
+        redlist = parse_field(r[9]) if len(r) > 9 else None
+        first_fix = parse_field(r[10]) if len(r) > 10 else None
+        brand = parse_field(r[11]) if len(r) > 11 else None
+        local_import = parse_field(r[12]) if len(r) > 12 else None
+        color = parse_field(r[13]) if len(r) > 13 else None
+        dimmable = parse_field(r[14]) if len(r) > 14 else None
+        dimming_protocol = parse_field(r[15]) if len(r) > 15 else None
+        driver_incl = parse_field(r[16]) if len(r) > 16 else None
+        light_source_incl = parse_field(r[17]) if len(r) > 17 else None
+        light_source_type = parse_field(r[18]) if len(r) > 18 else None
+        kelvin = parse_field(r[19]) if len(r) > 19 else None
+        beam_angle = parse_field(r[20]) if len(r) > 20 else None
+        cri = parse_field(r[21]) if len(r) > 21 else None
+        ip_rating = parse_field(r[22]) if len(r) > 22 else None
+        wattage_str = parse_field(r[23]) if len(r) > 23 else None
+        lighting_type = parse_field(r[24]) if len(r) > 24 else None
+        cutout = parse_field(r[25]) if len(r) > 25 else None
+        client_desc = parse_field(r[26]) if len(r) > 26 else None
+        one_to_one_code = parse_field(r[27]) if len(r) > 27 else None
+        wetworks = parse_field(r[28]) if len(r) > 28 else None
+        selection = parse_field(r[29]) if len(r) > 29 else None
 
-        prod.image_url = photo_url
-        prod.technical_image_url = tech_image_url
-        
-        if category: prod.category = category
-        if family_brand: 
-            prod.family = family_brand
-            prod.brand = family_brand
-        
-        if wattage_str:
+        # Apply updates to product ORM model
+        if name_desc is not None: prod.name = name_desc
+        if category is not None: prod.category = category
+        if foh_codes is not None: prod.foh_code_description = foh_codes
+        if family is not None: prod.family = family
+        if photo_url is not None: prod.image_url = photo_url
+        if tech_image_url is not None: prod.technical_image_url = tech_image_url
+        if spec_pdf_url is not None: prod.qr_link = spec_pdf_url
+        if consignment is not None: prod.consignment = consignment
+        if redlist is not None: prod.red_list = redlist
+        if first_fix is not None: prod.first_fix = first_fix
+        if brand is not None: prod.brand = brand
+        if local_import is not None: prod.local_or_import = local_import
+        if color is not None: prod.color = color
+        if dimmable is not None: prod.dimmable = dimmable
+        if dimming_protocol is not None: prod.dimming_protocol = dimming_protocol
+        if driver_incl is not None: prod.driver_incl = driver_incl
+        if light_source_incl is not None: prod.light_source_incl = light_source_incl
+        if light_source_type is not None: prod.light_source_type = light_source_type
+        if kelvin is not None: prod.kelvin = kelvin
+        if beam_angle is not None: prod.beam_angle = beam_angle
+        if cri is not None: prod.cri = cri
+        if ip_rating is not None: prod.ip_rating = ip_rating
+        if wattage_str is not None:
+            clean_w = re.sub(r"[^\d.-]", "", wattage_str)
             try:
-                clean_w = re.sub(r"[^\d.-]", "", wattage_str)
                 prod.system_power = float(clean_w) if clean_w else 0.0
             except:
                 prod.system_power = 0.0
-        else:
-            prod.system_power = 0.0
+        if lighting_type is not None: prod.lighting_type = lighting_type
+        if cutout is not None: prod.cutout = cutout
+        if client_desc is not None: prod.client_description = client_desc
+        if one_to_one_code is not None: prod.one_to_one_code = one_to_one_code
+        if wetworks is not None: prod.wetworks = wetworks
+        if selection is not None: prod.selection = selection
 
-        prod.kelvin = cct
-        prod.cri = cri
-        prod.beam_angle = beam_angle
-        prod.ip_rating = ip_rating
-        prod.dimming_protocol = dimming
-        prod.cutout = cutout
-        prod.color = finish
-        prod.driver_spec = driver_spec
-        
         updated_count += 1
 
     # Update last sync timestamp in settings
@@ -273,7 +467,7 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
 
     return {
         "status": "success",
-        "message": f"Successfully synchronized specifications strictly from '{target_tab}' for {updated_count} products. Blank fields set to blank.",
+        "message": f"Successfully synchronized 30-column specifications strictly from '{target_tab}' for {updated_count} products.",
         "updated_count": updated_count,
         "tab_read": target_tab,
         "synced_at": now.isoformat()
@@ -282,7 +476,7 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
 def sync_new_items_to_inbox(db: Session, spreadsheet_id: str = None) -> dict:
     """
     Finds all active SKUs in the database/Palladium that do NOT exist in 'ITEM DATABASE'
-    or 'NEW ITEMS', and appends them cleanly to the 'NEW ITEMS' tab inbox.
+    or 'NEW ITEMS', and appends them cleanly to the 'NEW ITEMS' tab inbox with 30 columns.
     """
     if not spreadsheet_id:
         setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
@@ -333,28 +527,7 @@ def sync_new_items_to_inbox(db: Session, spreadsheet_id: str = None) -> dict:
             continue
         clean_sku = str(p.sku).strip().upper()
         if clean_sku not in existing_skus:
-            new_rows_to_append.append([
-                p.sku or "",
-                p.name or "",
-                p.category or "",
-                p.family or "",
-                "", # Photo URL
-                "", # Technical Drawing URL
-                "", # Spec Sheet PDF URL
-                "", # Wattage
-                "", # Lumens
-                "", # CCT
-                "", # CRI
-                "", # Beam Angle
-                "", # IP Rating
-                "", # Dimming
-                "", # Cutout
-                "", # Dimensions
-                "", # Finish
-                "", # Material
-                "", # Linked Driver
-                ""  # Notes
-            ])
+            new_rows_to_append.append(product_to_row(p))
             existing_skus.add(clean_sku)
 
     if not new_rows_to_append:
@@ -367,7 +540,7 @@ def sync_new_items_to_inbox(db: Session, spreadsheet_id: str = None) -> dict:
     # 5. Append new items to 'NEW ITEMS' tab
     sheets_service.spreadsheets().values().append(
         spreadsheetId=clean_id,
-        range=f"'{TAB_INBOX}'!A:T",
+        range=f"'{TAB_INBOX}'!A:AD",
         valueInputOption='RAW',
         insertDataOption='INSERT_ROWS',
         body={'values': new_rows_to_append}
