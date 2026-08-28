@@ -398,9 +398,17 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to initialize Google API service: {str(e)}")
 
-    # Fetch Cloud SQL Database items in identical 41-column format
+    # Fetch Cloud SQL Database items in identical 41-column format using batch queries
     db_orders = db.query(Order).all()
     all_projects = db.query(Project).all()
+    all_items = db.query(OrderItem).all()
+
+    # Map order items in memory by order_id (1 query instead of 600+)
+    order_items_map: Dict[str, List[OrderItem]] = {}
+    for item in all_items:
+        if item.order_id:
+            order_items_map.setdefault(item.order_id, []).append(item)
+
     db_projects_map = {p.project_key: p.name for p in all_projects}
     db_projects_client_map = {p.project_key: (p.client_name or "") for p in all_projects}
     db_projects_pm_map = {p.project_key: (p.pm_name or "Dani") for p in all_projects}
@@ -415,7 +423,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         delivery_address = getattr(o, 'delivery_address', None) or getattr(o, 'notes', None) or db_projects_delivery_map.get(o.project_key, "") or "7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941"
         order_status = getattr(o, 'status', None) or db_projects_status_map.get(o.project_key, "Processing") or "Processing"
 
-        items = db.query(OrderItem).filter(OrderItem.order_id == o.po_number).all()
+        items = order_items_map.get(o.po_number, [])
 
         if items:
             for item in items:
@@ -543,18 +551,30 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
     red_ranges = []  # list of (start_row, end_row, start_col, end_col) for Google Sheet formatting
 
     def are_values_equal(col_name: str, val1: Any, val2: Any) -> bool:
-        # Exclude columns requested by user or that are system-generated
+        # Exclude columns requested by user or that are system-generated / optional tracking
         EXCLUDED_DIFF_COLUMNS = {
             "Item ID",
             "Item Type",
             "Stock Status",
             "Stock on Hand",
             "Qty Ordered (PO)",
+            "PO Reference",
+            "Date Ordered",
+            "Delivery ETA",
+            "Qty REC",
+            "Date REC",
+            "GRN Reference",
+            "Qty INV",
+            "Invoice Reference",
+            "Date INV",
             "Qty DEL",
             "Date DEL",
             "Delivery Reference",
             "Delivery Comments",
-            "Sheet Order Status"
+            "Sheet Order Status",
+            "Deposit Invoice Sent",
+            "Deposit Payment Date",
+            "Balance Payment Date"
         }
         if col_name in EXCLUDED_DIFF_COLUMNS:
             return True
@@ -562,8 +582,8 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
         v1_str = str(val1).strip() if val1 is not None else ""
         v2_str = str(val2).strip() if val2 is not None else ""
 
-        # Treat blank, empty string, None, "—", "null" as equivalent
-        if v1_str in {"", "—", "None", "null", "undefined"} and v2_str in {"", "—", "None", "null", "undefined"}:
+        # Treat blank, empty string, None, "—", "null" as equivalent (or if either is blank on optional metadata)
+        if (not v1_str or v1_str in {"", "—", "None", "null", "undefined"}) and (not v2_str or v2_str in {"", "—", "None", "null", "undefined"}):
             return True
 
         # Numeric columns or any monetary/quantity columns
@@ -894,23 +914,23 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
             sheets_service.spreadsheets().values().batchUpdate(
                 spreadsheetId=audit_sheet_id,
-                body={'valueInputOption': 'USER_ENTERED', 'data': data_payload}
+                body={'valueInputOption': 'RAW', 'data': data_payload}
             ).execute()
 
             # Apply cell-level red highlight formatting on Tab 1
             cell_format_requests = []
             
-            total_data_rows = max(len(heatmap_rows), len(legacy_tab_2d), len(portal_tab_2d), 30000)
+            total_data_rows = max(len(heatmap_rows), 100)
 
-            # 1. Reset all data cells to white background and normal text
+            # 1. Reset all data cells to clean white background and normal text across the actual sheet range
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
                         'sheetId': 101,
-                        'startRowIndex': 1,
-                        'endRowIndex': total_data_rows + 500,
+                        'startRowIndex': 0,
+                        'endRowIndex': total_data_rows + 100,
                         'startColumnIndex': 0,
-                        'endColumnIndex': len(heatmap_headers) + 1
+                        'endColumnIndex': len(heatmap_headers) + 2
                     },
                     'cell': {
                         'userEnteredFormat': {
