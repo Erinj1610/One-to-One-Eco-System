@@ -1748,7 +1748,7 @@ export default function ProductsPage() {
                         const d = palladiumStatus.last_synced_at;
                         const str = String(d);
                         const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
-                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit', hour12: false });
+                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
                       })()}
                     </span>
                   )}
