@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 SHEET_TITLE = "One to One - Product Specifications Master"
+DEFAULT_SPECS_SPREADSHEET_ID = "15A8TQ-BAXITQy7-BWfg6O8zeg71K3_lRITuWxIDYMYU"
 
 TAB_MASTER = "ITEM DATABASE"
 TAB_INBOX = "NEW ITEMS"
@@ -348,7 +349,7 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
             spreadsheet_id = setting.value.get("spreadsheet_id")
 
     if not spreadsheet_id:
-        raise ValueError("Google Sheet ID is not configured. Please generate or link the Master Specifications Google Sheet first.")
+        spreadsheet_id = DEFAULT_SPECS_SPREADSHEET_ID
 
     clean_id = extract_spreadsheet_id(spreadsheet_id)
     sheets_service, _ = get_google_clients()
@@ -456,13 +457,19 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
 
     # Update last sync timestamp in settings
     setting = db.query(PortalSetting).filter(PortalSetting.key == "google_sheet_product_specs").first()
-    if setting and setting.value and isinstance(setting.value, dict):
-        setting.value = {
-            **setting.value,
-            "last_synced_at": now.isoformat(),
-            "last_synced_count": updated_count,
-            "synced_tab": target_tab
-        }
+    if not setting:
+        setting = PortalSetting(key="google_sheet_product_specs", value={})
+        db.add(setting)
+    
+    prev_val = setting.value if (setting.value and isinstance(setting.value, dict)) else {}
+    setting.value = {
+        **prev_val,
+        "spreadsheet_id": clean_id,
+        "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{clean_id}/edit",
+        "last_synced_at": now.isoformat(),
+        "last_synced_count": updated_count,
+        "synced_tab": target_tab
+    }
     db.commit()
 
     return {
