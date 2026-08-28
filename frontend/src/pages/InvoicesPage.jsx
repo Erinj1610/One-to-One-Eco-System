@@ -175,20 +175,25 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchSummary();
-    fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
   }, []);
+
+  // Debounced Search & Tab Change Effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeFilterTab, customerFilter, searchQuery]);
 
   // Filter change handlers
   const handleTabChange = (newTab) => {
     setActiveFilterTab(newTab);
     setPage(1);
-    fetchInvoicingDocuments(1, newTab, customerFilter, searchQuery, limit);
   };
 
   const handleCustomerChange = (newCust) => {
     setCustomerFilter(newCust);
     setPage(1);
-    fetchInvoicingDocuments(1, activeFilterTab, newCust, searchQuery, limit);
   };
 
   const handleSearchSubmit = (e) => {
