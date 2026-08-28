@@ -855,15 +855,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     ]
                 })
 
-            try:
-                client_invoices_parsed = json.loads(order.client_invoices) if isinstance(order.client_invoices, str) else (order.client_invoices or [])
-            except Exception:
-                client_invoices_parsed = []
-
-            seen_inv_ids = {i.get("id") for i in dynamic_client_invoices if i.get("id")}
-            for leg_inv in client_invoices_parsed:
-                if isinstance(leg_inv, dict) and leg_inv.get("id") not in seen_inv_ids:
-                    dynamic_client_invoices.append(leg_inv)
+            # Client Invoices are strictly dynamic from authentic Palladium ERP allocations
 
             try:
                 payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])

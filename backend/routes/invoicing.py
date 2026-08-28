@@ -421,13 +421,22 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
                         real_proj_id = found_proj.id
                         real_proj_name = found_proj.name
 
-        if matched_item and not order_id:
+        resolved_order_id = None
+        if order_id:
+            if str(order_id).isdigit():
+                resolved_order_id = int(order_id)
+            else:
+                ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
+                if ord_match:
+                    resolved_order_id = ord_match.id
+
+        if not resolved_order_id and matched_item and matched_item.order_id:
             if str(matched_item.order_id).isdigit():
-                order_id = int(matched_item.order_id)
+                resolved_order_id = int(matched_item.order_id)
             else:
                 ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
                 if ord_match:
-                    order_id = ord_match.id
+                    resolved_order_id = ord_match.id
 
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
@@ -435,7 +444,7 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             sku=sku,
             project_id=real_proj_id,
             project_name=real_proj_name,
-            order_id=int(order_id) if order_id else None,
+            order_id=resolved_order_id,
             order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
             fitting_code=fitting_code or (matched_item.code if matched_item else sku),
             allocated_qty=allocated_qty,
@@ -566,16 +575,24 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                             item_proj_id = found_proj.id
                             item_proj_name = found_proj.name
 
-            item_order_id = order_id
-            if matched_item and not item_order_id:
+            resolved_item_order_id = None
+            if order_id:
+                if str(order_id).isdigit():
+                    resolved_item_order_id = int(order_id)
+                else:
+                    ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
+                    if ord_match:
+                        resolved_item_order_id = ord_match.id
+
+            if not resolved_item_order_id and matched_item and matched_item.order_id:
                 if str(matched_item.order_id).isdigit():
-                    item_order_id = int(matched_item.order_id)
-                elif p_orders:
-                    item_order_id = p_orders[0].id
+                    resolved_item_order_id = int(matched_item.order_id)
                 else:
                     ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
                     if ord_match:
-                        item_order_id = ord_match.id
+                        resolved_item_order_id = ord_match.id
+            elif not resolved_item_order_id and p_orders:
+                resolved_item_order_id = p_orders[0].id
 
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
@@ -583,7 +600,7 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 sku=sku,
                 project_id=item_proj_id,
                 project_name=item_proj_name,
-                order_id=int(item_order_id) if item_order_id else None,
+                order_id=resolved_item_order_id,
                 order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
                 fitting_code=fitting_code or (matched_item.code if matched_item else sku),
                 allocated_qty=allocated_qty,
