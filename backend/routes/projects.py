@@ -839,9 +839,13 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             for doc_no, doc_items in inv_groups.items():
                 first_a = doc_items[0]
                 doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
+                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items)
                 dynamic_client_invoices.append({
                     "id": doc_no,
                     "date": doc_date_str,
+                    "totalValue": inv_total_val,
+                    "value": inv_total_val,
+                    "amount": inv_total_val,
                     "notes": first_a.notes or "Allocated from Palladium ERP",
                     "allocated_by": first_a.allocated_by_name,
                     "items": [
@@ -849,7 +853,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                             "code": a.fitting_code or a.sku,
                             "description": a.sku,
                             "qtyAction": a.allocated_qty,
-                            "unitPrice": a.unit_cost
+                            "unitPrice": a.unit_cost,
+                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0))
                         }
                         for a in doc_items
                     ]

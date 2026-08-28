@@ -5625,7 +5625,9 @@ export default function OrdersPage() {
                               </td>
                               <td style={{ padding: '10px 12px' }}>💵 Client Product Invoice</td>
                               <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{inv.date || '—'}</td>
-                              <td style={{ padding: '10px 12px', fontWeight: 600 }}>R {Math.round(inv.totalValue || 0).toLocaleString()}</td>
+                              <td style={{ padding: '10px 12px', fontWeight: 600 }}>
+                                R {Number(inv.totalValue || inv.value || inv.amount || (inv.items ? inv.items.reduce((s, it) => s + ((it.qtyAction || it.qty || 0) * (it.unitPrice || it.rate || it.unitCost || 0)), 0) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
 
                             </tr>
                           ))
