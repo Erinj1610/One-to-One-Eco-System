@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
@@ -663,6 +663,8 @@ export default function ProductsPage() {
 
   const [palladiumStatus, setPalladiumStatus] = useState(null);
   const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
+  const isSyncActive = isSyncingPalladium || Boolean(palladiumStatus?.is_syncing);
+  const prevSyncingRef = useRef(false);
 
   // Fetch lightweight KPI summary counts
   const fetchSummary = async () => {
@@ -681,24 +683,27 @@ export default function ProductsPage() {
 
   const handleTriggerPalladiumSync = async () => {
     setIsSyncingPalladium(true);
-    triggerToast("Starting unified master synchronization (Palladium ERP + Google Sheets)...");
+    triggerToast("⚡ Initiating unified master sync (Palladium ERP + Google Sheets + Inbox routing)...");
     try {
       const res = await fetch(`${API_BASE}/api/palladium/sync`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
-        triggerToast(`🎉 ${data.message || 'Master sync completed successfully!'}`);
-        fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
-        fetchSummary();
-        fetchPalladiumStatus();
-        fetchFilterOptions();
-        fetchSpecsSheetInfo();
+        if (data.status === 'in_progress') {
+          triggerToast(`⏳ ${data.message || 'Synchronization is actively running in background...'}`);
+        } else {
+          triggerToast(`🎉 ${data.message || 'Master sync completed successfully!'}`);
+          fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
+          fetchSummary();
+          fetchFilterOptions();
+          fetchSpecsSheetInfo();
+        }
       } else {
-        const err = await res.json().catch(() => ({}));
-        alert(`Master Sync Notice: ${err.detail || 'Failed to complete master synchronization.'}`);
+        triggerToast(`⚠️ Sync Notice: ${data.detail || 'Failed to trigger sync.'}`);
       }
     } catch (e) {
-      alert(`Sync Connection Error: ${e.message}`);
+      triggerToast(`⚠️ Sync Connection Error: ${e.message}`);
     } finally {
+      await fetchPalladiumStatus();
       setIsSyncingPalladium(false);
     }
   };
@@ -716,13 +721,28 @@ export default function ProductsPage() {
     fetchPalladiumStatus();
     fetchFilterOptions();
     fetchPage({ page: 1, q: '', cat: 'All Categories', sup: 'All Suppliers', sort_by: 'name', sort_dir: 'asc' });
+  }, []);
 
-    // Poll master sync status every 30 seconds
+  // Adaptive sync polling: 2 seconds when actively syncing, 30 seconds when idle
+  useEffect(() => {
+    const intervalTime = isSyncActive ? 2000 : 30000;
     const statusTimer = setInterval(() => {
       fetchPalladiumStatus();
-    }, 30000);
+    }, intervalTime);
     return () => clearInterval(statusTimer);
-  }, []);
+  }, [isSyncActive]);
+
+  // When background sync transitions from running to finished, automatically refresh table & data
+  useEffect(() => {
+    if (prevSyncingRef.current && !isSyncActive) {
+      fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
+      fetchSummary();
+      fetchFilterOptions();
+      fetchSpecsSheetInfo();
+      triggerToast("🎉 Master synchronization completed! All products & Google Sheets refreshed.");
+    }
+    prevSyncingRef.current = isSyncActive;
+  }, [isSyncActive]);
 
   // Workspace Local Editing States
   const [editingStatus, setEditingStatus] = useState('In Stock');
@@ -1741,16 +1761,23 @@ export default function ProductsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Dual Feed: Palladium ERP & Master Google Sheets</span>
-                  {palladiumStatus?.last_synced_at && (
-                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 10px', borderRadius: '12px', fontWeight: 600 }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                      Auto-Sync Active (Every 15m) • Last Synced: {(() => {
-                        const d = palladiumStatus.last_synced_at;
-                        const str = String(d);
-                        const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
-                        return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-                      })()}
+                  {isSyncActive ? (
+                    <span style={{ fontSize: '11px', color: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(2, 132, 199, 0.12)', border: '1px solid rgba(2, 132, 199, 0.3)', padding: '3px 12px', borderRadius: '12px', fontWeight: 600 }}>
+                      <RefreshCw size={11} className="animate-spin" color="#0284c7" />
+                      <span>{palladiumStatus?.current_step || 'Syncing ERP & Google Sheets...'}</span>
                     </span>
+                  ) : (
+                    palladiumStatus?.last_synced_at && (
+                      <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                        Auto-Sync Active (Every 15m) • Last Synced: {(() => {
+                          const d = palladiumStatus.last_synced_at;
+                          const str = String(d);
+                          const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
+                          return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                        })()}
+                      </span>
+                    )
                   )}
                 </div>
                 <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1760,23 +1787,26 @@ export default function ProductsPage() {
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
                   onClick={handleTriggerPalladiumSync}
-                  disabled={isSyncingPalladium}
+                  disabled={isSyncActive}
                   className="btn btn-ghost"
                   title="Unified Sync from Palladium ERP and Master Google Sheet"
                   style={{ 
-                    border: '1px solid #10b981', 
-                    color: '#10b981', 
-                    background: 'rgba(16, 185, 129, 0.08)', 
+                    border: isSyncActive ? '1px solid #0284c7' : '1px solid #10b981', 
+                    color: isSyncActive ? '#0284c7' : '#10b981', 
+                    background: isSyncActive ? 'rgba(2, 132, 199, 0.08)' : 'rgba(16, 185, 129, 0.08)', 
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     gap: '6px', 
                     fontSize: '12px', 
                     height: '36px',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    cursor: isSyncActive ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  <RefreshCw size={14} className={isSyncingPalladium ? 'animate-spin' : ''} />
-                  {isSyncingPalladium ? 'Syncing ERP & Google Sheets...' : '⚡ Sync Master (ERP + Google Sheets)'}
+                  <RefreshCw size={14} className={isSyncActive ? 'animate-spin' : ''} />
+                  {isSyncActive 
+                    ? (palladiumStatus?.current_step || 'Syncing in Progress...') 
+                    : '⚡ Sync Master (ERP + Google Sheets)'}
                 </button>
 
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>

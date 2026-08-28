@@ -491,7 +491,7 @@ def sync_new_items_to_inbox(db: Session, spreadsheet_id: str = None) -> dict:
             spreadsheet_id = setting.value.get("spreadsheet_id")
 
     if not spreadsheet_id:
-        return {"status": "error", "message": "Google Sheet ID not configured"}
+        spreadsheet_id = DEFAULT_SPECS_SPREADSHEET_ID
 
     clean_id = extract_spreadsheet_id(spreadsheet_id)
     sheets_service, _ = get_google_clients()
