@@ -153,6 +153,9 @@ def list_products(
         query = query.filter(
             (Product.name.ilike(f"%{q}%")) | 
             (Product.sku.ilike(f"%{q}%")) | 
+            (Product.one_to_one_code.ilike(f"%{q}%")) |
+            (Product.foh_code_description.ilike(f"%{q}%")) |
+            (Product.client_description.ilike(f"%{q}%")) |
             (Product.brand.ilike(f"%{q}%")) |
             (Product.category.ilike(f"%{q}%")) |
             (Product.supplier_name.ilike(f"%{q}%")) |

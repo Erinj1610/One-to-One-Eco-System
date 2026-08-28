@@ -1690,24 +1690,29 @@ export default function OrdersPage() {
     const newRow = {
       id: newId,
       qty: 1,
-      type: product.category || 'NEW',
+      type: product.category || 'Hardware',
       oneOneCode: product.one_to_one_code || '',
       code: product.sku || '',
-      description: product.name || '',
+      description: product.client_description || product.name || '',
       floor: 'Ground',
       area: 'TBD Area',
-      dimming: product.dimmable || 'Non-dim',
+      dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
       brand: product.brand || '',
       supplier: product.supplier || orderSupplier || 'Molecule Dist.',
       unitCost: product.cost_price || 0,
       unitTrade: product.trade_price || 0,
       unitRetail: product.retail_price || 0,
-      selection: 'Selection',
+      selection: product.selection || 'Selection',
       stockStatus: product.stock_level > 0 ? 'Stock' : 'Ordered',
-      eta: product.lead_time || '4 weeks'
+      eta: product.lead_time || '4 weeks',
+      foh_code_description: product.foh_code_description || '',
+      wetworks: product.wetworks || '',
+      image_url: product.image_url || '',
+      technical_image_url: product.technical_image_url || '',
+      spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
     };
     setActiveOrderItems(prev => [...prev, newRow]);
-    alert(`Added "${product.sku || product.name}" to the order!`);
+    alert(`Added "${product.one_to_one_code || product.sku || product.name}" to the order!`);
   };
 
   // Add a blank spacer row to the active spreadsheet
@@ -4372,50 +4377,86 @@ export default function OrdersPage() {
                                     No products found
                                   </div>
                                 ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '450px', overflowY: 'auto', paddingRight: '4px' }}>
                                     {catalogProducts.map(prod => (
                                       <div 
                                         key={prod.id} 
                                         style={{ 
-                                          padding: '8px', 
+                                          padding: '10px', 
                                           background: 'var(--bg-primary)', 
                                           border: '1px solid var(--border)', 
-                                          borderRadius: '6px', 
+                                          borderRadius: '8px', 
                                           fontSize: '11px',
                                           display: 'flex',
                                           flexDirection: 'column',
-                                          gap: '4px'
+                                          gap: '6px'
                                         }}
                                       >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{prod.sku}</span>
-                                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', background: 'var(--bg-secondary)', padding: '2px 4px', borderRadius: '3px' }}>{prod.category}</span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{prod.sku}</span>
+                                            {prod.one_to_one_code && (
+                                              <span className="badge b-info" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 700, fontFamily: 'monospace' }}>
+                                                {prod.one_to_one_code}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', background: 'var(--bg-secondary)', padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border)', fontWeight: 600 }}>
+                                            {prod.category || 'Product'}
+                                          </span>
                                         </div>
-                                        <div style={{ color: 'var(--text-secondary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={prod.name}>
-                                          {prod.name}
+
+                                        <div style={{ color: 'var(--text-primary)', fontSize: '11.5px', fontWeight: 600, lineHeight: '1.3' }}>
+                                          {prod.client_description || prod.name}
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
-                                          <span>Brand: {prod.brand || '—'}</span>
-                                          <span style={{ color: prod.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>{prod.stock_level > 0 ? `${prod.stock_level} In Stock` : 'Out of Stock'}</span>
+
+                                        {/* Specs Badges */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                          {prod.brand && (
+                                            <span style={{ fontSize: '9.5px', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                              {prod.brand}
+                                            </span>
+                                          )}
+                                          {prod.system_power && (
+                                            <span style={{ fontSize: '9.5px', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                              {prod.system_power}W
+                                            </span>
+                                          )}
+                                          {prod.kelvin && (
+                                            <span style={{ fontSize: '9.5px', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                              {prod.kelvin}
+                                            </span>
+                                          )}
+                                          {prod.dimming_protocol && (
+                                            <span style={{ fontSize: '9.5px', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-info)' }}>
+                                              {prod.dimming_protocol}
+                                            </span>
+                                          )}
+                                          <span style={{ fontSize: '9.5px', color: prod.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)', marginLeft: 'auto', fontWeight: 600 }}>
+                                            {prod.stock_level > 0 ? `${prod.stock_level} In Stock` : 'Out of Stock'}
+                                          </span>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border)' }}>
-                                          <span style={{ fontWeight: 700, color: 'var(--text-info)', fontSize: '11.5px' }}>R {Math.round(prod.retail_price || 0).toLocaleString()}</span>
-                                          <div style={{ display: 'flex', gap: '4px' }}>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px', paddingTop: '6px', borderTop: '1px solid var(--border)' }}>
+                                          <span style={{ fontWeight: 800, color: 'var(--text-info)', fontSize: '12px' }}>
+                                            R {Math.round(prod.retail_price || 0).toLocaleString()}
+                                          </span>
+                                          <div style={{ display: 'flex', gap: '6px' }}>
                                             <button
                                               type="button"
                                               className="btn btn-xs btn-ghost"
-                                              style={{ fontSize: '10px', padding: '2px 6px', border: '1px solid var(--border)' }}
+                                              style={{ fontSize: '10.5px', padding: '3px 8px', border: '1px solid var(--border)' }}
                                               onClick={() => setSelectedCatalogProduct(prod)}
                                             >
-                                              Specs
+                                              Specs ↗
                                             </button>
                                             <button
                                               type="button"
                                               className="btn btn-xs btn-primary"
-                                              style={{ fontSize: '10px', padding: '2px 6px' }}
+                                              style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}
                                               onClick={() => handleAddProductToOrder(prod)}
                                             >
-                                              Add
+                                              + Add
                                             </button>
                                           </div>
                                         </div>
@@ -6690,106 +6731,217 @@ export default function OrdersPage() {
 
       {selectedCatalogProduct && (
         <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1200 }}>
-          <div className="modal-container" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', width: '850px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+          <div className="modal-container" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '14px', width: '920px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 12px 35px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
             <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                📖 Fitting Specifications Shortcut: {selectedCatalogProduct.sku}
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  📖 Fitting Specifications: {selectedCatalogProduct.name || selectedCatalogProduct.sku}
+                </span>
+                {selectedCatalogProduct.one_to_one_code && (
+                  <span className="badge b-info" style={{ fontSize: '11px', padding: '2px 8px', fontFamily: 'monospace', fontWeight: 700 }}>
+                    {selectedCatalogProduct.one_to_one_code}
+                  </span>
+                )}
+                <span className="badge b-ghost" style={{ fontSize: '11px', padding: '2px 6px', fontFamily: 'monospace' }}>
+                  SKU: {selectedCatalogProduct.sku}
+                </span>
+                <span className={`badge ${selectedCatalogProduct.selection?.toLowerCase().includes('non') ? 'b-ghost' : 'b-success'}`} style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 700 }}>
+                  {selectedCatalogProduct.selection || 'Selection'}
+                </span>
+              </div>
               <button style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setSelectedCatalogProduct(null)}>✕</button>
             </div>
             
-            <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              {/* Product Info Heading */}
-              <div>
-                <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 600 }}>Product Name / Description</span>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>{selectedCatalogProduct.name}</div>
-              </div>
-
-              {/* DUAL COLUMN: Visual Mock on Left, CAD & Blueprint on Right */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                {/* Product Visual Mock Rendering */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', position: 'relative' }}>
-                    <span style={{ position: 'absolute', top: '10px', left: '12px', fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Visual Specification</span>
-                    <ProductImageRenderer type={(selectedCatalogProduct.category || '').toLowerCase()} height="220" />
-                    <h4 style={{ margin: '10px 0 0 0', fontSize: '13px', fontWeight: 700, letterSpacing: '0.5px' }}>{selectedCatalogProduct.family || 'Family Spec'}</h4>
+              {/* Client Description Heading */}
+              {selectedCatalogProduct.client_description && (
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Client Specification Description</span>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                    {selectedCatalogProduct.client_description}
                   </div>
                 </div>
+              )}
 
-                {/* Technical CAD blueprints + Specs detail sheet */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', display: 'flex', gap: '14px', alignItems: 'center', height: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ width: '100px', flexShrink: 0 }}>
-                      <ProductCADRenderer cutout={selectedCatalogProduct.cutout} />
+              {/* DUAL COLUMN: Visuals on Left, Specs on Right */}
+              <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '18px' }}>
+                
+                {/* LEFT: Visual Photo & CAD Drawing */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Photo Card */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '8px', textAlign: 'left' }}>
+                      📷 Product Visual Asset
+                    </span>
+                    <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                      {selectedCatalogProduct.image_url ? (
+                        <img
+                          src={selectedCatalogProduct.image_url.startsWith('http') ? selectedCatalogProduct.image_url : `${API_BASE}${selectedCatalogProduct.image_url}`}
+                          alt={selectedCatalogProduct.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <ProductImageRenderer type={(selectedCatalogProduct.category || '').toLowerCase()} height="130" />
+                      )}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ margin: '0 0 6px 0', fontSize: '12.5px', fontWeight: 600, color: 'var(--text-info)' }}>📐 Design Spec & Blueprint</h4>
-                      <div style={{ fontSize: '11px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-                        <p style={{ margin: '0 0 4px 0' }}><strong>Fitting Type:</strong> {selectedCatalogProduct.category}</p>
-                        <p style={{ margin: '0 0 4px 0' }}><strong>Cut-Out Size:</strong> {selectedCatalogProduct.cutout || '—'}</p>
-                        <p style={{ margin: '0 0 4px 0' }}><strong>Power:</strong> {selectedCatalogProduct.system_power ? `${selectedCatalogProduct.system_power}W` : '—'}</p>
-                        <p style={{ margin: '0 0 4px 0' }}><strong>Kelvin:</strong> {selectedCatalogProduct.kelvin || '—'}</p>
-                        <p style={{ margin: '0 0 4px 0' }}><strong>Beam Angle:</strong> {selectedCatalogProduct.beam_angle || '—'}</p>
-                        <p style={{ margin: 0 }}><strong>IP Rating:</strong> {selectedCatalogProduct.ip_rating || '—'} (CRI: {selectedCatalogProduct.cri || '—'})</p>
+                    <div style={{ marginTop: '8px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {selectedCatalogProduct.family || selectedCatalogProduct.category || 'Catalog Spec'}
+                    </div>
+                  </div>
+
+                  {/* CAD Drawing Card */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '8px' }}>
+                      📐 Technical / CAD Drawing
+                    </span>
+                    <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                      {selectedCatalogProduct.technical_image_url ? (
+                        <img
+                          src={selectedCatalogProduct.technical_image_url.startsWith('http') ? selectedCatalogProduct.technical_image_url : `${API_BASE}${selectedCatalogProduct.technical_image_url}`}
+                          alt={`${selectedCatalogProduct.name} CAD`}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <ProductCADRenderer cutout={selectedCatalogProduct.cutout || 'N/A'} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PDF Spec Sheet Link */}
+                  {(selectedCatalogProduct.qr_link || selectedCatalogProduct.spec_sheet_url) && (
+                    <a 
+                      href={selectedCatalogProduct.qr_link || selectedCatalogProduct.spec_sheet_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="btn btn-outline" 
+                      style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', padding: '8px' }}
+                    >
+                      <FileText size={14} color="var(--text-info)" /> Open Official Spec Sheet (PDF) ↗
+                    </a>
+                  )}
+                </div>
+
+                {/* RIGHT: Technical Specifications & Details */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  
+                  {/* Optical Performance Metrics KPI */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      💡 Optical & Fitting Performance
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Power</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {selectedCatalogProduct.system_power ? `${selectedCatalogProduct.system_power} W` : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Kelvin (CCT)</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {selectedCatalogProduct.kelvin || '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Color Rendering</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {selectedCatalogProduct.cri ? (String(selectedCatalogProduct.cri).toUpperCase().startsWith('CRI') ? selectedCatalogProduct.cri : `CRI ${selectedCatalogProduct.cri}`) : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Beam Angle</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {selectedCatalogProduct.beam_angle || '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>IP Rating</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {selectedCatalogProduct.ip_rating ? (String(selectedCatalogProduct.ip_rating).toUpperCase().startsWith('IP') || String(selectedCatalogProduct.ip_rating).toLowerCase().includes('non') ? selectedCatalogProduct.ip_rating : `IP${selectedCatalogProduct.ip_rating}`) : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Cutout</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px', fontFamily: 'monospace' }}>
+                          {selectedCatalogProduct.cutout || '—'}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* TECHNICAL PARAMETERS DETAILS GRID */}
-              <div>
-                <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1px solid var(--border)', paddingBottom: '4px', marginBottom: '8px' }}>Technical Parameters</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', fontSize: '11.5px' }}>
-                  <div>
-                    <span style={{ color: 'var(--text-tertiary)' }}>Brand:</span>
-                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.brand || '—'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-tertiary)' }}>Dimmable:</span>
-                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.dimmable || '—'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-tertiary)' }}>Dimming Protocol:</span>
-                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.dimming_protocol || '—'}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-tertiary)' }}>Driver Included:</span>
-                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{selectedCatalogProduct.driver_incl || '—'}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* DRIVER SPECIFICATION & DOCUMENTS */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                  <h4 style={{ margin: '0 0 8px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Settings size={13} /> Driver Specification & Connection
-                  </h4>
-                  <div style={{ fontSize: '11.5px', lineHeight: '1.5', color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
-                    {selectedCatalogProduct.driver_spec || 'No special driver specs recorded.'}
-                  </div>
-                </div>
-
-                <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', background: 'var(--bg-primary)' }}>
-                  <h4 style={{ margin: '0 0 10px 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>Technical Documents</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div className="clickable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '8px', cursor: 'pointer' }} onClick={() => alert("Downloading Technical Datasheet PDF...")}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileText size={16} color="var(--text-info)" />
-                        <span style={{ fontSize: '11.5px', fontWeight: 500 }}>Technical_Datasheet_{selectedCatalogProduct.sku.replace(/\s+/g, '_')}.pdf</span>
+                  {/* Dimming & Light Source Specifications */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-warning)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      ⚡ Control, Dimming & Light Source
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11.5px' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Brand:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.brand || '—'}</div>
                       </div>
-                      <Download size={14} color="var(--text-secondary)" />
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Dimmable:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.dimmable || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Dimming Protocol:</span>
+                        <div style={{ fontWeight: 700, color: 'var(--text-info)' }}>{selectedCatalogProduct.dimming_protocol || 'On-Off'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Driver Included:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.driver_incl || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Light Source Included:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.light_source_incl || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Light Source Type:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.light_source_type || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Finish / Color:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.color || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>FOH Code:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.foh_code_description || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Origin:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedCatalogProduct.local_or_import || '—'}</div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Wetworks & Installation Specifications Card */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🌊 Wetworks & Installation Constraints
+                    </h4>
+                    <div style={{ 
+                      background: 'rgba(245, 158, 11, 0.06)', 
+                      border: '1px solid rgba(245, 158, 11, 0.25)', 
+                      borderRadius: '6px', 
+                      padding: '10px 12px', 
+                      fontSize: '11.5px', 
+                      lineHeight: '1.5', 
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'pre-line'
+                    }}>
+                      {selectedCatalogProduct.wetworks ? selectedCatalogProduct.wetworks : 'No special wetworks or installation constraints recorded.'}
+                    </div>
+                  </div>
+
                 </div>
+
               </div>
 
-              {/* FINANCIAL & LOGISTICS COORDINATES */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', background: 'rgba(24, 95, 165, 0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(24, 95, 165, 0.1)' }}>
+              {/* FINANCIAL & INVENTORY COORDINATES */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', background: 'rgba(24, 95, 165, 0.03)', padding: '14px 18px', borderRadius: '10px', border: '1px solid rgba(24, 95, 165, 0.12)' }}>
                 <div>
-                  <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1.5px solid rgba(24, 95, 165, 0.2)', paddingBottom: '4px', marginBottom: '8px' }}>Pricing Details</h4>
+                  <h4 style={{ fontSize: '10.5px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1.5px solid rgba(24, 95, 165, 0.2)', paddingBottom: '4px', marginBottom: '8px' }}>Pricing Details</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11.5px' }}>
                     <div>
                       <span style={{ color: 'var(--text-tertiary)' }}>Cost Price:</span>
@@ -6806,12 +6958,12 @@ export default function OrdersPage() {
                   </div>
                 </div>
                 <div>
-                  <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1.5px solid rgba(24, 95, 165, 0.2)', paddingBottom: '4px', marginBottom: '8px' }}>Inventory Summary</h4>
+                  <h4 style={{ fontSize: '10.5px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, borderBottom: '1.5px solid rgba(24, 95, 165, 0.2)', paddingBottom: '4px', marginBottom: '8px' }}>Inventory Summary</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '11.5px' }}>
                     <div>
                       <span style={{ color: 'var(--text-tertiary)' }}>Stock Level:</span>
                       <div style={{ fontWeight: 700, color: selectedCatalogProduct.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
-                        {selectedCatalogProduct.stock_level > 0 ? `${selectedCatalogProduct.stock_level} Qty` : 'Out of Stock'}
+                        {selectedCatalogProduct.stock_level > 0 ? `${selectedCatalogProduct.stock_level} In Stock` : 'Out of Stock'}
                       </div>
                     </div>
                     <div>
@@ -6824,17 +6976,17 @@ export default function OrdersPage() {
 
             </div>
 
-            <div className="modal-footer" style={{ padding: '14px 20px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
-              <button className="btn" style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setSelectedCatalogProduct(null)}>Close</button>
+            <div className="modal-footer" style={{ padding: '12px 20px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn" style={{ padding: '6px 14px', fontSize: '12px', cursor: 'pointer' }} onClick={() => setSelectedCatalogProduct(null)}>Close</button>
               <button 
                 className="btn btn-primary" 
-                style={{ padding: '6px 12px', fontSize: '12px', cursor: 'pointer' }} 
+                style={{ padding: '6px 16px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }} 
                 onClick={() => {
                   handleAddProductToOrder(selectedCatalogProduct);
                   setSelectedCatalogProduct(null);
                 }}
               >
-                Add to Order
+                + Add to Order
               </button>
             </div>
           </div>
