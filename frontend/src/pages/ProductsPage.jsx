@@ -1945,7 +1945,7 @@ export default function ProductsPage() {
                     </th>
                     <th 
                       onClick={() => handleSort('image')} 
-                      style={{ width: '60px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                      style={{ width: '56px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
                         IMAGE {renderSortIcon('image')}
@@ -1965,6 +1965,14 @@ export default function ProductsPage() {
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         DESCRIPTION / PRODUCT {renderSortIcon('name')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('category')} 
+                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        CATEGORY {renderSortIcon('category')}
                       </div>
                     </th>
                     <th 
@@ -2037,28 +2045,38 @@ export default function ProductsPage() {
                         />
                       </td>
                       <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
-                        <div style={{ width: '44px', height: '44px', position: 'relative', margin: '0 auto', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                          {p.image_url ? (
+                        {p.image_url ? (
+                          <div style={{ width: '40px', height: '40px', position: 'relative', margin: '0 auto', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                              src={`${API_BASE}${p.image_url}`}
+                              src={p.image_url.startsWith('http') ? p.image_url : `${API_BASE}${p.image_url}`}
                               alt={p.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                              onError={e => { e.target.style.display = 'none'; }}
                             />
-                          ) : null}
-                          <div style={{ display: p.image_url ? 'none' : 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)' }}>
-                            <ProductImageRenderer type={(p.category || 'downlight').toLowerCase()} width="44" height="44" />
                           </div>
-                        </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>—</span>
+                        )}
                       </td>
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
                       
                       {/* DESCRIPTION / NAME */}
                       <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
 
-                      <td style={{ verticalAlign: 'middle' }}>{p.family || '-'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '-'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '-'}</td>
+                      {/* CATEGORY */}
+                      <td style={{ verticalAlign: 'middle' }}>
+                        {p.category ? (
+                          <span className="badge b-secondary" style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 600 }}>
+                            {p.category}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                        )}
+                      </td>
+
+                      <td style={{ verticalAlign: 'middle' }}>{p.family || '—'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '—'}</td>
+                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '—'}</td>
                       
                       {/* SUPPLIER COST PRICE */}
                       <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
@@ -2080,7 +2098,7 @@ export default function ProductsPage() {
                   ))}
                   {filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                         {isLoadingProducts ? 'Loading page products...' : 'No products found matching the search and filter criteria.'}
                       </td>
                     </tr>
@@ -2337,9 +2355,10 @@ export default function ProductsPage() {
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
-                              <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductImageRenderer type={(activeProduct.category || 'downlight').toLowerCase()} height="140" />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No photo URL provided in Google Sheet</p>
+                              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.6 }}>📷</span>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>No Visual Photo Provided</div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Add a photo URL in column F of the Google Sheet</div>
                               </div>
                             )}
                           </div>
@@ -2363,9 +2382,10 @@ export default function ProductsPage() {
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             ) : (
-                              <div style={{ textAlign: 'center', padding: '20px' }}>
-                                <ProductCADRenderer cutout={activeProduct.cutout || 'N/A'} />
-                                <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: 'var(--text-tertiary)' }}>No CAD drawing URL provided in Google Sheet</p>
+                              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.6 }}>📐</span>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>No CAD Drawing Provided</div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Add a technical drawing URL in column G of the Google Sheet</div>
                               </div>
                             )}
                           </div>

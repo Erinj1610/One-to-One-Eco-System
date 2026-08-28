@@ -6782,7 +6782,10 @@ export default function OrdersPage() {
                           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         />
                       ) : (
-                        <ProductImageRenderer type={(selectedCatalogProduct.category || '').toLowerCase()} height="130" />
+                        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-tertiary)' }}>
+                          <span style={{ fontSize: '24px', display: 'block', marginBottom: '4px', opacity: 0.6 }}>📷</span>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>No Visual Photo</div>
+                        </div>
                       )}
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -6803,7 +6806,10 @@ export default function OrdersPage() {
                           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         />
                       ) : (
-                        <ProductCADRenderer cutout={selectedCatalogProduct.cutout || 'N/A'} />
+                        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-tertiary)' }}>
+                          <span style={{ fontSize: '24px', display: 'block', marginBottom: '4px', opacity: 0.6 }}>📐</span>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>No CAD Drawing</div>
+                        </div>
                       )}
                     </div>
                   </div>

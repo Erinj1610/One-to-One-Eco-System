@@ -192,6 +192,7 @@ def list_products(
         "sku": Product.sku,
         "name": Product.name,
         "description": Product.name,
+        "category": Product.category,
         "family": Product.family,
         "brand": Product.brand,
         "supplier": Product.supplier_name,
