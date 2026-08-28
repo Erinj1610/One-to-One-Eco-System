@@ -681,22 +681,23 @@ export default function ProductsPage() {
 
   const handleTriggerPalladiumSync = async () => {
     setIsSyncingPalladium(true);
-    triggerToast("Starting 100% read-only Palladium ERP synchronization...");
+    triggerToast("Starting unified master synchronization (Palladium ERP + Google Sheets)...");
     try {
       const res = await fetch(`${API_BASE}/api/palladium/sync`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        triggerToast(`🎉 ${data.message || 'Palladium sync completed successfully!'}`);
+        triggerToast(`🎉 ${data.message || 'Master sync completed successfully!'}`);
         fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSummary();
         fetchPalladiumStatus();
         fetchFilterOptions();
+        fetchSpecsSheetInfo();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Palladium Sync Notice: ${err.detail || 'Failed to sync with Palladium ERP.'}`);
+        alert(`Master Sync Notice: ${err.detail || 'Failed to complete master synchronization.'}`);
       }
     } catch (e) {
-      alert(`Palladium Connection Error: ${e.message}`);
+      alert(`Sync Connection Error: ${e.message}`);
     } finally {
       setIsSyncingPalladium(false);
     }
@@ -715,6 +716,12 @@ export default function ProductsPage() {
     fetchPalladiumStatus();
     fetchFilterOptions();
     fetchPage({ page: 1, q: '', cat: 'All Categories', sup: 'All Suppliers', sort_by: 'name', sort_dir: 'asc' });
+
+    // Poll master sync status every 30 seconds
+    const statusTimer = setInterval(() => {
+      fetchPalladiumStatus();
+    }, 30000);
+    return () => clearInterval(statusTimer);
   }, []);
 
   // Workspace Local Editing States
@@ -1731,17 +1738,18 @@ export default function ProductsPage() {
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Integrated Inventory Management</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Dual Feed: Palladium ERP & Master Google Sheets</span>
                   {palladiumStatus?.last_synced_at && (
-                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                      ● Palladium ERP Synced ({(() => {
+                    <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+                      Auto-Sync Active (Every 15m) • Last Synced: {(() => {
                         const d = palladiumStatus.last_synced_at;
                         const str = String(d);
                         const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
                         return isNaN(dateObj.getTime()) ? 'Live' : dateObj.toLocaleTimeString('en-ZA', { timeZone: 'Africa/Johannesburg', hour: '2-digit', minute: '2-digit', hour12: false });
-                      })()})
+                      })()}
                     </span>
                   )}
                 </div>
@@ -1754,7 +1762,7 @@ export default function ProductsPage() {
                   onClick={handleTriggerPalladiumSync}
                   disabled={isSyncingPalladium}
                   className="btn btn-ghost"
-                  title="100% Read-Only Sync from Palladium ERP Database"
+                  title="Unified Sync from Palladium ERP and Master Google Sheet"
                   style={{ 
                     border: '1px solid #10b981', 
                     color: '#10b981', 
@@ -1768,7 +1776,7 @@ export default function ProductsPage() {
                   }}
                 >
                   <RefreshCw size={14} className={isSyncingPalladium ? 'animate-spin' : ''} />
-                  {isSyncingPalladium ? 'Syncing Palladium...' : 'Sync Palladium ERP'}
+                  {isSyncingPalladium ? 'Syncing ERP & Google Sheets...' : '⚡ Sync Master (ERP + Google Sheets)'}
                 </button>
 
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>

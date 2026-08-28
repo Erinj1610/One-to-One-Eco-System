@@ -692,6 +692,11 @@ def init_db():
 async def startup_event():
     import threading
     threading.Thread(target=init_db, daemon=True).start()
+    try:
+        from services.master_sync_service import start_15min_sync_scheduler
+        start_15min_sync_scheduler()
+    except Exception as sched_err:
+        print(f"Failed to start 15-min sync scheduler: {sched_err}")
 
 if __name__ == "__main__":
     # optimized for Windows auto-reload

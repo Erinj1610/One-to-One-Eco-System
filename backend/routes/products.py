@@ -944,8 +944,8 @@ def create_specs_sheet_endpoint(db: Session = Depends(get_db)):
 @public_router.post("/sync-sheet-specs")
 def sync_sheet_specs_endpoint(db: Session = Depends(get_db)):
     try:
-        from services.google_sheet_specs_service import sync_specs_from_sheet
-        res = sync_specs_from_sheet(db=db)
+        from services.master_sync_service import execute_master_sync
+        res = execute_master_sync(db_session=db)
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
