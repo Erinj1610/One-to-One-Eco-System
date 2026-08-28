@@ -4,7 +4,7 @@ import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
-  RefreshCw, ExternalLink
+  RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -568,14 +568,86 @@ export default function ProductsPage() {
     };
   };
 
-  // Fetch a single page from backend with server-side filtering
-  const fetchPage = async ({ page = 1, q = '', cat = 'All Categories', sup = 'All Suppliers' } = {}) => {
+  // Dynamic Filter Options from Database
+  const [filterOptions, setFilterOptions] = useState({
+    categories: [],
+    suppliers: [],
+    brands: [],
+    families: []
+  });
+
+  const fetchFilterOptions = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/filter-options`);
+      if (res.ok) {
+        const data = await res.json();
+        setFilterOptions({
+          categories: data.categories || [],
+          suppliers: data.suppliers || [],
+          brands: data.brands || [],
+          families: data.families || []
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching filter options:', err);
+    }
+  };
+
+  // Sorting States (mirrored from Orders module)
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' | 'desc'
+
+  const handleSort = (field) => {
+    let newDir = 'asc';
+    if (sortField === field) {
+      newDir = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDir);
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+    fetchPage({
+      page: 1,
+      q: searchQuery,
+      cat: categoryFilter,
+      sup: supplierFilter,
+      sort_by: field,
+      sort_dir: newDir
+    });
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.4 }} />;
+    }
+    return sortDirection === 'asc' ? (
+      <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--primary)' }} />
+    ) : (
+      <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--primary)' }} />
+    );
+  };
+
+  // Fetch a single page from backend with server-side filtering and sorting
+  const fetchPage = async ({ 
+    page = 1, 
+    q = searchQuery, 
+    cat = categoryFilter, 
+    sup = supplierFilter, 
+    sort_by = sortField, 
+    sort_dir = sortDirection 
+  } = {}) => {
     setIsLoadingProducts(true);
     try {
       const offset = (page - 1) * PAGE_SIZE;
       const params = new URLSearchParams({ limit: PAGE_SIZE, offset });
       if (q) params.set('q', q);
       if (cat && cat !== 'All Categories') params.set('category', cat);
+      if (sup && sup !== 'All Suppliers') params.set('supplier', sup);
+      if (sort_by) {
+        params.set('sort_by', sort_by);
+        params.set('sort_dir', sort_dir || 'asc');
+      }
       const res = await fetch(`${API_BASE}/api/products/?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -615,9 +687,10 @@ export default function ProductsPage() {
       if (res.ok) {
         const data = await res.json();
         triggerToast(`🎉 ${data.message || 'Palladium sync completed successfully!'}`);
-        fetchPage({ page: 1 });
+        fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSummary();
         fetchPalladiumStatus();
+        fetchFilterOptions();
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`Palladium Sync Notice: ${err.detail || 'Failed to sync with Palladium ERP.'}`);
@@ -631,15 +704,17 @@ export default function ProductsPage() {
 
   // Backwards-compat alias used by import handler
   const fetchProducts = () => {
-    fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+    fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
     fetchSummary();
     fetchPalladiumStatus();
+    fetchFilterOptions();
   };
 
   useEffect(() => {
     fetchSummary();
     fetchPalladiumStatus();
-    fetchPage({ page: 1 });
+    fetchFilterOptions();
+    fetchPage({ page: 1, q: '', cat: 'All Categories', sup: 'All Suppliers', sort_by: 'name', sort_dir: 'asc' });
   }, []);
 
   // Workspace Local Editing States
@@ -980,9 +1055,9 @@ export default function ProductsPage() {
     clearTimeout(searchRef.current);
     searchRef.current = setTimeout(() => {
       setCurrentPage(1);
-      fetchPage({ page: 1, q: searchQuery, cat: categoryFilter });
+      fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
     }, 350);
-  }, [searchQuery, categoryFilter]);
+  }, [searchQuery, categoryFilter, supplierFilter]);
 
   // Toast System
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -1040,47 +1115,34 @@ export default function ProductsPage() {
         lighting_type: activeProduct.lightingType || activeProduct.lighting_type || '',
         cutout: activeProduct.cutout || '',
         driver_spec: activeProduct.driverSpec || activeProduct.driver_spec || '',
-        one_to_one_code: activeProduct.one_to_one_code || '',
-        foh_code_description: activeProduct.foh_code_description || '',
-        client_description: activeProduct.client_description || '',
         fitting_type: activeProduct.fitting_type || '',
         consignment: activeProduct.consignment || '',
         selection: activeProduct.selection || '',
         first_fix: activeProduct.first_fix || '',
         red_list: activeProduct.red_list || '',
         markup: activeProduct.markup || '',
-        recommended_retail_price: activeProduct.recommended_retail_price || activeProduct.retail_price || 0,
-        trade_price: activeProduct.tradePrice || activeProduct.trade_price || 0,
-        cost_price: activeProduct.unitCost || activeProduct.cost_price || 0,
-        reorder_level: activeProduct.reorderLevel || activeProduct.reorder_level || 100,
+        recommended_retail_price: activeProduct.recommended_retail_price || activeProduct.retailPrice || 0,
+        internal_cost: activeProduct.internal_cost || activeProduct.unitCost || 0,
+        supplier_name: activeProduct.supplier_name || activeProduct.supplier || '',
+        local_or_import: activeProduct.local_or_import || '',
+        driver_location: activeProduct.driver_location || '',
+        fittings_per_driver: activeProduct.fittings_per_driver || '',
+        driver_connection_type: activeProduct.driver_connection_type || '',
+        driver_max_cable: activeProduct.driver_max_cable || '',
         qr: activeProduct.qr || '',
         qr_link: activeProduct.qr_link || '',
-        supplier: activeProduct.supplier || ''
+        client_code: activeProduct.client_code || '',
+        image_url: activeProduct.image_url || activeProduct.image || '',
+        technical_image_url: activeProduct.technical_image_url || '',
+        status: activeProduct.status || 'Active',
       });
+      // Automatically fetch live stock history from Palladium for the active product
+      fetchStockHistory(activeProduct.sku);
     }
-  }, [selectedSku, activeProduct]);
+  }, [activeProduct]);
 
-  // Date Range Checker
-  const isProductInDateRange = (p) => {
-    if (!startDate && !endDate) return true;
-    const updateStr = p.costing?.lastUpdated;
-    if (!updateStr) return false;
-    const pDate = new Date(updateStr);
-    if (isNaN(pDate.getTime())) return false;
-
-    if (startDate) {
-      const start = new Date(startDate);
-      if (pDate < start) return false;
-    }
-    if (endDate) {
-      const end = new Date(endDate);
-      if (pDate > end) return false;
-    }
-    return true;
-  };
-
-  // Preset Date Helper
-  const applyPreset = (preset) => {
+  // Date Filter Preset Logic
+  const handleDatePresetChange = (preset) => {
     setDatePreset(preset);
     const today = new Date();
     const formatDate = (d) => d.toISOString().split('T')[0];
@@ -1088,19 +1150,73 @@ export default function ProductsPage() {
     if (preset === 'All Time') {
       setStartDate('');
       setEndDate('');
-    } else if (preset === 'Last Week') {
-      const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-      setStartDate(formatDate(lastWeek));
-      setEndDate(formatDate(today));
+    } else if (preset === 'Today') {
+      const formatted = formatDate(today);
+      setStartDate(formatted);
+      setEndDate(formatted);
+    } else if (preset === 'This Week') {
+      const firstDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 1));
+      setStartDate(formatDate(firstDayOfWeek));
+      setEndDate(formatDate(new Date()));
+    } else if (preset === 'This Month') {
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      setStartDate(formatDate(firstDayOfMonth));
+      setEndDate(formatDate(new Date()));
     } else if (preset === 'Last 30 Days') {
-      const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 1000);
       setStartDate(formatDate(lastMonth));
       setEndDate(formatDate(today));
     }
   };
 
-  // Products already filtered server-side; just expose the loaded page
-  const filteredProducts = products;
+  // Sort Logic for Products Module (mirrored from Orders module)
+  const sortedProducts = useMemo(() => {
+    if (!sortField) return products;
+
+    const getVal = (item, field) => {
+      switch (field) {
+        case 'image':
+          return (item.image || item.image_url) ? 1 : 0;
+        case 'sku':
+          return (item.sku || '').toLowerCase();
+        case 'name':
+        case 'description':
+          return (item.name || '').toLowerCase();
+        case 'family':
+          return (item.family || '').toLowerCase();
+        case 'brand':
+          return (item.brand || '').toLowerCase();
+        case 'supplier':
+          return (item.supplier || item.supplier_name || '').toLowerCase();
+        case 'unit_cost':
+        case 'unitCost':
+          return Number(item.unitCost ?? item.cost_price ?? 0) || 0;
+        case 'retail_price':
+        case 'retailPrice':
+          return Number(item.retailPrice ?? item.recommended_retail_price ?? item.retail_price ?? 0) || 0;
+        case 'stock':
+        case 'stock_qty':
+          return Number(item.stock ?? item.stock_level ?? 0) || 0;
+        default:
+          return (item[field] || '').toString().toLowerCase();
+      }
+    };
+
+    return [...products].sort((a, b) => {
+      const valA = getVal(a, sortField);
+      const valB = getVal(b, sortField);
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [products, sortField, sortDirection]);
+
+  // Products already filtered server-side; expose sorted list
+  const filteredProducts = sortedProducts;
 
   // Aggregate stats — use lightweight summary for global counts
   const kpis = useMemo(() => {
@@ -1767,24 +1883,32 @@ export default function ProductsPage() {
 
                 <select
                   className="form-control"
-                  style={{ width: '160px', height: '34px', fontSize: '12.5px' }}
+                  style={{ width: '180px', height: '34px', fontSize: '12.5px' }}
                   value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
+                  onChange={e => {
+                    setCategoryFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                 >
-                  <option>All Categories</option>
-                  <option>Downlight</option>
-                  <option>Starlight</option>
+                  <option value="All Categories">All Categories {filterOptions.categories.length > 0 ? `(${filterOptions.categories.length})` : ''}</option>
+                  {filterOptions.categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
 
                 <select
                   className="form-control"
-                  style={{ width: '165px', height: '34px', fontSize: '12.5px' }}
+                  style={{ width: '180px', height: '34px', fontSize: '12.5px' }}
                   value={supplierFilter}
-                  onChange={e => setSupplierFilter(e.target.value)}
+                  onChange={e => {
+                    setSupplierFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
                 >
-                  <option>All Suppliers</option>
-                  <option>ELDC</option>
-                  <option>Molecule Lighting</option>
+                  <option value="All Suppliers">All Suppliers {filterOptions.suppliers.length > 0 ? `(${filterOptions.suppliers.length})` : ''}</option>
+                  {filterOptions.suppliers.map(sup => (
+                    <option key={sup} value={sup}>{sup}</option>
+                  ))}
                 </select>
 
                 <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1811,15 +1935,78 @@ export default function ProductsPage() {
                         checked={products.length > 0 && selectedProductIds.length === products.length} 
                       />
                     </th>
-                    <th style={{ width: '60px', textAlign: 'center' }}>IMAGE</th>
-                    <th style={{ width: '120px' }}>SKU</th>
-                    <th>DESCRIPTION / PRODUCT</th>
-                    <th style={{ width: '120px' }}>FAMILY</th>
-                    <th style={{ width: '100px' }}>BRAND</th>
-                    <th style={{ width: '100px' }}>SUPPLIER</th>
-                    <th style={{ textAlign: 'right', width: '100px' }}>UNIT COST</th>
-                    <th style={{ textAlign: 'right', width: '100px' }}>RRP PRICE</th>
-                    <th style={{ textAlign: 'center', width: '90px' }}>STOCK QTY</th>
+                    <th 
+                      onClick={() => handleSort('image')} 
+                      style={{ width: '60px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                        IMAGE {renderSortIcon('image')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('sku')} 
+                      style={{ width: '130px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        SKU {renderSortIcon('sku')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('name')} 
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        DESCRIPTION / PRODUCT {renderSortIcon('name')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('family')} 
+                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        FAMILY {renderSortIcon('family')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('brand')} 
+                      style={{ width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        BRAND {renderSortIcon('brand')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('supplier')} 
+                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        SUPPLIER {renderSortIcon('supplier')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('unit_cost')} 
+                      style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
+                        UNIT COST {renderSortIcon('unit_cost')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('retail_price')} 
+                      style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
+                        RRP PRICE {renderSortIcon('retail_price')}
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('stock')} 
+                      style={{ textAlign: 'center', width: '95px', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
+                        STOCK QTY {renderSortIcon('stock')}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1907,7 +2094,7 @@ export default function ProductsPage() {
                     onClick={() => {
                       const nextP = currentPage - 1;
                       setCurrentPage(nextP);
-                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter });
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
                     }}
                   >
                     Previous
@@ -1918,7 +2105,7 @@ export default function ProductsPage() {
                     onClick={() => {
                       const nextP = currentPage + 1;
                       setCurrentPage(nextP);
-                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter });
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
                     }}
                   >
                     Next
