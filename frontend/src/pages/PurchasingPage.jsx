@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   ClipboardList, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
-  ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, CheckCircle2, Clock, Trash2
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  CheckCircle2, Clock, Trash2, FileText, Package, Eye
 } from 'lucide-react';
 
 export default function PurchasingPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { projects, getModuleName } = useStore();
 
   // Toast notifications
@@ -20,7 +20,7 @@ export default function PurchasingPage() {
   };
 
   // -------------------------------------------------------------
-  // PALLADIUM PROCUREMENT & ALLOCATION ENGINE STATE
+  // PALLADIUM PROCUREMENT STATE
   // -------------------------------------------------------------
   const [procurementSummary, setProcurementSummary] = useState({
     unallocated_count: 0,
@@ -31,7 +31,11 @@ export default function PurchasingPage() {
     total_unallocated_units: 0
   });
 
-  const [procurementItems, setProcurementItems] = useState([]);
+  // Selected Document for Deep Workspace View (null = show all documents list)
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [isLoadingDocumentDetails, setIsLoadingDocumentDetails] = useState(false);
+
+  const [procurementDocs, setProcurementDocs] = useState([]);
   const [isLoadingProcurement, setIsLoadingProcurement] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'PO' | 'GRN' | 'ALL'
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
@@ -57,7 +61,7 @@ export default function PurchasingPage() {
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
   // -------------------------------------------------------------
-  // FETCH PROCUREMENT DATA
+  // FETCH SUMMARY & DOCUMENTS
   // -------------------------------------------------------------
   const fetchSummary = async () => {
     try {
@@ -96,7 +100,8 @@ export default function PurchasingPage() {
         doc_type: docTypeParam,
         status: statusParam,
         page: newPage.toString(),
-        limit: newLimit.toString()
+        limit: newLimit.toString(),
+        view_level: 'document'
       });
 
       if (newSupplier && newSupplier !== 'All Suppliers') {
@@ -109,7 +114,7 @@ export default function PurchasingPage() {
       const res = await fetch(`${API_BASE}/api/procurement/documents?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setProcurementItems(data.items || []);
+        setProcurementDocs(data.items || []);
         setTotalCount(data.total_count || 0);
         setTotalPages(data.total_pages || 1);
         setPage(data.page || 1);
@@ -121,7 +126,23 @@ export default function PurchasingPage() {
     }
   };
 
-  // Helper for generating smart pagination pages (e.g. 1 ... 4 5 6 ... 48)
+  // Fetch full details of an individual document when opened
+  const fetchSingleDocumentDetails = async (docType, docNo) => {
+    setIsLoadingDocumentDetails(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/document-details?doc_type=${encodeURIComponent(docType)}&document_no=${encodeURIComponent(docNo)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedDocument(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch document details:', e);
+    } finally {
+      setIsLoadingDocumentDetails(false);
+    }
+  };
+
+  // Helper for generating smart pagination pages
   const getPaginationPages = () => {
     const pages = [];
     if (totalPages <= 7) {
@@ -160,6 +181,9 @@ export default function PurchasingPage() {
     } finally {
       await fetchSummary();
       await fetchProcurementDocuments(1);
+      if (selectedDocument) {
+        await fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      }
       setIsSyncingPalladium(false);
     }
   };
@@ -180,11 +204,11 @@ export default function PurchasingPage() {
   // Extract unique suppliers for filter
   const uniqueSuppliers = useMemo(() => {
     const set = new Set();
-    procurementItems.forEach(item => {
+    procurementDocs.forEach(item => {
       if (item.vendor_name && item.vendor_name.trim()) set.add(item.vendor_name.trim());
     });
     return Array.from(set).sort();
-  }, [procurementItems]);
+  }, [procurementDocs]);
 
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS
@@ -284,6 +308,9 @@ export default function PurchasingPage() {
         setAllocModalOpen(false);
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        }
       } else {
         alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
       }
@@ -309,6 +336,9 @@ export default function PurchasingPage() {
         triggerToast(`Released allocation: ${data.message}`);
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        }
       } else {
         alert(`Notice: ${data.detail || 'Failed to unallocate.'}`);
       }
@@ -361,11 +391,27 @@ export default function PurchasingPage() {
           </div>
           <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <ClipboardList size={22} style={{ color: '#3b82f6' }} />
-            Procurement & Order Allocation Hub
+            {selectedDocument ? (
+              <span>
+                Document Workspace: <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{selectedDocument.document_no}</span>
+              </span>
+            ) : (
+              'Procurement & Order Allocation Hub'
+            )}
           </h1>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {selectedDocument && (
+            <button
+              onClick={() => setSelectedDocument(null)}
+              className="btn btn-sm btn-ghost"
+              style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
+            >
+              <ArrowLeft size={14} /> Back to All Documents
+            </button>
+          )}
+
           <button
             onClick={handleTriggerMasterSync}
             disabled={isSyncingPalladium}
@@ -389,398 +435,675 @@ export default function PurchasingPage() {
         </div>
       </div>
 
-      {/* TOP 4 KPI CARDS */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
-        gap: '12px', 
-        marginBottom: '16px' 
-      }}>
-        {/* CARD 1: NEEDS ALLOCATION (AMBER ALERT) */}
-        <div 
-          onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-          className="card" 
-          style={{ 
-            padding: '14px 18px', 
-            borderRadius: '12px',
-            border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.25)',
-            background: activeFilterTab === 'NEEDS_ALLOCATION' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.04)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              🚨 Needs Allocation
-            </span>
-            <span style={{ background: '#f59e0b', color: '#000', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
-              ACTION
-            </span>
+      {/* TOP 4 KPI CARDS (Always visible on Document list) */}
+      {!selectedDocument && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
+          gap: '12px', 
+          marginBottom: '16px' 
+        }}>
+          {/* CARD 1: NEEDS ALLOCATION (AMBER ALERT) */}
+          <div 
+            onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.25)',
+              background: activeFilterTab === 'NEEDS_ALLOCATION' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                🚨 Needs Allocation
+              </span>
+              <span style={{ background: '#f59e0b', color: '#000', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
+                ACTION
+              </span>
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#f59e0b', marginTop: '4px', lineHeight: 1.1 }}>
+              {procurementSummary.unallocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Documents with unallocated items ({procurementSummary.total_unallocated_units.toLocaleString()} units)
+            </div>
           </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#f59e0b', marginTop: '4px', lineHeight: 1.1 }}>
-            {procurementSummary.unallocated_count.toLocaleString()}
+
+          {/* CARD 2: PARTIALLY ALLOCATED */}
+          <div 
+            onClick={() => setActiveFilterTab('PARTIAL')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'PARTIAL' ? '1.5px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.25)',
+              background: activeFilterTab === 'PARTIAL' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                ⏳ Partially Allocated
+              </span>
+              <Clock size={14} color="#3b82f6" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#3b82f6', marginTop: '4px', lineHeight: 1.1 }}>
+              {procurementSummary.partially_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Documents with split or in-progress items
+            </div>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Lines with 0% assigned to orders ({procurementSummary.total_unallocated_units.toLocaleString()} units)
+
+          {/* CARD 3: FULLY ALLOCATED */}
+          <div 
+            onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)',
+              background: activeFilterTab === 'FULLY_ALLOCATED' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                ✅ Fully Allocated
+              </span>
+              <CheckCircle2 size={14} color="#10b981" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.1 }}>
+              {procurementSummary.fully_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              100% matched to project orders
+            </div>
+          </div>
+
+          {/* CARD 4: TOTAL VOLUME */}
+          <div 
+            onClick={() => setActiveFilterTab('ALL')}
+            className="card" 
+            style={{ 
+              padding: '14px 18px', 
+              borderRadius: '12px',
+              border: activeFilterTab === 'ALL' ? '1.5px solid var(--text-tertiary)' : '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                📦 Total ERP Documents
+              </span>
+              <Box size={14} color="var(--text-tertiary)" />
+            </div>
+            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.1 }}>
+              {procurementSummary.total_documents.toLocaleString()}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Containing {procurementSummary.total_lines.toLocaleString()} total line items
+            </div>
           </div>
         </div>
+      )}
 
-        {/* CARD 2: PARTIALLY ALLOCATED */}
-        <div 
-          onClick={() => setActiveFilterTab('PARTIAL')}
-          className="card" 
-          style={{ 
-            padding: '14px 18px', 
-            borderRadius: '12px',
-            border: activeFilterTab === 'PARTIAL' ? '1.5px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.25)',
-            background: activeFilterTab === 'PARTIAL' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.04)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              ⏳ Partially Allocated
-            </span>
-            <Clock size={14} color="#3b82f6" />
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#3b82f6', marginTop: '4px', lineHeight: 1.1 }}>
-            {procurementSummary.partially_allocated_count.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Lines with split or remaining stock
-          </div>
-        </div>
-
-        {/* CARD 3: FULLY ALLOCATED */}
-        <div 
-          onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-          className="card" 
-          style={{ 
-            padding: '14px 18px', 
-            borderRadius: '12px',
-            border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)',
-            background: activeFilterTab === 'FULLY_ALLOCATED' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.04)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              ✅ Fully Allocated
-            </span>
-            <CheckCircle2 size={14} color="#10b981" />
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.1 }}>
-            {procurementSummary.fully_allocated_count.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            100% matched to project orders
-          </div>
-        </div>
-
-        {/* CARD 4: TOTAL VOLUME */}
-        <div 
-          onClick={() => setActiveFilterTab('ALL')}
-          className="card" 
-          style={{ 
-            padding: '14px 18px', 
-            borderRadius: '12px',
-            border: activeFilterTab === 'ALL' ? '1.5px solid var(--text-tertiary)' : '1px solid var(--border)',
-            background: 'var(--bg-secondary)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              📦 Total ERP Volume
-            </span>
-            <Box size={14} color="var(--text-tertiary)" />
-          </div>
-          <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.1 }}>
-            {procurementSummary.total_lines.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Across {procurementSummary.total_documents.toLocaleString()} PO & GRN documents
-          </div>
-        </div>
-      </div>
-
-      {/* FILTER TABS & SEARCH BAR */}
-      <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+      {/* ============================================================ */}
+      {/* VIEW A: INDIVIDUAL DOCUMENT WORKSPACE (Opened Document View) */}
+      {/* ============================================================ */}
+      {selectedDocument ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
-          {/* Tab Filters */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-              className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{
-                fontSize: '11.5px',
-                fontWeight: 600,
-                background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
-                color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
-                border: '1px solid rgba(245, 158, 11, 0.4)'
-              }}
-            >
-              🚨 Needs Allocation ({procurementSummary.unallocated_count})
-            </button>
-            <button
-              onClick={() => setActiveFilterTab('PARTIAL')}
-              className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11.5px', fontWeight: 600 }}
-            >
-              ⏳ Partially Allocated
-            </button>
-            <button
-              onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-              className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11.5px', fontWeight: 600 }}
-            >
-              ✅ Fully Allocated
-            </button>
-            <button
-              onClick={() => setActiveFilterTab('PO')}
-              className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11.5px', fontWeight: 600 }}
-            >
-              📄 Purchase Orders (POs)
-            </button>
-            <button
-              onClick={() => setActiveFilterTab('GRN')}
-              className={`btn btn-xs ${activeFilterTab === 'GRN' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11.5px', fontWeight: 600 }}
-            >
-              📥 Goods Received (GRNs)
-            </button>
-            <button
-              onClick={() => setActiveFilterTab('ALL')}
-              className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11.5px', fontWeight: 600 }}
-            >
-              All Items
-            </button>
+          {/* Document Header Card */}
+          <div className="card" style={{ padding: '16px 20px', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ 
+                    padding: '3px 8px', 
+                    borderRadius: '6px', 
+                    fontSize: '11px', 
+                    fontWeight: 700,
+                    background: selectedDocument.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                    color: selectedDocument.doc_type === 'PO' ? '#3b82f6' : '#10b981',
+                    border: `1px solid ${selectedDocument.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                  }}>
+                    {selectedDocument.doc_type === 'PO' ? 'Purchase Order' : 'Goods Received Note'}
+                  </span>
+                  <span style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                    {selectedDocument.document_no}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                  <div>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.vendor_name}</strong></div>
+                  <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.transaction_date ? new Date(selectedDocument.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</strong></div>
+                  {selectedDocument.customer_name && (
+                    <div>Client Ref: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong></div>
+                  )}
+                  <div>Total Value: <strong style={{ color: 'var(--text-primary)' }}>R {selectedDocument.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+              </div>
+
+              {/* Document Allocation Progress */}
+              <div style={{ textAlign: 'right', minWidth: '220px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Allocation Progress:</span>
+                  <strong style={{ color: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#10b981' : (selectedDocument.allocation_status === 'PARTIAL' ? '#3b82f6' : '#f59e0b') }}>
+                    {selectedDocument.allocated_lines_count} / {selectedDocument.total_lines} items allocated
+                  </strong>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${selectedDocument.total_lines > 0 ? (selectedDocument.allocated_lines_count / selectedDocument.total_lines) * 100 : 0}%`,
+                    background: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#10b981' : '#3b82f6',
+                    borderRadius: '4px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Search & Supplier Filter */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ position: 'relative', width: '220px' }}>
-              <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
-              <input
-                type="text"
-                placeholder="Search SKU, Doc #, Customer..."
-                className="form-control"
-                style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
-                >
-                  ✕
-                </button>
-              )}
+          {/* Document Line Items Table */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                Allocate each item to its destination project order below
+              </span>
             </div>
 
-            <select
-              className="form-control"
-              style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
-              value={supplierFilter}
-              onChange={(e) => setSupplierFilter(e.target.value)}
-            >
-              <option value="All Suppliers">All Suppliers</option>
-              {uniqueSuppliers.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <div style={{ overflowX: 'auto', flex: 1 }}>
+              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ width: '30px' }}></th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item Code / Description</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>Unit Cost</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Ordered Qty</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Allocated</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Unallocated</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Status</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedDocument.lines || []).map((line) => {
+                    const isExpanded = expandedLineId === line.id;
+                    const hasAllocations = line.allocations && line.allocations.length > 0;
+
+                    return (
+                      <React.Fragment key={line.id}>
+                        <tr style={{ 
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
+                          background: isExpanded ? 'rgba(59, 130, 246, 0.03)' : 'transparent',
+                          transition: 'background 0.15s ease'
+                        }}>
+                          <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                            {hasAllocations && (
+                              <button
+                                onClick={() => setExpandedLineId(isExpanded ? null : line.id)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
+                                title="View allocated projects & orders"
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            )}
+                          </td>
+
+                          {/* Item Code & Description */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '12px' }}>
+                              {line.item_code}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              {line.item_description || 'No description'}
+                            </div>
+                          </td>
+
+                          {/* Unit Cost */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>
+                            R {line.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) || '0.00'}
+                          </td>
+
+                          {/* Ordered Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>
+                            {line.total_qty} <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{line.item_unit}</span>
+                          </td>
+
+                          {/* Allocated Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 700, color: line.allocated_qty > 0 ? '#10b981' : 'var(--text-secondary)' }}>
+                            {line.allocated_qty}
+                          </td>
+
+                          {/* Unallocated Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 700, color: line.unallocated_qty > 0 ? '#f59e0b' : '#10b981' }}>
+                            {line.unallocated_qty}
+                          </td>
+
+                          {/* Allocation Status Badge */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {line.allocation_status === 'NEEDS_ALLOCATION' && (
+                              <span style={{ 
+                                background: 'rgba(245, 158, 11, 0.12)', 
+                                color: '#f59e0b', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <AlertTriangle size={10} /> Needs Allocation
+                              </span>
+                            )}
+                            {line.allocation_status === 'PARTIAL' && (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.12)', 
+                                color: '#3b82f6', 
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700 
+                              }}>
+                                ⏳ Partial ({line.allocated_qty}/{line.total_qty})
+                              </span>
+                            )}
+                            {line.allocation_status === 'FULLY_ALLOCATED' && (
+                              <span style={{ 
+                                background: 'rgba(16, 185, 129, 0.12)', 
+                                color: '#10b981', 
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <Check size={10} /> Fully Allocated
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Action Button */}
+                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {line.unallocated_qty > 0 ? (
+                              <button
+                                onClick={() => handleOpenAllocModal(line)}
+                                className="btn btn-xs"
+                                style={{
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  padding: '5px 12px',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                              >
+                                <Sparkles size={11} /> Allocate to Order
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setExpandedLineId(isExpanded ? null : line.id)}
+                                className="btn btn-xs btn-ghost"
+                                style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                              >
+                                View Allocations ({line.allocations?.length || 0})
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* EXPANDED ALLOCATION BREAKDOWN */}
+                        {isExpanded && hasAllocations && (
+                          <tr style={{ background: 'rgba(59, 130, 246, 0.02)', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={8} style={{ padding: '10px 20px 14px 44px' }}>
+                              <div style={{ 
+                                background: 'var(--bg-primary)', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '8px', 
+                                padding: '10px 14px' 
+                              }}>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Layers size={12} color="#3b82f6" />
+                                  Active Allocations for {line.item_code}:
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {line.allocations.map((alloc) => (
+                                    <div 
+                                      key={alloc.id} 
+                                      style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center', 
+                                        background: 'var(--bg-secondary)', 
+                                        padding: '6px 12px', 
+                                        borderRadius: '6px',
+                                        fontSize: '11px' 
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span style={{ fontWeight: 700, color: '#3b82f6' }}>
+                                          {alloc.allocated_qty} {line.item_unit}
+                                        </span>
+                                        <span>→</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                          {alloc.project_name || `Project #${alloc.project_id}`}
+                                        </span>
+                                        {alloc.order_id && (
+                                          <span style={{ color: 'var(--text-secondary)' }}>
+                                            (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
+                                          </span>
+                                        )}
+                                        {alloc.notes && (
+                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                            "{alloc.notes}"
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                          Allocated by {alloc.allocated_by_name || 'Staff'} {alloc.allocated_at ? `on ${new Date(alloc.allocated_at).toLocaleDateString('en-ZA')}` : ''}
+                                        </span>
+                                        <button
+                                          onClick={() => handleUnallocate(alloc.id, selectedDocument.document_no)}
+                                          className="btn btn-xs"
+                                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', fontSize: '10px' }}
+                                          title="Release allocation back to unallocated pool"
+                                        >
+                                          <Trash2 size={10} style={{ marginRight: '3px' }} /> Unallocate
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ============================================================ */
+        /* VIEW B: PRIMARY DOCUMENT LIST (One row per PO / GRN Document)*/
+        /* ============================================================ */
+        <>
+          {/* FILTER TABS & SEARCH BAR */}
+          <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              
+              {/* Tab Filters */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
+                  className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
+                    color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)'
+                  }}
+                >
+                  🚨 Needs Allocation ({procurementSummary.unallocated_count})
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('PARTIAL')}
+                  className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  ⏳ Partially Allocated ({procurementSummary.partially_allocated_count})
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
+                  className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  ✅ Fully Allocated ({procurementSummary.fully_allocated_count})
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('PO')}
+                  className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  📄 Purchase Orders (POs)
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('GRN')}
+                  className={`btn btn-xs ${activeFilterTab === 'GRN' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  📥 Goods Received (GRNs)
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('ALL')}
+                  className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '11.5px', fontWeight: 600 }}
+                >
+                  All Documents
+                </button>
+              </div>
+
+              {/* Search & Supplier Filter */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '240px' }}>
+                  <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search Doc #, Supplier, SKU..."
+                    className="form-control"
+                    style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  className="form-control"
+                  style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                  value={supplierFilter}
+                  onChange={(e) => setSupplierFilter(e.target.value)}
+                >
+                  <option value="All Suppliers">All Suppliers</option>
+                  {uniqueSuppliers.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+            </div>
           </div>
 
-        </div>
-      </div>
-
-      {/* PROCUREMENT DATA TABLE */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ overflowX: 'auto', flex: 1 }}>
-          <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ width: '30px' }}></th>
-                <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Document #</th>
-                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Type</th>
-                <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600 }}>Date</th>
-                <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Supplier</th>
-                <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item Code / Description</th>
-                <th style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600 }}>Unit Cost</th>
-                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600 }}>Total Qty</th>
-                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600 }}>Allocated</th>
-                <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600 }}>Unallocated</th>
-                <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Allocation Status</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoadingProcurement ? (
-                <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                    <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
-                    Loading live procurement records...
-                  </td>
-                </tr>
-              ) : procurementItems.length === 0 ? (
-                <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                    <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
-                    <div style={{ fontWeight: 600, fontSize: '13px' }}>No procurement items found</div>
-                    <div style={{ fontSize: '11px', marginTop: '4px' }}>All items in this view may already be fully allocated or match no search query.</div>
-                  </td>
-                </tr>
-              ) : (
-                procurementItems.map((item) => {
-                  const isExpanded = expandedLineId === item.id;
-                  const hasAllocations = item.allocations && item.allocations.length > 0;
-
-                  return (
-                    <React.Fragment key={item.id}>
-                      <tr style={{ 
-                        borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
-                        background: isExpanded ? 'rgba(59, 130, 246, 0.03)' : 'transparent',
-                        transition: 'background 0.15s ease'
-                      }}>
-                        {/* Expand/Collapse Chevron */}
-                        <td style={{ textAlign: 'center', padding: '8px 4px' }}>
-                          {hasAllocations && (
-                            <button
-                              onClick={() => setExpandedLineId(isExpanded ? null : item.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
-                              title="View allocated projects & orders"
-                            >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                          )}
-                        </td>
-
-                        {/* Document # */}
-                        <td style={{ padding: '8px 12px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
-                          {item.document_no}
-                          {item.customer_name && (
-                            <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', fontWeight: 400 }}>
-                              Ref: {item.customer_name}
+          {/* DOCUMENTS LIST TABLE */}
+          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ overflowX: 'auto', flex: 1 }}>
+              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>Document #</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Type</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600 }}>Date</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Supplier</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Items / Qty</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Total Value</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Allocation Status</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingProcurement ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
+                        Loading live ERP documents...
+                      </td>
+                    </tr>
+                  ) : procurementDocs.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
+                        <div style={{ fontWeight: 600, fontSize: '13px' }}>No documents found</div>
+                        <div style={{ fontSize: '11px', marginTop: '4px' }}>All documents in this view may already be fully allocated or match no search query.</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    procurementDocs.map((doc) => {
+                      return (
+                        <tr 
+                          key={doc.id}
+                          onClick={() => setSelectedDocument(doc)}
+                          style={{ 
+                            borderBottom: '1px solid var(--border)',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease'
+                          }}
+                          className="hover-row"
+                        >
+                          {/* Document # & Client Ref */}
+                          <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FileText size={14} color="#3b82f6" />
+                              <span style={{ fontSize: '12.5px' }}>{doc.document_no}</span>
                             </div>
-                          )}
-                        </td>
+                            {doc.customer_name && (
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400, marginTop: '2px' }}>
+                                Ref: {doc.customer_name}
+                              </div>
+                            )}
+                          </td>
 
-                        {/* Doc Type Badge */}
-                        <td style={{ padding: '8px 8px' }}>
-                          <span style={{ 
-                            padding: '2px 6px', 
-                            borderRadius: '4px', 
-                            fontSize: '10px', 
-                            fontWeight: 700,
-                            background: item.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                            color: item.doc_type === 'PO' ? '#3b82f6' : '#10b981',
-                            border: `1px solid ${item.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
-                          }}>
-                            {item.doc_type}
-                          </span>
-                        </td>
-
-                        {/* Date */}
-                        <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          {item.transaction_date ? new Date(item.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
-                        </td>
-
-                        {/* Supplier */}
-                        <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {item.vendor_name}
-                        </td>
-
-                        {/* SKU & Description */}
-                        <td style={{ padding: '8px 12px', maxWidth: '300px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                            {item.item_code}
-                          </div>
-                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {item.item_description || 'No description'}
-                          </div>
-                        </td>
-
-                        {/* Unit Cost */}
-                        <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          R {item.unit_cost ? item.unit_cost.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                        </td>
-
-                        {/* Total Qty */}
-                        <td style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>
-                          {item.total_qty} <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{item.item_unit}</span>
-                        </td>
-
-                        {/* Allocated Qty */}
-                        <td style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, color: item.allocated_qty > 0 ? '#10b981' : 'var(--text-secondary)' }}>
-                          {item.allocated_qty}
-                        </td>
-
-                        {/* Remaining Unallocated Qty */}
-                        <td style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, color: item.unallocated_qty > 0 ? '#f59e0b' : '#10b981' }}>
-                          {item.unallocated_qty}
-                        </td>
-
-                        {/* Allocation Status Badge */}
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          {item.allocation_status === 'NEEDS_ALLOCATION' && (
+                          {/* Type Badge */}
+                          <td style={{ padding: '10px 8px' }}>
                             <span style={{ 
-                              background: 'rgba(245, 158, 11, 0.12)', 
-                              color: '#f59e0b', 
-                              border: '1px solid rgba(245, 158, 11, 0.3)',
-                              padding: '2px 8px', 
-                              borderRadius: '12px', 
+                              padding: '2px 6px', 
+                              borderRadius: '4px', 
                               fontSize: '10px', 
                               fontWeight: 700,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
+                              background: doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                              color: doc.doc_type === 'PO' ? '#3b82f6' : '#10b981',
+                              border: `1px solid ${doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
                             }}>
-                              <AlertTriangle size={10} /> Needs Allocation
+                              {doc.doc_type}
                             </span>
-                          )}
-                          {item.allocation_status === 'PARTIAL' && (
-                            <span style={{ 
-                              background: 'rgba(59, 130, 246, 0.12)', 
-                              color: '#3b82f6', 
-                              border: '1px solid rgba(59, 130, 246, 0.3)',
-                              padding: '2px 8px', 
-                              borderRadius: '12px', 
-                              fontSize: '10px', 
-                              fontWeight: 700 
-                            }}>
-                              ⏳ Partial ({item.allocated_qty}/{item.total_qty})
-                            </span>
-                          )}
-                          {item.allocation_status === 'FULLY_ALLOCATED' && (
-                            <span style={{ 
-                              background: 'rgba(16, 185, 129, 0.12)', 
-                              color: '#10b981', 
-                              border: '1px solid rgba(16, 185, 129, 0.3)',
-                              padding: '2px 8px', 
-                              borderRadius: '12px', 
-                              fontSize: '10px', 
-                              fontWeight: 700,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}>
-                              <Check size={10} /> Fully Allocated
-                            </span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Action Button */}
-                        <td style={{ padding: '8px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {item.unallocated_qty > 0 ? (
+                          {/* Date */}
+                          <td style={{ padding: '10px 10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                            {doc.transaction_date ? new Date(doc.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                          </td>
+
+                          {/* Supplier */}
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {doc.vendor_name}
+                          </td>
+
+                          {/* Total Lines & Qty */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {doc.total_lines} {doc.total_lines === 1 ? 'item' : 'items'}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                              {doc.total_qty} total units
+                            </div>
+                          </td>
+
+                          {/* Total Value */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            R {doc.total_value ? doc.total_value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                          </td>
+
+                          {/* Allocation Status Badge */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {doc.allocation_status === 'NEEDS_ALLOCATION' && (
+                              <span style={{ 
+                                background: 'rgba(245, 158, 11, 0.12)', 
+                                color: '#f59e0b', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <AlertTriangle size={10} /> Needs Allocation ({doc.unallocated_lines_count} items)
+                              </span>
+                            )}
+                            {doc.allocation_status === 'PARTIAL' && (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.12)', 
+                                color: '#3b82f6', 
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700 
+                              }}>
+                                ⏳ Partial ({doc.allocated_lines_count}/{doc.total_lines} allocated)
+                              </span>
+                            )}
+                            {doc.allocation_status === 'FULLY_ALLOCATED' && (
+                              <span style={{ 
+                                background: 'rgba(16, 185, 129, 0.12)', 
+                                color: '#10b981', 
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <Check size={10} /> 100% Allocated
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Action Button */}
+                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                             <button
-                              onClick={() => handleOpenAllocModal(item)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDocument(doc);
+                              }}
                               className="btn btn-xs"
                               style={{
                                 background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
@@ -796,264 +1119,181 @@ export default function PurchasingPage() {
                                 boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
                               }}
                             >
-                              <Sparkles size={11} /> Allocate
+                              <Sparkles size={11} /> Open & Allocate
                             </button>
-                          ) : (
-                            <button
-                              onClick={() => setExpandedLineId(isExpanded ? null : item.id)}
-                              className="btn btn-xs btn-ghost"
-                              style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}
-                            >
-                              View ({item.allocations?.length || 0})
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-
-                      {/* EXPANDED ALLOCATION BREAKDOWN */}
-                      {isExpanded && hasAllocations && (
-                        <tr style={{ background: 'rgba(59, 130, 246, 0.02)', borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={12} style={{ padding: '10px 20px 14px 44px' }}>
-                            <div style={{ 
-                              background: 'var(--bg-primary)', 
-                              border: '1px solid var(--border)', 
-                              borderRadius: '8px', 
-                              padding: '10px 14px' 
-                            }}>
-                              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Layers size={12} color="#3b82f6" />
-                                Active Order Allocations for {item.document_no} ({item.item_code}):
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {item.allocations.map((alloc) => (
-                                  <div 
-                                    key={alloc.id} 
-                                    style={{ 
-                                      display: 'flex', 
-                                      justifyContent: 'space-between', 
-                                      alignItems: 'center', 
-                                      background: 'var(--bg-secondary)', 
-                                      padding: '6px 12px', 
-                                      borderRadius: '6px',
-                                      fontSize: '11px' 
-                                    }}
-                                  >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                      <span style={{ fontWeight: 700, color: '#3b82f6' }}>
-                                        {alloc.allocated_qty} {item.item_unit}
-                                      </span>
-                                      <span>→</span>
-                                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                        {alloc.project_name || `Project #${alloc.project_id}`}
-                                      </span>
-                                      {alloc.order_id && (
-                                        <span style={{ color: 'var(--text-secondary)' }}>
-                                          (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
-                                        </span>
-                                      )}
-                                      {alloc.notes && (
-                                            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                                          "{alloc.notes}"
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                        Allocated by {alloc.allocated_by_name || 'Staff'} {alloc.allocated_at ? `on ${new Date(alloc.allocated_at).toLocaleDateString('en-ZA')}` : ''}
-                                      </span>
-                                      <button
-                                        onClick={() => handleUnallocate(alloc.id, item.document_no)}
-                                        className="btn btn-xs"
-                                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', fontSize: '10px' }}
-                                        title="Release allocation back to unallocated pool"
-                                      >
-                                        <Trash2 size={10} style={{ marginRight: '3px' }} /> Unallocate
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* PAGINATION FOOTER */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          padding: '12px 18px', 
-          borderTop: '1px solid var(--border)',
-          background: 'var(--bg-secondary)',
-          fontSize: '12px',
-          color: 'var(--text-secondary)',
-          flexWrap: 'wrap',
-          gap: '12px'
-        }}>
-          {/* Left Side: Summary & Rows Per Page Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <div>
-              Showing <strong style={{ color: 'var(--text-primary)' }}>{totalCount === 0 ? 0 : (page - 1) * limit + 1}</strong> - <strong style={{ color: 'var(--text-primary)' }}>{Math.min(page * limit, totalCount)}</strong> of <strong style={{ color: 'var(--text-primary)' }}>{totalCount.toLocaleString()}</strong> lines
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Rows per page:</label>
-              <select
-                className="form-control"
-                style={{ height: '28px', fontSize: '11.5px', padding: '2px 8px', width: '80px', fontWeight: 700 }}
-                value={limit}
-                onChange={(e) => {
-                  const newLim = Number(e.target.value);
-                  setLimit(newLim);
-                  setPage(1);
-                  fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, newLim);
-                }}
-              >
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={250}>250</option>
-                <option value={500}>500</option>
-              </select>
-            </div>
-          </div>
+            {/* PAGINATION FOOTER */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '12px 18px', 
+              borderTop: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              {/* Left Side: Summary & Rows Per Page Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div>
+                  Showing <strong style={{ color: 'var(--text-primary)' }}>{totalCount === 0 ? 0 : (page - 1) * limit + 1}</strong> - <strong style={{ color: 'var(--text-primary)' }}>{Math.min(page * limit, totalCount)}</strong> of <strong style={{ color: 'var(--text-primary)' }}>{totalCount.toLocaleString()}</strong> documents
+                </div>
 
-          {/* Right Side: Fast Page Navigation, Pills, and Jump Input */}
-          <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* First Page button */}
-            <button
-              onClick={() => {
-                setPage(1);
-                fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, limit);
-              }}
-              disabled={page <= 1}
-              className="btn btn-xs btn-ghost"
-              style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-              title="Jump to First Page"
-            >
-              ⏮ First
-            </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Rows per page:</label>
+                  <select
+                    className="form-control"
+                    style={{ height: '28px', fontSize: '11.5px', padding: '2px 8px', width: '80px', fontWeight: 700 }}
+                    value={limit}
+                    onChange={(e) => {
+                      const newLim = Number(e.target.value);
+                      setLimit(newLim);
+                      setPage(1);
+                      fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, newLim);
+                    }}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={500}>500</option>
+                  </select>
+                </div>
+              </div>
 
-            {/* Previous Page button */}
-            <button
-              onClick={() => {
-                const prev = Math.max(1, page - 1);
-                setPage(prev);
-                fetchProcurementDocuments(prev, activeFilterTab, supplierFilter, searchQuery, limit);
-              }}
-              disabled={page <= 1}
-              className="btn btn-xs btn-ghost"
-              style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-            >
-              ◀ Prev
-            </button>
-
-            {/* Numbered Page Pills */}
-            {getPaginationPages().map((p, idx) => {
-              if (p === '...') {
-                return (
-                  <span key={`dots-${idx}`} style={{ padding: '0 4px', color: 'var(--text-tertiary)', fontSize: '11px' }}>
-                    •••
-                  </span>
-                );
-              }
-              const isCur = page === p;
-              return (
+              {/* Right Side: Fast Page Navigation, Pills, and Jump Input */}
+              <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
-                  key={p}
                   onClick={() => {
-                    setPage(p);
-                    fetchProcurementDocuments(p, activeFilterTab, supplierFilter, searchQuery, limit);
+                    setPage(1);
+                    fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, limit);
                   }}
-                  className={`btn btn-xs ${isCur ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{
-                    minWidth: '28px',
-                    height: '28px',
-                    padding: '0 6px',
-                    fontSize: '11px',
-                    fontWeight: isCur ? 700 : 500,
-                    border: isCur ? 'none' : '1px solid var(--border)',
-                    background: isCur ? '#3b82f6' : 'transparent',
-                    color: isCur ? '#fff' : 'var(--text-primary)'
-                  }}
+                  disabled={page <= 1}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to First Page"
                 >
-                  {p}
+                  ⏮ First
                 </button>
-              );
-            })}
 
-            {/* Next Page button */}
-            <button
-              onClick={() => {
-                const next = Math.min(totalPages, page + 1);
-                setPage(next);
-                fetchProcurementDocuments(next, activeFilterTab, supplierFilter, searchQuery, limit);
-              }}
-              disabled={page >= totalPages}
-              className="btn btn-xs btn-ghost"
-              style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-            >
-              Next ▶
-            </button>
+                <button
+                  onClick={() => {
+                    const prev = Math.max(1, page - 1);
+                    setPage(prev);
+                    fetchProcurementDocuments(prev, activeFilterTab, supplierFilter, searchQuery, limit);
+                  }}
+                  disabled={page <= 1}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                >
+                  ◀ Prev
+                </button>
 
-            {/* Last Page button */}
-            <button
-              onClick={() => {
-                setPage(totalPages);
-                fetchProcurementDocuments(totalPages, activeFilterTab, supplierFilter, searchQuery, limit);
-              }}
-              disabled={page >= totalPages}
-              className="btn btn-xs btn-ghost"
-              style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-              title="Jump to Last Page"
-            >
-              Last ⏭
-            </button>
+                {getPaginationPages().map((p, idx) => {
+                  if (p === '...') {
+                    return (
+                      <span key={`dots-${idx}`} style={{ padding: '0 4px', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                        •••
+                      </span>
+                    );
+                  }
+                  const isCur = page === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setPage(p);
+                        fetchProcurementDocuments(p, activeFilterTab, supplierFilter, searchQuery, limit);
+                      }}
+                      className={`btn btn-xs ${isCur ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{
+                        minWidth: '28px',
+                        height: '28px',
+                        padding: '0 6px',
+                        fontSize: '11px',
+                        fontWeight: isCur ? 700 : 500,
+                        border: isCur ? 'none' : '1px solid var(--border)',
+                        background: isCur ? '#3b82f6' : 'transparent',
+                        color: isCur ? '#fff' : 'var(--text-primary)'
+                      }}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
 
-            {/* Jump to Page Input */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const targetPage = Number(jumpPageInput);
-                if (targetPage >= 1 && targetPage <= totalPages) {
-                  setPage(targetPage);
-                  fetchProcurementDocuments(targetPage, activeFilterTab, supplierFilter, searchQuery, limit);
-                  setJumpPageInput('');
-                }
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}
-            >
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Go to:</span>
-              <input
-                type="number"
-                min="1"
-                max={totalPages}
-                placeholder={page}
-                className="form-control"
-                style={{ width: '50px', height: '28px', fontSize: '11px', padding: '2px 4px', textAlign: 'center', fontWeight: 600 }}
-                value={jumpPageInput}
-                onChange={(e) => setJumpPageInput(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="btn btn-xs btn-ghost"
-                style={{ border: '1px solid var(--border)', height: '28px', fontSize: '10.5px', padding: '2px 8px', fontWeight: 700 }}
-              >
-                Go
-              </button>
-            </form>
+                <button
+                  onClick={() => {
+                    const next = Math.min(totalPages, page + 1);
+                    setPage(next);
+                    fetchProcurementDocuments(next, activeFilterTab, supplierFilter, searchQuery, limit);
+                  }}
+                  disabled={page >= totalPages}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                >
+                  Next ▶
+                </button>
+
+                <button
+                  onClick={() => {
+                    setPage(totalPages);
+                    fetchProcurementDocuments(totalPages, activeFilterTab, supplierFilter, searchQuery, limit);
+                  }}
+                  disabled={page >= totalPages}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to Last Page"
+                >
+                  Last ⏭
+                </button>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const targetPage = Number(jumpPageInput);
+                    if (targetPage >= 1 && targetPage <= totalPages) {
+                      setPage(targetPage);
+                      fetchProcurementDocuments(targetPage, activeFilterTab, supplierFilter, searchQuery, limit);
+                      setJumpPageInput('');
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}
+                >
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Go to:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    placeholder={page}
+                    className="form-control"
+                    style={{ width: '50px', height: '28px', fontSize: '11px', padding: '2px 4px', textAlign: 'center', fontWeight: 600 }}
+                    value={jumpPageInput}
+                    onChange={(e) => setJumpPageInput(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid var(--border)', height: '28px', fontSize: '10.5px', padding: '2px 8px', fontWeight: 700 }}
+                  >
+                    Go
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* ============================================================ */}
       {/* INTERACTIVE ALLOCATION MODAL                                 */}

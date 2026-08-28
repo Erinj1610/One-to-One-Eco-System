@@ -27,12 +27,8 @@ public_router = APIRouter(prefix="/procurement", tags=["procurement"])
 @router.get("/summary")
 def get_procurement_summary(db: Session = Depends(get_db)):
     """
-    Returns aggregated KPI counts for the Purchasing & Receiving module:
-      - unallocated_lines: Count of PO/GRN lines with 0% allocated
-      - partially_allocated_lines: Count of lines with 1%-99% allocated
-      - fully_allocated_lines: Count of lines with 100% allocated
-      - total_documents: Total distinct PO + GRN documents
-      - total_unallocated_units: Total unit quantity remaining to be allocated
+    Returns aggregated KPI counts for the Purchasing & Receiving module.
+    Counts document-level & line-level metrics.
     """
     try:
         # 1. Fetch all active allocations mapped by source_doc_no + sku
@@ -67,50 +63,62 @@ def get_procurement_summary(db: Session = Depends(get_db)):
             PalladiumGRNLine.received_qty
         ).all()
 
-        unallocated_count = 0
-        partially_allocated_count = 0
-        fully_allocated_count = 0
-        total_unallocated_units = 0.0
-
-        distinct_docs = set()
+        # Group lines per document to count document-level status
+        doc_stats = {}
 
         for po in po_lines:
-            distinct_docs.add(po.document_no)
+            dkey = f"PO_{po.document_no}"
+            if dkey not in doc_stats:
+                doc_stats[dkey] = {"total_lines": 0, "alloc_lines": 0, "unalloc_lines": 0, "unalloc_units": 0.0}
+            doc_stats[dkey]["total_lines"] += 1
+
             key = f"PO_{po.document_no}_{po.item_code}"
             allocated = alloc_map.get(key, 0.0)
             target_qty = float(po.order_qty or 0.0)
             rem = max(0.0, target_qty - allocated)
+            doc_stats[dkey]["unalloc_units"] += rem
 
             if allocated <= 0:
-                unallocated_count += 1
-                total_unallocated_units += rem
-            elif allocated < target_qty:
-                partially_allocated_count += 1
-                total_unallocated_units += rem
-            else:
-                fully_allocated_count += 1
+                doc_stats[dkey]["unalloc_lines"] += 1
+            elif allocated >= target_qty:
+                doc_stats[dkey]["alloc_lines"] += 1
 
         for grn in grn_lines:
-            distinct_docs.add(grn.document_no)
+            dkey = f"GRN_{grn.document_no}"
+            if dkey not in doc_stats:
+                doc_stats[dkey] = {"total_lines": 0, "alloc_lines": 0, "unalloc_lines": 0, "unalloc_units": 0.0}
+            doc_stats[dkey]["total_lines"] += 1
+
             key = f"GRN_{grn.document_no}_{grn.item_code}"
             allocated = alloc_map.get(key, 0.0)
             target_qty = float(grn.received_qty or 0.0)
             rem = max(0.0, target_qty - allocated)
+            doc_stats[dkey]["unalloc_units"] += rem
 
             if allocated <= 0:
-                unallocated_count += 1
-                total_unallocated_units += rem
-            elif allocated < target_qty:
-                partially_allocated_count += 1
-                total_unallocated_units += rem
+                doc_stats[dkey]["unalloc_lines"] += 1
+            elif allocated >= target_qty:
+                doc_stats[dkey]["alloc_lines"] += 1
+
+        unallocated_docs = 0
+        partially_allocated_docs = 0
+        fully_allocated_docs = 0
+        total_unallocated_units = 0.0
+
+        for dkey, s in doc_stats.items():
+            total_unallocated_units += s["unalloc_units"]
+            if s["alloc_lines"] == s["total_lines"]:
+                fully_allocated_docs += 1
+            elif s["unalloc_lines"] == s["total_lines"]:
+                unallocated_docs += 1
             else:
-                fully_allocated_count += 1
+                partially_allocated_docs += 1
 
         return {
-            "unallocated_count": unallocated_count,
-            "partially_allocated_count": partially_allocated_count,
-            "fully_allocated_count": fully_allocated_count,
-            "total_documents": len(distinct_docs),
+            "unallocated_count": unallocated_docs,
+            "partially_allocated_count": partially_allocated_docs,
+            "fully_allocated_count": fully_allocated_docs,
+            "total_documents": len(doc_stats),
             "total_lines": len(po_lines) + len(grn_lines),
             "total_unallocated_units": round(total_unallocated_units, 2)
         }
@@ -126,13 +134,14 @@ def get_procurement_documents(
     status: str = "ALL",
     supplier: Optional[str] = None,
     q: Optional[str] = None,
+    view_level: str = "document",  # "document" or "line"
     page: int = 1,
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
     """
-    Returns list of PO and GRN lines merged with real-time allocation state,
-    supporting fast filtering by allocation status (NEEDS_ALLOCATION), supplier, search, and type.
+    Returns list of PO and GRN Documents (or raw lines) merged with real-time allocation state.
+    In 'document' mode, each record is an entire Purchase Order or GRN containing all its line items.
     """
     try:
         # Load active allocations
@@ -157,9 +166,8 @@ def get_procurement_documents(
                 "notes": ar.notes
             })
 
-        items = []
-
-        # 1. Fetch PO lines if applicable
+        # 1. Fetch PO lines
+        po_rows = []
         if doc_type.upper() in ["ALL", "PO"]:
             po_query = db.query(PalladiumPOLine)
             if supplier and supplier != "All Suppliers":
@@ -175,52 +183,10 @@ def get_procurement_documents(
                         PalladiumPOLine.customer_name.ilike(search_term)
                     )
                 )
-            
             po_rows = po_query.order_by(desc(PalladiumPOLine.transaction_date)).all()
-            for r in po_rows:
-                key = f"PO_{r.document_no}_{r.item_code}"
-                active_allocs = alloc_map.get(key, [])
-                total_allocated = sum(a["allocated_qty"] for a in active_allocs)
-                target_qty = float(r.order_qty or 0.0)
-                rem_qty = max(0.0, target_qty - total_allocated)
 
-                if total_allocated <= 0:
-                    alloc_status = "NEEDS_ALLOCATION"
-                elif total_allocated < target_qty:
-                    alloc_status = "PARTIAL"
-                else:
-                    alloc_status = "FULLY_ALLOCATED"
-
-                # Filter check
-                if status != "ALL" and alloc_status != status.upper():
-                    continue
-
-                items.append({
-                    "id": f"PO_{r.id}",
-                    "line_id": r.id,
-                    "doc_type": "PO",
-                    "document_no": r.document_no,
-                    "vendor_name": r.vendor_name or "Unknown Supplier",
-                    "item_code": r.item_code,
-                    "item_description": r.item_description or "",
-                    "item_unit": r.item_unit or "EA",
-                    "total_qty": target_qty,
-                    "open_qty": float(r.open_qty or 0.0),
-                    "shipped_qty": float(r.shipped_qty or 0.0),
-                    "unit_cost": float(r.unit_cost or 0.0),
-                    "total_value": float(r.total_value_excl or 0.0),
-                    "currency_code": r.currency_code or "ZAR",
-                    "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
-                    "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
-                    "erp_status": r.status or "Open",
-                    "customer_name": r.customer_name,
-                    "allocated_qty": round(total_allocated, 2),
-                    "unallocated_qty": round(rem_qty, 2),
-                    "allocation_status": alloc_status,
-                    "allocations": active_allocs
-                })
-
-        # 2. Fetch GRN lines if applicable
+        # 2. Fetch GRN lines
+        grn_rows = []
         if doc_type.upper() in ["ALL", "GRN"]:
             grn_query = db.query(PalladiumGRNLine)
             if supplier and supplier != "All Suppliers":
@@ -236,26 +202,50 @@ def get_procurement_documents(
                         PalladiumGRNLine.location.ilike(search_term)
                     )
                 )
-            
             grn_rows = grn_query.order_by(desc(PalladiumGRNLine.transaction_date)).all()
+
+        # If line view requested:
+        if view_level == "line":
+            raw_lines = []
+            for r in po_rows:
+                key = f"PO_{r.document_no}_{r.item_code}"
+                active_allocs = alloc_map.get(key, [])
+                total_allocated = sum(a["allocated_qty"] for a in active_allocs)
+                target_qty = float(r.order_qty or 0.0)
+                rem_qty = max(0.0, target_qty - total_allocated)
+                l_status = "NEEDS_ALLOCATION" if total_allocated <= 0 else ("PARTIAL" if total_allocated < target_qty else "FULLY_ALLOCATED")
+                if status != "ALL" and l_status != status.upper():
+                    continue
+                raw_lines.append({
+                    "id": f"PO_{r.id}",
+                    "line_id": r.id,
+                    "doc_type": "PO",
+                    "document_no": r.document_no,
+                    "vendor_name": r.vendor_name or "Unknown Supplier",
+                    "item_code": r.item_code,
+                    "item_description": r.item_description or "",
+                    "item_unit": r.item_unit or "EA",
+                    "total_qty": target_qty,
+                    "unit_cost": float(r.unit_cost or 0.0),
+                    "total_value": float(r.total_value_excl or 0.0),
+                    "currency_code": r.currency_code or "ZAR",
+                    "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                    "allocated_qty": round(total_allocated, 2),
+                    "unallocated_qty": round(rem_qty, 2),
+                    "allocation_status": l_status,
+                    "allocations": active_allocs
+                })
+
             for r in grn_rows:
                 key = f"GRN_{r.document_no}_{r.item_code}"
                 active_allocs = alloc_map.get(key, [])
                 total_allocated = sum(a["allocated_qty"] for a in active_allocs)
                 target_qty = float(r.received_qty or 0.0)
                 rem_qty = max(0.0, target_qty - total_allocated)
-
-                if total_allocated <= 0:
-                    alloc_status = "NEEDS_ALLOCATION"
-                elif total_allocated < target_qty:
-                    alloc_status = "PARTIAL"
-                else:
-                    alloc_status = "FULLY_ALLOCATED"
-
-                if status != "ALL" and alloc_status != status.upper():
+                l_status = "NEEDS_ALLOCATION" if total_allocated <= 0 else ("PARTIAL" if total_allocated < target_qty else "FULLY_ALLOCATED")
+                if status != "ALL" and l_status != status.upper():
                     continue
-
-                items.append({
+                raw_lines.append({
                     "id": f"GRN_{r.id}",
                     "line_id": r.id,
                     "doc_type": "GRN",
@@ -265,24 +255,199 @@ def get_procurement_documents(
                     "item_description": r.item_description or "",
                     "item_unit": r.item_unit or "EA",
                     "total_qty": target_qty,
-                    "open_qty": 0.0,
-                    "shipped_qty": target_qty,
                     "unit_cost": float(r.unit_cost or 0.0),
                     "total_value": float(r.line_total_excl or 0.0),
                     "currency_code": r.currency_code or "ZAR",
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
-                    "order_required_date": None,
-                    "erp_status": "Received",
-                    "customer_name": None,
-                    "location": r.location,
                     "allocated_qty": round(total_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
-                    "allocation_status": alloc_status,
+                    "allocation_status": l_status,
                     "allocations": active_allocs
                 })
 
-        # Sort items: Needs Allocation first, then most recent date
-        items.sort(
+            total_count = len(raw_lines)
+            start_idx = (page - 1) * limit
+            return {
+                "items": raw_lines[start_idx:start_idx + limit],
+                "total_count": total_count,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1
+            }
+
+        # Otherwise DOCUMENT-LEVEL GROUPING (Standard Primary View):
+        doc_dict = {}
+
+        # Process PO Lines into Documents
+        for r in po_rows:
+            dkey = f"PO_{r.document_no}"
+            if dkey not in doc_dict:
+                doc_dict[dkey] = {
+                    "id": dkey,
+                    "doc_type": "PO",
+                    "document_no": r.document_no,
+                    "vendor_name": r.vendor_name or "Unknown Supplier",
+                    "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                    "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
+                    "erp_status": r.status or "Open",
+                    "customer_name": r.customer_name,
+                    "total_lines": 0,
+                    "total_qty": 0.0,
+                    "allocated_qty": 0.0,
+                    "unallocated_qty": 0.0,
+                    "total_value": 0.0,
+                    "currency_code": r.currency_code or "ZAR",
+                    "allocated_lines_count": 0,
+                    "unallocated_lines_count": 0,
+                    "partial_lines_count": 0,
+                    "lines": []
+                }
+
+            lkey = f"PO_{r.document_no}_{r.item_code}"
+            active_allocs = alloc_map.get(lkey, [])
+            line_allocated = sum(a["allocated_qty"] for a in active_allocs)
+            target_qty = float(r.order_qty or 0.0)
+            rem_qty = max(0.0, target_qty - line_allocated)
+
+            if line_allocated <= 0:
+                l_status = "NEEDS_ALLOCATION"
+                doc_dict[dkey]["unallocated_lines_count"] += 1
+            elif line_allocated < target_qty:
+                l_status = "PARTIAL"
+                doc_dict[dkey]["partial_lines_count"] += 1
+            else:
+                l_status = "FULLY_ALLOCATED"
+                doc_dict[dkey]["allocated_lines_count"] += 1
+
+            line_item = {
+                "id": f"PO_{r.id}",
+                "line_id": r.id,
+                "doc_type": "PO",
+                "document_no": r.document_no,
+                "vendor_name": r.vendor_name or "Unknown Supplier",
+                "item_code": r.item_code,
+                "item_description": r.item_description or "",
+                "item_unit": r.item_unit or "EA",
+                "total_qty": target_qty,
+                "open_qty": float(r.open_qty or 0.0),
+                "shipped_qty": float(r.shipped_qty or 0.0),
+                "unit_cost": float(r.unit_cost or 0.0),
+                "total_value": float(r.total_value_excl or 0.0),
+                "currency_code": r.currency_code or "ZAR",
+                "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
+                "erp_status": r.status or "Open",
+                "customer_name": r.customer_name,
+                "allocated_qty": round(line_allocated, 2),
+                "unallocated_qty": round(rem_qty, 2),
+                "allocation_status": l_status,
+                "allocations": active_allocs
+            }
+
+            doc_dict[dkey]["total_lines"] += 1
+            doc_dict[dkey]["total_qty"] += target_qty
+            doc_dict[dkey]["allocated_qty"] += line_allocated
+            doc_dict[dkey]["unallocated_qty"] += rem_qty
+            doc_dict[dkey]["total_value"] += float(r.total_value_excl or 0.0)
+            doc_dict[dkey]["lines"].append(line_item)
+
+        # Process GRN Lines into Documents
+        for r in grn_rows:
+            dkey = f"GRN_{r.document_no}"
+            if dkey not in doc_dict:
+                doc_dict[dkey] = {
+                    "id": dkey,
+                    "doc_type": "GRN",
+                    "document_no": r.document_no,
+                    "vendor_name": r.vendor_name or "Unknown Supplier",
+                    "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                    "order_required_date": None,
+                    "erp_status": "Received",
+                    "customer_name": None,
+                    "total_lines": 0,
+                    "total_qty": 0.0,
+                    "allocated_qty": 0.0,
+                    "unallocated_qty": 0.0,
+                    "total_value": 0.0,
+                    "currency_code": r.currency_code or "ZAR",
+                    "allocated_lines_count": 0,
+                    "unallocated_lines_count": 0,
+                    "partial_lines_count": 0,
+                    "lines": []
+                }
+
+            lkey = f"GRN_{r.document_no}_{r.item_code}"
+            active_allocs = alloc_map.get(lkey, [])
+            line_allocated = sum(a["allocated_qty"] for a in active_allocs)
+            target_qty = float(r.received_qty or 0.0)
+            rem_qty = max(0.0, target_qty - line_allocated)
+
+            if line_allocated <= 0:
+                l_status = "NEEDS_ALLOCATION"
+                doc_dict[dkey]["unallocated_lines_count"] += 1
+            elif line_allocated < target_qty:
+                l_status = "PARTIAL"
+                doc_dict[dkey]["partial_lines_count"] += 1
+            else:
+                l_status = "FULLY_ALLOCATED"
+                doc_dict[dkey]["allocated_lines_count"] += 1
+
+            line_item = {
+                "id": f"GRN_{r.id}",
+                "line_id": r.id,
+                "doc_type": "GRN",
+                "document_no": r.document_no,
+                "vendor_name": r.vendor_name or "Unknown Supplier",
+                "item_code": r.item_code,
+                "item_description": r.item_description or "",
+                "item_unit": r.item_unit or "EA",
+                "total_qty": target_qty,
+                "open_qty": 0.0,
+                "shipped_qty": target_qty,
+                "unit_cost": float(r.unit_cost or 0.0),
+                "total_value": float(r.line_total_excl or 0.0),
+                "currency_code": r.currency_code or "ZAR",
+                "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                "order_required_date": None,
+                "erp_status": "Received",
+                "customer_name": None,
+                "allocated_qty": round(line_allocated, 2),
+                "unallocated_qty": round(rem_qty, 2),
+                "allocation_status": l_status,
+                "allocations": active_allocs
+            }
+
+            doc_dict[dkey]["total_lines"] += 1
+            doc_dict[dkey]["total_qty"] += target_qty
+            doc_dict[dkey]["allocated_qty"] += line_allocated
+            doc_dict[dkey]["unallocated_qty"] += rem_qty
+            doc_dict[dkey]["total_value"] += float(r.line_total_excl or 0.0)
+            doc_dict[dkey]["lines"].append(line_item)
+
+        # Compute document overall status & filter
+        doc_list = []
+        for d in doc_dict.values():
+            d["total_qty"] = round(d["total_qty"], 2)
+            d["allocated_qty"] = round(d["allocated_qty"], 2)
+            d["unallocated_qty"] = round(d["unallocated_qty"], 2)
+            d["total_value"] = round(d["total_value"], 2)
+
+            if d["allocated_lines_count"] == d["total_lines"] and d["total_lines"] > 0:
+                doc_status = "FULLY_ALLOCATED"
+            elif d["unallocated_lines_count"] == d["total_lines"]:
+                doc_status = "NEEDS_ALLOCATION"
+            else:
+                doc_status = "PARTIAL"
+
+            d["allocation_status"] = doc_status
+
+            if status != "ALL" and doc_status != status.upper():
+                continue
+
+            doc_list.append(d)
+
+        # Sort documents: Needs Allocation first, then most recent transaction date
+        doc_list.sort(
             key=lambda x: (
                 0 if x["allocation_status"] == "NEEDS_ALLOCATION" else (1 if x["allocation_status"] == "PARTIAL" else 2),
                 x["transaction_date"] or ""
@@ -290,13 +455,13 @@ def get_procurement_documents(
             reverse=False
         )
 
-        total_count = len(items)
+        total_count = len(doc_list)
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
-        paginated_items = items[start_idx:end_idx]
+        paginated_docs = doc_list[start_idx:end_idx]
 
         return {
-            "items": paginated_items,
+            "items": paginated_docs,
             "total_count": total_count,
             "page": page,
             "limit": limit,
@@ -304,6 +469,160 @@ def get_procurement_documents(
         }
     except Exception as e:
         logger.error(f"Error fetching procurement documents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.get("/document-details")
+@router.get("/document-details")
+def get_document_details(
+    doc_type: str = Query(..., description="PO or GRN"),
+    document_no: str = Query(..., description="Document number e.g. PO-000000002"),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetches an individual PO or GRN document with all its line items and real-time active allocations.
+    """
+    try:
+        clean_doc_type = doc_type.strip().upper()
+        clean_doc_no = document_no.strip()
+
+        allocations = db.query(ProcurementAllocation)\
+            .filter(
+                ProcurementAllocation.status == "Active",
+                ProcurementAllocation.allocation_type == clean_doc_type,
+                ProcurementAllocation.source_doc_no == clean_doc_no
+            ).all()
+
+        alloc_map = {}
+        for a in allocations:
+            if a.sku not in alloc_map:
+                alloc_map[a.sku] = []
+            alloc_map[a.sku].append({
+                "id": a.id,
+                "project_id": a.project_id,
+                "project_name": a.project_name,
+                "order_id": a.order_id,
+                "order_item_id": a.order_item_id,
+                "fitting_code": a.fitting_code,
+                "allocated_qty": a.allocated_qty,
+                "unit_cost": a.unit_cost,
+                "allocated_by_name": a.allocated_by_name,
+                "allocated_at": a.allocated_at.isoformat() if a.allocated_at else None,
+                "notes": a.notes
+            })
+
+        lines = []
+        vendor_name = "Unknown Supplier"
+        transaction_date = None
+        order_required_date = None
+        customer_name = None
+        erp_status = "Open"
+        total_value = 0.0
+
+        if clean_doc_type == "PO":
+            rows = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == clean_doc_no).all()
+            for r in rows:
+                vendor_name = r.vendor_name or vendor_name
+                transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
+                order_required_date = r.order_required_date.isoformat() if r.order_required_date else order_required_date
+                customer_name = r.customer_name or customer_name
+                erp_status = r.status or erp_status
+                total_value += float(r.total_value_excl or 0.0)
+
+                active_allocs = alloc_map.get(r.item_code, [])
+                line_allocated = sum(a["allocated_qty"] for a in active_allocs)
+                target_qty = float(r.order_qty or 0.0)
+                rem_qty = max(0.0, target_qty - line_allocated)
+
+                if line_allocated <= 0:
+                    l_status = "NEEDS_ALLOCATION"
+                elif line_allocated < target_qty:
+                    l_status = "PARTIAL"
+                else:
+                    l_status = "FULLY_ALLOCATED"
+
+                lines.append({
+                    "id": f"PO_{r.id}",
+                    "line_id": r.id,
+                    "doc_type": "PO",
+                    "document_no": r.document_no,
+                    "vendor_name": r.vendor_name,
+                    "item_code": r.item_code,
+                    "item_description": r.item_description or "",
+                    "item_unit": r.item_unit or "EA",
+                    "total_qty": target_qty,
+                    "unit_cost": float(r.unit_cost or 0.0),
+                    "total_value": float(r.total_value_excl or 0.0),
+                    "allocated_qty": round(line_allocated, 2),
+                    "unallocated_qty": round(rem_qty, 2),
+                    "allocation_status": l_status,
+                    "allocations": active_allocs
+                })
+        else:
+            rows = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == clean_doc_no).all()
+            for r in rows:
+                vendor_name = r.vendor_name or vendor_name
+                transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
+                erp_status = "Received"
+                total_value += float(r.line_total_excl or 0.0)
+
+                active_allocs = alloc_map.get(r.item_code, [])
+                line_allocated = sum(a["allocated_qty"] for a in active_allocs)
+                target_qty = float(r.received_qty or 0.0)
+                rem_qty = max(0.0, target_qty - line_allocated)
+
+                if line_allocated <= 0:
+                    l_status = "NEEDS_ALLOCATION"
+                elif line_allocated < target_qty:
+                    l_status = "PARTIAL"
+                else:
+                    l_status = "FULLY_ALLOCATED"
+
+                lines.append({
+                    "id": f"GRN_{r.id}",
+                    "line_id": r.id,
+                    "doc_type": "GRN",
+                    "document_no": r.document_no,
+                    "vendor_name": r.vendor_name,
+                    "item_code": r.item_code,
+                    "item_description": r.item_description or "",
+                    "item_unit": r.item_unit or "EA",
+                    "total_qty": target_qty,
+                    "unit_cost": float(r.unit_cost or 0.0),
+                    "total_value": float(r.line_total_excl or 0.0),
+                    "allocated_qty": round(line_allocated, 2),
+                    "unallocated_qty": round(rem_qty, 2),
+                    "allocation_status": l_status,
+                    "allocations": active_allocs
+                })
+
+        allocated_lines = sum(1 for l in lines if l["allocation_status"] == "FULLY_ALLOCATED")
+        unallocated_lines = sum(1 for l in lines if l["allocation_status"] == "NEEDS_ALLOCATION")
+
+        if allocated_lines == len(lines) and len(lines) > 0:
+            doc_status = "FULLY_ALLOCATED"
+        elif unallocated_lines == len(lines):
+            doc_status = "NEEDS_ALLOCATION"
+        else:
+            doc_status = "PARTIAL"
+
+        return {
+            "doc_type": clean_doc_type,
+            "document_no": clean_doc_no,
+            "vendor_name": vendor_name,
+            "transaction_date": transaction_date,
+            "order_required_date": order_required_date,
+            "customer_name": customer_name,
+            "erp_status": erp_status,
+            "total_lines": len(lines),
+            "allocated_lines_count": allocated_lines,
+            "unallocated_lines_count": unallocated_lines,
+            "total_value": round(total_value, 2),
+            "allocation_status": doc_status,
+            "lines": lines
+        }
+    except Exception as e:
+        logger.error(f"Error fetching document details for {doc_type} {document_no}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
