@@ -747,10 +747,12 @@ class ProcurementAllocation(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     project_name = Column(String, nullable=True)
     order_id = Column(Integer, nullable=True)
-    order_item_id = Column(Integer, nullable=True)
+    order_item_id = Column(String, nullable=True)
     fitting_code = Column(String, nullable=True)
     allocated_qty = Column(Float, default=1.0)
     unit_cost = Column(Float, default=0.0)
+    doc_date = Column(String, nullable=True)
+    eta = Column(String, nullable=True)
     allocated_by_name = Column(String, nullable=True)
     allocated_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="Active")                  # "Active", "Cancelled"

@@ -643,12 +643,16 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
         # Pre-load active procurement allocations for live PO & GRN document mapping
         active_allocations = db.query(ProcurementAllocation).filter(ProcurementAllocation.status == "Active").all()
-        alloc_by_order = {}
+        alloc_by_order_id = {}
+        alloc_by_item_id = {}
+        alloc_by_proj_id = {}
         for a in active_allocations:
             if a.order_id:
-                alloc_by_order.setdefault(a.order_id, []).append(a)
+                alloc_by_order_id.setdefault(a.order_id, []).append(a)
+            if a.order_item_id:
+                alloc_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if a.project_id:
-                alloc_by_order.setdefault(f"proj_{a.project_id}", []).append(a)
+                alloc_by_proj_id.setdefault(a.project_id, []).append(a)
 
         # Group items by order ID
         items_by_order = {}
@@ -754,9 +758,29 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 delivery_notes_parsed = []
 
             # Dynamically assemble live allocated POs and GRNs from ProcurementAllocation
-            order_allocs = alloc_by_order.get(order.id, [])
+            order_item_ids = {str(item.get("id")) for item in order_items_list if item.get("id")}
+            seen_alloc_ids = set()
+            order_allocs = []
+
+            # 1. Match allocations by items present in this order
+            for it_id in order_item_ids:
+                for a in alloc_by_item_id.get(it_id, []):
+                    if a.id not in seen_alloc_ids:
+                        seen_alloc_ids.add(a.id)
+                        order_allocs.append(a)
+
+            # 2. Match allocations directly assigned to this order ID
+            for a in alloc_by_order_id.get(order.id, []):
+                if a.id not in seen_alloc_ids:
+                    seen_alloc_ids.add(a.id)
+                    order_allocs.append(a)
+
+            # 3. Project-level fallback if order has no direct items linked
             if not order_allocs and order.project_id:
-                order_allocs = alloc_by_order.get(f"proj_{order.project_id}", [])
+                for a in alloc_by_proj_id.get(order.project_id, []):
+                    if a.id not in seen_alloc_ids:
+                        seen_alloc_ids.add(a.id)
+                        order_allocs.append(a)
 
             po_groups = {}
             grn_groups = {}
@@ -769,9 +793,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             purchase_orders_parsed = []
             for doc_no, doc_items in po_groups.items():
                 first_a = doc_items[0]
+                doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
                 purchase_orders_parsed.append({
                     "id": doc_no,
-                    "date": first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None,
+                    "date": doc_date_str,
                     "supplier": order.supplier_name or "Palladium ERP",
                     "notes": first_a.notes or "Allocated from Palladium ERP",
                     "allocated_by": first_a.allocated_by_name,
@@ -789,9 +814,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             goods_received_notes_parsed = []
             for doc_no, doc_items in grn_groups.items():
                 first_a = doc_items[0]
+                doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
                 goods_received_notes_parsed.append({
                     "id": doc_no,
-                    "date": first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None,
+                    "date": doc_date_str,
                     "supplier": order.supplier_name or "Palladium ERP",
                     "notes": first_a.notes or "Allocated from Palladium ERP",
                     "allocated_by": first_a.allocated_by_name,
