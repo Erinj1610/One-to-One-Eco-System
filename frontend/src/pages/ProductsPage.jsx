@@ -1229,17 +1229,17 @@ export default function ProductsPage() {
   // Products already filtered server-side; expose sorted list
   const filteredProducts = sortedProducts;
 
-  // Aggregate stats — use lightweight summary for global counts
+  // Aggregate stats — use global database summary across all 6,367+ products
   const kpis = useMemo(() => {
     const totalSku = summary.total || totalCount;
     const lowStock = summary.low_stock || 0;
     const outStock = summary.out_of_stock || 0;
-    const sumMargin = products.reduce((acc, p) => acc + (p.margin || 37), 0);
-    const avgMargin = products.length > 0 ? Math.round(sumMargin / products.length) : 37;
-    const totalVal = products.reduce((acc, p) => acc + (p.unitCost * p.stock), 0);
-    const totalMargin = products.reduce((acc, p) => acc + ((p.retailPrice - p.unitCost) * p.stock), 0);
-    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin };
-  }, [summary, totalCount, products]);
+    const avgMargin = summary.avg_margin_pct !== undefined ? summary.avg_margin_pct : 37;
+    const totalVal = summary.total_valuation !== undefined ? summary.total_valuation : 0;
+    const totalMargin = summary.total_margin_val !== undefined ? summary.total_margin_val : 0;
+    const totalUnits = summary.total_units !== undefined ? summary.total_units : 0;
+    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin, totalUnits };
+  }, [summary, totalCount]);
 
   // Commit changes from Workspace Engine (Save button trigger)
   const handleCommitChanges = async () => {
@@ -1833,11 +1833,11 @@ export default function ProductsPage() {
                 <Package size={15} color="var(--text-info)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.totalSku} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
+                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Value: <strong>R {kpis.totalVal.toLocaleString()}</strong></span>
-                <span>Margin: <strong>R {kpis.totalMargin.toLocaleString()}</strong></span>
+                <span>Total Stock Value: <strong>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                <span>Units: <strong>{kpis.totalUnits.toLocaleString()}</strong></span>
               </div>
             </div>
 
@@ -1847,7 +1847,7 @@ export default function ProductsPage() {
                 <AlertTriangle size={15} color="var(--text-warning)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)' }}>
-                {kpis.lowStock} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
                 <span className="badge b-warning" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Warned</span> reorder threshold reached
@@ -1860,23 +1860,23 @@ export default function ProductsPage() {
                 <AlertTriangle size={15} color="var(--text-danger)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-danger)' }}>
-                {kpis.outStock} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+                {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Badly</span> critical stock count
+                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Stock Alert</span> zero or negative inventory
               </div>
             </div>
 
             <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Avg Margin %</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Stock Margin Potential</span>
                 <Percent size={15} color="var(--text-success)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-success)' }}>
-                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg</span>
+                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg Margin</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                Standard target target threshold: <strong>37%</strong>
+                Stock Profit Potential: <strong>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
             </div>
           </div>

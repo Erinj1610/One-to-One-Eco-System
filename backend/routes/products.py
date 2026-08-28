@@ -106,7 +106,7 @@ def serialize_product(product: Product):
 
 @public_router.get("/summary")
 def products_summary(db: Session = Depends(get_db)):
-    """Lightweight endpoint – returns just aggregate counts for the KPI cards."""
+    """Global aggregate metrics and real stock valuations across the entire master database."""
     from sqlalchemy import func
     total = db.query(func.count(Product.id)).scalar() or 0
     low_stock = db.query(func.count(Product.id)).filter(
@@ -114,9 +114,38 @@ def products_summary(db: Session = Depends(get_db)):
         Product.stock_level <= Product.reorder_level
     ).scalar() or 0
     out_of_stock = db.query(func.count(Product.id)).filter(
-        Product.stock_level == 0
+        Product.stock_level <= 0
     ).scalar() or 0
-    return {"total": total, "low_stock": low_stock, "out_of_stock": out_of_stock}
+
+    # True global stock valuation (positive stock on hand * unit cost)
+    total_valuation = db.query(
+        func.sum(Product.cost_price * Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0.0
+
+    # True global retail valuation (positive stock on hand * retail price)
+    total_retail_val = db.query(
+        func.sum(Product.retail_price * Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0.0
+
+    # True global stock margin
+    total_margin_val = max(0.0, total_retail_val - total_valuation)
+    avg_margin_pct = round((total_margin_val / total_retail_val * 100)) if total_retail_val > 0 else 37
+
+    # Total physical units on hand
+    total_units = db.query(
+        func.sum(Product.stock_level)
+    ).filter(Product.stock_level > 0).scalar() or 0
+
+    return {
+        "total": total,
+        "low_stock": low_stock,
+        "out_of_stock": out_of_stock,
+        "total_valuation": round(total_valuation, 2),
+        "total_retail_valuation": round(total_retail_val, 2),
+        "total_margin_val": round(total_margin_val, 2),
+        "avg_margin_pct": avg_margin_pct,
+        "total_units": total_units
+    }
 
 @public_router.get("/filter-options")
 def get_filter_options(db: Session = Depends(get_db)):
