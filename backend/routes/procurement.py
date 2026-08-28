@@ -736,6 +736,7 @@ def allocate_procurement_item(
     """
     Allocates a quantity from a Palladium PO or GRN line to a Project Order Item.
     Auto-matches Project and OrderItem even if only project key/name is provided.
+    Preserves Palladium ERP transaction date as po_date, and records staff-specified ETA.
     """
     try:
         allocation_type = str(payload.get("allocation_type") or "PO").upper()
@@ -748,6 +749,8 @@ def allocate_procurement_item(
         fitting_code = payload.get("fitting_code")
         allocated_qty = float(payload.get("allocated_qty") or 0.0)
         unit_cost = float(payload.get("unit_cost") or 0.0)
+        doc_date = payload.get("doc_date") or payload.get("transaction_date")
+        eta = payload.get("eta") or payload.get("po_eta")
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes")
 
@@ -806,6 +809,8 @@ def allocate_procurement_item(
             fitting_code=fitting_code or (matched_item.code if matched_item else sku),
             allocated_qty=allocated_qty,
             unit_cost=unit_cost,
+            doc_date=str(doc_date) if doc_date else None,
+            eta=str(eta) if eta else None,
             allocated_by_name=allocated_by,
             allocated_at=datetime.now(timezone.utc),
             status="Active",
@@ -819,26 +824,36 @@ def allocate_procurement_item(
                 matched_item.po_ref = source_doc_no
                 matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
                 matched_item.unit_cost = unit_cost
-                matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if doc_date:
+                    matched_item.po_date = str(doc_date).split("T")[0]
+                else:
+                    matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if eta:
+                    matched_item.po_eta = str(eta)
+                    matched_item.eta = str(eta)
                 p_hist = list(matched_item.purchase_history or [])
                 p_hist.append({
                     "id": source_doc_no,
                     "ref": source_doc_no,
                     "qty": allocated_qty,
                     "cost": unit_cost,
-                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "date": matched_item.po_date,
+                    "eta": eta,
                     "by": allocated_by
                 })
                 matched_item.purchase_history = p_hist
             elif allocation_type == "GRN":
                 matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
-                matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if doc_date:
+                    matched_item.received_date = str(doc_date).split("T")[0]
+                else:
+                    matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 r_hist = list(matched_item.receiving_history or [])
                 r_hist.append({
                     "id": source_doc_no,
                     "ref": source_doc_no,
                     "qty": allocated_qty,
-                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "date": matched_item.received_date,
                     "by": allocated_by
                 })
                 matched_item.receiving_history = r_hist
@@ -865,7 +880,7 @@ def batch_allocate_procurement_items(
 ):
     """
     Allocates multiple items from a PO or GRN to a single Project & Order in one transaction.
-    Auto-matches SKUs to Project OrderItems and updates quantities in real time.
+    Auto-matches SKUs to Project OrderItems and updates quantities, doc_date, and ETA in real time.
     """
     try:
         allocation_type = str(payload.get("allocation_type") or "PO").upper()
@@ -873,6 +888,8 @@ def batch_allocate_procurement_items(
         project_id_input = payload.get("project_id")
         project_name = payload.get("project_name")
         order_id = payload.get("order_id")
+        doc_date = payload.get("doc_date") or payload.get("transaction_date")
+        eta = payload.get("eta") or payload.get("po_eta")
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes") or "Batch allocation"
         items = payload.get("items") or []
@@ -946,6 +963,8 @@ def batch_allocate_procurement_items(
                 fitting_code=fitting_code or (matched_item.code if matched_item else sku),
                 allocated_qty=allocated_qty,
                 unit_cost=unit_cost,
+                doc_date=str(doc_date) if doc_date else None,
+                eta=str(eta) if eta else None,
                 allocated_by_name=allocated_by,
                 allocated_at=datetime.now(timezone.utc),
                 status="Active",
@@ -958,26 +977,36 @@ def batch_allocate_procurement_items(
                     matched_item.po_ref = source_doc_no
                     matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
                     matched_item.unit_cost = unit_cost
-                    matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    if doc_date:
+                        matched_item.po_date = str(doc_date).split("T")[0]
+                    else:
+                        matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    if eta:
+                        matched_item.po_eta = str(eta)
+                        matched_item.eta = str(eta)
                     p_hist = list(matched_item.purchase_history or [])
                     p_hist.append({
                         "id": source_doc_no,
                         "ref": source_doc_no,
                         "qty": allocated_qty,
                         "cost": unit_cost,
-                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "date": matched_item.po_date,
+                        "eta": eta,
                         "by": allocated_by
                     })
                     matched_item.purchase_history = p_hist
                 elif allocation_type == "GRN":
                     matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
-                    matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    if doc_date:
+                        matched_item.received_date = str(doc_date).split("T")[0]
+                    else:
+                        matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                     r_hist = list(matched_item.receiving_history or [])
                     r_hist.append({
                         "id": source_doc_no,
                         "ref": source_doc_no,
                         "qty": allocated_qty,
-                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "date": matched_item.received_date,
                         "by": allocated_by
                     })
                     matched_item.receiving_history = r_hist

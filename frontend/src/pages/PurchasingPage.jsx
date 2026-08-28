@@ -39,13 +39,6 @@ export default function PurchasingPage() {
   // Multi-selection checkboxes in Document Workspace
   const [selectedLineIds, setSelectedLineIds] = useState(new Set());
 
-  // Batch Allocation Modal State
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [batchProjectId, setBatchProjectId] = useState('');
-  const [batchOrderId, setBatchOrderId] = useState('');
-  const [batchNotes, setBatchNotes] = useState('');
-  const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
-
   const [procurementDocs, setProcurementDocs] = useState([]);
   const [isLoadingProcurement, setIsLoadingProcurement] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'PO' | 'GRN' | 'ALL'
@@ -68,8 +61,17 @@ export default function PurchasingPage() {
   const [manualProjectId, setManualProjectId] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
   const [allocQty, setAllocQty] = useState(1);
+  const [allocEta, setAllocEta] = useState('');
   const [allocNotes, setAllocNotes] = useState('');
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
+
+  // Batch Allocation Modal State
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchProjectId, setBatchProjectId] = useState('');
+  const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchEta, setBatchEta] = useState('');
+  const [batchNotes, setBatchNotes] = useState('');
+  const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
   // -------------------------------------------------------------
   // FETCH SUMMARY & DOCUMENTS
@@ -262,6 +264,7 @@ export default function PurchasingPage() {
   const handleOpenAllocModal = async (item) => {
     setAllocTargetItem(item);
     setAllocQty(Math.max(1, Math.min(item.unallocated_qty || 1, item.total_qty || 1)));
+    setAllocEta('');
     setAllocNotes('');
     setSelectedCandidateKey(null);
     setManualProjectId('');
@@ -313,6 +316,8 @@ export default function PurchasingPage() {
     let payload = {
       allocation_type: allocTargetItem.doc_type,
       source_doc_no: allocTargetItem.document_no,
+      doc_date: allocTargetItem.transaction_date,
+      eta: allocEta,
       source_line_id: allocTargetItem.line_id,
       sku: allocTargetItem.item_code,
       allocated_qty: Number(allocQty),
@@ -373,6 +378,7 @@ export default function PurchasingPage() {
     if (selectedLineIds.size === 0) return;
     setBatchProjectId('');
     setBatchOrderId('');
+    setBatchEta('');
     setBatchNotes('');
     setBatchModalOpen(true);
   };
@@ -398,6 +404,8 @@ export default function PurchasingPage() {
     const payload = {
       allocation_type: selectedDocument.doc_type,
       source_doc_no: selectedDocument.document_no,
+      doc_date: selectedDocument.transaction_date,
+      eta: batchEta,
       project_id: proj ? (proj.id || 1) : 1,
       project_name: proj ? proj.name : 'Selected Project',
       order_id: batchOrderId ? Number(batchOrderId) : null,
@@ -1612,19 +1620,34 @@ export default function PurchasingPage() {
                   </div>
                 </div>
 
-                {/* Notes Input */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
-                    Internal Allocation Note (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Master Bedroom track & drivers, Phase 1 installation..."
-                    className="form-control"
-                    style={{ height: '34px', fontSize: '12px' }}
-                    value={batchNotes}
-                    onChange={(e) => setBatchNotes(e.target.value)}
-                  />
+                {/* ETA & Notes Inputs */}
+                <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                      ETA / Delivery Date
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '12px' }}
+                      value={batchEta}
+                      onChange={(e) => setBatchEta(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                      Internal Allocation Note (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Master Bedroom track & drivers, Phase 1 installation..."
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '12px' }}
+                      value={batchNotes}
+                      onChange={(e) => setBatchNotes(e.target.value)}
+                    />
+                  </div>
                 </div>
 
               </div>
@@ -1861,8 +1884,8 @@ export default function PurchasingPage() {
                   </div>
                 </div>
 
-                {/* Quantity & Notes Inputs */}
-                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '12px' }}>
+                {/* Quantity, ETA & Notes Inputs */}
+                <div style={{ display: 'grid', gridTemplateColumns: '130px 160px 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
                       Quantity to Allocate
@@ -1892,12 +1915,25 @@ export default function PurchasingPage() {
                   </div>
 
                   <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                      ETA / Delivery Date
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      style={{ height: '34px', fontSize: '12px' }}
+                      value={allocEta}
+                      onChange={(e) => setAllocEta(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
-                      Internal Notes / Fitting Reference (Optional)
+                      Internal Notes / Ref (Optional)
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Master Bedroom downlights, Phase 1 delivery..."
+                      placeholder="e.g. Phase 1 delivery..."
                       className="form-control"
                       style={{ height: '34px', fontSize: '11.5px' }}
                       value={allocNotes}
