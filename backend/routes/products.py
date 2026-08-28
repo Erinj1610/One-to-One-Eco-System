@@ -103,7 +103,7 @@ def serialize_product(product: Product):
     out["supplier"] = supplier_info
     return out
 
-@router.get("/summary")
+@public_router.get("/summary")
 def products_summary(db: Session = Depends(get_db)):
     """Lightweight endpoint – returns just aggregate counts for the KPI cards."""
     from sqlalchemy import func
@@ -117,12 +117,31 @@ def products_summary(db: Session = Depends(get_db)):
     ).scalar() or 0
     return {"total": total, "low_stock": low_stock, "out_of_stock": out_of_stock}
 
-@router.get("/")
+@public_router.get("/filter-options")
+def get_filter_options(db: Session = Depends(get_db)):
+    from sqlalchemy import distinct
+    categories = [r[0] for r in db.query(distinct(Product.category)).filter(Product.category.isnot(None), Product.category != '').order_by(Product.category).all()]
+    suppliers = [r[0] for r in db.query(distinct(Product.supplier_name)).filter(Product.supplier_name.isnot(None), Product.supplier_name != '').order_by(Product.supplier_name).all()]
+    brands = [r[0] for r in db.query(distinct(Product.brand)).filter(Product.brand.isnot(None), Product.brand != '').order_by(Product.brand).all()]
+    families = [r[0] for r in db.query(distinct(Product.family)).filter(Product.family.isnot(None), Product.family != '').order_by(Product.family).all()]
+    
+    return {
+        "categories": categories,
+        "suppliers": suppliers,
+        "brands": brands,
+        "families": families
+    }
+
+@public_router.get("/")
 def list_products(
     q: Optional[str] = None,
     category: Optional[str] = None,
+    supplier: Optional[str] = None,
     brand: Optional[str] = None,
+    family: Optional[str] = None,
     status: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = "asc",
     limit: Optional[int] = 100,
     offset: Optional[int] = 0,
     db: Session = Depends(get_db)
@@ -134,14 +153,22 @@ def list_products(
             (Product.name.ilike(f"%{q}%")) | 
             (Product.sku.ilike(f"%{q}%")) | 
             (Product.brand.ilike(f"%{q}%")) |
-            (Product.category.ilike(f"%{q}%"))
+            (Product.category.ilike(f"%{q}%")) |
+            (Product.supplier_name.ilike(f"%{q}%")) |
+            (Product.family.ilike(f"%{q}%"))
         )
         
-    if category:
+    if category and category != 'All Categories':
         query = query.filter(Product.category == category)
+
+    if supplier and supplier != 'All Suppliers':
+        query = query.filter((Product.supplier_name == supplier) | (Product.brand == supplier))
         
-    if brand:
+    if brand and brand != 'All Brands':
         query = query.filter(Product.brand == brand)
+
+    if family and family != 'All Families':
+        query = query.filter(Product.family == family)
 
     if status:
         if status.lower() == "in stock":
@@ -155,13 +182,42 @@ def list_products(
             )
 
     total_count = query.count()
-    products = query.order_by(Product.name).offset(offset).limit(limit).all()
+
+    # Dynamic Column Sorting
+    sort_map = {
+        "sku": Product.sku,
+        "name": Product.name,
+        "description": Product.name,
+        "family": Product.family,
+        "brand": Product.brand,
+        "supplier": Product.supplier_name,
+        "unit_cost": Product.cost_price,
+        "unitcost": Product.cost_price,
+        "cost_price": Product.cost_price,
+        "retail_price": Product.retail_price,
+        "retailprice": Product.retail_price,
+        "rrp": Product.retail_price,
+        "stock": Product.stock_level,
+        "stock_level": Product.stock_level,
+        "image": Product.image_url
+    }
+
+    sort_col = sort_map.get((sort_by or "").lower())
+    if sort_col is not None:
+        if (sort_dir or "asc").lower() == "desc":
+            query = query.order_by(sort_col.desc().nullslast())
+        else:
+            query = query.order_by(sort_col.asc().nullsfirst())
+    else:
+        query = query.order_by(Product.name.asc())
+
+    products = query.offset(offset).limit(limit).all()
     serialized = [serialize_product(p) for p in products]
             
     return {"items": serialized, "total": total_count, "limit": limit, "offset": offset}
 
 
-@router.get("/{product_id}")
+@public_router.get("/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:

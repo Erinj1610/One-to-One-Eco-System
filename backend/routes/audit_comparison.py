@@ -558,6 +558,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
             "Stock Status",
             "Stock on Hand",
             "Qty Ordered (PO)",
+            "PO Supplier",
             "PO Reference",
             "Date Ordered",
             "Delivery ETA",
@@ -871,6 +872,18 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                         }
                     })
 
+            # Delete any existing conditional formatting rules on Tab 1 to prevent rule accumulation
+            for s in existing_sheets:
+                if s.get('properties', {}).get('sheetId') == 101:
+                    cf_list = s.get('conditionalFormats', [])
+                    for idx in reversed(range(len(cf_list))):
+                        requests.append({
+                            'deleteConditionalFormatRule': {
+                                'sheetId': 101,
+                                'index': idx
+                            }
+                        })
+
             for s in existing_sheets:
                 stitle = s.get('properties', {}).get('title')
                 sid = s.get('properties', {}).get('sheetId')
@@ -919,18 +932,16 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
 
             # Apply cell-level red highlight formatting on Tab 1
             cell_format_requests = []
-            
-            total_data_rows = max(len(heatmap_rows), 100)
 
-            # 1. Reset all data cells to clean white background and normal text across the actual sheet range
+            # 1. Reset ALL cells across the entire sheet grid (all 50,000 rows and 60 columns) to clean white background and normal text
             cell_format_requests.append({
                 'repeatCell': {
                     'range': {
                         'sheetId': 101,
                         'startRowIndex': 0,
-                        'endRowIndex': total_data_rows + 100,
+                        'endRowIndex': 50000,
                         'startColumnIndex': 0,
-                        'endColumnIndex': len(heatmap_headers) + 2
+                        'endColumnIndex': 60
                     },
                     'cell': {
                         'userEnteredFormat': {
@@ -962,33 +973,7 @@ def finalize_audit_comparison(payload: dict = Body(...), db: Session = Depends(g
                 }
             })
 
-            # 3. Add conditional formatting rule so missing rows are always highlighted across all rows
-            cell_format_requests.append({
-                'addConditionalFormatRule': {
-                    'rule': {
-                        'ranges': [{
-                            'sheetId': 101,
-                            'startRowIndex': 1,
-                            'endRowIndex': total_data_rows + 500,
-                            'startColumnIndex': 0,
-                            'endColumnIndex': len(heatmap_headers)
-                        }],
-                        'booleanRule': {
-                            'condition': {
-                                'type': 'CUSTOM_FORMULA',
-                                'values': [{'userEnteredValue': '=ISNUMBER(SEARCH("MISSING", $A2))'}]
-                            },
-                            'format': {
-                                'backgroundColor': {'red': 1.0, 'green': 0.88, 'blue': 0.88},
-                                'textFormat': {'foregroundColor': {'red': 0.86, 'green': 0.15, 'blue': 0.15}, 'bold': True}
-                            }
-                        }
-                    },
-                    'index': 0
-                }
-            })
-
-            # 4. Highlight specific discrepancy cell ranges in red (100% full coverage for all 6000+ rows)
+            # 3. Highlight specific discrepancy and missing cell ranges in red strictly based on computed differences
             for sr, er, sc, ec in red_ranges:
                 cell_format_requests.append({
                     'repeatCell': {
