@@ -634,45 +634,88 @@ def get_candidate_orders(
 ):
     """
     Finds active client project orders and fittings in the portal matching the given SKU.
+    Resolves project and order even with composite slug order IDs.
     """
     try:
         clean_sku = sku.strip()
-        
-        # Find order items by code or description or one_one_code
-        order_items = db.query(OrderItem, Order, Project)\
-            .join(Order, OrderItem.order_id == func.cast(Order.id, func.text()))\
-            .join(Project, Order.project_id == Project.id)\
-            .filter(
-                or_(
-                    OrderItem.code == clean_sku,
-                    OrderItem.one_one_code == clean_sku,
-                    OrderItem.description.ilike(f"%{clean_sku}%")
-                )
-            ).all()
+        if not clean_sku:
+            return {"sku": "", "candidate_count": 0, "candidates": []}
+
+        # 1. Preload projects and orders for quick resolution
+        all_projects = {p.id: p for p in db.query(Project).all()}
+        proj_by_key = {p.project_key: p for p in all_projects.values() if p.project_key}
+        all_orders = db.query(Order).all()
+        order_by_id = {o.id: o for o in all_orders}
+
+        # 2. Find matching order items by code or one_one_code or description
+        order_items = db.query(OrderItem).filter(
+            or_(
+                OrderItem.code.ilike(f"%{clean_sku}%"),
+                OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
+                OrderItem.description.ilike(f"%{clean_sku}%")
+            )
+        ).all()
 
         candidates = []
-        for item, order, proj in order_items:
-            req_qty = int(item.qty or 0)
-            po_ordered = int(item.po_qty_ordered or 0)
-            received = int(item.received_qty or 0)
-            
+        for it in order_items:
+            matched_order = None
+            matched_proj = None
+
+            # Check direct integer order ID
+            if str(it.order_id).isdigit() and int(it.order_id) in order_by_id:
+                matched_order = order_by_id[int(it.order_id)]
+                matched_proj = all_projects.get(matched_order.project_id)
+
+            # Check by project_key / slug
+            if not matched_order and it.order_id:
+                parts = str(it.order_id).split('--')
+                proj_prefix = parts[0] if parts else ''
+                
+                if proj_prefix in proj_by_key:
+                    matched_proj = proj_by_key[proj_prefix]
+                else:
+                    for p in all_projects.values():
+                        if p.project_key and (p.project_key == proj_prefix or p.project_key in str(it.order_id)):
+                            matched_proj = p
+                            break
+
+                if matched_proj:
+                    proj_orders = [o for o in all_orders if o.project_id == matched_proj.id]
+                    for o in proj_orders:
+                        if len(parts) > 1:
+                            order_slug = parts[1].replace('-', ' ').strip().lower()
+                            if order_slug and order_slug in (o.quote_name or '').lower():
+                                matched_order = o
+                                break
+                    if not matched_order and proj_orders:
+                        matched_order = proj_orders[0]
+
+            req_qty = int(it.qty or 0)
+            po_ordered = int(it.po_qty_ordered or 0)
+            received = int(it.received_qty or 0)
+            rem = max(0, req_qty - po_ordered)
+
             candidates.append({
-                "order_item_id": item.id,
-                "order_id": order.id,
-                "order_title": order.quote_name or f"Order #{order.id}",
-                "project_id": proj.id,
-                "project_name": proj.name or f"Project #{proj.id}",
-                "fitting_code": item.code or item.one_one_code or clean_sku,
-                "description": item.description,
-                "area": item.area or item.floor or "General",
+                "order_item_id": it.id,
+                "order_id": matched_order.id if matched_order else None,
+                "order_title": matched_order.quote_name if matched_order else (it.order_id or "General Order"),
+                "project_id": matched_proj.id if matched_proj else (matched_order.project_id if matched_order else 1),
+                "project_name": matched_proj.name if matched_proj else (matched_order.client_name if matched_order else "Active Project"),
+                "fitting_code": it.code or it.one_one_code or clean_sku,
+                "one_one_code": it.one_one_code,
+                "description": it.description,
+                "area": it.area or it.floor or "General",
                 "requested_qty": req_qty,
                 "po_qty_ordered": po_ordered,
                 "received_qty": received,
-                "remaining_needed": max(0, req_qty - po_ordered),
-                "current_po_ref": item.po_ref,
-                "unit_cost": float(item.unit_cost or 0.0),
-                "unit_retail": float(item.unit_retail or 0.0)
+                "remaining_needed": rem,
+                "current_po_ref": it.po_ref,
+                "unit_cost": float(it.unit_cost or 0.0),
+                "unit_retail": float(it.unit_retail or 0.0)
             })
+
+        # Sort candidates: items still needing stock first
+        candidates.sort(key=lambda x: (0 if x["remaining_needed"] > 0 else 1, x["project_name"]))
 
         return {
             "sku": clean_sku,
@@ -770,6 +813,85 @@ def allocate_procurement_item(
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating procurement allocation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/batch-allocate")
+@router.post("/batch-allocate")
+def batch_allocate_procurement_items(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Allocates multiple items from a PO or GRN to a single Project & Order in one transaction.
+    """
+    try:
+        allocation_type = str(payload.get("allocation_type") or "PO").upper()
+        source_doc_no = str(payload.get("source_doc_no") or "").strip()
+        project_id = payload.get("project_id")
+        project_name = payload.get("project_name")
+        order_id = payload.get("order_id")
+        allocated_by = payload.get("allocated_by_name") or "Staff"
+        notes = payload.get("notes") or "Batch allocation"
+        items = payload.get("items") or []
+
+        if not source_doc_no or not project_id or not items:
+            raise HTTPException(status_code=400, detail="Missing source_doc_no, project_id, or items list.")
+
+        count_allocated = 0
+        for it in items:
+            sku = str(it.get("sku") or "").strip()
+            allocated_qty = float(it.get("allocated_qty") or 0.0)
+            unit_cost = float(it.get("unit_cost") or 0.0)
+            order_item_id = it.get("order_item_id")
+            fitting_code = it.get("fitting_code") or sku
+
+            if not sku or allocated_qty <= 0:
+                continue
+
+            alloc = ProcurementAllocation(
+                allocation_type=allocation_type,
+                source_doc_no=source_doc_no,
+                sku=sku,
+                project_id=int(project_id),
+                project_name=project_name,
+                order_id=int(order_id) if order_id else None,
+                order_item_id=str(order_item_id) if order_item_id else None,
+                fitting_code=fitting_code,
+                allocated_qty=allocated_qty,
+                unit_cost=unit_cost,
+                allocated_by_name=allocated_by,
+                allocated_at=datetime.now(timezone.utc),
+                status="Active",
+                notes=notes
+            )
+            db.add(alloc)
+
+            if order_item_id:
+                order_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+                if order_item:
+                    if allocation_type == "PO":
+                        order_item.po_ref = source_doc_no
+                        order_item.po_qty_ordered = (order_item.po_qty_ordered or 0) + int(allocated_qty)
+                        order_item.unit_cost = unit_cost
+                        order_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    elif allocation_type == "GRN":
+                        order_item.received_qty = (order_item.received_qty or 0) + int(allocated_qty)
+                        order_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            count_allocated += 1
+
+        db.commit()
+        logger.info(f"Batch allocated {count_allocated} items from {source_doc_no} to {project_name}.")
+
+        return {
+            "status": "success",
+            "message": f"Successfully allocated {count_allocated} items from {source_doc_no} to {project_name or f'Project #{project_id}'}.",
+            "count": count_allocated
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in batch procurement allocation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -5,7 +5,7 @@ import { API_BASE } from '../api_config';
 import { 
   ClipboardList, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
   ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
-  CheckCircle2, Clock, Trash2, FileText, Package, Eye
+  CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square
 } from 'lucide-react';
 
 export default function PurchasingPage() {
@@ -35,6 +35,16 @@ export default function PurchasingPage() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isLoadingDocumentDetails, setIsLoadingDocumentDetails] = useState(false);
 
+  // Multi-selection checkboxes in Document Workspace
+  const [selectedLineIds, setSelectedLineIds] = useState(new Set());
+
+  // Batch Allocation Modal State
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchProjectId, setBatchProjectId] = useState('');
+  const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchNotes, setBatchNotes] = useState('');
+  const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
+
   const [procurementDocs, setProcurementDocs] = useState([]);
   const [isLoadingProcurement, setIsLoadingProcurement] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'PO' | 'GRN' | 'ALL'
@@ -48,7 +58,7 @@ export default function PurchasingPage() {
   const [expandedLineId, setExpandedLineId] = useState(null);
   const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
 
-  // Allocation Modal State
+  // Single Allocation Modal State
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [allocTargetItem, setAllocTargetItem] = useState(null);
   const [candidateOrders, setCandidateOrders] = useState([]);
@@ -134,6 +144,7 @@ export default function PurchasingPage() {
       if (res.ok) {
         const data = await res.json();
         setSelectedDocument(data);
+        setSelectedLineIds(new Set()); // Reset selection
       }
     } catch (e) {
       console.error('Failed to fetch document details:', e);
@@ -211,7 +222,31 @@ export default function PurchasingPage() {
   }, [procurementDocs]);
 
   // -------------------------------------------------------------
-  // ALLOCATION ACTIONS
+  // MULTI-SELECTION HANDLERS
+  // -------------------------------------------------------------
+  const handleToggleSelectLine = (lineId) => {
+    const newSet = new Set(selectedLineIds);
+    if (newSet.has(lineId)) {
+      newSet.delete(lineId);
+    } else {
+      newSet.add(lineId);
+    }
+    setSelectedLineIds(newSet);
+  };
+
+  const handleSelectAllUnallocated = () => {
+    if (!selectedDocument || !selectedDocument.lines) return;
+    const unallocated = selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+    if (selectedLineIds.size === unallocated.length) {
+      setSelectedLineIds(new Set()); // Deselect all
+    } else {
+      const newSet = new Set(unallocated.map(l => l.id));
+      setSelectedLineIds(newSet);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // ALLOCATION ACTIONS (SINGLE & BATCH)
   // -------------------------------------------------------------
   const handleOpenAllocModal = async (item) => {
     setAllocTargetItem(item);
@@ -229,8 +264,9 @@ export default function PurchasingPage() {
         const data = await res.json();
         setCandidateOrders(data.candidates || []);
         if (data.candidates && data.candidates.length > 0) {
-          setSelectedCandidateKey(data.candidates[0].order_item_id);
-          const needed = data.candidates[0].remaining_needed || 1;
+          const firstCand = data.candidates[0];
+          setSelectedCandidateKey(firstCand.order_item_id);
+          const needed = firstCand.remaining_needed || 1;
           setAllocQty(Math.min(needed, item.unallocated_qty || needed));
         } else {
           setSelectedCandidateKey('MANUAL');
@@ -250,7 +286,7 @@ export default function PurchasingPage() {
     setAllocQty(Math.min(needed, available));
   };
 
-  const handleSubmitAllocation = async (e) => {
+  const handleSubmitSingleAllocation = async (e) => {
     e.preventDefault();
     if (!allocTargetItem) return;
 
@@ -321,6 +357,75 @@ export default function PurchasingPage() {
     }
   };
 
+  // Open Batch Allocation Modal
+  const handleOpenBatchModal = () => {
+    if (selectedLineIds.size === 0) return;
+    setBatchProjectId('');
+    setBatchOrderId('');
+    setBatchNotes('');
+    setBatchModalOpen(true);
+  };
+
+  // Submit Batch Allocation
+  const handleSubmitBatchAllocation = async (e) => {
+    e.preventDefault();
+    if (!selectedDocument || selectedLineIds.size === 0) return;
+
+    if (!batchProjectId) {
+      alert("Please select a destination Project.");
+      return;
+    }
+
+    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id) && (l.unallocated_qty || 0) > 0);
+
+    if (selectedLines.length === 0) {
+      alert("None of the selected items have unallocated quantities available.");
+      return;
+    }
+
+    const payload = {
+      allocation_type: selectedDocument.doc_type,
+      source_doc_no: selectedDocument.document_no,
+      project_id: proj ? (proj.id || 1) : 1,
+      project_name: proj ? proj.name : 'Selected Project',
+      order_id: batchOrderId ? Number(batchOrderId) : null,
+      allocated_by_name: 'Staff',
+      notes: batchNotes || `Batch allocated ${selectedLines.length} items`,
+      items: selectedLines.map(l => ({
+        source_line_id: l.line_id,
+        sku: l.item_code,
+        allocated_qty: Number(l.unallocated_qty || 1),
+        unit_cost: Number(l.unit_cost || 0),
+        fitting_code: l.item_code
+      }))
+    };
+
+    setIsSavingBatchAlloc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/batch-allocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        setBatchModalOpen(false);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(`Batch allocation notice: ${data.detail || 'Could not complete batch allocation.'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    } finally {
+      setIsSavingBatchAlloc(false);
+    }
+  };
+
   const handleUnallocate = async (allocationId, docNo) => {
     if (!window.confirm(`Release this allocation from ${docNo}? The quantity will return to Unallocated.`)) {
       return;
@@ -346,6 +451,11 @@ export default function PurchasingPage() {
       alert(`Error: ${e.message}`);
     }
   };
+
+  const unallocatedLinesInDoc = useMemo(() => {
+    if (!selectedDocument || !selectedDocument.lines) return [];
+    return selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+  }, [selectedDocument]);
 
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>
@@ -592,8 +702,8 @@ export default function PurchasingPage() {
                 </div>
               </div>
 
-              {/* Document Allocation Progress */}
-              <div style={{ textAlign: 'right', minWidth: '220px' }}>
+              {/* Document Allocation Progress & Batch Action */}
+              <div style={{ textAlign: 'right', minWidth: '240px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Allocation Progress:</span>
                   <strong style={{ color: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#10b981' : (selectedDocument.allocation_status === 'PARTIAL' ? '#3b82f6' : '#f59e0b') }}>
@@ -613,14 +723,79 @@ export default function PurchasingPage() {
             </div>
           </div>
 
+          {/* BATCH ALLOCATION ACTION BAR (When items are selected) */}
+          {selectedLineIds.size > 0 && (
+            <div style={{ 
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
+              border: '1.5px solid #3b82f6', 
+              borderRadius: '10px', 
+              padding: '12px 18px', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+              color: '#fff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                  {selectedLineIds.size} items selected
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#cbd5e1' }}>
+                  Allocate all selected items to the same project order in one click:
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => setSelectedLineIds(new Set())}
+                  className="btn btn-xs btn-ghost"
+                  style={{ color: '#94a3b8', fontSize: '11.5px' }}
+                >
+                  Clear Selection
+                </button>
+                <button
+                  onClick={handleOpenBatchModal}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
+                  }}
+                >
+                  <Sparkles size={14} /> Allocate Selected to Project Order
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Document Line Items Table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
-                Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                  Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
+                </span>
+                {unallocatedLinesInDoc.length > 0 && (
+                  <button
+                    onClick={handleSelectAllUnallocated}
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 8px' }}
+                  >
+                    {selectedLineIds.size === unallocatedLinesInDoc.length ? 'Deselect All' : `Select All Unallocated (${unallocatedLinesInDoc.length})`}
+                  </button>
+                )}
+              </div>
+
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Allocate each item to its destination project order below
+                Tip: Select multiple items to allocate them together, or allocate individually
               </span>
             </div>
 
@@ -628,6 +803,15 @@ export default function PurchasingPage() {
               <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ width: '40px', textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={unallocatedLinesInDoc.length > 0 && selectedLineIds.size === unallocatedLinesInDoc.length}
+                        onChange={handleSelectAllUnallocated}
+                        disabled={unallocatedLinesInDoc.length === 0}
+                        title="Select/Deselect All Unallocated Items"
+                      />
+                    </th>
                     <th style={{ width: '30px' }}></th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item Code / Description</th>
                     <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>Unit Cost</th>
@@ -642,14 +826,27 @@ export default function PurchasingPage() {
                   {(selectedDocument.lines || []).map((line) => {
                     const isExpanded = expandedLineId === line.id;
                     const hasAllocations = line.allocations && line.allocations.length > 0;
+                    const isSelected = selectedLineIds.has(line.id);
+                    const isUnallocated = (line.unallocated_qty || 0) > 0;
 
                     return (
                       <React.Fragment key={line.id}>
                         <tr style={{ 
                           borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
-                          background: isExpanded ? 'rgba(59, 130, 246, 0.03)' : 'transparent',
+                          background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (isExpanded ? 'rgba(59, 130, 246, 0.03)' : 'transparent'),
                           transition: 'background 0.15s ease'
                         }}>
+                          {/* Multi-select Checkbox */}
+                          <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              disabled={!isUnallocated}
+                              onChange={() => handleToggleSelectLine(line.id)}
+                            />
+                          </td>
+
+                          {/* Expand/Collapse Chevron */}
                           <td style={{ textAlign: 'center', padding: '8px 4px' }}>
                             {hasAllocations && (
                               <button
@@ -761,7 +958,7 @@ export default function PurchasingPage() {
                                   boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
                                 }}
                               >
-                                <Sparkles size={11} /> Allocate to Order
+                                <Sparkles size={11} /> Allocate
                               </button>
                             ) : (
                               <button
@@ -769,7 +966,7 @@ export default function PurchasingPage() {
                                 className="btn btn-xs btn-ghost"
                                 style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
                               >
-                                View Allocations ({line.allocations?.length || 0})
+                                View ({line.allocations?.length || 0})
                               </button>
                             )}
                           </td>
@@ -778,7 +975,7 @@ export default function PurchasingPage() {
                         {/* EXPANDED ALLOCATION BREAKDOWN */}
                         {isExpanded && hasAllocations && (
                           <tr style={{ background: 'rgba(59, 130, 246, 0.02)', borderBottom: '1px solid var(--border)' }}>
-                            <td colSpan={8} style={{ padding: '10px 20px 14px 44px' }}>
+                            <td colSpan={9} style={{ padding: '10px 20px 14px 44px' }}>
                               <div style={{ 
                                 background: 'var(--bg-primary)', 
                                 border: '1px solid var(--border)', 
@@ -1296,7 +1493,165 @@ export default function PurchasingPage() {
       )}
 
       {/* ============================================================ */}
-      {/* INTERACTIVE ALLOCATION MODAL                                 */}
+      {/* BATCH ALLOCATION MODAL (Multiple items to 1 Project Order)   */}
+      {/* ============================================================ */}
+      {batchModalOpen && selectedDocument && (
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+            
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              padding: '16px 20px', 
+              borderBottom: '1px solid var(--border)', 
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={16} color="#3b82f6" />
+                  Batch Allocate {selectedLineIds.size} Items from {selectedDocument.document_no}
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  Supplier: <strong>{selectedDocument.vendor_name}</strong> • Document: <strong>{selectedDocument.document_no}</strong>
+                </p>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setBatchModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                
+                {/* Target Project & Order Selectors */}
+                <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '14px 16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px' }}>
+                    🎯 Destination Project & Order
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Project *</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '34px', fontSize: '12px', fontWeight: 600 }}
+                        value={batchProjectId}
+                        onChange={(e) => {
+                          setBatchProjectId(e.target.value);
+                          setBatchOrderId('');
+                        }}
+                        required
+                      >
+                        <option value="">-- Select Destination Project --</option>
+                        {Object.values(projects || {}).map(p => (
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Order (Optional)</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '34px', fontSize: '12px' }}
+                        value={batchOrderId}
+                        onChange={(e) => setBatchOrderId(e.target.value)}
+                        disabled={!batchProjectId}
+                      >
+                        <option value="">-- General Project Allocation --</option>
+                        {(() => {
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          return (proj?.orders || []).map(o => (
+                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Being Allocated List */}
+                <div>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    Items to be Allocated ({selectedLineIds.size}):
+                  </div>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
+                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 10px' }}>SKU</th>
+                          <th style={{ padding: '6px 10px' }}>Description</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id)).map(l => (
+                          <tr key={l.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {l.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Notes Input */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    Internal Allocation Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Master Bedroom track & drivers, Phase 1 installation..."
+                    className="form-control"
+                    style={{ height: '34px', fontSize: '12px' }}
+                    value={batchNotes}
+                    onChange={(e) => setBatchNotes(e.target.value)}
+                  />
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: '10px', 
+                padding: '14px 20px', 
+                borderTop: '1px solid var(--border)', 
+                background: 'var(--bg-secondary)', 
+                flexShrink: 0 
+              }}>
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-ghost" 
+                  onClick={() => setBatchModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-sm btn-primary" 
+                  disabled={isSavingBatchAlloc || !batchProjectId}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  Confirm Batch Allocation ({selectedLineIds.size} items)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* SINGLE ITEM ALLOCATION MODAL                                 */}
       {/* ============================================================ */}
       {allocModalOpen && allocTargetItem && (
         <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
@@ -1326,7 +1681,7 @@ export default function PurchasingPage() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 
                 {/* SKU Info Card */}
@@ -1399,13 +1754,13 @@ export default function PurchasingPage() {
                                 {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>({cand.order_title})</span>
                               </div>
                               <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                Fitting Code: <strong>{cand.fitting_code}</strong> • Area: {cand.area}
+                                Fitting Code: <strong>{cand.fitting_code}</strong> {cand.area ? `• Area: ${cand.area}` : ''}
                               </div>
                             </div>
 
                             <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b' }}>
-                                Needs: {cand.remaining_needed} units
+                              <div style={{ fontSize: '11px', fontWeight: 700, color: cand.remaining_needed > 0 ? '#f59e0b' : '#10b981' }}>
+                                {cand.remaining_needed > 0 ? `Needs: ${cand.remaining_needed} units` : 'Already Fulfilled'}
                               </div>
                               <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)' }}>
                                 Requested: {cand.requested_qty} • Ordered: {cand.po_qty_ordered}
