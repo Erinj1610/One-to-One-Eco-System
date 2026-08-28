@@ -126,7 +126,11 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
         _last_sync_info["last_error"] = str(ex)
         raise ex
     finally:
-        _sync_lock.release()
+        _last_sync_info["is_syncing"] = False
+        try:
+            _sync_lock.release()
+        except Exception:
+            pass
         if should_close:
             db.close()
 
