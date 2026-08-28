@@ -41,9 +41,10 @@ export default function PurchasingPage() {
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [limit] = useState(50);
+  const [limit, setLimit] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [jumpPageInput, setJumpPageInput] = useState('');
   const [expandedLineId, setExpandedLineId] = useState(null);
   const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
 
@@ -71,7 +72,13 @@ export default function PurchasingPage() {
     } catch (_) {}
   };
 
-  const fetchProcurementDocuments = async (newPage = page, newTab = activeFilterTab, newSupplier = supplierFilter, newQ = searchQuery) => {
+  const fetchProcurementDocuments = async (
+    newPage = page, 
+    newTab = activeFilterTab, 
+    newSupplier = supplierFilter, 
+    newQ = searchQuery,
+    newLimit = limit
+  ) => {
     setIsLoadingProcurement(true);
     try {
       let docTypeParam = 'ALL';
@@ -93,7 +100,7 @@ export default function PurchasingPage() {
         doc_type: docTypeParam,
         status: statusParam,
         page: newPage.toString(),
-        limit: limit.toString()
+        limit: newLimit.toString()
       });
 
       if (newSupplier && newSupplier !== 'All Suppliers') {
@@ -116,6 +123,28 @@ export default function PurchasingPage() {
     } finally {
       setIsLoadingProcurement(false);
     }
+  };
+
+  // Helper for generating smart pagination pages (e.g. 1 ... 4 5 6 ... 48)
+  const getPaginationPages = () => {
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push('...');
+      
+      const start = Math.max(2, page - 1);
+      const end = Math.min(totalPages - 1, page + 1);
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      if (page < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
   };
 
   // Trigger master sync from top button
@@ -961,44 +990,166 @@ export default function PurchasingPage() {
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              padding: '10px 16px', 
+              padding: '12px 18px', 
               borderTop: '1px solid var(--border)',
               background: 'var(--bg-secondary)',
-              fontSize: '11.5px',
-              color: 'var(--text-secondary)'
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              flexWrap: 'wrap',
+              gap: '12px'
             }}>
-              <div>
-                Showing {(page - 1) * limit + 1} - {Math.min(page * limit, totalCount)} of {totalCount} lines
+              {/* Left Side: Summary & Rows Per Page Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div>
+                  Showing <strong style={{ color: 'var(--text-primary)' }}>{totalCount === 0 ? 0 : (page - 1) * limit + 1}</strong> - <strong style={{ color: 'var(--text-primary)' }}>{Math.min(page * limit, totalCount)}</strong> of <strong style={{ color: 'var(--text-primary)' }}>{totalCount.toLocaleString()}</strong> lines
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Rows per page:</label>
+                  <select
+                    className="form-control"
+                    style={{ height: '28px', fontSize: '11.5px', padding: '2px 8px', width: '80px', fontWeight: 700 }}
+                    value={limit}
+                    onChange={(e) => {
+                      const newLim = Number(e.target.value);
+                      setLimit(newLim);
+                      setPage(1);
+                      fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, newLim);
+                    }}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={500}>500</option>
+                  </select>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              {/* Right Side: Fast Page Navigation, Pills, and Jump Input */}
+              <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* First Page button */}
+                <button
+                  onClick={() => {
+                    setPage(1);
+                    fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, limit);
+                  }}
+                  disabled={page <= 1}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to First Page"
+                >
+                  ⏮ First
+                </button>
+
+                {/* Previous Page button */}
                 <button
                   onClick={() => {
                     const prev = Math.max(1, page - 1);
                     setPage(prev);
-                    fetchProcurementDocuments(prev, activeFilterTab, supplierFilter, searchQuery);
+                    fetchProcurementDocuments(prev, activeFilterTab, supplierFilter, searchQuery, limit);
                   }}
                   disabled={page <= 1}
                   className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)' }}
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
                 >
-                  Previous
+                  ◀ Prev
                 </button>
-                <span style={{ fontWeight: 600, padding: '0 6px' }}>
-                  Page {page} of {totalPages}
-                </span>
+
+                {/* Numbered Page Pills */}
+                {getPaginationPages().map((p, idx) => {
+                  if (p === '...') {
+                    return (
+                      <span key={`dots-${idx}`} style={{ padding: '0 4px', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                        •••
+                      </span>
+                    );
+                  }
+                  const isCur = page === p;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setPage(p);
+                        fetchProcurementDocuments(p, activeFilterTab, supplierFilter, searchQuery, limit);
+                      }}
+                      className={`btn btn-xs ${isCur ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{
+                        minWidth: '28px',
+                        height: '28px',
+                        padding: '0 6px',
+                        fontSize: '11px',
+                        fontWeight: isCur ? 700 : 500,
+                        border: isCur ? 'none' : '1px solid var(--border)',
+                        background: isCur ? '#3b82f6' : 'transparent',
+                        color: isCur ? '#fff' : 'var(--text-primary)'
+                      }}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+
+                {/* Next Page button */}
                 <button
                   onClick={() => {
                     const next = Math.min(totalPages, page + 1);
                     setPage(next);
-                    fetchProcurementDocuments(next, activeFilterTab, supplierFilter, searchQuery);
+                    fetchProcurementDocuments(next, activeFilterTab, supplierFilter, searchQuery, limit);
                   }}
                   disabled={page >= totalPages}
                   className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)' }}
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
                 >
-                  Next
+                  Next ▶
                 </button>
+
+                {/* Last Page button */}
+                <button
+                  onClick={() => {
+                    setPage(totalPages);
+                    fetchProcurementDocuments(totalPages, activeFilterTab, supplierFilter, searchQuery, limit);
+                  }}
+                  disabled={page >= totalPages}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
+                  title="Jump to Last Page"
+                >
+                  Last ⏭
+                </button>
+
+                {/* Jump to Page Input */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const targetPage = Number(jumpPageInput);
+                    if (targetPage >= 1 && targetPage <= totalPages) {
+                      setPage(targetPage);
+                      fetchProcurementDocuments(targetPage, activeFilterTab, supplierFilter, searchQuery, limit);
+                      setJumpPageInput('');
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}
+                >
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Go to:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    placeholder={page}
+                    className="form-control"
+                    style={{ width: '50px', height: '28px', fontSize: '11px', padding: '2px 4px', textAlign: 'center', fontWeight: 600 }}
+                    value={jumpPageInput}
+                    onChange={(e) => setJumpPageInput(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid var(--border)', height: '28px', fontSize: '10.5px', padding: '2px 8px', fontWeight: 700 }}
+                  >
+                    Go
+                  </button>
+                </form>
               </div>
             </div>
           </div>
