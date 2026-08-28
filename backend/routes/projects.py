@@ -797,7 +797,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 purchase_orders_parsed.append({
                     "id": doc_no,
                     "date": doc_date_str,
-                    "supplier": order.supplier_name or "Palladium ERP",
+                    "supplier": first_a.vendor_name or order.supplier_name or "Palladium ERP",
                     "notes": first_a.notes or "Allocated from Palladium ERP",
                     "allocated_by": first_a.allocated_by_name,
                     "items": [
@@ -818,7 +818,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 goods_received_notes_parsed.append({
                     "id": doc_no,
                     "date": doc_date_str,
-                    "supplier": order.supplier_name or "Palladium ERP",
+                    "supplier": first_a.vendor_name or order.supplier_name or "Palladium ERP",
                     "notes": first_a.notes or "Allocated from Palladium ERP",
                     "allocated_by": first_a.allocated_by_name,
                     "items": [

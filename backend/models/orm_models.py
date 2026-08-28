@@ -751,6 +751,7 @@ class ProcurementAllocation(Base):
     fitting_code = Column(String, nullable=True)
     allocated_qty = Column(Float, default=1.0)
     unit_cost = Column(Float, default=0.0)
+    vendor_name = Column(String, nullable=True)
     doc_date = Column(String, nullable=True)
     eta = Column(String, nullable=True)
     allocated_by_name = Column(String, nullable=True)

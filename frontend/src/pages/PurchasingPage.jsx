@@ -316,6 +316,7 @@ export default function PurchasingPage() {
     let payload = {
       allocation_type: allocTargetItem.doc_type,
       source_doc_no: allocTargetItem.document_no,
+      vendor_name: allocTargetItem.vendor_name,
       doc_date: allocTargetItem.transaction_date,
       eta: allocEta,
       source_line_id: allocTargetItem.line_id,
@@ -373,10 +374,37 @@ export default function PurchasingPage() {
     }
   };
 
-  // Open Batch Allocation Modal
+  // Open Batch Allocation Modal with Intelligent Destination Pre-selection
   const handleOpenBatchModal = () => {
-    if (selectedLineIds.size === 0) return;
-    setBatchProjectId('');
+    if (selectedLineIds.size === 0 || !selectedDocument) return;
+
+    const selectedSkus = new Set(
+      (selectedDocument.lines || [])
+        .filter(l => selectedLineIds.has(l.id))
+        .map(l => (l.item_code || '').trim().toUpperCase())
+    );
+
+    let bestProjId = '';
+    let bestMatchCount = 0;
+
+    Object.values(projects || {}).forEach(p => {
+      let matches = 0;
+      (p.orders || []).forEach(o => {
+        (o.itemsList || []).forEach(it => {
+          const code = (it.code || '').trim().toUpperCase();
+          const oneOne = (it.oneOneCode || '').trim().toUpperCase();
+          if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
+            matches++;
+          }
+        });
+      });
+      if (matches > bestMatchCount) {
+        bestMatchCount = matches;
+        bestProjId = p.id || p.key;
+      }
+    });
+
+    setBatchProjectId(bestProjId || '');
     setBatchOrderId('');
     setBatchEta('');
     setBatchNotes('');
@@ -404,6 +432,7 @@ export default function PurchasingPage() {
     const payload = {
       allocation_type: selectedDocument.doc_type,
       source_doc_no: selectedDocument.document_no,
+      vendor_name: selectedDocument.vendor_name,
       doc_date: selectedDocument.transaction_date,
       eta: batchEta,
       project_id: proj ? (proj.id || 1) : 1,
