@@ -372,13 +372,36 @@ def init_db():
                     ("qr_link", "VARCHAR"),
                     ("client_code", "VARCHAR"),
                     ("image_url", "VARCHAR"),
-                    ("technical_image_url", "VARCHAR")
+                    ("technical_image_url", "VARCHAR"),
+                    ("spec_sheet_url", "VARCHAR"),
+                    ("wetworks", "TEXT")
                 ]
                 for col_name, col_type in new_cols:
                     if col_name not in existing_cols:
-                        conn.execute(text(f"ALTER TABLE products ADD COLUMN {col_name} {col_type};"))
+                        conn.execute(text(f"ALTER TABLE products ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
                         conn.commit()
                         print(f"Database migration: added column {col_name} to 'products' table.")
+
+                # Migrate order_items table
+                try:
+                    if 'order_items' in inspector.get_table_names():
+                        order_item_cols = [c["name"] for c in inspector.get_columns("order_items")]
+                        order_item_new_cols = [
+                            ("wetworks", "TEXT"),
+                            ("foh_code_description", "TEXT"),
+                            ("client_description", "TEXT"),
+                            ("one_to_one_code", "VARCHAR"),
+                            ("selection", "VARCHAR"),
+                            ("technical_image_url", "TEXT"),
+                            ("spec_sheet_url", "TEXT")
+                        ]
+                        for oi_col_name, oi_col_type in order_item_new_cols:
+                            if oi_col_name not in order_item_cols:
+                                conn.execute(text(f"ALTER TABLE order_items ADD COLUMN IF NOT EXISTS {oi_col_name} {oi_col_type};"))
+                                conn.commit()
+                                print(f"Database migration: added column {oi_col_name} to 'order_items' table.")
+                except Exception as oi_err:
+                    print(f"Database migration order_items (info): {oi_err}")
 
                 # Migrate support_tickets table to ensure extended fields exist
                 try:
@@ -395,7 +418,7 @@ def init_db():
                         ]
                         for t_col_name, t_col_type in ticket_new_cols:
                             if t_col_name not in ticket_cols:
-                                conn.execute(text(f"ALTER TABLE support_tickets ADD COLUMN {t_col_name} {t_col_type};"))
+                                conn.execute(text(f"ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS {t_col_name} {t_col_type};"))
                                 conn.commit()
                                 print(f"Database migration: added column {t_col_name} to 'support_tickets' table.")
                 except Exception as t_err:
