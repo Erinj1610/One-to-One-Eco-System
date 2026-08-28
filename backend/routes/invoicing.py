@@ -449,25 +449,31 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         )
         db.add(alloc)
 
+        is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
         if matched_item:
             matched_item.invoice_ref = source_doc_no
-            matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+            if is_credit_doc:
+                matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
+                matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
+            else:
+                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
+
             if doc_date:
                 matched_item.invoice_date = str(doc_date).split("T")[0]
             else:
                 matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             
-            matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-            
             i_hist = list(matched_item.invoice_history or [])
             i_hist.append({
                 "id": source_doc_no,
                 "ref": source_doc_no,
-                "qty": allocated_qty,
+                "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
                 "unitPrice": unit_cost,
-                "total": round(allocated_qty * unit_cost, 2),
+                "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
                 "date": matched_item.invoice_date,
-                "by": allocated_by
+                "by": allocated_by,
+                "type": "Credit Note" if is_credit_doc else "Invoice"
             })
             matched_item.invoice_history = i_hist
 
@@ -593,25 +599,31 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             )
             db.add(alloc)
 
+            is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
             if matched_item:
                 matched_item.invoice_ref = source_doc_no
-                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+                if is_credit_doc:
+                    matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
+                    matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
+                else:
+                    matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+                    matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
+
                 if doc_date:
                     matched_item.invoice_date = str(doc_date).split("T")[0]
                 else:
                     matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 
-                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-                
                 i_hist = list(matched_item.invoice_history or [])
                 i_hist.append({
                     "id": source_doc_no,
                     "ref": source_doc_no,
-                    "qty": allocated_qty,
+                    "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
                     "unitPrice": unit_cost,
-                    "total": round(allocated_qty * unit_cost, 2),
+                    "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
                     "date": matched_item.invoice_date,
-                    "by": allocated_by
+                    "by": allocated_by,
+                    "type": "Credit Note" if is_credit_doc else "Invoice"
                 })
                 matched_item.invoice_history = i_hist
 

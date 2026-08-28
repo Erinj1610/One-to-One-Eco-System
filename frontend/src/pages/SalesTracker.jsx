@@ -221,28 +221,35 @@ export default function SalesTracker() {
     if (tokens.length === 0) return '—';
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-        {tokens.map((tok, idx) => (
-          <button
-            key={idx}
-            className="btn btn-xs btn-ghost"
-            style={{
-              padding: '2px 4px',
-              fontSize: '10.5px',
-              fontFamily: 'monospace',
-              color: 'var(--text-info)',
-              textDecoration: 'underline',
-              cursor: 'pointer',
-              height: 'auto',
-              minHeight: 0
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleNavigateToDoc(page, tok, projectKey);
-            }}
-          >
-            {tok}
-          </button>
-        ))}
+        {tokens.map((tok, idx) => {
+          const isCN = tok.toUpperCase().startsWith('CN-') || tok.toUpperCase().startsWith('CR-');
+          return (
+            <button
+              key={idx}
+              className="btn btn-xs btn-ghost"
+              style={{
+                padding: '2px 6px',
+                fontSize: '10.5px',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                color: isCN ? 'var(--text-danger)' : 'var(--text-info)',
+                background: isCN ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                borderRadius: isCN ? '4px' : '2px',
+                border: isCN ? '1px solid rgba(239, 68, 68, 0.3)' : 'none',
+                textDecoration: isCN ? 'none' : 'underline',
+                cursor: 'pointer',
+                height: 'auto',
+                minHeight: 0
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNavigateToDoc(page, tok, projectKey);
+              }}
+            >
+              {isCN ? `🔴 ${tok}` : tok}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -3542,9 +3549,16 @@ export default function SalesTracker() {
 
                   const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
 
+                  const currentOrderObj = allOrders.find(o => o.id === selectedOrderId) || {};
+                  const orderCreditNotes = (currentOrderObj?.creditNotes && currentOrderObj.creditNotes.length > 0)
+                    ? currentOrderObj.creditNotes
+                    : (currentOrderObj?.clientInvoices || []).filter(i => i.is_credit || String(i.id).toUpperCase().startsWith('CN-') || String(i.id).toUpperCase().startsWith('CR-'));
+                  const totalCreditVal = orderCreditNotes.reduce((s, cn) => s + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0) ||
+                    activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1;
+
                   return (
                     <>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr', gap: '12px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '700px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: totalCreditVal > 0 ? '1.1fr 1.4fr 1.1fr 1.1fr 1.1fr 1.1fr 0.9fr' : '1.2fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr', gap: '10px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '700px' }}>
                         <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
                           <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
@@ -3564,6 +3578,16 @@ export default function SalesTracker() {
                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
                           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
                         </div>
+                        {totalCreditVal > 0 && (
+                          <div 
+                            style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '4px', padding: '4px' }}
+                            onClick={() => setSalesTrackerCreditsOpen(true)}
+                            title="Click to view Credited Items & Returns"
+                          >
+                            <span style={{ fontSize: '9px', color: 'var(--text-danger)', textTransform: 'uppercase', display: 'block', fontWeight: 700, letterSpacing: '0.5px' }}>Credits 🔴</span>
+                            <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', marginTop: '2px' }}>-R {Math.round(totalCreditVal).toLocaleString()}</span>
+                          </div>
+                        )}
                         <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
                           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
@@ -3747,6 +3771,27 @@ export default function SalesTracker() {
                           </h4>
                           
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {totalCreditVal > 0 && (
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                                  color: 'var(--text-danger)',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  cursor: 'pointer',
+                                  height: '32px'
+                                }}
+                                onClick={() => setSalesTrackerCreditsOpen(!salesTrackerCreditsOpen)}
+                              >
+                                🔴 {salesTrackerCreditsOpen ? 'Hide Credited Items ˄' : `Credited Items (${orderCreditNotes.length || 1}) ˅`}
+                              </button>
+                            )}
                             {activeTab !== 'order' && (
                               <button
                                 className="btn btn-sm"

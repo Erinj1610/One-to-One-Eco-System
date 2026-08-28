@@ -839,28 +839,33 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             for doc_no, doc_items in inv_groups.items():
                 first_a = doc_items[0]
                 doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
-                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items)
+                is_credit_doc = str(doc_no).upper().startswith(("CN-", "CR-"))
+                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items) * (-1.0 if is_credit_doc else 1.0)
                 dynamic_client_invoices.append({
                     "id": doc_no,
+                    "doc_type": "Credit Note" if is_credit_doc else "Invoice",
+                    "is_credit": is_credit_doc,
                     "date": doc_date_str,
                     "totalValue": inv_total_val,
                     "value": inv_total_val,
                     "amount": inv_total_val,
-                    "notes": first_a.notes or "Allocated from Palladium ERP",
+                    "notes": first_a.notes or ("Credit Note allocated from Palladium ERP" if is_credit_doc else "Allocated from Palladium ERP"),
                     "allocated_by": first_a.allocated_by_name,
                     "items": [
                         {
                             "code": a.fitting_code or a.sku,
                             "description": a.sku,
-                            "qtyAction": a.allocated_qty,
+                            "qtyAction": -abs(a.allocated_qty) if is_credit_doc else a.allocated_qty,
                             "unitPrice": a.unit_cost,
-                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0))
+                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0)) * (-1.0 if is_credit_doc else 1.0)
                         }
                         for a in doc_items
                     ]
                 })
 
-            # Client Invoices are strictly dynamic from authentic Palladium ERP allocations
+            credit_notes_parsed = [inv for inv in dynamic_client_invoices if inv.get("is_credit")]
+
+            # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
             try:
                 payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
@@ -884,6 +889,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "purchaseOrders": purchase_orders_parsed,
                 "goodsReceivedNotes": goods_received_notes_parsed,
                 "clientInvoices": dynamic_client_invoices,
+                "creditNotes": credit_notes_parsed,
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,

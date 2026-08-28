@@ -5721,43 +5721,130 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'credits' && (
+            {workspaceSubTab === 'credits' && (() => {
+              const orderCreditNotes = (activeOrderObject?.creditNotes && activeOrderObject.creditNotes.length > 0)
+                ? activeOrderObject.creditNotes
+                : (activeOrderObject?.clientInvoices || []).filter(i => i.is_credit || String(i.id).toUpperCase().startsWith('CN-') || String(i.id).toUpperCase().startsWith('CR-'));
+              
+              const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
+              const totalManualCredited = activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1;
+              const combinedRetailCredited = totalErpCredited > 0 ? totalErpCredited : totalManualCredited;
+
+              const grossOrderValue = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
+              const netOrderValue = Math.max(0, grossOrderValue - combinedRetailCredited);
+
+              return (
               /* SUB-TAB: CREDITS & RETURNS */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* VITAL METRICS CARD GRID FOR CREDITS */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Credited</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total ERP Credit Notes</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0), 0) * -1).toLocaleString()}
+                      {orderCreditNotes.length} Document{orderCreditNotes.length === 1 ? '' : 's'}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Supplier cost deduction</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Allocated from Palladium ERP</span>
                   </div>
 
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Retail Credited</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1).toLocaleString()}
+                      -R {Math.round(combinedRetailCredited).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit EX VAT</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit deduction</span>
                   </div>
 
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Order Value</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100)).toLocaleString()}
+                      R {Math.round(netOrderValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Main order minus credits</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Gross order minus total credits</span>
                   </div>
                 </div>
 
+                {/* 1. OFFICIAL PALLADIUM ERP CREDIT NOTES TABLE */}
                 <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
-                        🔴 Credit Note & Return Items (Interactive Spreadsheet)
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
+                        🔴 Official Palladium ERP Credit Notes ({orderCreditNotes.length})
                       </h4>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Edit fields directly in the cells. Quantities entered will automatically negate to represent credits.</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Credit Notes allocated from Palladium ERP against this quotation order.</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => navigate('/invoices')}
+                    >
+                      <FileText size={14} /> Open Invoices Workspace
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Document ID</th>
+                          <th style={{ padding: '10px 12px' }}>Document Type</th>
+                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                          <th style={{ padding: '10px 12px' }}>Items Credited</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>Credited Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orderCreditNotes.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No Credit Notes have been allocated to this order yet. Go to Invoices workspace to allocate pending Credit Notes from Palladium.
+                            </td>
+                          </tr>
+                        ) : (
+                          orderCreditNotes.map((cn, idx) => (
+                            <tr key={`cn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                              <td 
+                                style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => navigate('/invoices')}
+                              >
+                                {cn.id}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: 'var(--text-danger)', fontSize: '10.5px', fontWeight: 700 }}>
+                                  🔴 Credit Note (ERP)
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{cn.date || '—'}</td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {cn.items?.length > 0 ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {cn.items.map((it, iIdx) => (
+                                      <span key={iIdx} style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
+                                        {it.code} (Qty: {Math.abs(Number(it.qtyAction || it.qty || 1))})
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : `${cn.items?.length || 1} items`}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', textAlign: 'right' }}>
+                                -R {Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 2. OPTIONAL MANUAL SPREADSHEET / RETURN ITEMS */}
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                        📝 Internal Returns & Adjustments Draft
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Optional draft spreadsheet for operational returns and internal adjustment notes.</span>
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                       {/* QUICK RETURN BOQ DROPDOWN */}
@@ -6129,7 +6216,8 @@ export default function OrdersPage() {
                   )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
 
 
