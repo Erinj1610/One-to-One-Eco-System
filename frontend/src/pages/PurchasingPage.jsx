@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
@@ -10,6 +10,7 @@ import {
 
 export default function PurchasingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projects, getModuleName } = useStore();
 
   // Toast notifications
@@ -203,6 +204,16 @@ export default function PurchasingPage() {
     fetchSummary();
     fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery);
   }, []);
+
+  // Handle direct deep-link opening from OrdersPage or other tabs
+  useEffect(() => {
+    if (location.state?.openDocId) {
+      const rawId = String(location.state.openDocId).trim();
+      const docNo = rawId.replace(/^(PO_|GRN_)/, '');
+      const docType = rawId.startsWith('GRN') || docNo.startsWith('PI-') ? 'GRN' : 'PO';
+      fetchSingleDocumentDetails(docType, docNo);
+    }
+  }, [location.state]);
 
   // Debounced Search & Tab Change Effect
   useEffect(() => {
