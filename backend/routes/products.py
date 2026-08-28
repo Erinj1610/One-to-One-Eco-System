@@ -103,7 +103,7 @@ def serialize_product(product: Product):
     out["supplier"] = supplier_info
     return out
 
-@router.get("/summary")
+@public_router.get("/summary")
 def products_summary(db: Session = Depends(get_db)):
     """Lightweight endpoint – returns just aggregate counts for the KPI cards."""
     from sqlalchemy import func
@@ -118,7 +118,6 @@ def products_summary(db: Session = Depends(get_db)):
     return {"total": total, "low_stock": low_stock, "out_of_stock": out_of_stock}
 
 @public_router.get("/filter-options")
-@router.get("/filter-options")
 def get_filter_options(db: Session = Depends(get_db)):
     from sqlalchemy import distinct
     categories = [r[0] for r in db.query(distinct(Product.category)).filter(Product.category.isnot(None), Product.category != '').order_by(Product.category).all()]
@@ -134,7 +133,6 @@ def get_filter_options(db: Session = Depends(get_db)):
     }
 
 @public_router.get("/")
-@router.get("/")
 def list_products(
     q: Optional[str] = None,
     category: Optional[str] = None,
@@ -219,7 +217,7 @@ def list_products(
     return {"items": serialized, "total": total_count, "limit": limit, "offset": offset}
 
 
-@router.get("/{product_id}")
+@public_router.get("/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
