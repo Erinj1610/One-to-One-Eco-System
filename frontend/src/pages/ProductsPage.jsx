@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
