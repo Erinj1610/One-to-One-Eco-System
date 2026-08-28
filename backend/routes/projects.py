@@ -635,11 +635,20 @@ def list_quotes(project_id: int, db: Session = Depends(get_db)):
 @router.get("/all")
 def list_all_projects_relational(db: Session = Depends(get_db)):
     import json
-    from models.orm_models import Order, OrderItem
+    from models.orm_models import Order, OrderItem, ProcurementAllocation
     try:
         projects = db.query(Project).all()
         orders = db.query(Order).all()
         order_items = db.query(OrderItem).all()
+
+        # Pre-load active procurement allocations for live PO & GRN document mapping
+        active_allocations = db.query(ProcurementAllocation).filter(ProcurementAllocation.status == "Active").all()
+        alloc_by_order = {}
+        for a in active_allocations:
+            if a.order_id:
+                alloc_by_order.setdefault(a.order_id, []).append(a)
+            if a.project_id:
+                alloc_by_order.setdefault(f"proj_{a.project_id}", []).append(a)
 
         # Group items by order ID
         items_by_order = {}
@@ -744,15 +753,58 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             except Exception:
                 delivery_notes_parsed = []
 
-            try:
-                purchase_orders_parsed = json.loads(order.purchase_orders) if isinstance(order.purchase_orders, str) else (order.purchase_orders or [])
-            except Exception:
-                purchase_orders_parsed = []
+            # Dynamically assemble live allocated POs and GRNs from ProcurementAllocation
+            order_allocs = alloc_by_order.get(order.id, [])
+            if not order_allocs and order.project_id:
+                order_allocs = alloc_by_order.get(f"proj_{order.project_id}", [])
 
-            try:
-                goods_received_notes_parsed = json.loads(order.goods_received_notes) if isinstance(order.goods_received_notes, str) else (order.goods_received_notes or [])
-            except Exception:
-                goods_received_notes_parsed = []
+            po_groups = {}
+            grn_groups = {}
+            for a in order_allocs:
+                if a.allocation_type == 'PO':
+                    po_groups.setdefault(a.source_doc_no, []).append(a)
+                elif a.allocation_type == 'GRN':
+                    grn_groups.setdefault(a.source_doc_no, []).append(a)
+
+            purchase_orders_parsed = []
+            for doc_no, doc_items in po_groups.items():
+                first_a = doc_items[0]
+                purchase_orders_parsed.append({
+                    "id": doc_no,
+                    "date": first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None,
+                    "supplier": order.supplier_name or "Palladium ERP",
+                    "notes": first_a.notes or "Allocated from Palladium ERP",
+                    "allocated_by": first_a.allocated_by_name,
+                    "items": [
+                        {
+                            "code": a.fitting_code or a.sku,
+                            "description": a.sku,
+                            "qtyAction": a.allocated_qty,
+                            "unitCost": a.unit_cost
+                        }
+                        for a in doc_items
+                    ]
+                })
+
+            goods_received_notes_parsed = []
+            for doc_no, doc_items in grn_groups.items():
+                first_a = doc_items[0]
+                goods_received_notes_parsed.append({
+                    "id": doc_no,
+                    "date": first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None,
+                    "supplier": order.supplier_name or "Palladium ERP",
+                    "notes": first_a.notes or "Allocated from Palladium ERP",
+                    "allocated_by": first_a.allocated_by_name,
+                    "items": [
+                        {
+                            "code": a.fitting_code or a.sku,
+                            "description": a.sku,
+                            "qtyAction": a.allocated_qty,
+                            "unitCost": a.unit_cost
+                        }
+                        for a in doc_items
+                    ]
+                })
 
             try:
                 client_invoices_parsed = json.loads(order.client_invoices) if isinstance(order.client_invoices, str) else (order.client_invoices or [])

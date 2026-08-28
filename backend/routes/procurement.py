@@ -735,12 +735,13 @@ def allocate_procurement_item(
 ):
     """
     Allocates a quantity from a Palladium PO or GRN line to a Project Order Item.
+    Auto-matches Project and OrderItem even if only project key/name is provided.
     """
     try:
         allocation_type = str(payload.get("allocation_type") or "PO").upper()
         source_doc_no = str(payload.get("source_doc_no") or "").strip()
         sku = str(payload.get("sku") or "").strip()
-        project_id = payload.get("project_id")
+        project_id_input = payload.get("project_id")
         project_name = payload.get("project_name")
         order_id = payload.get("order_id")
         order_item_id = payload.get("order_item_id")
@@ -750,19 +751,59 @@ def allocate_procurement_item(
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes")
 
-        if not source_doc_no or not sku or not project_id or allocated_qty <= 0:
+        if not source_doc_no or not sku or not project_id_input or allocated_qty <= 0:
             raise HTTPException(status_code=400, detail="Missing required allocation parameters (source_doc_no, sku, project_id, allocated_qty > 0).")
 
-        # 1. Create allocation record
+        # 1. Resolve Project Entity
+        proj = None
+        if str(project_id_input).isdigit():
+            proj = db.query(Project).filter(Project.id == int(project_id_input)).first()
+        if not proj:
+            proj = db.query(Project).filter(Project.project_key == str(project_id_input)).first()
+        if not proj and project_name:
+            proj = db.query(Project).filter(Project.name.ilike(f"%{project_name}%")).first()
+
+        real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
+        real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
+
+        # 2. Auto-match OrderItem if not explicitly passed
+        matched_item = None
+        if order_item_id:
+            matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+        elif proj:
+            clean_sku = sku.strip().upper()
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.ilike(f"{proj.project_key}%"),
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                )
+            ).all()
+            for it in proj_items:
+                if (it.code and it.code.strip().upper() == clean_sku) or \
+                   (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
+                   (it.description and clean_sku in it.description.upper()):
+                    matched_item = it
+                    break
+
+        if matched_item and not order_id:
+            # Resolve order_id from matched_item
+            if str(matched_item.order_id).isdigit():
+                order_id = int(matched_item.order_id)
+            elif proj:
+                p_orders = db.query(Order).filter(Order.project_id == proj.id).all()
+                if p_orders:
+                    order_id = p_orders[0].id
+
+        # 3. Create allocation record
         alloc = ProcurementAllocation(
             allocation_type=allocation_type,
             source_doc_no=source_doc_no,
             sku=sku,
-            project_id=int(project_id),
-            project_name=project_name,
+            project_id=real_proj_id,
+            project_name=real_proj_name,
             order_id=int(order_id) if order_id else None,
-            order_item_id=str(order_item_id) if order_item_id else None,
-            fitting_code=fitting_code,
+            order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
+            fitting_code=fitting_code or (matched_item.code if matched_item else sku),
             allocated_qty=allocated_qty,
             unit_cost=unit_cost,
             allocated_by_name=allocated_by,
@@ -772,42 +813,42 @@ def allocate_procurement_item(
         )
         db.add(alloc)
 
-        # 2. Update OrderItem if linked
-        if order_item_id:
-            order_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-            if order_item:
-                if allocation_type == "PO":
-                    order_item.po_ref = source_doc_no
-                    order_item.po_qty_ordered = (order_item.po_qty_ordered or 0) + int(allocated_qty)
-                    order_item.unit_cost = unit_cost
-                    order_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    p_hist = list(order_item.purchase_history or [])
-                    p_hist.append({
-                        "ref": source_doc_no,
-                        "qty": allocated_qty,
-                        "cost": unit_cost,
-                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-                        "by": allocated_by
-                    })
-                    order_item.purchase_history = p_hist
-                elif allocation_type == "GRN":
-                    order_item.received_qty = (order_item.received_qty or 0) + int(allocated_qty)
-                    order_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    r_hist = list(order_item.receiving_history or [])
-                    r_hist.append({
-                        "ref": source_doc_no,
-                        "qty": allocated_qty,
-                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-                        "by": allocated_by
-                    })
-                    order_item.receiving_history = r_hist
+        # 4. Update OrderItem if matched
+        if matched_item:
+            if allocation_type == "PO":
+                matched_item.po_ref = source_doc_no
+                matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
+                matched_item.unit_cost = unit_cost
+                matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                p_hist = list(matched_item.purchase_history or [])
+                p_hist.append({
+                    "id": source_doc_no,
+                    "ref": source_doc_no,
+                    "qty": allocated_qty,
+                    "cost": unit_cost,
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "by": allocated_by
+                })
+                matched_item.purchase_history = p_hist
+            elif allocation_type == "GRN":
+                matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
+                matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                r_hist = list(matched_item.receiving_history or [])
+                r_hist.append({
+                    "id": source_doc_no,
+                    "ref": source_doc_no,
+                    "qty": allocated_qty,
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "by": allocated_by
+                })
+                matched_item.receiving_history = r_hist
 
         db.commit()
-        logger.info(f"Allocated {allocated_qty} of {sku} from {source_doc_no} to Project #{project_id} (Order #{order_id}).")
+        logger.info(f"Allocated {allocated_qty} of {sku} from {source_doc_no} to {real_proj_name} (Order #{order_id}).")
 
         return {
             "status": "success",
-            "message": f"Successfully allocated {allocated_qty} units from {source_doc_no} to {project_name or f'Project #{project_id}'}.",
+            "message": f"Successfully allocated {allocated_qty} units from {source_doc_no} to {real_proj_name}.",
             "allocation_id": alloc.id
         }
     except Exception as e:
@@ -824,19 +865,44 @@ def batch_allocate_procurement_items(
 ):
     """
     Allocates multiple items from a PO or GRN to a single Project & Order in one transaction.
+    Auto-matches SKUs to Project OrderItems and updates quantities in real time.
     """
     try:
         allocation_type = str(payload.get("allocation_type") or "PO").upper()
         source_doc_no = str(payload.get("source_doc_no") or "").strip()
-        project_id = payload.get("project_id")
+        project_id_input = payload.get("project_id")
         project_name = payload.get("project_name")
         order_id = payload.get("order_id")
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes") or "Batch allocation"
         items = payload.get("items") or []
 
-        if not source_doc_no or not project_id or not items:
+        if not source_doc_no or not project_id_input or not items:
             raise HTTPException(status_code=400, detail="Missing source_doc_no, project_id, or items list.")
+
+        # 1. Resolve Project Entity
+        proj = None
+        if str(project_id_input).isdigit():
+            proj = db.query(Project).filter(Project.id == int(project_id_input)).first()
+        if not proj:
+            proj = db.query(Project).filter(Project.project_key == str(project_id_input)).first()
+        if not proj and project_name:
+            proj = db.query(Project).filter(Project.name.ilike(f"%{project_name}%")).first()
+
+        real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
+        real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
+
+        # Preload project order items for fast SKU auto-matching
+        proj_items = []
+        if proj:
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.ilike(f"{proj.project_key}%"),
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                )
+            ).all()
+
+        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
 
         count_allocated = 0
         for it in items:
@@ -849,15 +915,35 @@ def batch_allocate_procurement_items(
             if not sku or allocated_qty <= 0:
                 continue
 
+            # Auto-match OrderItem in project
+            matched_item = None
+            if order_item_id:
+                matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+            elif proj_items:
+                clean_sku = sku.strip().upper()
+                for p_item in proj_items:
+                    if (p_item.code and p_item.code.strip().upper() == clean_sku) or \
+                       (p_item.one_one_code and p_item.one_one_code.strip().upper() == clean_sku) or \
+                       (p_item.description and clean_sku in p_item.description.upper()):
+                        matched_item = p_item
+                        break
+
+            item_order_id = order_id
+            if matched_item and not item_order_id:
+                if str(matched_item.order_id).isdigit():
+                    item_order_id = int(matched_item.order_id)
+                elif p_orders:
+                    item_order_id = p_orders[0].id
+
             alloc = ProcurementAllocation(
                 allocation_type=allocation_type,
                 source_doc_no=source_doc_no,
                 sku=sku,
-                project_id=int(project_id),
-                project_name=project_name,
-                order_id=int(order_id) if order_id else None,
-                order_item_id=str(order_item_id) if order_item_id else None,
-                fitting_code=fitting_code,
+                project_id=real_proj_id,
+                project_name=real_proj_name,
+                order_id=int(item_order_id) if item_order_id else None,
+                order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
+                fitting_code=fitting_code or (matched_item.code if matched_item else sku),
                 allocated_qty=allocated_qty,
                 unit_cost=unit_cost,
                 allocated_by_name=allocated_by,
@@ -867,26 +953,43 @@ def batch_allocate_procurement_items(
             )
             db.add(alloc)
 
-            if order_item_id:
-                order_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-                if order_item:
-                    if allocation_type == "PO":
-                        order_item.po_ref = source_doc_no
-                        order_item.po_qty_ordered = (order_item.po_qty_ordered or 0) + int(allocated_qty)
-                        order_item.unit_cost = unit_cost
-                        order_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    elif allocation_type == "GRN":
-                        order_item.received_qty = (order_item.received_qty or 0) + int(allocated_qty)
-                        order_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if matched_item:
+                if allocation_type == "PO":
+                    matched_item.po_ref = source_doc_no
+                    matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
+                    matched_item.unit_cost = unit_cost
+                    matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    p_hist = list(matched_item.purchase_history or [])
+                    p_hist.append({
+                        "id": source_doc_no,
+                        "ref": source_doc_no,
+                        "qty": allocated_qty,
+                        "cost": unit_cost,
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "by": allocated_by
+                    })
+                    matched_item.purchase_history = p_hist
+                elif allocation_type == "GRN":
+                    matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
+                    matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    r_hist = list(matched_item.receiving_history or [])
+                    r_hist.append({
+                        "id": source_doc_no,
+                        "ref": source_doc_no,
+                        "qty": allocated_qty,
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        "by": allocated_by
+                    })
+                    matched_item.receiving_history = r_hist
 
             count_allocated += 1
 
         db.commit()
-        logger.info(f"Batch allocated {count_allocated} items from {source_doc_no} to {project_name}.")
+        logger.info(f"Batch allocated {count_allocated} items from {source_doc_no} to {real_proj_name}.")
 
         return {
             "status": "success",
-            "message": f"Successfully allocated {count_allocated} items from {source_doc_no} to {project_name or f'Project #{project_id}'}.",
+            "message": f"Successfully allocated {count_allocated} items from {source_doc_no} to {real_proj_name}.",
             "count": count_allocated
         }
     except Exception as e:
