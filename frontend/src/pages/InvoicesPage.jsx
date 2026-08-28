@@ -222,15 +222,32 @@ export default function InvoicesPage() {
 
     const cleanSku = (line.item_code || '').trim().toUpperCase();
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
+    const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
     const candidates = [];
 
     Object.values(projects || {}).forEach(p => {
-      const isRefMatch = docRef && p.name && (docRef.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(docRef));
+      const pName = (p.name || '').toLowerCase();
+      const pKey = (p.key || '').toLowerCase();
+      let projMatchScore = 0;
+      if (docRef && (pName.includes(docRef) || docRef.includes(pName) || pKey.includes(docRef) || docRef.includes(pKey))) {
+        projMatchScore += 50;
+      }
+      if (custName && (pName.includes(custName) || custName.includes(pName))) {
+        projMatchScore += 30;
+      }
+
       (p.orders || []).forEach(o => {
         (o.itemsList || []).forEach(it => {
           const itemCode = (it.code || '').trim().toUpperCase();
           const oneOneCode = (it.oneOneCode || '').trim().toUpperCase();
-          if (itemCode === cleanSku || oneOneCode === cleanSku || (it.description && cleanSku && it.description.toUpperCase().includes(cleanSku)) || isRefMatch) {
+          const isDirectSkuMatch = itemCode === cleanSku || oneOneCode === cleanSku;
+          const isDescMatch = it.description && cleanSku && it.description.toUpperCase().includes(cleanSku);
+
+          if (isDirectSkuMatch || isDescMatch || projMatchScore > 0) {
+            let itemScore = projMatchScore;
+            if (isDirectSkuMatch) itemScore += 100;
+            else if (isDescMatch) itemScore += 20;
+
             candidates.push({
               project_id: p.id || 1,
               project_name: p.name,
@@ -242,14 +259,15 @@ export default function InvoicesPage() {
               description: it.description || it.name,
               needed_qty: it.qty || it.quantity || 1,
               invoiced_qty: it.invoice_qty || 0,
-              is_direct_sku_match: itemCode === cleanSku || oneOneCode === cleanSku
+              is_direct_sku_match: isDirectSkuMatch,
+              match_score: itemScore
             });
           }
         });
       });
     });
 
-    candidates.sort((a, b) => (b.is_direct_sku_match ? 1 : 0) - (a.is_direct_sku_match ? 1 : 0));
+    candidates.sort((a, b) => b.match_score - a.match_score);
     setCandidateOrders(candidates);
 
     if (candidates.length > 0) {

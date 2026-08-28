@@ -387,39 +387,31 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
         real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
 
+        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
+        p_order_keys = [o.po_number for o in p_orders if o.po_number] + [str(o.id) for o in p_orders]
+        if proj and proj.project_key:
+            p_order_keys.append(proj.project_key)
+
+        proj_items = []
+        if p_order_keys:
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.in_(p_order_keys),
+                    OrderItem.order_id.ilike(f"{proj.project_key}%") if proj and proj.project_key else False
+                )
+            ).all()
+
         clean_sku = sku.strip().upper()
         matched_item = None
         if order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-        elif proj:
-            proj_items = db.query(OrderItem).filter(
-                or_(
-                    OrderItem.order_id.ilike(f"{proj.project_key}%"),
-                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
-                )
-            ).all()
+        elif proj_items:
             for it in proj_items:
                 if (it.code and it.code.strip().upper() == clean_sku) or \
                    (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
                    (it.description and clean_sku in it.description.upper()):
                     matched_item = it
                     break
-
-        if not matched_item:
-            cand_items = db.query(OrderItem).filter(
-                or_(
-                    OrderItem.code.ilike(f"%{clean_sku}%"),
-                    OrderItem.one_one_code.ilike(f"%{clean_sku}%")
-                )
-            ).all()
-            if cand_items:
-                matched_item = cand_items[0]
-                if matched_item.order_id:
-                    p_slug = str(matched_item.order_id).split("--")[0]
-                    found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                    if found_proj:
-                        real_proj_id = found_proj.id
-                        real_proj_name = found_proj.name
 
         resolved_order_id = None
         if order_id:
@@ -523,16 +515,19 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
         real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
         real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
 
+        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
+        p_order_keys = [o.po_number for o in p_orders if o.po_number] + [str(o.id) for o in p_orders]
+        if proj and proj.project_key:
+            p_order_keys.append(proj.project_key)
+
         proj_items = []
-        if proj:
+        if p_order_keys:
             proj_items = db.query(OrderItem).filter(
                 or_(
-                    OrderItem.order_id.ilike(f"{proj.project_key}%"),
-                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                    OrderItem.order_id.in_(p_order_keys),
+                    OrderItem.order_id.ilike(f"{proj.project_key}%") if proj and proj.project_key else False
                 )
             ).all()
-
-        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
 
         count_allocated = 0
         for it in items:
@@ -559,21 +554,6 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
 
             item_proj_id = real_proj_id
             item_proj_name = real_proj_name
-            if not matched_item:
-                cand_items = db.query(OrderItem).filter(
-                    or_(
-                        OrderItem.code.ilike(f"%{clean_sku}%"),
-                        OrderItem.one_one_code.ilike(f"%{clean_sku}%")
-                    )
-                ).all()
-                if cand_items:
-                    matched_item = cand_items[0]
-                    if matched_item.order_id:
-                        p_slug = str(matched_item.order_id).split("--")[0]
-                        found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                        if found_proj:
-                            item_proj_id = found_proj.id
-                            item_proj_name = found_proj.name
 
             resolved_item_order_id = None
             if order_id:
