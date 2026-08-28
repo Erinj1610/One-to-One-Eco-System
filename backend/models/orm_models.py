@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime, LargeBinary
+from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime, LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -691,6 +691,73 @@ class ProjectTicket(Base):
     comments_json = Column(JSON, nullable=True)
     created_at = Column(String, nullable=True)
     updated_at = Column(String, nullable=True)
+
+
+class PalladiumPOLine(Base):
+    __tablename__ = "palladium_po_lines"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    document_no = Column(String, index=True, nullable=False) # e.g. "PO-000000388"
+    vendor_name = Column(String, index=True, nullable=True)
+    item_code = Column(String, index=True, nullable=False)   # SKU
+    item_description = Column(Text, nullable=True)
+    item_unit = Column(String, nullable=True)
+    order_qty = Column(Float, default=0.0)
+    open_qty = Column(Float, default=0.0)
+    shipped_qty = Column(Float, default=0.0)
+    unit_cost = Column(Float, default=0.0)
+    total_value_excl = Column(Float, default=0.0)
+    currency_code = Column(String, default="ZAR")
+    exchange_rate = Column(Float, default=1.0)
+    transaction_date = Column(DateTime, nullable=True)
+    order_required_date = Column(DateTime, nullable=True)
+    status = Column(String, default="Open")                  # Open, Closed, Partial
+    customer_name = Column(String, nullable=True)
+    copied_from_document = Column(String, nullable=True)     # e.g. "SO-000000001"
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PalladiumGRNLine(Base):
+    __tablename__ = "palladium_grn_lines"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    document_no = Column(String, index=True, nullable=False) # e.g. "GRN-000000120" or Invoice #
+    vendor_name = Column(String, index=True, nullable=True)
+    item_code = Column(String, index=True, nullable=False)   # SKU
+    item_description = Column(Text, nullable=True)
+    item_unit = Column(String, nullable=True)
+    received_qty = Column(Float, default=0.0)
+    unit_cost = Column(Float, default=0.0)
+    line_total_excl = Column(Float, default=0.0)
+    line_total_incl = Column(Float, default=0.0)
+    transaction_date = Column(DateTime, nullable=True)
+    location = Column(String, nullable=True)
+    currency_code = Column(String, default="ZAR")
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProcurementAllocation(Base):
+    __tablename__ = "procurement_allocations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    allocation_type = Column(String, index=True, default="PO") # "PO" or "GRN"
+    source_doc_no = Column(String, index=True, nullable=False) # e.g. "PO-000000388"
+    source_line_id = Column(Integer, nullable=True)
+    sku = Column(String, index=True, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    project_name = Column(String, nullable=True)
+    order_id = Column(Integer, nullable=True)
+    order_item_id = Column(String, nullable=True)
+    fitting_code = Column(String, nullable=True)
+    allocated_qty = Column(Float, default=1.0)
+    unit_cost = Column(Float, default=0.0)
+    vendor_name = Column(String, nullable=True)
+    doc_date = Column(String, nullable=True)
+    eta = Column(String, nullable=True)
+    allocated_by_name = Column(String, nullable=True)
+    allocated_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="Active")                  # "Active", "Cancelled"
+    notes = Column(Text, nullable=True)
 
 
 
