@@ -18,6 +18,8 @@ logger.setLevel(logging.INFO)
 _sync_lock = threading.Lock()
 _last_sync_info = {
     "is_syncing": False,
+    "current_step": "Idle",
+    "sync_start_time": None,
     "last_synced_at": None,
     "last_status": "Idle",
     "last_erp_count": 0,
@@ -43,7 +45,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
     if not _sync_lock.acquire(blocking=False):
         return {
             "status": "in_progress",
-            "message": "A synchronization is already running in the background. Please wait for it to finish.",
+            "message": f"Sync in progress: {_last_sync_info.get('current_step', 'Synchronizing...')}",
+            "current_step": _last_sync_info.get("current_step", "Synchronizing..."),
             "synced_at": _last_sync_info.get("last_synced_at")
         }
 
@@ -52,6 +55,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
     should_close = db_session is None
 
     _last_sync_info["is_syncing"] = True
+    _last_sync_info["sync_start_time"] = start_time
+    _last_sync_info["current_step"] = "Step 1/3: Reading live stock & prices from Palladium ERP..."
     _last_sync_info["last_status"] = "Syncing..."
     _last_sync_info["last_error"] = None
 
@@ -70,6 +75,7 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             erp_result = {"status": "error", "error": str(erp_err), "synced_count": 0}
 
         # 2. Synchronize Google Sheet Specifications (30 Columns)
+        _last_sync_info["current_step"] = "Step 2/3: Pulling 30-column specifications from Google Sheets..."
         logger.info("[MasterSync] Step 2/3: Starting Google Sheets 30-column specifications sync...")
         try:
             sheet_result = sync_specs_from_sheet(db=db)
@@ -79,6 +85,7 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             sheet_result = {"status": "error", "error": str(sheet_err), "updated_count": 0}
 
         # 3. Synchronize Newly Added ERP Products to 'NEW ITEMS' Google Sheet Inbox Tab
+        _last_sync_info["current_step"] = "Step 3/3: Routing newly discovered products to Google Sheets NEW ITEMS inbox..."
         logger.info("[MasterSync] Step 3/3: Checking for newly added ERP products to append to 'NEW ITEMS' inbox...")
         try:
             inbox_result = sync_new_items_to_inbox(db=db)
@@ -109,6 +116,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             logger.warning(f"[MasterSync] Could not save setting: {sett_err}")
 
         _last_sync_info["is_syncing"] = False
+        _last_sync_info["current_step"] = "Completed"
+        _last_sync_info["sync_start_time"] = None
         _last_sync_info["last_synced_at"] = now_iso
         _last_sync_info["last_status"] = "Success"
         _last_sync_info["last_erp_count"] = erp_result.get("synced_count", 0)
@@ -138,11 +147,14 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
     except Exception as ex:
         logger.error(f"[MasterSync] Critical failure during master sync: {ex}")
         _last_sync_info["is_syncing"] = False
+        _last_sync_info["current_step"] = "Error"
+        _last_sync_info["sync_start_time"] = None
         _last_sync_info["last_status"] = "Error"
         _last_sync_info["last_error"] = str(ex)
         raise ex
     finally:
         _last_sync_info["is_syncing"] = False
+        _last_sync_info["sync_start_time"] = None
         try:
             _sync_lock.release()
         except Exception:
@@ -174,15 +186,19 @@ def get_master_sync_status(db: Optional[Session] = None) -> Dict[str, Any]:
         now_ts = time.time()
         next_sync_ts = _last_sync_info.get("next_sync_timestamp")
         remaining_seconds = max(0, int(next_sync_ts - now_ts)) if next_sync_ts else SYNC_INTERVAL_SECONDS
+        elapsed_seconds = int(now_ts - _last_sync_info["sync_start_time"]) if _last_sync_info.get("sync_start_time") else 0
 
         return {
             "status": "connected",
             "is_syncing": _last_sync_info.get("is_syncing", False),
+            "current_step": _last_sync_info.get("current_step", "Idle"),
+            "elapsed_seconds": elapsed_seconds,
             "sync_interval_minutes": SYNC_INTERVAL_SECONDS // 60,
             "next_sync_in_seconds": remaining_seconds,
             "last_synced_at": last_synced_at,
             "last_erp_count": _last_sync_info.get("last_erp_count", 0),
             "last_sheet_count": _last_sync_info.get("last_sheet_count", 0),
+            "last_inbox_count": _last_sync_info.get("last_inbox_count", 0),
             "total_products": total_products,
             "synced_products": synced_products,
             "scheduler_active": _scheduler_started
