@@ -395,28 +395,55 @@ export default function PurchasingPage() {
         .map(l => (l.item_code || '').trim().toUpperCase())
     );
 
+    const docRef = (selectedDocument.reference || '').trim().toLowerCase();
+    const vendor = (selectedDocument.vendor_name || '').trim().toLowerCase();
     let bestProjId = '';
-    let bestMatchCount = 0;
+    let bestMatchScore = 0;
 
     Object.values(projects || {}).forEach(p => {
-      let matches = 0;
+      let score = 0;
+      const pName = (p.name || '').toLowerCase();
+      const pClient = (p.client || '').toLowerCase();
+      const pIdStr = p.id ? String(p.id) : (p.key || '');
+
+      // 1. Direct Reference match
+      if (docRef && pName && (docRef.includes(pName) || pName.includes(docRef))) {
+        score += 60;
+      }
+      // 2. Keyword token matching
+      const refTokens = docRef.split(/[\s,()-_]+/).filter(w => w.length >= 3);
+      refTokens.forEach(t => {
+        if (pName.includes(t)) score += 25;
+        if (pClient.includes(t)) score += 15;
+      });
+
+      // 3. SKU overlap in project order items
       (p.orders || []).forEach(o => {
         (o.itemsList || []).forEach(it => {
           const code = (it.code || '').trim().toUpperCase();
           const oneOne = (it.oneOneCode || '').trim().toUpperCase();
           if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
-            matches++;
+            score += 15;
           }
         });
       });
-      if (matches > bestMatchCount) {
-        bestMatchCount = matches;
-        bestProjId = p.id || p.key;
+
+      if (score > bestMatchScore) {
+        bestMatchScore = score;
+        bestProjId = pIdStr;
       }
     });
 
+    let bestOrderId = '';
+    if (bestProjId) {
+      const matchedProj = Object.values(projects || {}).find(p => String(p.id) === String(bestProjId) || p.key === bestProjId || p.name === bestProjId);
+      if (matchedProj?.orders?.length === 1) {
+        bestOrderId = matchedProj.orders[0].id || matchedProj.orders[0].dbId || '';
+      }
+    }
+
     setBatchProjectId(bestProjId || '');
-    setBatchOrderId('');
+    setBatchOrderId(bestOrderId ? String(bestOrderId) : '');
     setBatchEta('');
     setBatchNotes('');
     setBatchModalOpen(true);
@@ -1679,15 +1706,27 @@ export default function PurchasingPage() {
           top: 0, left: 0, right: 0, bottom: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(3px)',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '700px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            borderRadius: '14px',
+            overflow: 'hidden',
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
+          }}>
             
             {/* Modal Header */}
             <div style={{ 
@@ -1696,7 +1735,7 @@ export default function PurchasingPage() {
               alignItems: 'center', 
               padding: '16px 20px', 
               borderBottom: '1px solid var(--border)', 
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+              background: 'var(--bg-secondary)'
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1704,7 +1743,7 @@ export default function PurchasingPage() {
                   Batch Allocate {selectedLineIds.size} Items from {selectedDocument.document_no}
                 </h3>
                 <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Supplier: <strong>{selectedDocument.vendor_name}</strong> • Document: <strong>{selectedDocument.document_no}</strong>
+                  Supplier: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.vendor_name}</strong> • Document: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.document_no}</strong>
                 </p>
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setBatchModalOpen(false)}>
@@ -1713,7 +1752,7 @@ export default function PurchasingPage() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-primary)' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 
                 {/* Target Project & Order Selectors */}
@@ -1723,10 +1762,10 @@ export default function PurchasingPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Project *</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Target Project *</label>
                       <select
                         className="form-control"
-                        style={{ height: '34px', fontSize: '12px', fontWeight: 600 }}
+                        style={{ height: '34px', fontSize: '12px', fontWeight: 600, background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={batchProjectId}
                         onChange={(e) => {
                           setBatchProjectId(e.target.value);
@@ -1736,25 +1775,25 @@ export default function PurchasingPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Order (Optional)</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Target Order (Optional)</label>
                       <select
                         className="form-control"
-                        style={{ height: '34px', fontSize: '12px' }}
+                        style={{ height: '34px', fontSize: '12px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={batchOrderId}
                         onChange={(e) => setBatchOrderId(e.target.value)}
                         disabled={!batchProjectId}
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId || p.name === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                            <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                           ));
                         })()}
                       </select>
@@ -1767,23 +1806,23 @@ export default function PurchasingPage() {
                   <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
                     Items to be Allocated ({selectedLineIds.size}):
                   </div>
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-card, #ffffff)' }}>
                     <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                          <th style={{ padding: '6px 10px' }}>SKU</th>
-                          <th style={{ padding: '6px 10px' }}>Description</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Cost</th>
+                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>SKU</th>
+                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Description</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>Qty</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Cost</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id)).map(l => (
                           <tr key={l.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {l.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{l.item_code}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>R {l.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1794,27 +1833,27 @@ export default function PurchasingPage() {
                 {/* ETA & Notes Inputs */}
                 <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       ETA / Delivery Date
                     </label>
                     <input
                       type="date"
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px' }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                       value={batchEta}
                       onChange={(e) => setBatchEta(e.target.value)}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       Internal Allocation Note (Optional)
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. Master Bedroom track & drivers, Phase 1 installation..."
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px' }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                       value={batchNotes}
                       onChange={(e) => setBatchNotes(e.target.value)}
                     />
@@ -1865,15 +1904,27 @@ export default function PurchasingPage() {
           top: 0, left: 0, right: 0, bottom: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(3px)',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div className="modal-content" style={{ width: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '680px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            borderRadius: '14px',
+            overflow: 'hidden',
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
+          }}>
             
             {/* Modal Header */}
             <div style={{ 
@@ -1882,7 +1933,7 @@ export default function PurchasingPage() {
               alignItems: 'center', 
               padding: '16px 20px', 
               borderBottom: '1px solid var(--border)', 
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(37,99,235,0.02) 100%)'
+              background: 'var(--bg-secondary)'
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1890,7 +1941,7 @@ export default function PurchasingPage() {
                   Allocate {allocTargetItem.doc_type} Line to Project Order
                 </h3>
                 <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Document: <strong>{allocTargetItem.document_no}</strong> • Vendor: <strong>{allocTargetItem.vendor_name}</strong>
+                  Document: <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.document_no}</strong> • Vendor: <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.vendor_name}</strong>
                 </p>
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setAllocModalOpen(false)}>
@@ -1899,14 +1950,14 @@ export default function PurchasingPage() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-primary)' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 
                 {/* SKU Info Card */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 16px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Selected SKU</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Selected SKU</div>
                       <div style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                         {allocTargetItem.item_code}
                       </div>
@@ -1916,7 +1967,7 @@ export default function PurchasingPage() {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Available to Allocate</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Available to Allocate</div>
                       <div style={{ fontSize: '14px', fontWeight: 800, color: '#f59e0b' }}>
                         {allocTargetItem.unallocated_qty} <span style={{ fontSize: '10px' }}>{allocTargetItem.item_unit}</span>
                       </div>
@@ -1926,7 +1977,7 @@ export default function PurchasingPage() {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Unit Cost (ERP)</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Unit Cost (ERP)</div>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                         R {allocTargetItem.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) || '0.00'}
                       </div>
@@ -1959,7 +2010,7 @@ export default function PurchasingPage() {
                               padding: '10px 14px',
                               borderRadius: '8px',
                               border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
                               cursor: 'pointer',
                               display: 'flex',
                               justifyContent: 'space-between',
@@ -1972,7 +2023,7 @@ export default function PurchasingPage() {
                                 {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>({cand.order_title})</span>
                               </div>
                               <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                Fitting Code: <strong>{cand.fitting_code}</strong> {cand.area ? `• Area: ${cand.area}` : ''}
+                                Fitting Code: <strong style={{ color: 'var(--text-primary)' }}>{cand.fitting_code}</strong> {cand.area ? `• Area: ${cand.area}` : ''}
                               </div>
                             </div>
 
@@ -2010,8 +2061,8 @@ export default function PurchasingPage() {
                         alignItems: 'center', 
                         gap: '6px', 
                         fontSize: '11.5px', 
-                        fontWeight: 600, 
-                        color: selectedCandidateKey === 'MANUAL' ? '#3b82f6' : 'var(--text-secondary)',
+                        fontWeight: 700, 
+                        color: selectedCandidateKey === 'MANUAL' ? '#3b82f6' : 'var(--text-primary)',
                         cursor: 'pointer',
                         marginBottom: '6px'
                       }}
@@ -2026,12 +2077,12 @@ export default function PurchasingPage() {
                     </div>
 
                     {selectedCandidateKey === 'MANUAL' && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                         <div>
-                          <label style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Project</label>
+                          <label style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-primary)', marginBottom: '3px', fontWeight: 700 }}>Project</label>
                           <select
                             className="form-control"
-                            style={{ height: '32px', fontSize: '11.5px' }}
+                            style={{ height: '32px', fontSize: '11.5px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             value={manualProjectId}
                             onChange={(e) => {
                               setManualProjectId(e.target.value);
@@ -2040,25 +2091,25 @@ export default function PurchasingPage() {
                           >
                             <option value="">-- Select Target Project --</option>
                             {Object.values(projects || {}).map(p => (
-                              <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                              <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                             ))}
                           </select>
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-secondary)', marginBottom: '3px', fontWeight: 600 }}>Order (Optional)</label>
+                          <label style={{ display: 'block', fontSize: '10.5px', color: 'var(--text-primary)', marginBottom: '3px', fontWeight: 700 }}>Order (Optional)</label>
                           <select
                             className="form-control"
-                            style={{ height: '32px', fontSize: '11.5px' }}
+                            style={{ height: '32px', fontSize: '11.5px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             value={manualOrderId}
                             onChange={(e) => setManualOrderId(e.target.value)}
                             disabled={!manualProjectId}
                           >
                             <option value="">-- General Project Allocation --</option>
                             {(() => {
-                              const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+                              const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId || p.name === manualProjectId);
                               return (proj?.orders || []).map(o => (
-                                <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                                <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                               ));
                             })()}
                           </select>
@@ -2071,7 +2122,7 @@ export default function PurchasingPage() {
                 {/* Quantity, ETA & Notes Inputs */}
                 <div style={{ display: 'grid', gridTemplateColumns: '130px 160px 1fr', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       Quantity to Allocate
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2081,7 +2132,7 @@ export default function PurchasingPage() {
                         max={allocTargetItem.unallocated_qty || 1}
                         step="any"
                         className="form-control"
-                        style={{ height: '34px', fontSize: '13px', fontWeight: 700 }}
+                        style={{ height: '34px', fontSize: '13px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                         value={allocQty}
                         onChange={(e) => setAllocQty(e.target.value)}
                         required
@@ -2099,27 +2150,27 @@ export default function PurchasingPage() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       ETA / Delivery Date
                     </label>
                     <input
                       type="date"
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px' }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                       value={allocEta}
                       onChange={(e) => setAllocEta(e.target.value)}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       Internal Notes / Ref (Optional)
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. Phase 1 delivery..."
                       className="form-control"
-                      style={{ height: '34px', fontSize: '11.5px' }}
+                      style={{ height: '34px', fontSize: '11.5px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                       value={allocNotes}
                       onChange={(e) => setAllocNotes(e.target.value)}
                     />
@@ -2172,10 +2223,20 @@ export default function PurchasingPage() {
                     type="submit" 
                     className="btn btn-sm btn-primary" 
                     disabled={isSavingAlloc}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                    style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      fontWeight: 700,
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
                   >
                     {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                    Confirm Allocation
+                    {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
                   </button>
                 </div>
               </div>
