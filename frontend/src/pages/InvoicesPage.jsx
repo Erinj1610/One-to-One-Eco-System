@@ -214,7 +214,10 @@ export default function InvoicesPage() {
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS
   // -------------------------------------------------------------
-  const handleOpenAllocModal = (line) => {
+  // -------------------------------------------------------------
+  // ALLOCATION ACTIONS
+  // -------------------------------------------------------------
+  const handleOpenAllocModal = async (line) => {
     const unalloc = Number(line.unallocated_qty || 0);
     setAllocTargetItem(line);
     setAllocQty(unalloc > 0 ? unalloc : 1);
@@ -223,8 +226,29 @@ export default function InvoicesPage() {
     const cleanSku = (line.item_code || '').trim().toUpperCase();
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
     const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
-    const candidates = [];
 
+    // 1. First try fetching live candidates from backend API
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/candidate-orders?sku=${encodeURIComponent(line.item_code)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.candidates && data.candidates.length > 0) {
+          const backendCandidates = data.candidates.map(cand => ({
+            ...cand,
+            is_direct_sku_match: cand.is_direct_sku_match !== false
+          }));
+          setCandidateOrders(backendCandidates);
+          setSelectedCandidateKey(String(backendCandidates[0].order_item_id));
+          setManualProjectId(backendCandidates[0].project_key || backendCandidates[0].project_id || '');
+          setManualOrderId(backendCandidates[0].order_id || '');
+          setAllocModalOpen(true);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: Client-side candidate matcher
+    const candidates = [];
     Object.values(projects || {}).forEach(p => {
       const pName = (p.name || '').toLowerCase();
       const pKey = (p.key || '').toLowerCase();
@@ -249,11 +273,11 @@ export default function InvoicesPage() {
             else if (isDescMatch) itemScore += 20;
 
             candidates.push({
-              project_id: p.id || 1,
+              project_id: p.id || null,
               project_name: p.name,
-              project_key: p.key,
-              order_id: o.id,
-              order_po_number: o.id || o.po_number,
+              project_key: p.key || pKey,
+              order_id: o.dbId || o.id,
+              order_po_number: o.poNumber || o.id,
               order_item_id: it.id,
               fitting_code: it.code || it.oneOneCode || line.item_code,
               description: it.description || it.name,
@@ -272,7 +296,7 @@ export default function InvoicesPage() {
 
     if (candidates.length > 0) {
       setSelectedCandidateKey(String(candidates[0].order_item_id));
-      setManualProjectId(candidates[0].project_id || '');
+      setManualProjectId(candidates[0].project_key || candidates[0].project_id || '');
       setManualOrderId(candidates[0].order_id || '');
     } else {
       setSelectedCandidateKey('MANUAL');
@@ -301,9 +325,10 @@ export default function InvoicesPage() {
     if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
       const cand = candidateOrders.find(c => String(c.order_item_id) === String(selectedCandidateKey));
       if (cand) {
-        payload.project_id = cand.project_id;
+        payload.project_id = cand.project_id || null;
+        payload.project_key = cand.project_key || null;
         payload.project_name = cand.project_name;
-        payload.order_id = cand.order_id;
+        payload.order_id = cand.order_id || null;
         payload.order_item_id = cand.order_item_id;
         payload.fitting_code = cand.fitting_code;
       }
@@ -312,10 +337,11 @@ export default function InvoicesPage() {
         alert("Please select a target Project to allocate to.");
         return;
       }
-      const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
-      payload.project_id = proj ? (proj.id || 1) : 1;
-      payload.project_name = proj ? proj.name : 'Selected Project';
-      payload.order_id = manualOrderId ? Number(manualOrderId) : null;
+      const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
+      payload.project_id = proj?.id || null;
+      payload.project_key = proj?.key || manualProjectId;
+      payload.project_name = proj?.name || manualProjectId;
+      payload.order_id = manualOrderId || null;
       payload.fitting_code = allocTargetItem.item_code;
     }
 
@@ -375,7 +401,7 @@ export default function InvoicesPage() {
       });
       if (score > bestMatchCount) {
         bestMatchCount = score;
-        bestProjId = p.id || p.key;
+        bestProjId = p.key || p.id;
       }
     });
 
@@ -395,7 +421,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
     const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id) && (l.unallocated_qty || 0) > 0);
 
     if (selectedLines.length === 0) {
@@ -406,9 +432,10 @@ export default function InvoicesPage() {
     const payload = {
       source_doc_no: selectedDocument.document_no,
       doc_date: selectedDocument.transaction_date,
-      project_id: proj ? (proj.id || 1) : 1,
-      project_name: proj ? proj.name : 'Selected Project',
-      order_id: batchOrderId ? Number(batchOrderId) : null,
+      project_id: proj?.id || null,
+      project_key: proj?.key || batchProjectId,
+      project_name: proj?.name || batchProjectId,
+      order_id: batchOrderId || null,
       allocated_by_name: 'Staff',
       notes: batchNotes || `Batch allocated ${selectedLines.length} invoice items`,
       items: selectedLines.map(l => ({
@@ -1531,7 +1558,7 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1547,9 +1574,9 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
                           ));
                         })()}
                       </select>
@@ -1718,11 +1745,11 @@ export default function InvoicesPage() {
                 {/* Candidate Orders List */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 700 }}>
-                    Select Destination Match:
+                    Select Destination Project & Fitting:
                   </label>
                   
                   {candidateOrders.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
                       {candidateOrders.map((cand) => {
                         const isSelected = selectedCandidateKey === String(cand.order_item_id);
                         return (
@@ -1730,8 +1757,8 @@ export default function InvoicesPage() {
                             key={cand.order_item_id}
                             onClick={() => {
                               setSelectedCandidateKey(String(cand.order_item_id));
-                              setManualProjectId(cand.project_id);
-                              setManualOrderId(cand.order_id);
+                              setManualProjectId(cand.project_key || cand.project_id || '');
+                              setManualOrderId(cand.order_id || '');
                             }}
                             style={{
                               padding: '10px 14px',
@@ -1809,7 +1836,7 @@ export default function InvoicesPage() {
                         >
                           <option value="">-- Select Project --</option>
                           {Object.values(projects || {}).map(p => (
-                            <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                            <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
                           ))}
                         </select>
                       </div>
@@ -1825,9 +1852,9 @@ export default function InvoicesPage() {
                         >
                           <option value="">-- General Project Order --</option>
                           {(() => {
-                            const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+                            const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
                             return (proj?.orders || []).map(o => (
-                              <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                              <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
                             ));
                           })()}
                         </select>

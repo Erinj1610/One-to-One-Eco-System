@@ -877,6 +877,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             order_dict = {
                 "id": order.po_number,
+                "dbId": order.id,
+                "projectId": order.project_id,
+                "projectKey": order.project_key,
+                "poNumber": order.po_number,
                 "supplier": order.supplier_name,
                 "items": order.items_count,
                 "value": order.value,
@@ -1000,6 +1004,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             relational_fees = s_fees if s_fees else (fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), []))
 
             projects_dict[p_key] = {
+                "id": p.id,
                 "key": p_key,
                 "name": p.name,
                 "client": p.client_name,
@@ -1036,6 +1041,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         pm_name = o.get("pmName")
 
                 projects_dict[p_key] = {
+                    "id": None,
                     "key": p_key,
                     "name": p_name if p_name != p_key else (f"{c_name} (Direct)" if p_key.startswith("client-") else p_key),
                     "client": c_name,
