@@ -379,7 +379,7 @@ def get_projects_orders_for_allocation(db: Session = Depends(get_db)):
                 "project_id": p.id,
                 "project_key": p.project_key,
                 "project_name": p.name,
-                "client": p.client,
+                "client": p.client_name or p.name,
                 "orders": order_list
             })
 
