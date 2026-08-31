@@ -867,6 +867,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 })
 
             credit_notes_parsed = [inv for inv in dynamic_client_invoices if inv.get("is_credit")]
+            client_invoices_parsed = [inv for inv in dynamic_client_invoices if not inv.get("is_credit")]
 
             # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
@@ -895,7 +896,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "deliveryNotes": delivery_notes_parsed,
                 "purchaseOrders": purchase_orders_parsed,
                 "goodsReceivedNotes": goods_received_notes_parsed,
-                "clientInvoices": dynamic_client_invoices,
+                "clientInvoices": client_invoices_parsed,
                 "creditNotes": credit_notes_parsed,
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,

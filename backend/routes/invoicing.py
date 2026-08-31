@@ -608,14 +608,10 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         db.add(alloc)
 
         is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
-        if matched_item:
+        if matched_item and not is_credit_doc:
             matched_item.invoice_ref = source_doc_no
-            if is_credit_doc:
-                matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
-                matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
-            else:
-                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
+            matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+            matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
 
             if doc_date:
                 matched_item.invoice_date = str(doc_date).split("T")[0]
@@ -626,12 +622,12 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             i_hist.append({
                 "id": source_doc_no,
                 "ref": source_doc_no,
-                "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
+                "qty": allocated_qty,
                 "unitPrice": unit_cost,
-                "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
+                "total": round(allocated_qty * unit_cost, 2),
                 "date": matched_item.invoice_date,
                 "by": allocated_by,
-                "type": "Credit Note" if is_credit_doc else "Invoice"
+                "type": "Invoice"
             })
             matched_item.invoice_history = i_hist
 
@@ -733,14 +729,10 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             db.add(alloc)
 
             is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
-            if matched_item:
+            if matched_item and not is_credit_doc:
                 matched_item.invoice_ref = source_doc_no
-                if is_credit_doc:
-                    matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
-                    matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
-                else:
-                    matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-                    matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
+                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
+                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
 
                 if doc_date:
                     matched_item.invoice_date = str(doc_date).split("T")[0]
@@ -751,12 +743,12 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 i_hist.append({
                     "id": source_doc_no,
                     "ref": source_doc_no,
-                    "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
+                    "qty": allocated_qty,
                     "unitPrice": unit_cost,
-                    "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
+                    "total": round(allocated_qty * unit_cost, 2),
                     "date": matched_item.invoice_date,
                     "by": allocated_by,
-                    "type": "Credit Note" if is_credit_doc else "Invoice"
+                    "type": "Invoice"
                 })
                 matched_item.invoice_history = i_hist
 
@@ -781,7 +773,8 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
 def recalc_order_item_invoicing(db: Session, item: OrderItem):
     """
     Recalculates invoice_qty, invoice_value, invoice_ref, invoice_date, and invoice_history
-    for an OrderItem from all active ProcurementAllocation rows in Cloud SQL.
+    for an OrderItem strictly from active Tax Invoices (IN-...) in Cloud SQL.
+    Credit Notes (CN-...) are tracked in the order's Credits ledger and do not reduce invoice_qty to 0.
     """
     active_allocs = db.query(ProcurementAllocation).filter(
         ProcurementAllocation.allocation_type == "INVOICE",
@@ -800,22 +793,21 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
             ProcurementAllocation.status == "Active"
         ).all()
 
+    # Filter strictly for non-credit invoices (IN-...)
+    inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
+
     new_hist = []
     total_qty = 0.0
     total_val = 0.0
     refs = set()
     latest_date = None
 
-    for a in active_allocs:
-        is_cn = str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
+    for a in inv_allocs:
         qty_val = float(a.allocated_qty or 0.0)
         cost_val = float(a.unit_cost or 0.0)
 
-        signed_qty = -abs(qty_val) if is_cn else qty_val
-        signed_total = -round(abs(qty_val) * cost_val, 2) if is_cn else round(qty_val * cost_val, 2)
-
-        total_qty += signed_qty
-        total_val += signed_total
+        total_qty += qty_val
+        total_val += qty_val * cost_val
         if a.source_doc_no:
             refs.add(str(a.source_doc_no))
         if a.doc_date:
@@ -825,17 +817,17 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
             "id": a.source_doc_no,
             "ref": a.source_doc_no,
             "allocation_id": a.id,
-            "qty": signed_qty,
+            "qty": qty_val,
             "unitPrice": cost_val,
-            "total": signed_total,
+            "total": round(qty_val * cost_val, 2),
             "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
             "by": a.allocated_by_name or "Staff",
-            "type": "Credit Note" if is_cn else "Invoice"
+            "type": "Invoice"
         })
 
     item.invoice_history = new_hist
-    item.invoice_qty = max(0, int(round(total_qty)))
-    item.invoice_value = max(0.0, round(total_val, 2))
+    item.invoice_qty = int(round(total_qty))
+    item.invoice_value = round(total_val, 2)
     item.invoice_ref = "; ".join(sorted(refs)) if refs else None
     item.invoice_date = latest_date
 
