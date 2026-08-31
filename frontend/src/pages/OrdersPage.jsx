@@ -36,7 +36,8 @@ import {
   Calendar,
   Download,
   Settings,
-  GripVertical
+  GripVertical,
+  CreditCard
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -831,8 +832,16 @@ export default function OrdersPage() {
       
       BALANCE: balanceFormatted,
       BALANCE_DUE: balanceFormatted,
-      TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       BALANCE_OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      OUTSTANDING_BALANCE: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      BALANCE_REMAINING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+
+      TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VALUE_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       
       items: finalItems,
       payments: (orderPayments || []).map((p, idx) => ({
@@ -1376,14 +1385,27 @@ export default function OrdersPage() {
     }
     setSupplier(order.supplier);
     setOrderStatus(order.status);
-    setOrderEta(order.eta || '—');
-    setOrderPaidAmount(order.paid || 0);
-    if (order.payments) {
-      setOrderPayments(order.payments);
-    } else if (order.paid) {
-      setOrderPayments([{ date: order.orderDate || new Date().toISOString().split('T')[0], amount: order.paid, reference: 'Pre-existing Payment' }]);
-    } else {
-      setOrderPayments([]);
+    setOrderPaidAmount(Number(order.paid) || 0);
+    const rawPayments = order.payments;
+    let parsedPayments = [];
+    if (typeof rawPayments === 'string') {
+      try { parsedPayments = JSON.parse(rawPayments); } catch (_) { parsedPayments = []; }
+    } else if (Array.isArray(rawPayments)) {
+      parsedPayments = rawPayments;
+    }
+    setOrderPayments(parsedPayments);
+
+    const orderIdToFetch = order.id || order.poNumber || order.po_number;
+    if (orderIdToFetch) {
+      fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.payments) {
+            setOrderPayments(data.payments);
+            setOrderPaidAmount(Number(data.paid) || 0);
+          }
+        })
+        .catch(() => {});
     }
     setWorkspaceSubTab('boq');
 
@@ -1929,15 +1951,20 @@ export default function OrdersPage() {
 
     const effectiveTargetKey = selectedProjectKey || sourceProjectKey || (clientContact ? `client-${clientContact.toLowerCase().trim().replace(/\s+/g, '-')}` : 'direct-client');
     const targetProj = projects[effectiveTargetKey] || projects[sourceProjectKey] || {};
+    const existingOrder = (targetProj.orders || []).find(o => String(o.id) === String(selectedOrderId) || String(o.poNumber) === String(selectedOrderId) || String(o.po_number) === String(selectedOrderId)) || {};
 
     // Calculate aggregated order totals from items list
     const totalCostTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
     const totalRetailTotal = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
     const itemsCount = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((s, item) => s + (Number(item.qty) || 0), 0);
-    const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    
+    // Compute authentic payments and paid sum
+    const paidSum = (orderPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const effectivePaid = paidSum > 0 ? paidSum : (Number(orderPaidAmount) > 0 ? Number(orderPaidAmount) : (Number(existingOrder.paid) || 0));
+    const effectivePayments = (orderPayments && orderPayments.length > 0) ? orderPayments : (existingOrder.payments || []);
     const finalGrossWithVat = discountedValue * 1.15;
-    const balanceOutstanding = Math.max(0, finalGrossWithVat - paidSum);
+    const balanceOutstanding = Math.max(0, finalGrossWithVat - effectivePaid);
     const defaultDepositRate = (finalGrossWithVat < 10000 && finalGrossWithVat > 0) ? 100 : 70;
     const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
       ? Number(orderDepositPercent) 
@@ -1965,8 +1992,8 @@ export default function OrdersPage() {
       deposit_value: calculatedDepositValue,
       balanceValue: calculatedBalanceValue,
       balance_value: calculatedBalanceValue,
-      paid: paidSum,
-      payments: orderPayments,
+      paid: effectivePaid,
+      payments: effectivePayments,
       outstanding: Math.round(balanceOutstanding),
       status: orderStatus === 'Draft' ? 'Pending' : orderStatus,
       eta: orderEta,
@@ -5206,109 +5233,86 @@ export default function OrdersPage() {
 
 
             {workspaceSubTab === 'payments' && (
-              /* SUB-TAB 3: DEDICATED PAYMENTS LOG WORKSPACE */
+              /* SUB-TAB 3: DEDICATED PALLADIUM PAYMENTS LOG WORKSPACE */
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
                 
-                {/* Left Side: Ledger and Entry Form */}
+                {/* Left Side: Authentic Palladium Allocations Ledger */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   
-                  {/* Payments Table */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-                    <h4 style={{ margin: '0 0 14px 0', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)' }}>
-                      💳 Payments Received History Ledger
-                    </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)' }}>
+                          💳 Palladium Payments Received Ledger
+                        </h4>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Live read-only receipts allocated from Palladium ERP ({orderPayments.length} payment{orderPayments.length === 1 ? '' : 's'})
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600 }}
+                        onClick={() => navigate('/payments')}
+                      >
+                        <CreditCard size={13} /> Open Payments & Allocations Hub
+                      </button>
+                    </div>
                     
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                         <thead>
-                          <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                            <th style={{ padding: '8px 10px', width: '120px' }}>Date</th>
-                            <th style={{ padding: '8px 10px', width: '160px' }}>Payment Type</th>
-                            <th style={{ padding: '8px 10px' }}>Reference / Notes</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'right', width: '120px' }}>Amount</th>
-                            <th style={{ padding: '8px 10px', textAlign: 'center', width: '80px' }}>Action</th>
+                          <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px' }}>
+                            <th style={{ padding: '8px 10px' }}>Receipt / Doc #</th>
+                            <th style={{ padding: '8px 10px' }}>Date</th>
+                            <th style={{ padding: '8px 10px' }}>Payment Type</th>
+                            <th style={{ padding: '8px 10px' }}>Reference / ERP Memo</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Amount Paid</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'center' }}>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           {orderPayments.length === 0 ? (
                             <tr>
-                              <td colSpan={5} style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                No payments have been logged yet for this quotation.
+                              <td colSpan={6} style={{ padding: '36px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <CreditCard size={28} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
+                                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>No customer payments allocated yet for this quotation.</div>
+                                <div style={{ fontSize: '11.5px', marginTop: '4px' }}>Allocate receipts from Palladium ERP via the Payments Hub.</div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-primary"
+                                  style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px' }}
+                                  onClick={() => navigate('/payments')}
+                                >
+                                  <CreditCard size={13} /> Go to Payments & Allocations
+                                </button>
                               </td>
                             </tr>
                           ) : (
                             orderPayments.map((p, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '8px 10px' }}>
-                                  <input 
-                                    type="date"
-                                    className="form-control"
-                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                                    value={p.date || ''}
-                                    onChange={e => {
-                                      const newP = [...orderPayments];
-                                      newP[idx].date = e.target.value;
-                                      setOrderPayments(newP);
-                                    }}
-                                  />
+                              <tr key={p.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '10px', fontWeight: 700, fontFamily: 'monospace', color: '#3b82f6' }}>
+                                  {p.receipt_no || p.receiptNo || (p.reference && p.reference.startsWith('RC-') ? p.reference : `RC-00000${idx + 1}`)}
                                 </td>
-                                <td style={{ padding: '8px 10px' }}>
-                                  <select 
-                                    className="form-control"
-                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                                    value={p.type || 'Deposit Payment'}
-                                    onChange={e => {
-                                      const newP = [...orderPayments];
-                                      newP[idx].type = e.target.value;
-                                      setOrderPayments(newP);
-                                    }}
-                                  >
-                                    <option value="Deposit Payment">Deposit Payment</option>
-                                    <option value="Balance Payment">Balance Payment</option>
-                                    <option value="Interim Payment">Interim Payment</option>
-                                  </select>
+                                <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>
+                                  {p.date ? new Date(p.date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                                 </td>
-                                <td style={{ padding: '8px 10px' }}>
-                                  <input 
-                                    type="text"
-                                    placeholder="e.g. Deposit Payment EFT"
-                                    className="form-control"
-                                    style={{ height: '30px', fontSize: '12px', padding: '4px 8px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)', width: '100%' }}
-                                    value={p.reference || ''}
-                                    onChange={e => {
-                                      const newP = [...orderPayments];
-                                      newP[idx].reference = e.target.value;
-                                      setOrderPayments(newP);
-                                    }}
-                                  />
+                                <td style={{ padding: '10px' }}>
+                                  <span className="badge b-info" style={{ fontSize: '11px', fontWeight: 600 }}>
+                                    {p.type || 'Deposit Payment'}
+                                  </span>
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                                  <input 
-                                    type="number"
-                                    className="form-control"
-                                    style={{ height: '30px', fontSize: '12px', padding: '4px', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border)', width: '110px', textAlign: 'right' }}
-                                    value={p.amount || ''}
-                                    onChange={e => {
-                                      const newP = [...orderPayments];
-                                      newP[idx].amount = Math.max(0, Number(e.target.value) || 0);
-                                      setOrderPayments(newP);
-                                    }}
-                                  />
+                                <td style={{ padding: '10px', color: 'var(--text-secondary)', maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {p.notes || p.reference || '—'}
                                 </td>
-                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                  <button 
-                                    type="button"
-                                    className="btn btn-ghost btn-xs"
-                                    style={{ color: 'var(--text-danger)' }}
-                                    onClick={() => {
-                                      if (confirm('Delete this payment record?')) {
-                                        const newP = orderPayments.filter((_, i) => i !== idx);
-                                        setOrderPayments(newP);
-                                      }
-                                    }}
-                                  >
-                                    Delete ✕
-                                  </button>
+                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: 'var(--text-success)', fontSize: '13px' }}>
+                                  R {(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td style={{ padding: '10px', textAlign: 'center' }}>
+                                  <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                                    Active ✓
+                                  </span>
                                 </td>
                               </tr>
                             ))
@@ -5316,15 +5320,6 @@ export default function OrdersPage() {
                         </tbody>
                       </table>
                     </div>
-
-                    <button 
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      style={{ border: '1px dashed var(--border)', marginTop: '15px', color: 'var(--text-info)' }}
-                      onClick={() => setOrderPayments(prev => [...prev, { date: new Date().toISOString().split('T')[0], type: 'Deposit Payment', amount: 0, reference: '' }])}
-                    >
-                      + Add New Payment Entry
-                    </button>
                   </div>
                 </div>
 
@@ -5392,6 +5387,15 @@ export default function OrdersPage() {
                             </span>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', fontSize: '11.5px', fontWeight: 600 }}
+                          onClick={() => navigate('/payments')}
+                        >
+                          <CreditCard size={13} /> Open Payments & Allocations
+                        </button>
                       </div>
                     );
                   })()}

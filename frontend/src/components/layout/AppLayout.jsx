@@ -43,6 +43,7 @@ export default function AppLayout() {
     if (path === '/settings') return 'Settings';
     if (path === '/time') return 'Time tracking';
     if (path === '/invoices') return 'Invoices';
+    if (path === '/payments') return 'Payments';
     if (path === '/designfee') return 'Design fee calculator';
     if (path.startsWith('/projects/')) {
       const projModule = moduleConfig?.modules?.find(m => m.id === 'projects');

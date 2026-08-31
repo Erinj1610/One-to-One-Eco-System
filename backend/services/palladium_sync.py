@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from database.cloud_sql import SessionLocal, get_db
-from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine, PalladiumInvoiceLine
+from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine, PalladiumInvoiceLine, PalladiumPayment, OrderPaymentAllocation
 
 logger = logging.getLogger(__name__)
 
@@ -558,3 +558,120 @@ def sync_palladium_sales_invoices(db_session: Optional[Session] = None) -> Dict[
     finally:
         if should_close_db:
             db.close()
+
+
+def sync_palladium_payments(db_session: Optional[Session] = None) -> Dict[str, Any]:
+    """
+    100% read-only synchronization of Customer Payments & Receipts from Palladium ERP (tblCustPay + tblCustomers)
+    into Cloud SQL (palladium_payments).
+    """
+    start_time = time.time()
+    db = db_session if db_session else SessionLocal()
+    should_close_db = db_session is None
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=35
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+
+        p_cursor.execute("""
+            SELECT 
+                p.lngCustPayID AS payment_id,
+                p.strSource AS receipt_no,
+                p.dteJournalDate AS payment_date,
+                p.dteSystemDate AS system_date,
+                p.strCustName AS customer_code,
+                c.strCustDesc AS customer_name,
+                p.decDeposit AS deposit_amount,
+                p.decAmount AS amount,
+                p.strComment AS reference,
+                p.strPaidBy AS payment_method,
+                p.intBankAcct AS bank_account,
+                p.strUserName AS captured_by,
+                p.strCurrency AS currency_code,
+                p.bitReversed AS is_reversed
+            FROM tblCustPay p
+            LEFT JOIN tblCustomers c ON p.strCustName = c.strCustName
+            WHERE p.bitReversed = 0 AND (p.decDeposit > 0 OR p.decAmount > 0)
+            ORDER BY p.dteJournalDate DESC, p.lngCustPayID DESC
+        """)
+        pay_rows = p_cursor.fetchall()
+        p_conn.close()
+
+        now_dt = datetime.now(timezone.utc)
+
+        # Get existing payments from Cloud SQL to upsert without breaking allocation linkages
+        existing_payments = {p.palladium_payment_id: p for p in db.query(PalladiumPayment).all()}
+
+        created_count = 0
+        updated_count = 0
+
+        for r in pay_rows:
+            pay_id = r.get("payment_id")
+            receipt_no = str(r.get("receipt_no") or "").strip()
+            if not pay_id or not receipt_no:
+                continue
+
+            eff_amt = float(r.get("deposit_amount") or r.get("amount") or 0.0)
+
+            if pay_id in existing_payments:
+                pay_obj = existing_payments[pay_id]
+                pay_obj.receipt_no = receipt_no
+                pay_obj.payment_date = r.get("payment_date")
+                pay_obj.system_date = r.get("system_date")
+                pay_obj.customer_code = str(r.get("customer_code") or "").strip() or None
+                pay_obj.customer_name = str(r.get("customer_name") or "").strip() or None
+                pay_obj.amount = eff_amt
+                pay_obj.reference = str(r.get("reference") or "").strip() or None
+                pay_obj.payment_method = str(r.get("payment_method") or "").strip() or None
+                pay_obj.bank_account = str(r.get("bank_account") or "").strip() or None
+                pay_obj.captured_by = str(r.get("captured_by") or "").strip() or None
+                pay_obj.currency_code = str(r.get("currency_code") or "ZAR").strip()
+                pay_obj.is_reversed = bool(r.get("is_reversed", False))
+                pay_obj.last_synced_at = now_dt
+                updated_count += 1
+            else:
+                pay_obj = PalladiumPayment(
+                    palladium_payment_id=pay_id,
+                    receipt_no=receipt_no,
+                    payment_date=r.get("payment_date"),
+                    system_date=r.get("system_date"),
+                    customer_code=str(r.get("customer_code") or "").strip() or None,
+                    customer_name=str(r.get("customer_name") or "").strip() or None,
+                    amount=eff_amt,
+                    reference=str(r.get("reference") or "").strip() or None,
+                    payment_method=str(r.get("payment_method") or "").strip() or None,
+                    bank_account=str(r.get("bank_account") or "").strip() or None,
+                    captured_by=str(r.get("captured_by") or "").strip() or None,
+                    currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                    is_reversed=bool(r.get("is_reversed", False)),
+                    last_synced_at=now_dt
+                )
+                db.add(pay_obj)
+                created_count += 1
+
+        db.commit()
+
+        duration = round(time.time() - start_time, 2)
+        logger.info(f"Synced {len(pay_rows)} Payments from Palladium ({created_count} new, {updated_count} updated) in {duration}s.")
+        return {
+            "status": "success",
+            "payments_synced": len(pay_rows),
+            "new_payments": created_count,
+            "updated_payments": updated_count,
+            "duration_seconds": duration
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to sync Payments from Palladium: {e}")
+        return {"status": "error", "error": str(e), "payments_synced": 0}
+    finally:
+        if should_close_db:
+            db.close()
+

@@ -637,7 +637,7 @@ def list_quotes(project_id: int, db: Session = Depends(get_db)):
 @router.get("/all")
 def list_all_projects_relational(db: Session = Depends(get_db)):
     import json
-    from models.orm_models import Order, OrderItem, ProcurementAllocation
+    from models.orm_models import Order, OrderItem, ProcurementAllocation, OrderPaymentAllocation
     try:
         projects = db.query(Project).all()
         orders = db.query(Order).all()
@@ -655,6 +655,13 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 alloc_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if a.project_id:
                 alloc_by_proj_id.setdefault(a.project_id, []).append(a)
+
+        # Pre-load active payment allocations for live payment breakdown
+        active_payment_allocations = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active").all()
+        pay_alloc_by_order_id = {}
+        for pa in active_payment_allocations:
+            if pa.order_id:
+                pay_alloc_by_order_id.setdefault(str(pa.order_id), []).append(pa)
 
         # Group items by order ID (excluding obsolete manual credits)
         items_by_order = {}
@@ -873,9 +880,37 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
             try:
-                payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
+                raw_payments = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
             except Exception:
-                payments_parsed = []
+                raw_payments = []
+
+            # Filter out legacy PALLADIUM entries from raw_payments to prevent duplicates
+            manual_payments = [p for p in raw_payments if isinstance(p, dict) and p.get("source") != "PALLADIUM" and not p.get("is_palladium")]
+
+            # Combine manual payments with live OrderPaymentAllocations
+            order_pay_allocs = pay_alloc_by_order_id.get(str(order.po_number), []) + pay_alloc_by_order_id.get(str(order.id), [])
+            seen_alloc_ids = set()
+            payments_parsed = list(manual_payments)
+            for pa in order_pay_allocs:
+                if pa.id not in seen_alloc_ids:
+                    seen_alloc_ids.add(pa.id)
+                    payments_parsed.append({
+                        "id": f"pal-alloc-{pa.id}",
+                        "allocation_id": pa.id,
+                        "palladium_payment_id": pa.palladium_payment_id,
+                        "receipt_no": pa.receipt_no,
+                        "amount": float(pa.allocated_amount or 0.0),
+                        "type": pa.payment_type or "Deposit Payment",
+                        "date": pa.allocated_at.strftime("%Y-%m-%d") if pa.allocated_at else "",
+                        "notes": pa.notes or f"Allocated from Palladium Receipt {pa.receipt_no}",
+                        "source": "PALLADIUM",
+                        "is_palladium": True,
+                        "allocated_by": pa.allocated_by
+                    })
+
+            calculated_paid = sum(float(p.get("amount", 0) or 0) for p in payments_parsed)
+            effective_paid = max(float(order.paid or 0.0), calculated_paid) if calculated_paid > 0 else float(order.paid or 0.0)
+            effective_outstanding = max(0.0, round(float(order.value or 0.0) - effective_paid, 2))
 
             order_dict = {
                 "id": order.po_number,
@@ -887,8 +922,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "items": order.items_count,
                 "value": order.value,
                 "costValue": total_cost_value,
-                "paid": order.paid,
-                "outstanding": order.outstanding,
+                "paid": effective_paid,
+                "outstanding": effective_outstanding,
                 "status": order.status,
                 "eta": order.eta,
                 "quote_name": order.quote_name or "General Spec",
