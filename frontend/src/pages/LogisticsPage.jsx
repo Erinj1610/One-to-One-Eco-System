@@ -801,19 +801,19 @@ export default function LogisticsPage() {
 
       </div>
 
-      {/* MAIN DOCUMENT WORKSPACE (Split Screen or Full Table) */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedDocId ? '440px 1fr' : '1fr', gap: '18px', alignItems: 'start' }}>
+      {/* MAIN DOCUMENT WORKSPACE (Full Width Ledger Table) */}
+      <div style={{ width: '100%' }}>
         
-        {/* LEFT COLUMN: ISSUED DOCUMENTS LEDGER */}
+        {/* ISSUED DOCUMENTS LEDGER */}
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
           
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FileText size={14} style={{ color: 'var(--text-info)' }} />
+          <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={15} style={{ color: 'var(--text-info)' }} />
               Logistics Documents Ledger ({filteredDocs.length})
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-              Click any document to inspect
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              Click any document to inspect, print or download PDF
             </span>
           </div>
 
@@ -825,7 +825,7 @@ export default function LogisticsPage() {
             </div>
           ) : groupingMode === 'project' ? (
             // Grouped By Project View
-            <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '780px', overflowY: 'auto' }}>
+            <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '780px', overflowY: 'auto' }}>
               {(() => {
                 const groups = {};
                 filteredDocs.forEach(doc => {
@@ -845,7 +845,7 @@ export default function LogisticsPage() {
                   return (
                     <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)', overflow: 'hidden' }}>
                       <div 
-                        style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'var(--bg-tertiary)' }}
+                        style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'var(--bg-tertiary)' }}
                         onClick={() => {
                           setCollapsedProjects(prev => ({
                             ...prev,
@@ -855,7 +855,7 @@ export default function LogisticsPage() {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                          <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {group.projectName} {group.projectClient && <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>({group.projectClient})</span>}
                           </span>
                         </div>
@@ -865,7 +865,7 @@ export default function LogisticsPage() {
                       </div>
                       
                       {!isCollapsed && (
-                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ padding: '10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px' }}>
                           {group.docs.map(doc => {
                             const isSelected = doc.id === selectedDocId;
                             const isPL = doc.type === 'packing_list';
@@ -880,18 +880,18 @@ export default function LogisticsPage() {
                                 className="hover-row"
                                 style={{
                                   background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                                  border: isSelected ? '1px solid var(--text-info)' : '1px solid var(--border)',
-                                  borderRadius: '6px',
-                                  padding: '10px 12px',
+                                  border: isSelected ? '1.5px solid var(--text-info)' : '1px solid var(--border)',
+                                  borderRadius: '8px',
+                                  padding: '12px 14px',
                                   cursor: 'pointer',
                                   fontSize: '12px',
                                   transition: 'all 0.15s ease'
                                 }}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{doc.id}</span>
+                                  <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '13px' }}>{doc.id}</span>
                                   <span style={{
-                                    fontSize: '9px',
+                                    fontSize: '9.5px',
                                     fontWeight: 700,
                                     padding: '2px 6px',
                                     borderRadius: '4px',
@@ -902,11 +902,11 @@ export default function LogisticsPage() {
                                     {isPL ? 'Packing List' : 'Delivery Note'}
                                   </span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '4px', fontSize: '11px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '6px', fontSize: '11.5px' }}>
                                   <span>Order: {doc.orderId}</span>
                                   <span>{doc.items?.length || 0} items ({totalQty} units)</span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                                   <span>Issued: {doc.date}</span>
                                   {isPL && (
                                     <span style={{ color: doc.deliveryNoteId ? 'var(--text-success)' : 'var(--text-warning)', fontWeight: 600 }}>
@@ -932,8 +932,8 @@ export default function LogisticsPage() {
                   <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
                     <th style={{ padding: '10px 14px' }}>Document ID</th>
                     <th style={{ padding: '10px 14px' }}>Type</th>
-                    {!selectedDocId && <th style={{ padding: '10px 14px' }}>Project & Order</th>}
-                    {!selectedDocId && <th style={{ padding: '10px 14px' }}>Client</th>}
+                    <th style={{ padding: '10px 14px' }}>Project & Order</th>
+                    <th style={{ padding: '10px 14px' }}>Client</th>
                     <th style={{ padding: '10px 14px' }}>Date</th>
                     <th style={{ padding: '10px 14px' }}>Items & Units</th>
                     <th style={{ padding: '10px 14px' }}>Status</th>
@@ -977,17 +977,13 @@ export default function LogisticsPage() {
                             {isPL ? '📦 PL' : '🚚 DN'}
                           </span>
                         </td>
-                        {!selectedDocId && (
-                          <td style={{ padding: '10px 14px' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.projectName}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{doc.orderId}</div>
-                          </td>
-                        )}
-                        {!selectedDocId && (
-                          <td style={{ padding: '10px 14px', color: 'var(--text-secondary)' }}>
-                            {doc.projectClient || '—'}
-                          </td>
-                        )}
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.projectName}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{doc.orderId}</div>
+                        </td>
+                        <td style={{ padding: '10px 14px', color: 'var(--text-secondary)' }}>
+                          {doc.projectClient || '—'}
+                        </td>
                         <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
                           {doc.date}
                         </td>
@@ -1045,12 +1041,49 @@ export default function LogisticsPage() {
 
         </div>
 
-        {/* RIGHT COLUMN: HIGH-FIDELITY PRINTABLE DOCUMENT PREVIEW */}
-        {activeDoc && (
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '18px' }}>
+      </div>
+
+      {/* CENTERED MODAL: HIGH-FIDELITY PRINTABLE DOCUMENT PREVIEW */}
+      {activeDoc && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            zIndex: 1100, 
+            background: 'rgba(0, 0, 0, 0.75)', 
+            backdropFilter: 'blur(4px)', 
+            display: 'flex', 
+            alignItems: 'flex-start', 
+            justifyContent: 'center', 
+            overflowY: 'auto',
+            padding: '24px 16px' 
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedDocId(null);
+              setSelectedProjectKey(null);
+            }
+          }}
+        >
+          <div 
+            style={{ 
+              margin: 'auto',
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '12px', 
+              width: '100%', 
+              maxWidth: '960px', 
+              maxHeight: 'calc(100vh - 48px)', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden', 
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)' 
+            }}
+            onClick={e => e.stopPropagation()}
+          >
             
             {/* Top Workspace Action Bar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{
                   fontSize: '11px',
@@ -1063,7 +1096,7 @@ export default function LogisticsPage() {
                 }}>
                   {activeDoc.type === 'packing_list' ? 'Packing List' : 'Delivery Note'}
                 </span>
-                <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'monospace' }}>
+                <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'monospace' }}>
                   {activeDoc.id}
                 </h3>
               </div>
@@ -1097,7 +1130,7 @@ export default function LogisticsPage() {
             </div>
 
             {/* LIVE DOCUMENT SHEET */}
-            <div style={{ display: 'flex', justifyContent: 'center', overflowX: 'auto', padding: '4px' }}>
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', justifyContent: 'center', background: 'var(--bg-primary)' }}>
               <div 
                 id="print-shipment-canvas" 
                 style={{ 
@@ -1291,16 +1324,396 @@ export default function LogisticsPage() {
             </div>
 
           </div>
-        )}
-
-      </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL 1: NEW PACKING LIST                                     */}
       {/* ------------------------------------------------------------- */}
       {showPlModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            zIndex: 1200, 
+            background: 'rgba(0,0,0,0.75)', 
+            backdropFilter: 'blur(4px)', 
+            display: 'flex', 
+            alignItems: 'flex-start', 
+            justifyContent: 'center', 
+            overflowY: 'auto',
+            padding: '24px 16px' 
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPlModal(false); }}
+        >
+          <div 
+            style={{ 
+              margin: 'auto',
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '12px', 
+              width: '100%', 
+              maxWidth: '1000px', 
+              maxHeight: 'calc(100vh - 48px)', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden', 
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' 
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            
+            {/* Modal Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={18} style={{ color: 'var(--text-info)' }} />
+                  Create Logistical Packing List (PL)
+                </h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Select a project order and specify packed quantities & box numbers from the BOQ</span>
+              </div>
+              <button 
+                onClick={() => setShowPlModal(false)}
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSavePackingList} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                
+                {/* Order Selector */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Select Destination Project & Quotation Order <span style={{ color: 'var(--text-danger)' }}>*</span>
+                  </label>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <div 
+                      onClick={() => setPlOrderDropdownOpen(!plOrderDropdownOpen)}
+                      className="form-control"
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        cursor: 'pointer', 
+                        height: '36px', 
+                        background: 'var(--bg-primary)' 
+                      }}
+                    >
+                      <span style={{ fontSize: '12.5px', color: plOrderKey ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                        {plOrderKey ? (() => {
+                          const [pKey, oId] = plOrderKey.split('_');
+                          const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+                          return ord ? `${ord.projectName} — ${ord.quote_name || 'Spec Order'} (${ord.id})` : 'Select an order...';
+                        })() : 'Select destination order to pack...'}
+                      </span>
+                      <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+                    </div>
+
+                    {plOrderDropdownOpen && (
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: '100%', 
+                        left: 0, 
+                        right: 0, 
+                        marginTop: '4px', 
+                        background: 'var(--bg-secondary)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '8px', 
+                        maxHeight: '220px', 
+                        overflowY: 'auto', 
+                        zIndex: 20, 
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.4)' 
+                      }}>
+                        {allOrders.map(ord => (
+                          <div 
+                            key={`${ord.projectKey}_${ord.id}`}
+                            onClick={() => {
+                              setPlOrderKey(`${ord.projectKey}_${ord.id}`);
+                              setPlOrderDropdownOpen(false);
+                            }}
+                            className="hover-row"
+                            style={{ 
+                              padding: '8px 12px', 
+                              cursor: 'pointer', 
+                              borderBottom: '1px solid var(--border)', 
+                              fontSize: '12px',
+                              background: plOrderKey === `${ord.projectKey}_${ord.id}` ? 'rgba(59, 130, 246, 0.12)' : 'transparent'
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{ord.projectName}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              {ord.quote_name || 'Quotation Spec'} • {ord.itemsCount || 0} items • <span style={{ fontFamily: 'monospace' }}>{ord.id}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Items Selection Table */}
+                {plSelectedOrder && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                        Select Items To Include In This Packing List
+                      </label>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {Object.values(plItemSelections).filter(v => v.selected && v.qty > 0).length} of {plOrderItems.length} lines packed
+                      </span>
+                    </div>
+
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>
+                            <th style={{ width: '36px', textAlign: 'center', padding: '8px 4px' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={plOrderItems.length > 0 && plOrderItems.every(i => plItemSelections[i.id]?.selected)}
+                                onChange={e => {
+                                  const allChecked = e.target.checked;
+                                  const updated = { ...plItemSelections };
+                                  plOrderItems.forEach(i => {
+                                    if (updated[i.id]) {
+                                      updated[i.id].selected = allChecked;
+                                    }
+                                  });
+                                  setPlItemSelections(updated);
+                                }}
+                              />
+                            </th>
+                            <th style={{ padding: '8px 10px' }}>Made Code</th>
+                            <th style={{ padding: '8px 10px' }}>Plan Code</th>
+                            <th style={{ padding: '8px 10px' }}>Description</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '50px' }}>Total</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '70px' }}>Pack Qty</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '80px' }}>Box #</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '60px' }}>Red List</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '60px' }}>1st Fix</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plOrderItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                                No items found on this project order.
+                              </td>
+                            </tr>
+                          ) : (
+                            plOrderItems.map(item => {
+                              const sel = plItemSelections[item.id] || { selected: false, qty: item.qty || 1, boxNumber: 'Box 1', redList: 'No', firstFix: 'No' };
+                              return (
+                                <tr 
+                                  key={item.id} 
+                                  style={{ 
+                                    borderBottom: '1px solid var(--border)',
+                                    background: sel.selected ? 'rgba(59, 130, 246, 0.06)' : 'transparent' 
+                                  }}
+                                >
+                                  <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={sel.selected}
+                                      onChange={e => {
+                                        setPlItemSelections(prev => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            selected: e.target.checked
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace' }}>
+                                    {item.type || '—'}
+                                  </td>
+                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: 'var(--text-info)' }}>
+                                    {item.code || '—'}
+                                  </td>
+                                  <td style={{ padding: '8px 10px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.description}>
+                                    {item.description || '—'}
+                                  </td>
+                                  <td style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>
+                                    {item.qty || 1}
+                                  </td>
+                                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                    <input 
+                                      type="number"
+                                      min={1}
+                                      max={item.qty || 999}
+                                      value={sel.qty}
+                                      disabled={!sel.selected}
+                                      onChange={e => {
+                                        const v = parseInt(e.target.value) || 1;
+                                        setPlItemSelections(prev => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            qty: v
+                                          }
+                                        }));
+                                      }}
+                                      className="form-control"
+                                      style={{ width: '60px', height: '28px', textAlign: 'center', padding: '2px 4px', margin: '0 auto', fontSize: '11.5px', fontWeight: 700 }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                    <input 
+                                      type="text"
+                                      value={sel.boxNumber}
+                                      disabled={!sel.selected}
+                                      placeholder="e.g. Box 1"
+                                      onChange={e => {
+                                        const v = e.target.value;
+                                        setPlItemSelections(prev => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            boxNumber: v
+                                          }
+                                        }));
+                                      }}
+                                      className="form-control"
+                                      style={{ width: '75px', height: '28px', textAlign: 'center', padding: '2px 4px', margin: '0 auto', fontSize: '11.5px' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                    <select
+                                      value={sel.redList}
+                                      disabled={!sel.selected}
+                                      onChange={e => {
+                                        const v = e.target.value;
+                                        setPlItemSelections(prev => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            redList: v
+                                          }
+                                        }));
+                                      }}
+                                      className="form-control"
+                                      style={{ width: '56px', height: '28px', padding: '2px 4px', fontSize: '10.5px', color: sel.redList === 'Yes' ? 'var(--text-danger)' : 'inherit' }}
+                                    >
+                                      <option>No</option>
+                                      <option>Yes</option>
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                    <select
+                                      value={sel.firstFix}
+                                      disabled={!sel.selected}
+                                      onChange={e => {
+                                        const v = e.target.value;
+                                        setPlItemSelections(prev => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            firstFix: v
+                                          }
+                                        }));
+                                      }}
+                                      className="form-control"
+                                      style={{ width: '56px', height: '28px', padding: '2px 4px', fontSize: '10.5px', color: sel.firstFix === 'Yes' ? 'var(--text-info)' : 'inherit' }}
+                                    >
+                                      <option>No</option>
+                                      <option>Yes</option>
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Notes */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Packing Instructions & Dispatch Notes
+                  </label>
+                  <textarea 
+                    rows={2}
+                    value={plNotes}
+                    onChange={e => setPlNotes(e.target.value)}
+                    placeholder="e.g. Fragile glass shades packed with heavy bubblewrap in Box 3..."
+                    className="form-control"
+                    style={{ fontSize: '12px', width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexShrink: 0 }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowPlModal(false)}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={!plSelectedOrder || Object.values(plItemSelections).filter(v => v.selected && v.qty > 0).length === 0}
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  <Check size={14} /> Issue Logistical Packing List
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL 2: NEW DELIVERY NOTE                                    */}
+      {/* ------------------------------------------------------------- */}
+      {showDnModal && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            zIndex: 1200, 
+            background: 'rgba(0,0,0,0.75)', 
+            backdropFilter: 'blur(4px)', 
+            display: 'flex', 
+            alignItems: 'flex-start', 
+            justifyContent: 'center', 
+            overflowY: 'auto',
+            padding: '24px 16px' 
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDnModal(false); }}
+        >
+          <div 
+            style={{ 
+              margin: 'auto',
+              background: 'var(--bg-secondary)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '12px', 
+              width: '100%', 
+              maxWidth: '900px', 
+              maxHeight: 'calc(100vh - 48px)', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              overflow: 'hidden', 
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' 
+            }}
+            onClick={e => e.stopPropagation()}
+          >
             
             {/* Modal Header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1647,8 +2060,14 @@ export default function LogisticsPage() {
       {/* MODAL 2: NEW DELIVERY NOTE                                    */}
       {/* ------------------------------------------------------------- */}
       {showDnModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+        <div 
+          style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDnModal(false); }}
+        >
+          <div 
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' }}
+            onClick={e => e.stopPropagation()}
+          >
             
             {/* Modal Header */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
