@@ -818,13 +818,24 @@ def allocate_procurement_item(
                         real_proj_id = found_proj.id
                         real_proj_name = found_proj.name
 
-        if matched_item and not order_id:
-            if str(matched_item.order_id).isdigit():
-                order_id = int(matched_item.order_id)
+        # Resolve order DB ID safely without crashing on string PO numbers
+        resolved_order_db_id = None
+        if order_id:
+            if str(order_id).isdigit():
+                resolved_order_db_id = int(order_id)
             else:
-                ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
+                ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
                 if ord_match:
-                    order_id = ord_match.id
+                    resolved_order_db_id = ord_match.id
+
+        if matched_item and not resolved_order_db_id:
+            if matched_item.order_id:
+                if str(matched_item.order_id).isdigit():
+                    resolved_order_db_id = int(matched_item.order_id)
+                else:
+                    ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
+                    if ord_match:
+                        resolved_order_db_id = ord_match.id
 
         # 3. Create allocation record
         alloc = ProcurementAllocation(
@@ -833,7 +844,7 @@ def allocate_procurement_item(
             sku=sku,
             project_id=real_proj_id,
             project_name=real_proj_name,
-            order_id=int(order_id) if order_id else None,
+            order_id=resolved_order_db_id,
             order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
             fitting_code=fitting_code or (matched_item.code if matched_item else sku),
             allocated_qty=allocated_qty,
@@ -1011,16 +1022,26 @@ def batch_allocate_procurement_items(
                             item_proj_id = found_proj.id
                             item_proj_name = found_proj.name
 
-            item_order_id = order_id
-            if matched_item and not item_order_id:
-                if str(matched_item.order_id).isdigit():
-                    item_order_id = int(matched_item.order_id)
-                elif p_orders:
-                    item_order_id = p_orders[0].id
+            # Resolve order DB ID safely without crashing on string PO numbers
+            resolved_order_db_id = None
+            if order_id:
+                if str(order_id).isdigit():
+                    resolved_order_db_id = int(order_id)
                 else:
-                    ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
+                    ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
                     if ord_match:
-                        item_order_id = ord_match.id
+                        resolved_order_db_id = ord_match.id
+
+            if matched_item and not resolved_order_db_id:
+                if matched_item.order_id:
+                    if str(matched_item.order_id).isdigit():
+                        resolved_order_db_id = int(matched_item.order_id)
+                    else:
+                        ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
+                        if ord_match:
+                            resolved_order_db_id = ord_match.id
+                elif p_orders:
+                    resolved_order_db_id = p_orders[0].id
 
             alloc = ProcurementAllocation(
                 allocation_type=allocation_type,
@@ -1028,7 +1049,7 @@ def batch_allocate_procurement_items(
                 sku=sku,
                 project_id=item_proj_id,
                 project_name=item_proj_name,
-                order_id=int(item_order_id) if item_order_id else None,
+                order_id=resolved_order_db_id,
                 order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
                 fitting_code=fitting_code or (matched_item.code if matched_item else sku),
                 allocated_qty=allocated_qty,
