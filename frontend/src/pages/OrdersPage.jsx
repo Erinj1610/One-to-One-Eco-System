@@ -2157,6 +2157,42 @@ export default function OrdersPage() {
       .find(o => o.id === selectedOrderId);
   }, [projects, selectedOrderId]);
 
+  const orderCreditNotes = useMemo(() => {
+    if (!activeOrderObject) return [];
+    return (activeOrderObject.creditNotes && activeOrderObject.creditNotes.length > 0)
+      ? activeOrderObject.creditNotes
+      : (activeOrderObject?.clientInvoices || []).filter(i => i.is_credit || String(i.id).toUpperCase().startsWith('CN-') || String(i.id).toUpperCase().startsWith('CR-'));
+  }, [activeOrderObject]);
+
+  const erpCreditedItems = useMemo(() => {
+    return orderCreditNotes.flatMap(cn => 
+      (cn.items || []).map(it => {
+        const rawQty = it.qtyAction !== undefined ? it.qtyAction : (it.qty !== undefined ? it.qty : -1);
+        const absQty = Math.abs(Number(rawQty) || 1);
+        const unitPrice = Math.abs(Number(it.unitPrice || it.unitRetail || it.price || 0));
+        const totalVal = it.total !== undefined ? it.total : (Number(it.totalValue || it.amount || 0));
+        const finalTotal = totalVal !== undefined && totalVal !== 0 ? -Math.abs(Number(totalVal)) : -(absQty * unitPrice);
+
+        const codeVal = it.code || it.sku || '';
+        const boqMatch = (activeOrderItems || []).find(b => (b.code || '').trim() === codeVal.trim());
+        const desc = it.description && it.description !== it.code ? it.description : (boqMatch?.description || it.description || codeVal);
+
+        return {
+          id: `${cn.id}-${codeVal}`,
+          creditNoteId: cn.id,
+          creditNoteDate: String(cn.date || '').split('T')[0] || '—',
+          qty: -absQty,
+          code: codeVal,
+          description: desc,
+          unitRetail: unitPrice,
+          totalRetail: finalTotal,
+          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Staff',
+          notes: cn.notes || 'Allocated from Palladium ERP'
+        };
+      })
+    );
+  }, [orderCreditNotes, activeOrderItems]);
+
   return (
     <>
       <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
@@ -3946,11 +3982,11 @@ export default function OrdersPage() {
                             </tbody>
                           </table>
 
-                          {activeOrderItems.some(item => item.is_credit || item.isCredit) && (
+                          {erpCreditedItems.length > 0 && (
                             <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px', paddingBottom: '16px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', marginLeft: '12px', marginRight: '12px' }}>
-                                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-                                  🔴 Credited Items & Returns (Managed in Credits tab)
+                                <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                                  🔴 Credited Items & Returns (Allocated from Palladium ERP — {erpCreditedItems.length} line item{erpCreditedItems.length === 1 ? '' : 's'})
                                 </h4>
                                 <button 
                                   type="button" 
@@ -3962,296 +3998,56 @@ export default function OrdersPage() {
                                 </button>
                               </div>
                               {creditsSectionOpen && (
-                                <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
-                                <thead>
-                                  <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
-                                      Qty
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
-                                    </th>
-                                    <th style={{ width: widths.oneOneCode, position: 'relative' }}>
-                                      1:1 Code
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
-                                    </th>
-                                    <th style={{ width: widths.type, position: 'relative' }}>
-                                      Type
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
-                                    </th>
-                                    <th style={{ width: widths.itemType, position: 'relative' }}>
-                                      Item Type
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
-                                    </th>
-                                    <th style={{ width: widths.code, position: 'relative' }}>
-                                      Item Code
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
-                                    </th>
-                                    <th style={{ width: widths.description, position: 'relative' }}>
-                                      Description
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('description', e)} />
-                                    </th>
-                                    <th style={{ width: widths.floor, position: 'relative' }}>
-                                      Floor
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('floor', e)} />
-                                    </th>
-                                    <th style={{ width: widths.area, position: 'relative' }}>
-                                      Area Space
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('area', e)} />
-                                    </th>
-                                    <th style={{ width: widths.dimming, position: 'relative' }}>
-                                      Dimming
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('dimming', e)} />
-                                    </th>
-                                    <th style={{ width: widths.brand, position: 'relative' }}>
-                                      Brand
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
-                                    </th>
-                                    <th style={{ width: widths.supplier, position: 'relative' }}>
-                                      Supplier
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('supplier', e)} />
-                                    </th>
-                                    <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
-                                      Cost Ex VAT
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
-                                    </th>
-                                    <th style={{ width: widths.retail, position: 'relative', textAlign: 'right' }}>
-                                      Retail Price
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('retail', e)} />
-                                    </th>
-                                    <th style={{ width: widths.totalRetail, position: 'relative', textAlign: 'right' }}>
-                                      Total Credit
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('totalRetail', e)} />
-                                    </th>
-                                    <th style={{ width: widths.margin, position: 'relative', textAlign: 'center' }}>
-                                      Margin
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
-                                    </th>
-                                    <th style={{ width: widths.stock, position: 'relative' }}>
-                                      Stock
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
-                                    </th>
-                                    <th style={{ width: widths.eta, position: 'relative' }}>
-                                      ETA
-                                      <div className="resize-handle" onMouseDown={e => onResizeStart('eta', e)} />
-                                    </th>
-                                    <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
-                                      Status
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {activeOrderItems.filter(item => item.is_credit || item.isCredit).map(item => {
-                                    const qty = item.qty || 0;
-                                    const retail = Number(item.unitRetail || item.unit_retail || 0);
-                                    const cost = Number(item.unitCost || item.unit_cost || 0);
-                                    const totalCredit = qty * retail;
-                                    const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
-
-                                    return (
-                                      <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.04)', borderBottom: '1px solid var(--border)' }}>
-                                        {/* QUANTITY */}
-                                        <td>
-                                          <input 
-                                            type="number"
-                                            className="boq-cell-input"
-                                            style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}
-                                            value={qty}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-                                        
-                                        {/* 1:1 CODE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.oneOneCode || item.one_one_code || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* TYPE CODE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.type || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* ITEM TYPE - Styled badge (read-only) */}
-                                        <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
-                                          <span
-                                            style={{
-                                              display: 'inline-flex',
-                                              alignItems: 'center',
-                                              gap: '4px',
-                                              padding: '2px 8px',
-                                              borderRadius: '12px',
-                                              fontSize: '10px',
-                                              fontWeight: 700,
-                                              letterSpacing: '0.3px',
-                                              ...(((item.itemType || item.item_type) === 'Service') ? {
-                                                background: 'rgba(245, 158, 11, 0.15)',
-                                                color: '#d97706',
-                                                outline: '1px solid rgba(245, 158, 11, 0.4)'
-                                              } : {
-                                                background: 'rgba(59, 130, 246, 0.12)',
-                                                color: '#3b82f6',
-                                                outline: '1px solid rgba(59, 130, 246, 0.3)'
-                                              })
-                                            }}
-                                          >
-                                            {((item.itemType || item.item_type) === 'Service') ? '⚙ Service' : '🔩 Hardware'}
-                                          </span>
-                                        </td>
-
-                                        {/* ITEM CODE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.code || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* DESCRIPTION */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.description || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* FLOOR */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.floor || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* AREA SPACE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.area || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* DIMMING */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.dimming || 'Non-dim'}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* BRAND */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.brand || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* SUPPLIER */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.supplier || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* COST PRICE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            style={{ textAlign: 'right' }}
-                                            value={`R ${cost.toLocaleString()}`}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* RETAIL PRICE */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            style={{ textAlign: 'right' }}
-                                            value={`R ${retail.toLocaleString()}`}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* TOTAL CREDIT */}
-                                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-danger)', padding: '6px 8px', verticalAlign: 'middle' }}>
-                                          R {totalCredit.toLocaleString()}
-                                        </td>
-
-                                        {/* MARGIN */}
-                                        <td style={{ textAlign: 'center', fontWeight: 700, color: lineMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', padding: '6px 8px', verticalAlign: 'middle' }}>
-                                          {Math.round(lineMargin)}%
-                                        </td>
-
-                                        {/* STOCK STATUS */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.stockStatus || 'Order'}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* ETA */}
-                                        <td>
-                                          <input 
-                                            type="text"
-                                            className="boq-cell-input"
-                                            value={item.eta || ''}
-                                            readOnly
-                                            disabled
-                                          />
-                                        </td>
-
-                                        {/* ACTIONS / STATUS */}
-                                        <td style={{ textAlign: 'center', color: 'var(--text-danger)', fontWeight: 600, padding: '6px 8px', verticalAlign: 'middle' }}>
-                                          Credited
-                                        </td>
+                                <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px', margin: '0 12px' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left', minWidth: '900px' }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--text-danger)', fontWeight: 700 }}>
+                                        <th style={{ padding: '8px 12px', width: '70px', textAlign: 'center' }}>Qty</th>
+                                        <th style={{ padding: '8px 12px', width: '140px' }}>Credit Note #</th>
+                                        <th style={{ padding: '8px 12px', width: '110px' }}>Date Issued</th>
+                                        <th style={{ padding: '8px 12px', width: '160px' }}>Item Code</th>
+                                        <th style={{ padding: '8px 12px' }}>Description</th>
+                                        <th style={{ padding: '8px 12px', width: '110px', textAlign: 'right' }}>Unit Retail</th>
+                                        <th style={{ padding: '8px 12px', width: '120px', textAlign: 'right' }}>Total Credited</th>
+                                        <th style={{ padding: '8px 12px', width: '140px' }}>Source / By</th>
                                       </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
+                                    </thead>
+                                    <tbody>
+                                      {erpCreditedItems.map((item, idx) => (
+                                        <tr key={item.id || idx} style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.03)' }}>
+                                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-danger)' }}>
+                                            {item.qty}
+                                          </td>
+                                          <td 
+                                            style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                            onClick={() => navigate('/invoices')}
+                                          >
+                                            🔴 {item.creditNoteId}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                            {item.creditNoteDate || '—'}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                            {item.code}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>
+                                            {item.description}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                            R {item.unitRetail?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace' }}>
+                                            -R {Math.abs(item.totalRetail || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                            {item.allocatedBy || 'Palladium ERP'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -5707,9 +5503,7 @@ export default function OrdersPage() {
                                 <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
                                 <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
                                 <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  <span className="badge b-success">Delivered</span>
-                                </td>
+                                <td style={{ padding: '10px 12px' }}><span className="badge b-success">Delivered</span></td>
                               </tr>
                             ))}
                           </>
@@ -5721,415 +5515,179 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'credits' && (
+            {workspaceSubTab === 'credits' && (() => {
+              const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
+              const grossOrderValue = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
+              const netOrderValue = Math.max(0, grossOrderValue - totalErpCredited);
+
+              return (
               /* SUB-TAB: CREDITS & RETURNS */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* VITAL METRICS CARD GRID FOR CREDITS */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Credited</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total ERP Credit Notes</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0), 0) * -1).toLocaleString()}
+                      {orderCreditNotes.length} Document{orderCreditNotes.length === 1 ? '' : 's'}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Supplier cost deduction</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Allocated from Palladium ERP</span>
                   </div>
 
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Retail Credited</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1).toLocaleString()}
+                      -R {totalErpCredited.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit EX VAT</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit deduction</span>
                   </div>
 
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Order Value</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100)).toLocaleString()}
+                      R {netOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Main order minus credits</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Gross order minus total ERP credits</span>
                   </div>
                 </div>
 
+                {/* 1. OFFICIAL PALLADIUM ERP CREDIT NOTES TABLE */}
                 <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
-                        🔴 Credit Note & Return Items (Interactive Spreadsheet)
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
+                        🔴 Official Palladium ERP Credit Notes ({orderCreditNotes.length})
                       </h4>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Edit fields directly in the cells. Quantities entered will automatically negate to represent credits.</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Credit Notes allocated from Palladium ERP against this quotation order.</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                      {/* QUICK RETURN BOQ DROPDOWN */}
-                      <select 
-                        className="form-control"
-                        style={{ padding: '4px 8px', fontSize: '12px', width: '220px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                        value=""
-                        onChange={e => {
-                          if (!e.target.value) return;
-                          const originalItem = activeOrderItems.find(item => item.id === e.target.value);
-                          if (originalItem) {
-                            const newId = 'C-' + Date.now();
-                            const returnItem = {
-                              ...originalItem,
-                              id: newId,
-                              qty: -originalItem.qty,
-                              is_credit: true,
-                              isCredit: true
-                            };
-                            setActiveOrderItems(prev => [...prev, returnItem]);
-                          }
-                          e.target.value = '';
-                        }}
-                      >
-                        <option value="">-- Return Item from BOQ --</option>
-                        {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map(item => (
-                          <option key={item.id} value={item.id}>
-                            {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
-                          </option>
-                        ))}
-                      </select>
-
-                      <button 
-                        type="button" 
-                        className="btn btn-sm btn-danger" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={handleAddCreditRow}
-                      >
-                        <Plus size={14} /> Add Blank Credit Row
-                      </button>
-
-                      <button 
-                        type="button" 
-                        className="btn btn-sm btn-ghost" 
-                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-danger)', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
-                        onClick={() => setInteractiveCreditsOpen(!interactiveCreditsOpen)}
-                      >
-                        {interactiveCreditsOpen ? 'Collapse ˄' : 'Expand ˅'}
-                      </button>
-                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-outline" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      onClick={() => navigate('/invoices')}
+                    >
+                      <FileText size={14} /> Open Invoices Workspace
+                    </button>
                   </div>
 
-                  {/* HIGH-DENSITY CREDIT SPREADSHEET */}
-                  {interactiveCreditsOpen && (
-                    <div 
-                      style={{ maxHeight: '500px', overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
-                    >
-                    <table className="table boq-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%', minWidth: '1300px', fontSize: '12px' }}>
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                       <thead>
-                        <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                          <th style={{ width: widths.qty, position: 'relative', textAlign: 'center' }}>
-                            Qty
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('qty', e)} />
-                          </th>
-                          <th style={{ width: widths.oneOneCode, position: 'relative' }}>
-                            1:1 Code
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
-                          </th>
-                          <th style={{ width: widths.type, position: 'relative' }}>
-                            Type
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
-                          </th>
-                          <th style={{ width: widths.itemType, position: 'relative' }}>
-                            Item Type
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
-                          </th>
-                          <th style={{ width: widths.code, position: 'relative' }}>
-                            Item Code
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('code', e)} />
-                          </th>
-                          <th style={{ width: widths.description, position: 'relative' }}>
-                            Description
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('description', e)} />
-                          </th>
-                          <th style={{ width: widths.floor, position: 'relative' }}>
-                            Floor
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('floor', e)} />
-                          </th>
-                          <th style={{ width: widths.area, position: 'relative' }}>
-                            Area Space
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('area', e)} />
-                          </th>
-                          <th style={{ width: widths.dimming, position: 'relative' }}>
-                            Dimming
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('dimming', e)} />
-                          </th>
-                          <th style={{ width: widths.brand, position: 'relative' }}>
-                            Brand
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('brand', e)} />
-                          </th>
-                          <th style={{ width: widths.supplier, position: 'relative' }}>
-                            Supplier
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('supplier', e)} />
-                          </th>
-                          <th style={{ width: widths.cost, position: 'relative', textAlign: 'right' }}>
-                            Cost Ex VAT
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('cost', e)} />
-                          </th>
-                          <th style={{ width: widths.retail, position: 'relative', textAlign: 'right' }}>
-                            Retail Price
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('retail', e)} />
-                          </th>
-                          <th style={{ width: widths.totalRetail, position: 'relative', textAlign: 'right' }}>
-                            Total Credit
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('totalRetail', e)} />
-                          </th>
-                          <th style={{ width: widths.margin, position: 'relative', textAlign: 'center' }}>
-                            Margin
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
-                          </th>
-                          <th style={{ width: widths.stock, position: 'relative' }}>
-                            Stock
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
-                          </th>
-                          <th style={{ width: widths.eta, position: 'relative' }}>
-                            ETA
-                            <div className="resize-handle" onMouseDown={e => onResizeStart('eta', e)} />
-                          </th>
-                          <th style={{ width: widths.actions, position: 'relative', textAlign: 'center' }}>
-                            Actions
-                          </th>
+                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <th style={{ padding: '10px 12px' }}>Document ID</th>
+                          <th style={{ padding: '10px 12px' }}>Document Type</th>
+                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                          <th style={{ padding: '10px 12px' }}>Items Credited</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>Credited Amount</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {activeOrderItems.filter(item => item.is_credit || item.isCredit).length === 0 ? (
+                        {orderCreditNotes.length === 0 ? (
                           <tr>
-                            <td colSpan={17} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              No credit note items have been added to this order. Select an item from the BOQ above or add a blank credit row to start.
+                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                              No Credit Notes have been allocated to this order yet. Go to Invoices workspace to allocate pending Credit Notes from Palladium.
                             </td>
                           </tr>
                         ) : (
-                          activeOrderItems.filter(item => item.is_credit || item.isCredit).map((item, index) => {
-                            const cost = Number(item.unitCost) || 0;
-                            const retail = Number(item.unitRetail) || 0;
-                            const qty = Number(item.qty) || 0;
-                            const totalCreditLine = qty * retail;
-                            const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
-
-                            return (
-                              <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.03)' }}>
-                                {/* QUANTITY */}
-                                <td>
-                                  <input 
-                                    type="number"
-                                    className="boq-cell-input"
-                                    style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)' }}
-                                    value={item.qty}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'qty', e.target.value)}
-                                  />
-                                </td>
-                                
-                                {/* 1:1 CODE */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.oneOneCode || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* TYPE CODE */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.type || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'type', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* ITEM TYPE - Styled badge toggle */}
-                                <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateSpreadsheetCell(item.id, 'itemType', (item.itemType || item.item_type || 'Hardware') === 'Hardware' ? 'Service' : 'Hardware')}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      padding: '2px 8px',
-                                      borderRadius: '12px',
-                                      fontSize: '10px',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      border: 'none',
-                                      letterSpacing: '0.3px',
-                                      transition: 'all 0.15s',
-                                      ...(((item.itemType || item.item_type) === 'Service') ? {
-                                        background: 'rgba(245, 158, 11, 0.15)',
-                                        color: '#d97706',
-                                        outline: '1px solid rgba(245, 158, 11, 0.4)'
-                                      } : {
-                                        background: 'rgba(59, 130, 246, 0.12)',
-                                        color: '#3b82f6',
-                                        outline: '1px solid rgba(59, 130, 246, 0.3)'
-                                      })
-                                    }}
-                                    title="Click to toggle Hardware / Service"
-                                  >
-                                    {((item.itemType || item.item_type) === 'Service') ? '⚙ Service' : '🔩 Hardware'}
-                                  </button>
-                                </td>
-
-                                {/* ITEM CODE */}
-                                <td>
-                                  <div style={{ position: 'relative' }}>
-                                    <input 
-                                      type="text"
-                                      className="boq-cell-input"
-                                      value={item.code || ''}
-                                      onChange={e => handleUpdateSpreadsheetCell(item.id, 'code', e.target.value)}
-                                      placeholder="Double click to search..."
-                                    />
+                          orderCreditNotes.map((cn, idx) => (
+                            <tr key={`cn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                              <td 
+                                style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => navigate('/invoices')}
+                              >
+                                {cn.id}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: 'var(--text-danger)', fontSize: '10.5px', fontWeight: 700 }}>
+                                  🔴 Credit Note (ERP)
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{String(cn.date || '').split('T')[0] || '—'}</td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {cn.items?.length > 0 ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {cn.items.map((it, iIdx) => (
+                                      <span key={iIdx} style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
+                                        {it.code} (Qty: {Math.abs(Number(it.qtyAction || it.qty || 1))})
+                                      </span>
+                                    ))}
                                   </div>
-                                </td>
-
-                                {/* DESCRIPTION */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.description || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* FLOOR */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.floor || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'floor', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* AREA SPACE */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.area || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'area', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* DIMMING */}
-                                <td>
-                                  <select 
-                                    className="boq-cell-input"
-                                    value={item.dimming || 'Non-dim'}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'dimming', e.target.value)}
-                                  >
-                                    <option value="Non-dim">Non-dim</option>
-                                    <option value="Phase-cut">Phase-cut</option>
-                                    <option value="DALI">DALI</option>
-                                    <option value="0-10V">0-10V</option>
-                                    <option value="Bluetooth">Bluetooth</option>
-                                  </select>
-                                </td>
-
-                                {/* BRAND */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.brand || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'brand', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* SUPPLIER */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.supplier || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'supplier', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* COST PRICE */}
-                                <td>
-                                  <input 
-                                    type="number"
-                                    className="boq-cell-input"
-                                    style={{ textAlign: 'right' }}
-                                    value={item.unitCost}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'unitCost', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* RETAIL PRICE */}
-                                <td>
-                                  <input 
-                                    type="number"
-                                    className="boq-cell-input"
-                                    style={{ textAlign: 'right' }}
-                                    value={item.unitRetail}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'unitRetail', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* TOTAL CREDIT */}
-                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-danger)' }}>
-                                  R {totalCreditLine.toLocaleString()}
-                                </td>
-
-                                {/* MARGIN */}
-                                <td style={{ textAlign: 'center', fontWeight: 700, color: lineMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                                  {Math.round(lineMargin)}%
-                                </td>
-
-                                {/* STOCK STATUS */}
-                                <td>
-                                  <select 
-                                    className="boq-cell-input"
-                                    value={item.stockStatus || 'Order'}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'stockStatus', e.target.value)}
-                                  >
-                                    <option value="Order">Order</option>
-                                    <option value="In Stock">In Stock</option>
-                                    <option value="Reserve">Reserve</option>
-                                  </select>
-                                </td>
-
-                                {/* ETA */}
-                                <td>
-                                  <input 
-                                    type="text"
-                                    className="boq-cell-input"
-                                    value={item.eta || ''}
-                                    onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
-                                  />
-                                </td>
-
-                                {/* ACTIONS */}
-                                <td>
-                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                    <button 
-                                      type="button"
-                                      className="btn btn-ghost"
-                                      style={{ padding: '2px', height: 'auto', color: 'var(--text-danger)' }}
-                                      title="Delete Credit Item"
-                                      onClick={() => handleRemoveCreditItem(item.id)}
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
+                                ) : `${cn.items?.length || 1} items`}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', textAlign: 'right' }}>
+                                -R {Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))
                         )}
                       </tbody>
                     </table>
                   </div>
-                  )}
                 </div>
+
+                {/* 2. ITEMIZED CREDITED LINES BREAKDOWN TABLE */}
+                {erpCreditedItems.length > 0 && (
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                    <div style={{ marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-danger)' }}>
+                        📋 Itemized Credited Line Items ({erpCreditedItems.length})
+                      </h4>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>All individual line items credited across allocated Palladium ERP Credit Notes.</span>
+                    </div>
+
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--text-danger)', fontWeight: 700 }}>
+                            <th style={{ padding: '10px 12px', width: '70px', textAlign: 'center' }}>Qty</th>
+                            <th style={{ padding: '10px 12px', width: '140px' }}>Credit Note #</th>
+                            <th style={{ padding: '10px 12px', width: '110px' }}>Date Issued</th>
+                            <th style={{ padding: '10px 12px', width: '160px' }}>Item Code</th>
+                            <th style={{ padding: '10px 12px' }}>Description</th>
+                            <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right' }}>Unit Retail</th>
+                            <th style={{ padding: '10px 12px', width: '120px', textAlign: 'right' }}>Total Credited</th>
+                            <th style={{ padding: '10px 12px', width: '140px' }}>Allocated By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {erpCreditedItems.map((item, idx) => (
+                            <tr key={item.id || idx} style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.02)' }}>
+                              <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-danger)' }}>
+                                {item.qty}
+                              </td>
+                              <td 
+                                style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => navigate('/invoices')}
+                              >
+                                🔴 {item.creditNoteId}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                {String(item.creditNoteDate || '').split('T')[0] || '—'}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {item.code}
+                              </td>
+                              <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
+                                {item.description}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                R {item.unitRetail?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace' }}>
+                                -R {Math.abs(item.totalRetail || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                {item.allocatedBy || 'Palladium ERP'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+              );
+            })()}
 
 
 
@@ -6234,216 +5792,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* ADD CREDIT NOTE ITEM MODAL */}
-      {showAddCreditModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, animation: 'fadeIn 0.2s ease'
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: '440px', overflow: 'hidden' }}>
-            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title">Issue Credit Note / Return Item</div>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowAddCreditModal(false)}>✕</button>
-            </div>
-            
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px', maxHeight: '75vh', overflowY: 'auto' }}>
-              {/* SEGMENTED CONTROL */}
-              <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                <button 
-                  type="button"
-                  className={`btn btn-sm ${creditSourceType === 'existing' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ flex: 1, borderRadius: '4px', fontSize: '11px', padding: '6px 12px' }}
-                  onClick={() => setCreditSourceType('existing')}
-                >
-                  Return BOQ Item
-                </button>
-                <button 
-                  type="button"
-                  className={`btn btn-sm ${creditSourceType === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ flex: 1, borderRadius: '4px', fontSize: '11px', padding: '6px 12px' }}
-                  onClick={() => setCreditSourceType('custom')}
-                >
-                  Custom Credit Note
-                </button>
-              </div>
 
-              {creditSourceType === 'existing' ? (
-                <>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Item to Return</label>
-                    <select 
-                      className="form-control"
-                      style={{ width: '100%', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
-                      value={selectedItemToCredit}
-                      onChange={e => {
-                        setSelectedItemToCredit(e.target.value);
-                        const item = activeOrderItems.find(i => i.id === e.target.value);
-                        if (item) setQtyToCredit(item.qty);
-                      }}
-                    >
-                      <option value="">-- Choose an item --</option>
-                      {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.code || 'Custom'} - {item.description} (Qty: {item.qty})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedItemToCredit && (
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Quantity to Return</label>
-                      <input 
-                        type="number"
-                        min="1"
-                        max={activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1}
-                        className="form-control"
-                        value={qtyToCredit}
-                        onChange={e => setQtyToCredit(Math.max(1, Math.min(activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 1, Number(e.target.value) || 1)))}
-                        required
-                      />
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
-                        Max returnable: {activeOrderItems.find(i => i.id === selectedItemToCredit)?.qty || 0} units.
-                      </span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                /* CUSTOM ITEM FORM FIELDS */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Item Code</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.code} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, code: e.target.value })}
-                        placeholder="e.g. Handling"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>1:1 Code (Optional)</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.oneOneCode || ''} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, oneOneCode: e.target.value })}
-                        placeholder="e.g. TR-2844"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Description *</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={customCreditForm.description} 
-                      onChange={e => setCustomCreditForm({ ...customCreditForm, description: e.target.value })}
-                      placeholder="e.g. Handling Fee Credit Note"
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Brand</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.brand} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, brand: e.target.value })}
-                        placeholder="e.g. 1TO1"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Supplier</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.supplier} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, supplier: e.target.value })}
-                        placeholder="e.g. Molecule"
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Floor</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.floor} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, floor: e.target.value })}
-                        placeholder="e.g. Ground"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Area Space</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={customCreditForm.area} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, area: e.target.value })}
-                        placeholder="e.g. TBD Area"
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Cost Ex VAT (Positive)</label>
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        value={customCreditForm.unitCost} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, unitCost: Number(e.target.value) || 0 })}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Retail Ex VAT (Positive)</label>
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        value={customCreditForm.unitRetail} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, unitRetail: Number(e.target.value) || 0 })}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Qty (Positive)</label>
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        value={customCreditForm.qty} 
-                        onChange={e => setCustomCreditForm({ ...customCreditForm, qty: Math.max(1, Number(e.target.value) || 1) })}
-                        placeholder="1"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowAddCreditModal(false)}>Cancel</button>
-                <button 
-                  type="button"
-                  className="btn btn-danger" 
-                  disabled={creditSourceType === 'existing' ? !selectedItemToCredit : !customCreditForm.description}
-                  onClick={handleIssueCreditItem}
-                >
-                  Confirm Credit Note
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       
       </div>
 

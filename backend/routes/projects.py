@@ -328,17 +328,18 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
             )
             db.add(db_order)
             
-            # 4. Create clean OrderItem rows in batch
+            # 4. Create clean OrderItem rows in batch (excluding obsolete manual credits, as all credits come from Palladium ERP)
             for item in order.get("itemsList", []):
                 raw_item_qty = safe_int(item.get("qty", 0))
-                is_credit_val = bool(item.get("isCredit") or item.get("is_credit") or raw_item_qty < 0 or item.get("type") in ("Credit", "Credit Note", "Custom Credit"))
-                db_item_qty = -abs(raw_item_qty) if is_credit_val else raw_item_qty
+                is_credit_val = bool(item.get("isCredit") or item.get("is_credit") or raw_item_qty < 0 or item.get("type") in ("Credit", "Credit Note", "Custom Credit") or str(item.get("id", "")).startswith("C-"))
+                if is_credit_val:
+                    continue
 
                 db_item = OrderItem(
                     id=item.get("id"),
                     order_id=order_id,
-                    qty=db_item_qty,
-                    type="Credit" if is_credit_val else item.get("type"),
+                    qty=raw_item_qty,
+                    type=item.get("type"),
                     one_one_code=item.get("oneOneCode"),
                     code=item.get("code"),
                     description=item.get("description"),
@@ -372,8 +373,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                     receiving_history=item.get("receivingHistory", []),
                     invoice_history=item.get("invoiceHistory", []),
                     stock_on_hand=safe_int(item.get("stockOnHand", 0)),
-                    is_credit=is_credit_val,
-                    item_type="Credit" if is_credit_val else item.get("itemType", "Hardware")
+                    is_credit=False,
+                    item_type=item.get("itemType", "Hardware")
                 )
                 db.add(db_item)
                 
@@ -654,10 +655,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if a.project_id:
                 alloc_by_proj_id.setdefault(a.project_id, []).append(a)
 
-        # Group items by order ID
+        # Group items by order ID (excluding obsolete manual credits)
         items_by_order = {}
         for item in order_items:
             if not item.order_id:
+                continue
+            if item.is_credit or (item.id and str(item.id).startswith("C-")) or (item.qty is not None and item.qty < 0):
                 continue
             if item.order_id not in items_by_order:
                 items_by_order[item.order_id] = []
@@ -839,28 +842,33 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             for doc_no, doc_items in inv_groups.items():
                 first_a = doc_items[0]
                 doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
-                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items)
+                is_credit_doc = str(doc_no).upper().startswith(("CN-", "CR-"))
+                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items) * (-1.0 if is_credit_doc else 1.0)
                 dynamic_client_invoices.append({
                     "id": doc_no,
+                    "doc_type": "Credit Note" if is_credit_doc else "Invoice",
+                    "is_credit": is_credit_doc,
                     "date": doc_date_str,
                     "totalValue": inv_total_val,
                     "value": inv_total_val,
                     "amount": inv_total_val,
-                    "notes": first_a.notes or "Allocated from Palladium ERP",
+                    "notes": first_a.notes or ("Credit Note allocated from Palladium ERP" if is_credit_doc else "Allocated from Palladium ERP"),
                     "allocated_by": first_a.allocated_by_name,
                     "items": [
                         {
                             "code": a.fitting_code or a.sku,
                             "description": a.sku,
-                            "qtyAction": a.allocated_qty,
+                            "qtyAction": -abs(a.allocated_qty) if is_credit_doc else a.allocated_qty,
                             "unitPrice": a.unit_cost,
-                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0))
+                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0)) * (-1.0 if is_credit_doc else 1.0)
                         }
                         for a in doc_items
                     ]
                 })
 
-            # Client Invoices are strictly dynamic from authentic Palladium ERP allocations
+            credit_notes_parsed = [inv for inv in dynamic_client_invoices if inv.get("is_credit")]
+
+            # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
             try:
                 payments_parsed = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
@@ -884,6 +892,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "purchaseOrders": purchase_orders_parsed,
                 "goodsReceivedNotes": goods_received_notes_parsed,
                 "clientInvoices": dynamic_client_invoices,
+                "creditNotes": credit_notes_parsed,
                 "orderDate": order.order_date,
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,
