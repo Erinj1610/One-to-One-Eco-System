@@ -1115,21 +1115,25 @@ export default function SalesTracker() {
         const totalVal = it.total !== undefined ? it.total : (Number(it.totalValue || it.amount || 0));
         const finalTotal = totalVal !== undefined && totalVal !== 0 ? -Math.abs(Number(totalVal)) : -(absQty * unitPrice);
 
+        const codeVal = it.code || it.sku || '';
+        const boqMatch = (activeOrderItems || []).find(b => (b.code || '').trim() === codeVal.trim());
+        const desc = it.description && it.description !== it.code ? it.description : (boqMatch?.description || it.description || codeVal);
+
         return {
-          id: `${cn.id}-${it.code || it.sku}`,
+          id: `${cn.id}-${codeVal}`,
           creditNoteId: cn.id,
-          creditNoteDate: cn.date,
+          creditNoteDate: String(cn.date || '').split('T')[0] || '—',
           qty: -absQty,
-          code: it.code || it.sku,
-          description: it.description || it.code || it.sku,
+          code: codeVal,
+          description: desc,
           unitRetail: unitPrice,
           totalRetail: finalTotal,
-          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Palladium ERP',
+          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Staff',
           notes: cn.notes || 'Allocated from Palladium ERP'
         };
       })
     );
-  }, [orderCreditNotes]);
+  }, [orderCreditNotes, activeOrderItems]);
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {

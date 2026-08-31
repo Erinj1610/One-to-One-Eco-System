@@ -2173,21 +2173,25 @@ export default function OrdersPage() {
         const totalVal = it.total !== undefined ? it.total : (Number(it.totalValue || it.amount || 0));
         const finalTotal = totalVal !== undefined && totalVal !== 0 ? -Math.abs(Number(totalVal)) : -(absQty * unitPrice);
 
+        const codeVal = it.code || it.sku || '';
+        const boqMatch = (activeOrderItems || []).find(b => (b.code || '').trim() === codeVal.trim());
+        const desc = it.description && it.description !== it.code ? it.description : (boqMatch?.description || it.description || codeVal);
+
         return {
-          id: `${cn.id}-${it.code || it.sku}`,
+          id: `${cn.id}-${codeVal}`,
           creditNoteId: cn.id,
-          creditNoteDate: cn.date,
+          creditNoteDate: String(cn.date || '').split('T')[0] || '—',
           qty: -absQty,
-          code: it.code || it.sku,
-          description: it.description || it.code || it.sku,
+          code: codeVal,
+          description: desc,
           unitRetail: unitPrice,
           totalRetail: finalTotal,
-          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Palladium ERP',
+          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Staff',
           notes: cn.notes || 'Allocated from Palladium ERP'
         };
       })
     );
-  }, [orderCreditNotes]);
+  }, [orderCreditNotes, activeOrderItems]);
 
   return (
     <>
@@ -5532,7 +5536,7 @@ export default function OrdersPage() {
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Retail Credited</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', margin: '4px 0' }}>
-                      -R {Math.round(totalErpCredited).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      -R {totalErpCredited.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Customer credit deduction</span>
                   </div>
@@ -5540,7 +5544,7 @@ export default function OrdersPage() {
                   <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Order Value</span>
                     <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>
-                      R {Math.round(netOrderValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R {netOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Gross order minus total ERP credits</span>
                   </div>
@@ -5597,7 +5601,7 @@ export default function OrdersPage() {
                                   🔴 Credit Note (ERP)
                                 </span>
                               </td>
-                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{cn.date || '—'}</td>
+                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{String(cn.date || '').split('T')[0] || '—'}</td>
                               <td style={{ padding: '10px 12px' }}>
                                 {cn.items?.length > 0 ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -5657,7 +5661,7 @@ export default function OrdersPage() {
                                 🔴 {item.creditNoteId}
                               </td>
                               <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                                {item.creditNoteDate || '—'}
+                                {String(item.creditNoteDate || '').split('T')[0] || '—'}
                               </td>
                               <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                 {item.code}
