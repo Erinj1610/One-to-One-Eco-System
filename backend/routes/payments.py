@@ -131,7 +131,8 @@ def get_payments_summary(db: Session = Depends(get_db)):
         total_amount_synced = 0.0
         total_amount_allocated = 0.0
         unallocated_cnt = 0
-        allocated_cnt = 0
+        partially_allocated_cnt = 0
+        fully_allocated_cnt = 0
         latest_sync = None
 
         for p in all_payments:
@@ -141,7 +142,9 @@ def get_payments_summary(db: Session = Depends(get_db)):
             total_amount_allocated += min(amt, alc)
 
             if alc >= amt - 0.01:
-                allocated_cnt += 1
+                fully_allocated_cnt += 1
+            elif alc > 0.01:
+                partially_allocated_cnt += 1
             else:
                 unallocated_cnt += 1
 
@@ -149,16 +152,79 @@ def get_payments_summary(db: Session = Depends(get_db)):
                 latest_sync = p.last_synced_at
 
         return {
+            "total_documents": len(all_payments),
             "total_payments_count": len(all_payments),
+            "unallocated_count": unallocated_cnt,
+            "partially_allocated_count": partially_allocated_cnt,
+            "fully_allocated_count": fully_allocated_cnt,
             "total_amount_synced": round(total_amount_synced, 2),
             "total_amount_allocated": round(total_amount_allocated, 2),
             "total_amount_unallocated": round(max(0.0, total_amount_synced - total_amount_allocated), 2),
-            "unallocated_payments_count": unallocated_cnt,
-            "allocated_payments_count": allocated_cnt,
             "last_synced_at": latest_sync.isoformat() if latest_sync else None
         }
     except Exception as e:
         logger.error(f"Error fetching payments summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.get("/candidate-orders")
+@router.get("/candidate-orders")
+def get_candidate_orders_for_payment(
+    customer_name: Optional[str] = Query(None),
+    customer_code: Optional[str] = Query(None),
+    reference: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Finds active orders that match the customer name, code, or reference keywords.
+    """
+    try:
+        projects = db.query(Project).all()
+        orders = db.query(Order).all()
+        
+        proj_map = {p.id: p for p in projects}
+        proj_by_key = {p.project_key: p for p in projects if p.project_key}
+
+        c_name = (customer_name or "").strip().lower()
+        c_code = (customer_code or "").strip().lower()
+        ref = (reference or "").strip().lower()
+        ref_words = [w for w in ref.replace('-', ' ').replace('/', ' ').split() if len(w) > 2]
+
+        candidates = []
+        for o in orders:
+            proj = proj_map.get(o.project_id) or (proj_by_key.get(o.project_key) if o.project_key else None)
+            proj_name = proj.name if proj else (o.project_full_name or "")
+            client_str = f"{o.client_company or ''} {o.client_name or ''} {o.client_contact or ''} {proj.client if proj else ''}".lower()
+            order_name = f"{o.quote_name or ''} {o.po_number or ''} {proj_name}".lower()
+
+            match_score = 0
+            if c_code and c_code in client_str:
+                match_score += 10
+            if c_name and (c_name in client_str or any(word in client_str for word in c_name.split() if len(word) > 3)):
+                match_score += 8
+
+            for w in ref_words:
+                if w in order_name or w in client_str:
+                    match_score += 5
+
+            if match_score > 0 or not (c_name or c_code or ref):
+                candidates.append({
+                    "project_id": proj.id if proj else o.project_id,
+                    "project_key": o.project_key or (proj.project_key if proj else None),
+                    "project_name": proj_name or "Project",
+                    "order_id": o.po_number or str(o.id),
+                    "quote_name": o.quote_name or "Spec Order",
+                    "client": o.client_company or o.client or o.client_name or (proj.client if proj else "Client"),
+                    "total_value": float(o.value or 0.0),
+                    "paid_amount": float(o.paid or 0.0),
+                    "outstanding": float(o.outstanding or 0.0),
+                    "match_score": match_score
+                })
+
+        candidates.sort(key=lambda x: (x["match_score"], x["outstanding"]), reverse=True)
+        return {"candidates": candidates}
+    except Exception as e:
+        logger.error(f"Error fetching candidate orders: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
