@@ -606,30 +606,10 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             notes=notes
         )
         db.add(alloc)
+        db.flush()
 
-        is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
-        if matched_item and not is_credit_doc:
-            matched_item.invoice_ref = source_doc_no
-            matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-            matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-
-            if doc_date:
-                matched_item.invoice_date = str(doc_date).split("T")[0]
-            else:
-                matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            
-            i_hist = list(matched_item.invoice_history or [])
-            i_hist.append({
-                "id": source_doc_no,
-                "ref": source_doc_no,
-                "qty": allocated_qty,
-                "unitPrice": unit_cost,
-                "total": round(allocated_qty * unit_cost, 2),
-                "date": matched_item.invoice_date,
-                "by": allocated_by,
-                "type": "Invoice"
-            })
-            matched_item.invoice_history = i_hist
+        if matched_item:
+            recalc_order_item_invoicing(db, matched_item)
 
         db.commit()
         logger.info(f"Allocated invoice {source_doc_no} (qty {allocated_qty}) to {real_proj_name}.")
@@ -727,30 +707,10 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 notes=notes
             )
             db.add(alloc)
+            db.flush()
 
-            is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
-            if matched_item and not is_credit_doc:
-                matched_item.invoice_ref = source_doc_no
-                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-
-                if doc_date:
-                    matched_item.invoice_date = str(doc_date).split("T")[0]
-                else:
-                    matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                
-                i_hist = list(matched_item.invoice_history or [])
-                i_hist.append({
-                    "id": source_doc_no,
-                    "ref": source_doc_no,
-                    "qty": allocated_qty,
-                    "unitPrice": unit_cost,
-                    "total": round(allocated_qty * unit_cost, 2),
-                    "date": matched_item.invoice_date,
-                    "by": allocated_by,
-                    "type": "Invoice"
-                })
-                matched_item.invoice_history = i_hist
+            if matched_item:
+                recalc_order_item_invoicing(db, matched_item)
 
             count_allocated += 1
 
