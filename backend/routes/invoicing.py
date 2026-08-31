@@ -778,14 +778,82 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def recalc_order_item_invoicing(db: Session, item: OrderItem):
+    """
+    Recalculates invoice_qty, invoice_value, invoice_ref, invoice_date, and invoice_history
+    for an OrderItem from all active ProcurementAllocation rows in Cloud SQL.
+    """
+    active_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.order_item_id == str(item.id),
+        ProcurementAllocation.status == "Active"
+    ).all()
+
+    if not active_allocs and (item.code or item.one_one_code):
+        active_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.order_item_id.is_(None),
+            or_(
+                ProcurementAllocation.sku == item.code,
+                ProcurementAllocation.sku == item.one_one_code
+            ),
+            ProcurementAllocation.status == "Active"
+        ).all()
+
+    new_hist = []
+    total_qty = 0.0
+    total_val = 0.0
+    refs = set()
+    latest_date = None
+
+    for a in active_allocs:
+        is_cn = str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
+        qty_val = float(a.allocated_qty or 0.0)
+        cost_val = float(a.unit_cost or 0.0)
+
+        signed_qty = -abs(qty_val) if is_cn else qty_val
+        signed_total = -round(abs(qty_val) * cost_val, 2) if is_cn else round(qty_val * cost_val, 2)
+
+        total_qty += signed_qty
+        total_val += signed_total
+        if a.source_doc_no:
+            refs.add(str(a.source_doc_no))
+        if a.doc_date:
+            latest_date = str(a.doc_date).split("T")[0]
+
+        new_hist.append({
+            "id": a.source_doc_no,
+            "ref": a.source_doc_no,
+            "allocation_id": a.id,
+            "qty": signed_qty,
+            "unitPrice": cost_val,
+            "total": signed_total,
+            "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+            "by": a.allocated_by_name or "Staff",
+            "type": "Credit Note" if is_cn else "Invoice"
+        })
+
+    item.invoice_history = new_hist
+    item.invoice_qty = max(0, int(round(total_qty)))
+    item.invoice_value = max(0.0, round(total_val, 2))
+    item.invoice_ref = "; ".join(sorted(refs)) if refs else None
+    item.invoice_date = latest_date
+
+
 @public_router.post("/unallocate")
 @router.post("/unallocate")
 def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_db)):
     """
-    Cancels an active invoice allocation and updates OrderItem invoice_qty and invoice_history.
+    Cancels an active invoice allocation (or list of allocation IDs) and updates OrderItem invoice fields.
     """
     try:
         allocation_id = payload.get("allocation_id")
+        allocation_ids = payload.get("allocation_ids")
+        document_no = payload.get("document_no")
+
+        if allocation_ids or (document_no and not allocation_id):
+            return batch_unallocate_invoicing_items(payload, db)
+
         if not allocation_id:
             raise HTTPException(status_code=400, detail="Missing allocation_id.")
 
@@ -804,25 +872,15 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
             clean_sku = alloc.sku.strip().upper()
             cand_items = db.query(OrderItem).filter(
                 or_(
-                    OrderItem.code.ilike(f"%{clean_sku}%"),
-                    OrderItem.one_one_code.ilike(f"%{clean_sku}%")
+                    OrderItem.code.ilike(clean_sku),
+                    OrderItem.one_one_code.ilike(clean_sku)
                 )
             ).all()
             if cand_items:
                 matched_item = cand_items[0]
 
         if matched_item:
-            i_hist = list(matched_item.invoice_history or [])
-            new_hist = [h for h in i_hist if h.get("id") != alloc.source_doc_no and h.get("ref") != alloc.source_doc_no]
-            matched_item.invoice_history = new_hist
-            matched_item.invoice_qty = sum(int(h.get("qty") or 0) for h in new_hist)
-            matched_item.invoice_value = sum(float(h.get("total") or 0.0) for h in new_hist)
-            
-            if new_hist:
-                matched_item.invoice_ref = "; ".join(set(str(h.get("ref")) for h in new_hist if h.get("ref")))
-            else:
-                matched_item.invoice_ref = None
-                matched_item.invoice_date = None
+            recalc_order_item_invoicing(db, matched_item)
 
         db.commit()
         logger.info(f"Unallocated invoice #{allocation_id} for {alloc.sku} ({alloc.source_doc_no}).")
@@ -831,8 +889,87 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
             "message": f"Successfully unallocated {alloc.sku} from {alloc.source_doc_no}."
         }
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error unallocating invoice item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/batch-unallocate")
+@router.post("/batch-unallocate")
+def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Cancels multiple active invoice allocations in bulk by allocation IDs, document_no, or line SKUs.
+    """
+    try:
+        allocation_ids = payload.get("allocation_ids") or []
+        document_no = payload.get("document_no")
+        skus = payload.get("skus") or []
+
+        query = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active"
+        )
+
+        if allocation_ids:
+            clean_ids = [int(i) for i in allocation_ids if str(i).isdigit()]
+            if clean_ids:
+                query = query.filter(ProcurementAllocation.id.in_(clean_ids))
+        elif document_no:
+            query = query.filter(ProcurementAllocation.source_doc_no == str(document_no).strip())
+            if skus:
+                clean_skus = [str(s).strip().upper() for s in skus if s]
+                query = query.filter(func.upper(ProcurementAllocation.sku).in_(clean_skus))
+        else:
+            raise HTTPException(status_code=400, detail="Missing allocation_ids or document_no.")
+
+        allocs_to_cancel = query.all()
+        if not allocs_to_cancel:
+            return {"status": "success", "message": "No active allocations found to unallocate.", "count": 0}
+
+        affected_item_ids = set()
+        affected_skus = set()
+
+        for alloc in allocs_to_cancel:
+            alloc.status = "Cancelled"
+            if alloc.order_item_id:
+                affected_item_ids.add(str(alloc.order_item_id))
+            if alloc.sku:
+                affected_skus.add(alloc.sku.strip().upper())
+
+        # Recalculate OrderItems
+        affected_items = []
+        if affected_item_ids:
+            affected_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
+        
+        if affected_skus:
+            cand_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.code.in_(list(affected_skus)),
+                    OrderItem.one_one_code.in_(list(affected_skus))
+                )
+            ).all()
+            for ci in cand_items:
+                if ci not in affected_items:
+                    affected_items.append(ci)
+
+        for it in affected_items:
+            recalc_order_item_invoicing(db, it)
+
+        db.commit()
+        count = len(allocs_to_cancel)
+        logger.info(f"Bulk unallocated {count} allocations.")
+        return {
+            "status": "success",
+            "message": f"Successfully unallocated {count} allocation(s).",
+            "count": count
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in batch unallocate: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
