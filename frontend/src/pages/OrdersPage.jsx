@@ -832,8 +832,16 @@ export default function OrdersPage() {
       
       BALANCE: balanceFormatted,
       BALANCE_DUE: balanceFormatted,
-      TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       BALANCE_OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      OUTSTANDING_BALANCE: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      BALANCE_REMAINING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+
+      TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VALUE_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       
       items: finalItems,
       payments: (orderPayments || []).map((p, idx) => ({

@@ -1148,6 +1148,28 @@ export default function SalesTracker() {
     setQuoteName(order.quote_name || 'General Spec');
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
+
+    const rawPayments = order.payments;
+    let parsedPayments = [];
+    if (typeof rawPayments === 'string') {
+      try { parsedPayments = JSON.parse(rawPayments); } catch (_) { parsedPayments = []; }
+    } else if (Array.isArray(rawPayments)) {
+      parsedPayments = rawPayments;
+    }
+    setOrderPayments(parsedPayments);
+
+    const orderIdToFetch = order.id || order.poNumber || order.po_number;
+    if (orderIdToFetch) {
+      fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.payments) {
+            setOrderPayments(data.payments);
+          }
+        })
+        .catch(() => {});
+    }
+
     setWorkspaceSubTab('boq');
 
     const orderDateStr = order.orderDate || new Date().toISOString().split('T')[0];
@@ -1250,28 +1272,7 @@ export default function SalesTracker() {
     setOngoingTime(order.ongoingTime || '');
     setLatestStatementSentDate(toInputDate(order.latestStatementSentDate || ''));
     setProgressPaymentDateSent(toInputDate(order.progressPaymentDateSent || ''));
-    setDateCompleted(toInputDate(order.dateCompleted || ''));
     setPaymentResponse(order.paymentResponse || '');
-    const rawPayments = order.payments;
-    let parsedPayments = [];
-    if (typeof rawPayments === 'string') {
-      try { parsedPayments = JSON.parse(rawPayments); } catch (_) { parsedPayments = []; }
-    } else if (Array.isArray(rawPayments)) {
-      parsedPayments = rawPayments;
-    }
-    setOrderPayments(parsedPayments);
-
-    const orderIdToFetch = order.id || order.poNumber || order.po_number;
-    if (orderIdToFetch) {
-      fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data && data.payments) {
-            setOrderPayments(data.payments);
-          }
-        })
-        .catch(() => {});
-    }
     setOrderVatRate(order.vatRate !== undefined ? order.vatRate : 15);
     const tempActiveItems = order.itemsList || [];
     const tempDiscount = order.discount || 0;
@@ -4342,10 +4343,16 @@ export default function SalesTracker() {
                           const priceExVat = masterDiscounted;
                           const calculatedVat = priceExVat * (Number(orderVatRate) / 100);
                           const totalPriceInclVat = priceExVat + calculatedVat;
-                          const depositPaidVal = (orderPayments || []).filter(p => p.type === 'Deposit Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-                          const balancePaidVal = (orderPayments || []).filter(p => p.type === 'Balance Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-                          const interimPaidVal = (orderPayments || []).filter(p => p.type === 'Interim Payment').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-                          const outstandingBalance = totalPriceInclVat - Number(orderPaidAmount);
+                          const totalPaid = Number(orderPaidAmount) || (orderPayments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                          const depositTarget = totalPriceInclVat * 0.7;
+                          const explicitDepositPaid = (orderPayments || []).filter(p => (p.type || '').toLowerCase().includes('deposit')).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                          const explicitBalancePaid = (orderPayments || []).filter(p => (p.type || '').toLowerCase().includes('balance')).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                          const explicitInterimPaid = (orderPayments || []).filter(p => (p.type || '').toLowerCase().includes('interim')).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+                          const depositPaidVal = explicitDepositPaid > 0 ? explicitDepositPaid : Math.min(totalPaid, depositTarget);
+                          const balancePaidVal = explicitBalancePaid > 0 ? explicitBalancePaid : Math.max(0, totalPaid - depositPaidVal);
+                          const interimPaidVal = explicitInterimPaid;
+                          const outstandingBalance = Math.max(0, totalPriceInclVat - totalPaid);
 
                           // 1. Spec & Cost Totals
                           const specCost = totalMasterCost;
