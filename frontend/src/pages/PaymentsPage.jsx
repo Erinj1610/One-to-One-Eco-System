@@ -1170,8 +1170,9 @@ export default function PaymentsPage() {
             borderRadius: '14px',
             padding: 0,
             overflow: 'hidden',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-            border: '1px solid var(--border)'
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.45)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-card, #ffffff)'
           }}>
             {/* Modal Header */}
             <div style={{
@@ -1537,8 +1538,9 @@ export default function PaymentsPage() {
             maxWidth: '420px',
             padding: '20px',
             borderRadius: '12px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-            border: '1px solid var(--border)'
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.45)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-card, #ffffff)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ef4444', marginBottom: '12px' }}>
               <AlertTriangle size={22} />
@@ -1546,31 +1548,22 @@ export default function PaymentsPage() {
                 Confirm Unallocation
               </h3>
             </div>
-            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 18px 0' }}>
-              Are you sure you want to release this allocation? The allocated amount will return to the unallocated receipt balance, and the order's paid total will be updated.
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              Are you sure you want to remove this payment allocation? The allocated amount will be returned to the unallocated pool.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 onClick={() => setUnallocConfirmId(null)}
                 className="btn btn-sm btn-ghost"
-                style={{ border: '1px solid var(--border)' }}
               >
                 Cancel
               </button>
               <button
-                onClick={() => handleUnallocate(unallocConfirmId, '')}
-                disabled={isDeletingAlloc}
-                className="btn btn-sm btn-danger"
-                style={{
-                  background: '#ef4444',
-                  color: '#fff',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
+                onClick={() => handleUnallocate(unallocConfirmId)}
+                className="btn btn-sm"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', fontWeight: 700 }}
               >
-                {isDeletingAlloc && <RefreshCw size={12} className="animate-spin" />}
-                {isDeletingAlloc ? 'Releasing...' : 'Yes, Unallocate'}
+                Yes, Unallocate
               </button>
             </div>
           </div>
@@ -1598,8 +1591,9 @@ export default function PaymentsPage() {
             maxWidth: '480px',
             padding: '24px',
             borderRadius: '12px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-            border: '1px solid rgba(245, 158, 11, 0.3)'
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.45)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            background: 'var(--bg-card, #ffffff)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

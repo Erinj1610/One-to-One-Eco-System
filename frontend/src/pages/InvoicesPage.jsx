@@ -236,41 +236,55 @@ export default function InvoicesPage() {
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
     const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
 
-    // 1. First try fetching live candidates from backend API
+    // 1. Try Backend Candidates API first
     try {
       const res = await fetch(`${API_BASE}/api/invoicing/candidate-orders?sku=${encodeURIComponent(line.item_code)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.candidates && data.candidates.length > 0) {
-          const backendCandidates = data.candidates.map(cand => ({
+          const backendCandidates = data.candidates.map((cand, idx) => ({
             ...cand,
+            candidate_key: String(cand.order_item_id || cand.id || idx),
+            order_title: cand.order_title || cand.quote_name || cand.po_number || `Order #${cand.order_id}`,
+            client: cand.client || cand.customer_name || custName || 'Client',
+            match_type: cand.match_type || (cand.is_direct_sku_match ? 'Exact SKU Match' : 'Project Match'),
             is_direct_sku_match: cand.is_direct_sku_match !== false
           }));
           setCandidateOrders(backendCandidates);
-          setSelectedCandidateKey(String(backendCandidates[0].order_item_id));
-          setManualProjectId(backendCandidates[0].project_key || backendCandidates[0].project_id || '');
-          setManualOrderId(backendCandidates[0].order_id || '');
+          setSelectedCandidateKey(backendCandidates[0].candidate_key);
+          setManualProjectId(backendCandidates[0].project_id ? String(backendCandidates[0].project_id) : (backendCandidates[0].project_key || ''));
+          setManualOrderId(backendCandidates[0].order_id ? String(backendCandidates[0].order_id) : '');
           setAllocModalOpen(true);
           return;
         }
       }
     } catch (_) {}
 
-    // 2. Fallback: Client-side candidate matcher
+    // 2. Fallback: Smart client-side candidate matcher
     const candidates = [];
     Object.values(projects || {}).forEach(p => {
       const pName = (p.name || '').toLowerCase();
+      const pClient = (p.client || '').toLowerCase();
       const pKey = (p.key || '').toLowerCase();
+      const pIdStr = p.id ? String(p.id) : (p.key || '');
       let projMatchScore = 0;
-      if (docRef && (pName.includes(docRef) || docRef.includes(pName) || pKey.includes(docRef) || docRef.includes(pKey))) {
-        projMatchScore += 50;
+
+      if (docRef && pName && (pName.includes(docRef) || docRef.includes(pName))) {
+        projMatchScore += 60;
       }
-      if (custName && (pName.includes(custName) || custName.includes(pName))) {
-        projMatchScore += 30;
+      if (custName && pClient && (pClient.includes(custName) || custName.includes(pClient))) {
+        projMatchScore += 40;
       }
+      if (custName && pName && (pName.includes(custName) || custName.includes(pName))) {
+        projMatchScore += 35;
+      }
+      const refWords = docRef.split(/[\s,()-_]+/).filter(w => w.length >= 3);
+      refWords.forEach(w => {
+        if (pName.includes(w) || pClient.includes(w)) projMatchScore += 20;
+      });
 
       (p.orders || []).forEach(o => {
-        (o.itemsList || []).forEach(it => {
+        (o.itemsList || []).forEach((it, idx) => {
           const itemCode = (it.code || '').trim().toUpperCase();
           const oneOneCode = (it.oneOneCode || '').trim().toUpperCase();
           const isDirectSkuMatch = itemCode === cleanSku || oneOneCode === cleanSku;
@@ -281,13 +295,18 @@ export default function InvoicesPage() {
             if (isDirectSkuMatch) itemScore += 100;
             else if (isDescMatch) itemScore += 20;
 
+            const cKey = String(it.id || `${pIdStr}_${o.id || o.dbId}_${idx}`);
             candidates.push({
+              candidate_key: cKey,
               project_id: p.id || null,
               project_name: p.name,
               project_key: p.key || pKey,
               order_id: o.dbId || o.id,
+              order_title: o.quoteName || o.quote_name || o.poNumber || `Order #${o.id || o.dbId}`,
               order_po_number: o.poNumber || o.id,
               order_item_id: it.id,
+              client: p.client || custName || 'Client',
+              match_type: isDirectSkuMatch ? 'Exact SKU Match' : (projMatchScore > 0 ? 'Project & Reference Match' : 'Keyword Match'),
               fitting_code: it.code || it.oneOneCode || line.item_code,
               description: it.description || it.name,
               needed_qty: it.qty || it.quantity || 1,
@@ -304,9 +323,9 @@ export default function InvoicesPage() {
     setCandidateOrders(candidates);
 
     if (candidates.length > 0) {
-      setSelectedCandidateKey(String(candidates[0].order_item_id));
-      setManualProjectId(candidates[0].project_key || candidates[0].project_id || '');
-      setManualOrderId(candidates[0].order_id || '');
+      setSelectedCandidateKey(candidates[0].candidate_key);
+      setManualProjectId(candidates[0].project_id ? String(candidates[0].project_id) : (candidates[0].project_key || ''));
+      setManualOrderId(candidates[0].order_id ? String(candidates[0].order_id) : '');
     } else {
       setSelectedCandidateKey('MANUAL');
       setManualProjectId('');
@@ -314,6 +333,13 @@ export default function InvoicesPage() {
     }
 
     setAllocModalOpen(true);
+  };
+
+  const handleSelectCandidate = (cand) => {
+    if (!cand) return;
+    setSelectedCandidateKey(cand.candidate_key);
+    setManualProjectId(cand.project_id ? String(cand.project_id) : (cand.project_key || ''));
+    setManualOrderId(cand.order_id ? String(cand.order_id) : '');
   };
 
   const handleSubmitSingleAllocation = async (e) => {
@@ -332,7 +358,7 @@ export default function InvoicesPage() {
     };
 
     if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
-      const cand = candidateOrders.find(c => String(c.order_item_id) === String(selectedCandidateKey));
+      const cand = candidateOrders.find(c => String(c.candidate_key) === String(selectedCandidateKey) || String(c.order_item_id) === String(selectedCandidateKey));
       if (cand) {
         payload.project_id = cand.project_id || null;
         payload.project_key = cand.project_key || null;
@@ -392,31 +418,69 @@ export default function InvoicesPage() {
     );
 
     const docRef = (selectedDocument.reference || '').trim().toLowerCase();
+    const docCust = (selectedDocument.customer_name || '').trim().toLowerCase();
     let bestProjId = '';
-    let bestMatchCount = -1;
+    let bestMatchScore = 0;
 
     Object.values(projects || {}).forEach(p => {
       let score = 0;
-      if (docRef && p.name && (docRef.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(docRef))) {
-        score += 10;
+      const pName = (p.name || '').toLowerCase();
+      const pClient = (p.client || '').toLowerCase();
+      const pIdStr = p.id ? String(p.id) : (p.key || '');
+
+      // 1. Direct Reference match (e.g. "Ramenhead (Extra Tracks)" contains "Ramenhead")
+      if (docRef && pName && (docRef.includes(pName) || pName.includes(docRef))) {
+        score += 60;
       }
+      // 2. Direct Client match (e.g. "Ramenhead (Pty) Ltd" matches client "Ramenhead")
+      if (docCust && pClient && (docCust.includes(pClient) || pClient.includes(docCust))) {
+        score += 45;
+      }
+      if (docCust && pName && (docCust.includes(pName) || pName.includes(docCust))) {
+        score += 40;
+      }
+
+      // 3. Keyword token matching
+      const refTokens = docRef.split(/[\s,()-_]+/).filter(w => w.length >= 3);
+      refTokens.forEach(t => {
+        if (pName.includes(t)) score += 25;
+        if (pClient.includes(t)) score += 15;
+      });
+
+      const custTokens = docCust.split(/[\s,()-_]+/).filter(w => w.length >= 3 && !['pty', 'ltd', 'cc', 'holdings', 'trust', 'the'].includes(w));
+      custTokens.forEach(t => {
+        if (pName.includes(t)) score += 25;
+        if (pClient.includes(t)) score += 15;
+      });
+
+      // 4. SKU overlap in project order items
       (p.orders || []).forEach(o => {
         (o.itemsList || []).forEach(it => {
           const code = (it.code || '').trim().toUpperCase();
           const oneOne = (it.oneOneCode || '').trim().toUpperCase();
           if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
-            score += 2;
+            score += 15;
           }
         });
       });
-      if (score > bestMatchCount) {
-        bestMatchCount = score;
-        bestProjId = p.key || p.id;
+
+      if (score > bestMatchScore) {
+        bestMatchScore = score;
+        bestProjId = pIdStr;
       }
     });
 
+    // Auto-select order if project only has 1 order
+    let bestOrderId = '';
+    if (bestProjId) {
+      const matchedProj = Object.values(projects || {}).find(p => String(p.id) === String(bestProjId) || p.key === bestProjId || p.name === bestProjId);
+      if (matchedProj?.orders?.length === 1) {
+        bestOrderId = matchedProj.orders[0].id || matchedProj.orders[0].dbId || '';
+      }
+    }
+
     setBatchProjectId(bestProjId || '');
-    setBatchOrderId('');
+    setBatchOrderId(bestOrderId ? String(bestOrderId) : '');
     setBatchNotes('');
     setBatchModalOpen(true);
   };
@@ -1869,15 +1933,27 @@ export default function InvoicesPage() {
           top: 0, left: 0, right: 0, bottom: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(3px)',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '700px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            borderRadius: '14px',
+            overflow: 'hidden',
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
+          }}>
             
             {/* Modal Header */}
             <div style={{ 
@@ -1886,7 +1962,7 @@ export default function InvoicesPage() {
               alignItems: 'center', 
               padding: '16px 20px', 
               borderBottom: '1px solid var(--border)', 
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+              background: 'var(--bg-secondary)'
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1894,7 +1970,7 @@ export default function InvoicesPage() {
                   Batch Allocate {selectedLineIds.size} Invoice Lines from {selectedDocument.document_no}
                 </h3>
                 <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Client: <strong>{selectedDocument.customer_name}</strong> • Reference: <strong>{selectedDocument.reference || 'General'}</strong>
+                  Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong> • Reference: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.reference || 'General'}</strong>
                 </p>
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setBatchModalOpen(false)}>
@@ -1903,7 +1979,7 @@ export default function InvoicesPage() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <form onSubmit={handleSubmitBatchAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-primary)' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 
                 {/* Target Project & Order Selectors */}
@@ -1913,10 +1989,10 @@ export default function InvoicesPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Project *</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Target Project *</label>
                       <select
                         className="form-control"
-                        style={{ height: '34px', fontSize: '12px', fontWeight: 600 }}
+                        style={{ height: '34px', fontSize: '12px', fontWeight: 600, background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={batchProjectId}
                         onChange={(e) => {
                           setBatchProjectId(e.target.value);
@@ -1926,25 +2002,25 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Target Order (Optional)</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Target Order (Optional)</label>
                       <select
                         className="form-control"
-                        style={{ height: '34px', fontSize: '12px' }}
+                        style={{ height: '34px', fontSize: '12px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={batchOrderId}
                         onChange={(e) => setBatchOrderId(e.target.value)}
                         disabled={!batchProjectId}
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId || p.name === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                            <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                           ));
                         })()}
                       </select>
@@ -1957,25 +2033,25 @@ export default function InvoicesPage() {
                   <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
                     Lines to be Allocated ({selectedLineIds.size}):
                   </div>
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-card, #ffffff)' }}>
                     <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                          <th style={{ padding: '6px 10px' }}>SKU</th>
-                          <th style={{ padding: '6px 10px' }}>Description</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Unit Excl</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Total Excl</th>
+                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>SKU</th>
+                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Description</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>Qty</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Unit Excl</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Total Excl</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id)).map(l => (
                           <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{l.item_code}</td>
+                            <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1985,14 +2061,14 @@ export default function InvoicesPage() {
 
                 {/* Internal Notes */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                     Internal Allocation Note (Optional)
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. Invoiced deposit for Living Room joinery..."
                     className="form-control"
-                    style={{ height: '34px', fontSize: '12px' }}
+                    style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
                   />
@@ -2041,15 +2117,27 @@ export default function InvoicesPage() {
           top: 0, left: 0, right: 0, bottom: 0,
           width: '100vw',
           height: '100vh',
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(3px)',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 99999,
           padding: '20px'
         }}>
-          <div className="modal-content" style={{ width: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '640px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            borderRadius: '14px',
+            overflow: 'hidden',
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
+          }}>
             
             {/* Modal Header */}
             <div style={{ 
@@ -2058,7 +2146,7 @@ export default function InvoicesPage() {
               alignItems: 'center', 
               padding: '16px 20px', 
               borderBottom: '1px solid var(--border)', 
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(37,99,235,0.04) 100%)'
+              background: 'var(--bg-secondary)'
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2075,13 +2163,13 @@ export default function InvoicesPage() {
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <form onSubmit={handleSubmitSingleAllocation} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg-primary)' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 
                 {/* Quantity & Unit Price */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 700 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       Quantity to Allocate *
                     </label>
                     <input
@@ -2089,7 +2177,7 @@ export default function InvoicesPage() {
                       min="1"
                       max={allocTargetItem.unallocated_qty || 9999}
                       className="form-control"
-                      style={{ height: '34px', fontSize: '13px', fontWeight: 700 }}
+                      style={{ height: '34px', fontSize: '13px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                       value={allocQty}
                       onChange={(e) => setAllocQty(Number(e.target.value))}
                       required
@@ -2100,13 +2188,13 @@ export default function InvoicesPage() {
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                       Line Unit Price (Excl VAT)
                     </label>
                     <input
                       type="text"
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', fontWeight: 600 }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', fontWeight: 600, color: 'var(--text-primary)' }}
                       value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                       disabled
                     />
@@ -2130,7 +2218,7 @@ export default function InvoicesPage() {
                             onClick={() => handleSelectCandidate(cand)}
                             style={{
                               border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
                               borderRadius: '8px',
                               padding: '10px 14px',
                               cursor: 'pointer',
@@ -2151,8 +2239,9 @@ export default function InvoicesPage() {
 
                             <div style={{ textAlign: 'right' }}>
                               <span style={{ 
-                                background: isSelected ? '#3b82f6' : 'var(--bg-secondary)', 
+                                background: isSelected ? '#3b82f6' : 'var(--bg-primary)', 
                                 color: isSelected ? '#fff' : 'var(--text-primary)', 
+                                border: '1px solid var(--border)',
                                 padding: '4px 10px', 
                                 borderRadius: '6px', 
                                 fontSize: '11px', 
@@ -2179,10 +2268,10 @@ export default function InvoicesPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Project</label>
                       <select
                         className="form-control"
-                        style={{ height: '32px', fontSize: '11.5px' }}
+                        style={{ height: '32px', fontSize: '11.5px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={manualProjectId}
                         onChange={(e) => {
                           setManualProjectId(e.target.value);
@@ -2192,16 +2281,16 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Choose Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Order (Optional)</label>
                       <select
                         className="form-control"
-                        style={{ height: '32px', fontSize: '11.5px' }}
+                        style={{ height: '32px', fontSize: '11.5px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                         value={manualOrderId}
                         onChange={(e) => setManualOrderId(e.target.value)}
                         disabled={!manualProjectId}
@@ -2220,14 +2309,14 @@ export default function InvoicesPage() {
 
                 {/* Notes Input */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
                     Internal Allocation Note (Optional)
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. Deposit invoice allocation, Progress invoice..."
                     className="form-control"
-                    style={{ height: '34px', fontSize: '12px' }}
+                    style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                     value={allocNotes}
                     onChange={(e) => setAllocNotes(e.target.value)}
                   />
