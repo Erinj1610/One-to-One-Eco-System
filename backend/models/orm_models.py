@@ -253,6 +253,7 @@ class Order(Base):
     pf_date = Column(String, nullable=True)
 
     payments = Column(JSON, nullable=True)
+    deposit_percentage = Column(Float, nullable=True)
     deposit_value = Column(Float, nullable=True)
     deposit_invoice_sent = Column(String, nullable=True)
     deposit_payment_date = Column(String, nullable=True)

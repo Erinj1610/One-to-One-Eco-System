@@ -431,6 +431,7 @@ export default function OrdersPage() {
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState(0);
+  const [orderDepositPercent, setOrderDepositPercent] = useState(null);
   const [orderSupplier, setSupplier] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
   const [orderEta, setOrderEta] = useState('');
@@ -616,7 +617,7 @@ export default function OrdersPage() {
   }, [sidePanelTab, catalogSearch, catalogCategory]);
 
   const activeDocType = workspaceSubTab === 'boq' ? 'quote' : selectedDocType;
-  const [customTerms, setCustomTerms] = useState('Payment: 50% deposit to initiate order, 40% on delivery, 10% post-installation sign-off. Validity: 30 days from date of issue.');
+  const [customTerms, setCustomTerms] = useState('Payment: 70% deposit to initiate order, remaining balance prior to delivery/dispatch. Validity: 30 days from date of issue.');
 
   // Pricing consistency assistant modal state
   const [pendingPriceEdit, setPendingPriceEdit] = useState(null); // { itemId, field, value, code }
@@ -752,11 +753,20 @@ export default function OrdersPage() {
     const repPhone = pmPhone || (matchedRepInfo ? matchedRepInfo.phone : '078 452 5643');
     const repEmail = pmEmail || (matchedRepInfo ? matchedRepInfo.email : `${resolvedRep.toLowerCase().replace(/\s+/g, '.')}@1-to-1.world`);
 
-    // Deposit calculations
-    const deposit50Val = finalTotalInclVat * 0.50;
-    const deposit70Val = finalTotalInclVat * 0.70;
-    const depositFormatted50 = `R ${deposit50Val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    const depositFormatted70 = `R ${deposit70Val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    // Dynamic Deposit calculations:
+    // Default is 70%, but if total gross value is under R10,000 it is 100%
+    const defaultDepositRate = (finalTotalInclVat < 10000 && finalTotalInclVat > 0) ? 100 : 70;
+    const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+      ? Number(orderDepositPercent) 
+      : defaultDepositRate;
+
+    const depositVal = finalTotalInclVat * (effectiveDepositPercent / 100);
+    const balanceVal = Math.max(0, finalTotalInclVat - depositVal);
+    const depositFormatted = `R ${depositVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const balanceFormatted = `R ${balanceVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const depositFormatted50 = `R ${(finalTotalInclVat * 0.50).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const depositFormatted70 = `R ${(finalTotalInclVat * 0.70).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const depositFormatted100 = `R ${(finalTotalInclVat * 1.00).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const totalPaidNum = Number(orderPaidAmount) || 0;
     const balanceOutstandingNum = Math.max(0, finalTotalInclVat - totalPaidNum);
@@ -804,14 +814,19 @@ export default function OrdersPage() {
       TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
       
-      DEPOSIT: depositFormatted50,
+      DEPOSIT: depositFormatted,
+      DEPOSIT_AMOUNT: depositFormatted,
+      DEPOSIT_REQUIRED: depositFormatted,
+      DEPOSIT_VALUE: depositFormatted,
+      DEPOSIT_PERCENT: `${effectiveDepositPercent}%`,
+      DEPOSIT_PERCENTAGE: `${effectiveDepositPercent}%`,
+      DEPOSIT_RATE: `${effectiveDepositPercent}%`,
       DEPOSIT_50: depositFormatted50,
       DEPOSIT_70: depositFormatted70,
-      DEPOSIT_AMOUNT: depositFormatted50,
-      DEPOSIT_REQUIRED: depositFormatted50,
-      DEPOSIT_VALUE: depositFormatted50,
+      DEPOSIT_100: depositFormatted100,
       
-      BALANCE: `R ${(finalTotalInclVat - deposit50Val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      BALANCE: balanceFormatted,
+      BALANCE_DUE: balanceFormatted,
       TOTAL_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       BALANCE_OUTSTANDING: `R ${balanceOutstandingNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       
@@ -1348,6 +1363,13 @@ export default function OrdersPage() {
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
+    if (order.depositPercentage !== undefined && order.depositPercentage !== null) {
+      setOrderDepositPercent(Number(order.depositPercentage));
+    } else if (order.deposit_percentage !== undefined && order.deposit_percentage !== null) {
+      setOrderDepositPercent(Number(order.deposit_percentage));
+    } else {
+      setOrderDepositPercent(null);
+    }
     setSupplier(order.supplier);
     setOrderStatus(order.status);
     setOrderEta(order.eta || '—');
@@ -1910,7 +1932,14 @@ export default function OrdersPage() {
     const discountedValue = Math.max(0, totalRetailTotal * (1 - (Number(orderDiscount) || 0) / 100));
     const itemsCount = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).reduce((s, item) => s + (Number(item.qty) || 0), 0);
     const paidSum = orderPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    const balanceOutstanding = Math.max(0, (discountedValue * 1.15) - paidSum);
+    const finalGrossWithVat = discountedValue * 1.15;
+    const balanceOutstanding = Math.max(0, finalGrossWithVat - paidSum);
+    const defaultDepositRate = (finalGrossWithVat < 10000 && finalGrossWithVat > 0) ? 100 : 70;
+    const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+      ? Number(orderDepositPercent) 
+      : defaultDepositRate;
+    const calculatedDepositValue = Math.round(finalGrossWithVat * (effectiveDepositPercent / 100));
+    const calculatedBalanceValue = Math.max(0, Math.round(finalGrossWithVat - calculatedDepositValue));
 
     // Attach explicit sequential sortOrder index to preserve exact drag-and-drop sequence in DB
     const orderedItemsWithIndex = activeOrderItems.map((item, idx) => ({
@@ -1926,6 +1955,12 @@ export default function OrdersPage() {
       value: Math.round(discountedValue),
       costValue: Math.round(totalCostTotal),
       discount: Number(orderDiscount) || 0,
+      depositPercentage: effectiveDepositPercent,
+      deposit_percentage: effectiveDepositPercent,
+      depositValue: calculatedDepositValue,
+      deposit_value: calculatedDepositValue,
+      balanceValue: calculatedBalanceValue,
+      balance_value: calculatedBalanceValue,
       paid: paidSum,
       payments: orderPayments,
       outstanding: Math.round(balanceOutstanding),
@@ -3444,7 +3479,15 @@ export default function OrdersPage() {
                   const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade || item.unit_trade) || 0)), 0);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                  const balanceOutstanding = Math.max(0, (discountedRetail * 1.15) - Number(orderPaidAmount));
+                  const finalGrossInclVat = discountedRetail * 1.15;
+                  const balanceOutstanding = Math.max(0, finalGrossInclVat - Number(orderPaidAmount));
+
+                  const defaultDepositRate = (finalGrossInclVat < 10000 && finalGrossInclVat > 0) ? 100 : 70;
+                  const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+                    ? Number(orderDepositPercent) 
+                    : defaultDepositRate;
+                  const calculatedDepositVal = finalGrossInclVat * (effectiveDepositPercent / 100);
+                  const calculatedBalanceVal = Math.max(0, finalGrossInclVat - calculatedDepositVal);
 
                   const hasLowMargins = activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).some(item => {
                     const cost = Number(item.unitCost || item.unit_cost) || 0;
@@ -3470,26 +3513,26 @@ export default function OrdersPage() {
                   return (
                     <>
                       {/* VITAL METRICS CARD GRID */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', marginBottom: '20px' }}>
-                        <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', marginBottom: '20px' }}>
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Price</span>
-                          <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalCost).toLocaleString()}</span>
+                          <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalCost).toLocaleString()}</span>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Supplier cost EX VAT</span>
                         </div>
 
-                        <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Billed Retail EX VAT</span>
-                          <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalRetail).toLocaleString()}</span>
+                          <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalRetail).toLocaleString()}</span>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Subtotal before discount</span>
                         </div>
 
-                        <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Volume Discount (%)</span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
                             <input 
                               type="number"
                               className="form-control"
-                              style={{ padding: '2px 6px', fontSize: '13px', width: '70px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                              style={{ padding: '2px 6px', fontSize: '13px', width: '60px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                               value={orderDiscount}
                               onChange={e => setOrderDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                             />
@@ -3498,15 +3541,59 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>Reduces final retail price</span>
                         </div>
 
-                        <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Final Client Price</span>
-                          <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-info)', display: 'block', margin: '4px 0' }}>R {Math.round(discountedRetail).toLocaleString()}</span>
+                          <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-info)', display: 'block', margin: '4px 0' }}>R {Math.round(discountedRetail).toLocaleString()}</span>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>VAT EXCLUDED</span>
                         </div>
 
-                        <div style={{ background: 'var(--bg-primary)', padding: '12px 16px', borderRadius: '8px', border: `1px solid ${overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)'}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deposit (%)</span>
+                            <span style={{ fontSize: '10px', fontWeight: 600, color: finalGrossInclVat < 10000 && finalGrossInclVat > 0 && orderDepositPercent === null ? 'var(--text-warning)' : 'var(--text-info)' }}>
+                              {finalGrossInclVat < 10000 && finalGrossInclVat > 0 && orderDepositPercent === null ? '100% (<R10k)' : `${effectiveDepositPercent}%`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                            <input 
+                              type="number"
+                              min="0"
+                              max="100"
+                              className="form-control"
+                              style={{ padding: '2px 4px', fontSize: '13px', width: '54px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
+                              value={effectiveDepositPercent}
+                              onChange={e => setOrderDepositPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                            />
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>%</span>
+                            <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}>
+                              <button 
+                                type="button"
+                                title="Set standard 70% deposit"
+                                onClick={() => setOrderDepositPercent(70)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveDepositPercent === 70 ? 'rgba(59, 130, 246, 0.15)' : 'transparent', color: effectiveDepositPercent === 70 ? 'var(--text-info)' : 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                              >
+                                70%
+                              </button>
+                              <button 
+                                type="button"
+                                title="Set full 100% deposit"
+                                onClick={() => setOrderDepositPercent(100)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveDepositPercent === 100 ? 'rgba(59, 130, 246, 0.15)' : 'transparent', color: effectiveDepositPercent === 100 ? 'var(--text-info)' : 'var(--text-secondary)', border: '1px solid var(--border)' }}
+                              >
+                                100%
+                              </button>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>
+                            Due: R {Math.round(calculatedDepositVal).toLocaleString()} (incl VAT)
+                          </span>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: `1px solid ${overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)'}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Blended Margin</span>
-                          <span style={{ fontSize: '18px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', margin: '4px 0' }}>
+                          <span style={{ fontSize: '17px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', margin: '4px 0' }}>
                             {overallMargin}%
                           </span>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Target: &gt;= 39% overall</span>
@@ -4769,11 +4856,19 @@ export default function OrdersPage() {
                         )}
 
                         {/* 2. TAX INVOICE OUTFLOW */}
-                        {(activeDocType === 'invoice' || activeDocType === 'deposit_invoice' || activeDocType === 'balance_invoice' || activeDocType === 'tax_invoice') && (
+                        {(activeDocType === 'invoice' || activeDocType === 'deposit_invoice' || activeDocType === 'balance_invoice' || activeDocType === 'tax_invoice') && (() => {
+                          const defaultDepositRate = (finalTotalInclVat < 10000 && finalTotalInclVat > 0) ? 100 : 70;
+                          const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+                            ? Number(orderDepositPercent) 
+                            : defaultDepositRate;
+                          const calculatedDepositVal = finalTotalInclVat * (effectiveDepositPercent / 100);
+                          const calculatedBalanceVal = Math.max(0, finalTotalInclVat - calculatedDepositVal);
+
+                          return (
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                               <h4 style={{ margin: 0, fontSize: '12.5px', color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px', flex: 1 }}>
-                                {activeDocType === 'deposit_invoice' && 'Official Billing Deposit Invoice (50% Due)'}
+                                {activeDocType === 'deposit_invoice' && `Official Billing Deposit Invoice (${effectiveDepositPercent}% Due)`}
                                 {activeDocType === 'balance_invoice' && 'Official Billing Remaining Balance Invoice'}
                                 {activeDocType === 'tax_invoice' && 'Official Tax Billing Invoice (Full Value)'}
                                 {activeDocType === 'invoice' && 'Official Tax Billing Invoice'}
@@ -4792,7 +4887,7 @@ export default function OrdersPage() {
                                 marginLeft: '15px'
                               }}>
                                 {activeDocType === 'deposit_invoice' ? (
-                                  orderPaidAmount >= (finalTotalInclVat * 0.5) ? 'DEPOSIT PAID ✓' : 'DEPOSIT PENDING'
+                                  orderPaidAmount >= calculatedDepositVal ? 'DEPOSIT PAID ✓' : 'DEPOSIT PENDING'
                                 ) : balanceOutstanding === 0 ? 'PAID IN FULL ✓' : 'BALANCE OUTSTANDING'}
                               </div>
                             </div>
@@ -4859,11 +4954,11 @@ export default function OrdersPage() {
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
                                       <span>Deposit Percentage Required:</span>
-                                      <span>50%</span>
+                                      <span>{effectiveDepositPercent}%</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
                                       <span>DEPOSIT AMOUNT DUE:</span>
-                                      <span>R {Math.round(finalTotalInclVat * 0.5).toLocaleString()}</span>
+                                      <span>R {Math.round(calculatedDepositVal).toLocaleString()}</span>
                                     </div>
                                   </>
                                 ) : activeDocType === 'balance_invoice' ? (
@@ -4873,12 +4968,12 @@ export default function OrdersPage() {
                                       <span>R {Math.round(finalTotalInclVat).toLocaleString()}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', fontWeight: 600 }}>
-                                      <span>Less: Deposit Paid (50%):</span>
-                                      <span>R {Math.round(finalTotalInclVat * 0.5).toLocaleString()}</span>
+                                      <span>Less: Deposit Paid ({effectiveDepositPercent}%):</span>
+                                      <span>R {Math.round(calculatedDepositVal).toLocaleString()}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
                                       <span>BALANCE OUTSTANDING:</span>
-                                      <span>R {Math.round(finalTotalInclVat - (finalTotalInclVat * 0.5)).toLocaleString()}</span>
+                                      <span>R {Math.round(calculatedBalanceVal).toLocaleString()}</span>
                                     </div>
                                   </>
                                 ) : (
@@ -4899,7 +4994,7 @@ export default function OrdersPage() {
                                       <span>Amount Paid Received:</span>
                                       <span>R {Number(orderPaidAmount).toLocaleString()}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: balanceOutstanding > 0 ? '#f59e0b' : '#64748b', fontWeight: 800, fontSize: '13px', borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', fontWeight: 800, borderTop: '2px solid #0f172a', paddingTop: '6px', background: '#f8fafc', padding: '6px', borderRadius: '4px' }}>
                                       <span>Balance Outstanding:</span>
                                       <span>R {Math.round(balanceOutstanding).toLocaleString()}</span>
                                     </div>
@@ -4908,7 +5003,8 @@ export default function OrdersPage() {
                               </div>
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
 
                         {/* 3. TECHNICAL LIGHTING SCHEDULE OUTFLOW (PRICES COMPLETELY HIDDEN) */}
                         {activeDocType === 'schedule' && (
@@ -5237,7 +5333,11 @@ export default function OrdersPage() {
                     const vatAmount = discountedRetail * 0.15;
                     const finalTotalInclVat = discountedRetail * 1.15;
                     const balanceOutstanding = Math.max(0, finalTotalInclVat - orderPaidAmount);
-                    const depositRequired = finalTotalInclVat * 0.5; // 50% deposit
+                    const defaultDepositRate = (finalTotalInclVat < 10000 && finalTotalInclVat > 0) ? 100 : 70;
+                    const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+                      ? Number(orderDepositPercent) 
+                      : defaultDepositRate;
+                    const depositRequired = finalTotalInclVat * (effectiveDepositPercent / 100);
                     const depositCleared = orderPaidAmount >= depositRequired;
 
                     return (
@@ -5282,7 +5382,7 @@ export default function OrdersPage() {
                             background: depositCleared ? 'var(--text-success)' : 'var(--text-warning)' 
                           }}></div>
                           <div>
-                            <span style={{ fontSize: '11px', fontWeight: 600, display: 'block' }}>50% Deposit Status</span>
+                            <span style={{ fontSize: '11px', fontWeight: 600, display: 'block' }}>{effectiveDepositPercent}% Deposit Status</span>
                             <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
                               {depositCleared ? 'Cleared ✓' : `Requires R ${Math.round(Math.max(0, depositRequired - orderPaidAmount)).toLocaleString()} more`}
                             </span>

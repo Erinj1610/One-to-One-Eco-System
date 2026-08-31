@@ -171,13 +171,20 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
     if "orderDate" in order_data: order.order_date = order_data.get("orderDate")
     if "quotationSentDate" in order_data: order.quotation_sent_date = order_data.get("quotationSentDate")
     if "pfDate" in order_data: order.pf_date = order_data.get("pfDate")
-    if "payments" in order_data: order.payments = order_data.get("payments")
+    if "depositPercentage" in order_data and order_data.get("depositPercentage") is not None:
+        order.deposit_percentage = float(order_data.get("depositPercentage"))
+    elif "deposit_percentage" in order_data and order_data.get("deposit_percentage") is not None:
+        order.deposit_percentage = float(order_data.get("deposit_percentage"))
     if "depositValue" in order_data and order_data.get("depositValue") is not None:
         order.deposit_value = float(order_data.get("depositValue"))
+    elif "deposit_value" in order_data and order_data.get("deposit_value") is not None:
+        order.deposit_value = float(order_data.get("deposit_value"))
     if "depositInvoiceSent" in order_data: order.deposit_invoice_sent = order_data.get("depositInvoiceSent")
     if "depositPaymentDate" in order_data: order.deposit_payment_date = order_data.get("depositPaymentDate")
     if "balanceValue" in order_data and order_data.get("balanceValue") is not None:
         order.balance_value = float(order_data.get("balanceValue"))
+    elif "balance_value" in order_data and order_data.get("balance_value") is not None:
+        order.balance_value = float(order_data.get("balance_value"))
     if "balancePaymentDate" in order_data: order.balance_payment_date = order_data.get("balancePaymentDate")
 
     # Order-specific client details & metadata overrides
