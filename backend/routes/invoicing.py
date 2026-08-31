@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_, and_
 
@@ -9,11 +9,46 @@ from database.cloud_sql import get_db
 from models.orm_models import (
     PalladiumInvoiceLine,
     ProcurementAllocation,
+    AllocationIssue,
     Project,
     Order,
     OrderItem
 )
 from services.palladium_sync import sync_palladium_sales_invoices
+import re
+
+def normalize_sku(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+
+def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
+    if not target_sku or not cand_items:
+        return None
+    clean_sku = str(target_sku).strip().upper()
+    norm_sku = normalize_sku(target_sku)
+    
+    # Tier 1: Exact code or one_one_code match
+    for it in cand_items:
+        if (it.code and it.code.strip().upper() == clean_sku) or \
+           (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
+            return it
+
+    # Tier 2: Normalized alphanumeric match (ignores dots, dashes, slashes, spaces)
+    if norm_sku:
+        for it in cand_items:
+            if (it.code and normalize_sku(it.code) == norm_sku) or \
+               (it.one_one_code and normalize_sku(it.one_one_code) == norm_sku):
+                return it
+
+    # Tier 3: Substring / description match
+    for it in cand_items:
+        if it.description and clean_sku in it.description.upper():
+            return it
+        if it.description and norm_sku and norm_sku in normalize_sku(it.description):
+            return it
+
+    return None
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +140,18 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             else:
                 unallocated_cnt += 1
 
+        issues_count = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "INVOICE",
+            AllocationIssue.status == "Open"
+        ).count()
+
         return {
             "total_documents": len(doc_stats),
             "total_lines": len(all_lines),
             "unallocated_count": unallocated_cnt,
             "partially_allocated_count": partially_allocated_cnt,
             "fully_allocated_count": fully_allocated_cnt,
+            "issues_count": issues_count,
             "total_invoiced_value": round(total_invoiced_value, 2),
             "last_synced_at": latest_sync.isoformat() if latest_sync else None
         }
@@ -124,7 +165,7 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
 def list_invoicing_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=5, le=100),
-    tab: str = Query("all"), # "all", "needs_allocation", "partially_allocated", "fully_allocated"
+    tab: str = Query("all"), # "all", "needs_allocation", "partially_allocated", "fully_allocated", "issues"
     customer_filter: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db)
@@ -170,6 +211,13 @@ def list_invoicing_documents(
         for a in active_allocs:
             k = (a.source_doc_no, a.sku)
             alloc_map[k] = alloc_map.get(k, 0.0) + float(a.allocated_qty or 0.0)
+
+        # Load open issues
+        open_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "INVOICE",
+            AllocationIssue.status == "Open"
+        ).all()
+        issue_map = {iss.document_no: iss for iss in open_issues}
 
         # Group by document_no preserving latest transaction date order
         docs_grouped = {}
@@ -226,7 +274,17 @@ def list_invoicing_documents(
             d["unallocated_qty"] = max(0.0, tot - alc)
             d["total_value_excl"] = round(d["total_value_excl"], 2)
 
-            if tab == "needs_allocation" and status != "Needs Allocation":
+            iss_d = issue_map.get(d["document_no"])
+            is_d_issue = bool(iss_d)
+            d["is_flagged_issue"] = is_d_issue
+            d["issue_reason"] = iss_d.reason if iss_d else None
+            d["issue_notes"] = iss_d.notes if iss_d else None
+            d["issue_flagged_by"] = iss_d.flagged_by if iss_d else None
+            d["issue_flagged_at"] = iss_d.flagged_at.isoformat() if iss_d and iss_d.flagged_at else None
+
+            if tab in ["issues", "not_found"] and not is_d_issue:
+                continue
+            if tab == "needs_allocation" and (status != "Needs Allocation" or is_d_issue):
                 continue
             if tab == "partially_allocated" and status != "Partially Allocated":
                 continue
@@ -574,19 +632,22 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         resolved_order_id = ord_obj.id if ord_obj else None
 
         # Resolve matching OrderItem
-        clean_sku = sku.strip().upper()
         matched_item = direct_item
         if not matched_item and order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
 
         if not matched_item and ord_obj:
             order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
-            for it in order_items:
-                if (it.code and it.code.strip().upper() == clean_sku) or \
-                   (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
-                   (it.description and clean_sku in it.description.upper()):
-                    matched_item = it
-                    break
+            matched_item = find_best_item_match(order_items, sku)
+
+        if not matched_item and real_proj_id:
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.ilike(f"{proj_obj.project_key}%") if proj_obj else False,
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                )
+            ).all()
+            matched_item = find_best_item_match(proj_items, sku)
 
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
@@ -677,17 +738,15 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             if not sku or allocated_qty <= 0:
                 continue
 
-            clean_sku = sku.strip().upper()
             matched_item = None
             if order_item_id:
                 matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
             elif proj_items:
-                for p_item in proj_items:
-                    if (p_item.code and p_item.code.strip().upper() == clean_sku) or \
-                       (p_item.one_one_code and p_item.one_one_code.strip().upper() == clean_sku) or \
-                       (p_item.description and clean_sku in p_item.description.upper()):
-                        matched_item = p_item
-                        break
+                matched_item = find_best_item_match(proj_items, sku)
+
+            if not matched_item:
+                all_items = db.query(OrderItem).all()
+                matched_item = find_best_item_match(all_items, sku)
 
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
@@ -924,4 +983,98 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
     except Exception as e:
         db.rollback()
         logger.error(f"Error in batch unallocate: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/flag-issue")
+@router.post("/flag-issue")
+def flag_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Flags an invoice document or line item with an Issue / Not Found status.
+    """
+    try:
+        document_no = str(payload.get("document_no") or "").strip()
+        line_id = payload.get("line_id")
+        sku = payload.get("sku")
+        reason = str(payload.get("reason") or "Order Not Found").strip()
+        notes = str(payload.get("notes") or "").strip()
+        flagged_by = str(payload.get("flagged_by") or "Staff").strip()
+
+        if not document_no:
+            raise HTTPException(status_code=400, detail="Missing document_no")
+
+        query = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "INVOICE",
+            AllocationIssue.document_no == document_no,
+            AllocationIssue.status == "Open"
+        )
+        if line_id:
+            query = query.filter(AllocationIssue.line_id == int(line_id))
+        elif sku:
+            query = query.filter(AllocationIssue.sku == str(sku))
+
+        issue = query.first()
+        if not issue:
+            inv = db.query(PalladiumInvoiceLine).filter(PalladiumInvoiceLine.document_no == document_no).first()
+            issue = AllocationIssue(
+                module="INVOICE",
+                document_no=document_no,
+                line_id=int(line_id) if line_id else None,
+                sku=str(sku) if sku else (inv.item_code if inv else None),
+                amount=inv.document_total if inv else 0.0,
+                customer_vendor=inv.customer_name if inv else None,
+                reason=reason,
+                notes=notes,
+                flagged_by=flagged_by,
+                flagged_at=datetime.now(timezone.utc),
+                status="Open"
+            )
+            db.add(issue)
+        else:
+            issue.reason = reason
+            issue.notes = notes
+            issue.flagged_by = flagged_by
+            issue.flagged_at = datetime.now(timezone.utc)
+
+        db.commit()
+        return {"status": "success", "message": f"Invoice {document_no} flagged as '{reason}'"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error flagging invoice issue: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/resolve-issue")
+@router.post("/resolve-issue")
+def resolve_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Resolves an Issue / Not Found flag on an invoice document.
+    """
+    try:
+        document_no = str(payload.get("document_no") or "").strip()
+        resolved_by = str(payload.get("resolved_by") or "Staff").strip()
+
+        if not document_no:
+            raise HTTPException(status_code=400, detail="Missing document_no")
+
+        issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "INVOICE",
+            AllocationIssue.document_no == document_no,
+            AllocationIssue.status == "Open"
+        ).all()
+
+        for iss in issues:
+            iss.status = "Resolved"
+            iss.resolved_at = datetime.now(timezone.utc)
+            iss.resolved_by = resolved_by
+
+        db.commit()
+        return {"status": "success", "message": f"Issues on invoice {document_no} resolved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error resolving invoice issue: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

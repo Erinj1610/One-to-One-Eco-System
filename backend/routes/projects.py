@@ -691,16 +691,112 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             pur_hist = parse_history(item.purchase_history)
             rec_hist = parse_history(item.receiving_history)
 
-            # Derive authentic invoice allocations dynamically from ProcurementAllocation
+            import re
+            item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
+
+            # 1. Derive authentic PO allocations dynamically from ProcurementAllocation
+            item_po_allocs = [
+                a for a in alloc_by_item_id.get(str(item.id), [])
+                if a.allocation_type == "PO"
+            ]
+            if not item_po_allocs and item_norm_skus:
+                for a in active_allocations:
+                    if a.allocation_type == "PO" and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                        if not a.order_item_id or a.order_item_id == str(item.id):
+                            if a not in item_po_allocs:
+                                item_po_allocs.append(a)
+
+            if item_po_allocs:
+                dynamic_pur_hist = []
+                dyn_po_qty = 0
+                dyn_po_refs = set()
+                dyn_po_date = None
+                dyn_po_supplier = None
+                dyn_po_eta = None
+                for a in item_po_allocs:
+                    q_val = float(a.allocated_qty or 0.0)
+                    c_val = float(a.unit_cost or item.unit_cost or 0.0)
+                    dyn_po_qty += int(round(q_val))
+                    if a.source_doc_no:
+                        dyn_po_refs.add(str(a.source_doc_no))
+                    if a.doc_date:
+                        dyn_po_date = str(a.doc_date).split("T")[0]
+                    if a.vendor_name:
+                        dyn_po_supplier = a.vendor_name
+                    if a.eta:
+                        dyn_po_eta = str(a.eta)
+                    dynamic_pur_hist.append({
+                        "id": a.source_doc_no,
+                        "ref": a.source_doc_no,
+                        "allocation_id": a.id,
+                        "qty": q_val,
+                        "unitCost": c_val,
+                        "total": round(q_val * c_val, 2),
+                        "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                        "supplier": a.vendor_name,
+                        "by": a.allocated_by_name or "Staff",
+                        "type": "PO"
+                    })
+                po_hist = dynamic_pur_hist
+                po_qty = dyn_po_qty
+                po_ref = "; ".join(sorted(dyn_po_refs)) if dyn_po_refs else (item.po_ref or "")
+                po_date = dyn_po_date or item.po_date
+                po_supplier = dyn_po_supplier or item.po_supplier
+                po_eta = dyn_po_eta or item.po_eta
+            else:
+                po_hist = pur_hist
+                po_qty = item.po_qty_ordered or 0
+                po_ref = item.po_ref or ""
+                po_date = item.po_date
+                po_supplier = item.po_supplier
+                po_eta = item.po_eta
+
+            # 2. Derive authentic GRN allocations dynamically from ProcurementAllocation
+            item_grn_allocs = [
+                a for a in alloc_by_item_id.get(str(item.id), [])
+                if a.allocation_type == "GRN"
+            ]
+            if not item_grn_allocs and item_norm_skus:
+                for a in active_allocations:
+                    if a.allocation_type == "GRN" and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                        if not a.order_item_id or a.order_item_id == str(item.id):
+                            if a not in item_grn_allocs:
+                                item_grn_allocs.append(a)
+
+            if item_grn_allocs:
+                dynamic_rec_hist = []
+                dyn_rec_qty = 0
+                dyn_rec_date = None
+                for a in item_grn_allocs:
+                    q_val = float(a.allocated_qty or 0.0)
+                    dyn_rec_qty += int(round(q_val))
+                    if a.doc_date:
+                        dyn_rec_date = str(a.doc_date).split("T")[0]
+                    dynamic_rec_hist.append({
+                        "id": a.source_doc_no,
+                        "ref": a.source_doc_no,
+                        "allocation_id": a.id,
+                        "qty": q_val,
+                        "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                        "by": a.allocated_by_name or "Staff",
+                        "type": "GRN"
+                    })
+                rec_hist = dynamic_rec_hist
+                rec_qty = dyn_rec_qty
+                rec_date = dyn_rec_date or item.received_date
+            else:
+                rec_qty = item.received_qty or 0
+                rec_date = item.received_date
+
+            # 3. Derive authentic invoice allocations dynamically from ProcurementAllocation
             item_inv_allocs = [
                 a for a in alloc_by_item_id.get(str(item.id), [])
                 if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
             ]
-            if not item_inv_allocs and (item.code or item.one_one_code):
-                item_skus = {s.strip().upper() for s in [item.code, item.one_one_code] if s}
-                for sku_k in item_skus:
-                    for a in alloc_by_sku.get(sku_k, []):
-                        if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")) and not a.order_item_id:
+            if not item_inv_allocs and item_norm_skus:
+                for a in active_allocations:
+                    if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")) and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                        if not a.order_item_id or a.order_item_id == str(item.id):
                             if a not in item_inv_allocs:
                                 item_inv_allocs.append(a)
 
@@ -763,14 +859,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "sortOrder": getattr(item, 'sort_order', 0) if getattr(item, 'sort_order', None) is not None else 0,
                 "stockStatus": item.stock_status,
                 "eta": item.eta,
-                "poRef": item.po_ref,
-                "poQtyOrdered": item.po_qty_ordered,
-                "poEta": item.po_eta,
+                "poRef": po_ref,
+                "poQtyOrdered": po_qty,
+                "poEta": po_eta,
                 "invoiceQty": inv_qty,
-                "poSupplier": item.po_supplier,
-                "poDate": item.po_date,
-                "receivedQty": item.received_qty,
-                "receivedDate": item.received_date,
+                "poSupplier": po_supplier,
+                "poDate": po_date,
+                "receivedQty": rec_qty,
+                "receivedDate": rec_date,
                 "invoiceRef": inv_ref,
                 "invoiceDate": inv_date,
                 "invoiceValue": inv_val,
@@ -778,7 +874,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "deliveryDate": item.delivery_date,
                 "deliveryStatus": item.delivery_status,
                 "deliveryHistory": del_hist,
-                "purchaseHistory": pur_hist,
+                "purchaseHistory": po_hist,
                 "receivingHistory": rec_hist,
                 "invoiceHistory": inv_hist,
                 "stockOnHand": item.stock_on_hand

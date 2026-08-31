@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
@@ -70,6 +71,13 @@ export default function InvoicesPage() {
   const [batchNotes, setBatchNotes] = useState('');
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
+  // Issue Flagging State
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueTargetItem, setIssueTargetItem] = useState(null);
+  const [issueReason, setIssueReason] = useState('Order Not Found');
+  const [issueNotes, setIssueNotes] = useState('');
+  const [isSavingIssue, setIsSavingIssue] = useState(false);
+
   // -------------------------------------------------------------
   // FETCH SUMMARY & DOCUMENTS
   // -------------------------------------------------------------
@@ -96,6 +104,7 @@ export default function InvoicesPage() {
       if (newTab === 'NEEDS_ALLOCATION') tabParam = 'needs_allocation';
       else if (newTab === 'PARTIAL') tabParam = 'partially_allocated';
       else if (newTab === 'FULLY_ALLOCATED') tabParam = 'fully_allocated';
+      else if (newTab === 'ISSUES') tabParam = 'issues';
 
       const params = new URLSearchParams({
         tab: tabParam,
@@ -613,6 +622,74 @@ export default function InvoicesPage() {
       }
     } catch (e) {
       alert(`Error in bulk unallocation: ${e.message}`);
+    }
+  };
+
+  const handleOpenIssueModal = (docOrLine) => {
+    setIssueTargetItem(docOrLine);
+    setIssueReason(docOrLine.issue_reason || 'Order Not Found');
+    setIssueNotes(docOrLine.issue_notes || '');
+    setIssueModalOpen(true);
+  };
+
+  const handleSubmitIssue = async (e) => {
+    if (e) e.preventDefault();
+    if (!issueTargetItem) return;
+
+    setIsSavingIssue(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/flag-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_no: issueTargetItem.document_no,
+          line_id: issueTargetItem.line_id || null,
+          sku: issueTargetItem.item_code || issueTargetItem.sku || null,
+          reason: issueReason,
+          notes: issueNotes,
+          flagged_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`⚠️ Invoice ${issueTargetItem.document_no} flagged as "${issueReason}"`);
+        setIssueModalOpen(false);
+        if (allocModalOpen) setAllocModalOpen(false);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not flag issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setIsSavingIssue(false);
+    }
+  };
+
+  const handleResolveIssue = async (docOrLine) => {
+    if (!docOrLine) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/resolve-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_no: docOrLine.document_no,
+          resolved_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`✅ Issue on invoice ${docOrLine.document_no} resolved!`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not resolve issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
     }
   };
 
@@ -1390,6 +1467,19 @@ export default function InvoicesPage() {
                   ✅ Fully Allocated ({invoicingSummary.fully_allocated_count})
                 </button>
                 <button
+                  onClick={() => handleTabChange('ISSUES')}
+                  className={`btn btn-xs ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent',
+                    color: activeFilterTab === 'ISSUES' ? '#fff' : '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.4)'
+                  }}
+                >
+                  ⚠️ Issues / Not Found ({invoicingSummary.issues_count || 0})
+                </button>
+                <button
                   onClick={() => handleTabChange('IN')}
                   className={`btn btn-xs ${activeFilterTab === 'IN' ? 'btn-primary' : 'btn-ghost'}`}
                   style={{ fontSize: '11.5px', fontWeight: 600 }}
@@ -1550,7 +1640,22 @@ export default function InvoicesPage() {
 
                           {/* Allocation Status */}
                           <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {doc.allocation_status === 'Needs Allocation' && (
+                            {doc.is_flagged_issue ? (
+                              <span style={{ 
+                                background: 'rgba(239, 68, 68, 0.12)', 
+                                color: '#ef4444', 
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }} title={doc.issue_notes ? `${doc.issue_reason}: ${doc.issue_notes}` : doc.issue_reason}>
+                                ⚠️ {doc.issue_reason || 'Issue / Not Found'}
+                              </span>
+                            ) : doc.allocation_status === 'Needs Allocation' ? (
                               <span style={{ 
                                 background: 'rgba(245, 158, 11, 0.12)', 
                                 color: '#f59e0b', 
@@ -1565,8 +1670,7 @@ export default function InvoicesPage() {
                               }}>
                                 <AlertTriangle size={11} /> Needs Allocation
                               </span>
-                            )}
-                            {doc.allocation_status === 'Partially Allocated' && (
+                            ) : doc.allocation_status === 'Partially Allocated' ? (
                               <span style={{ 
                                 background: 'rgba(59, 130, 246, 0.12)', 
                                 color: '#3b82f6', 
@@ -1578,8 +1682,7 @@ export default function InvoicesPage() {
                               }}>
                                 ⏳ Partial ({doc.allocated_qty}/{doc.total_qty})
                               </span>
-                            )}
-                            {doc.allocation_status === 'Fully Allocated' && (
+                            ) : (
                               <span style={{ 
                                 background: 'rgba(16, 185, 129, 0.12)', 
                                 color: '#10b981', 
@@ -1598,27 +1701,47 @@ export default function InvoicesPage() {
                           </td>
 
                           {/* Action Button */}
-                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                fetchSingleDocumentDetails(doc.document_no);
-                              }}
-                              className="btn btn-xs"
-                              style={{
-                                background: 'var(--bg-primary)',
-                                border: '1px solid var(--border)',
-                                color: 'var(--text-primary)',
-                                fontWeight: 600,
-                                fontSize: '11px',
-                                padding: '4px 10px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              Open Workspace <ArrowRight size={11} />
-                            </button>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fetchSingleDocumentDetails(doc.document_no);
+                                }}
+                                className="btn btn-xs"
+                                style={{
+                                  background: 'var(--bg-primary)',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--text-primary)',
+                                  fontWeight: 600,
+                                  fontSize: '11px',
+                                  padding: '4px 10px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                Open Workspace <ArrowRight size={11} />
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  doc.is_flagged_issue ? handleResolveIssue(doc) : handleOpenIssueModal(doc);
+                                }}
+                                className="btn btn-xs btn-ghost"
+                                style={{
+                                  color: doc.is_flagged_issue ? '#10b981' : '#f59e0b',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '10.5px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px'
+                                }}
+                                title={doc.is_flagged_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
+                              >
+                                {doc.is_flagged_issue ? 'Resolve' : 'Flag'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1740,8 +1863,20 @@ export default function InvoicesPage() {
       {/* ============================================================ */}
       {/* BATCH ALLOCATION MODAL (Multiple items to 1 Project Order)   */}
       {/* ============================================================ */}
-      {batchModalOpen && selectedDocument && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {batchModalOpen && selectedDocument && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -1791,7 +1926,7 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1807,9 +1942,9 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
+                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
                           ));
                         })()}
                       </select>
@@ -1820,7 +1955,7 @@ export default function InvoicesPage() {
                 {/* Items Being Allocated List */}
                 <div>
                   <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                    Invoice Lines to be Allocated ({selectedLineIds.size}):
+                    Lines to be Allocated ({selectedLineIds.size}):
                   </div>
                   <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
                     <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
@@ -1829,16 +1964,18 @@ export default function InvoicesPage() {
                           <th style={{ padding: '6px 10px' }}>SKU</th>
                           <th style={{ padding: '6px 10px' }}>Description</th>
                           <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Price (Excl)</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Unit Excl</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Total Excl</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id)).map(l => (
                           <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
                             <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
                             <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1846,21 +1983,20 @@ export default function InvoicesPage() {
                   </div>
                 </div>
 
-                {/* Notes Input */}
+                {/* Internal Notes */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
                     Internal Allocation Note (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Invoiced as per deposit invoice / Progress claim #1..."
+                    placeholder="e.g. Invoiced deposit for Living Room joinery..."
                     className="form-control"
                     style={{ height: '34px', fontSize: '12px' }}
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
                   />
                 </div>
-
               </div>
 
               {/* Modal Footer */}
@@ -1882,35 +2018,37 @@ export default function InvoicesPage() {
                 </button>
                 <button 
                   type="submit" 
-                  disabled={isSavingBatchAlloc}
-                  className="btn btn-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    padding: '8px 18px',
-                    borderRadius: '8px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
+                  className="btn btn-sm btn-primary" 
+                  disabled={isSavingBatchAlloc || !batchProjectId}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
                 >
                   {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                  {isSavingBatchAlloc ? 'Allocating...' : `Confirm Allocation (${selectedLineIds.size} items)`}
+                  Confirm Batch Allocation ({selectedLineIds.size} lines)
                 </button>
               </div>
             </form>
-
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ============================================================ */}
       {/* SINGLE ALLOCATION MODAL (1 Item to 1 Order)                  */}
       {/* ============================================================ */}
-      {allocModalOpen && allocTargetItem && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {allocModalOpen && allocTargetItem && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -1956,144 +2094,128 @@ export default function InvoicesPage() {
                       onChange={(e) => setAllocQty(Number(e.target.value))}
                       required
                     />
-                    <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                      Max available: <strong>{allocTargetItem.unallocated_qty} {allocTargetItem.item_unit}</strong>
-                    </span>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Available: <strong>{allocTargetItem.unallocated_qty} units</strong>
+                    </div>
                   </div>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
-                      Unit Price (Excl)
+                      Line Unit Price (Excl VAT)
                     </label>
                     <input
                       type="text"
-                      disabled
-                      value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', fontWeight: 600 }}
+                      value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                      disabled
                     />
                   </div>
                 </div>
 
-                {/* Candidate Orders List */}
+                {/* Candidate Orders (Intelligent ERP Matching) */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 700 }}>
-                    Select Destination Project & Fitting:
-                  </label>
-                  
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={13} color="#3b82f6" />
+                    Intelligent Candidate Order Matches:
+                  </div>
+
                   {candidateOrders.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                      {candidateOrders.map((cand) => {
-                        const isSelected = selectedCandidateKey === String(cand.order_item_id);
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {candidateOrders.map(cand => {
+                        const isSelected = selectedCandidateKey === cand.candidate_key;
                         return (
-                          <div
-                            key={cand.order_item_id}
-                            onClick={() => {
-                              setSelectedCandidateKey(String(cand.order_item_id));
-                              setManualProjectId(cand.project_key || cand.project_id || '');
-                              setManualOrderId(cand.order_id || '');
-                            }}
+                          <div 
+                            key={cand.candidate_key}
+                            onClick={() => handleSelectCandidate(cand)}
                             style={{
-                              padding: '10px 14px',
-                              borderRadius: '8px',
                               border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary)',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
                               cursor: 'pointer',
                               display: 'flex',
                               justifyContent: 'space-between',
-                              alignItems: 'center'
+                              alignItems: 'center',
+                              transition: 'all 0.15s ease'
                             }}
                           >
                             <div>
                               <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}>
-                                {cand.project_name} — Order #{cand.order_po_number}
+                                {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span> {cand.order_title}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                Fitting: <strong style={{ color: '#3b82f6' }}>{cand.fitting_code}</strong> ({cand.description})
+                                Client: <strong style={{ color: 'var(--text-primary)' }}>{cand.client}</strong> • Match: <span style={{ color: '#3b82f6', fontWeight: 600 }}>{cand.match_type}</span>
                               </div>
                             </div>
 
                             <div style={{ textAlign: 'right' }}>
                               <span style={{ 
-                                padding: '2px 6px', 
-                                borderRadius: '4px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                background: cand.is_direct_sku_match ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-                                color: cand.is_direct_sku_match ? '#10b981' : '#3b82f6'
+                                background: isSelected ? '#3b82f6' : 'var(--bg-secondary)', 
+                                color: isSelected ? '#fff' : 'var(--text-primary)', 
+                                padding: '4px 10px', 
+                                borderRadius: '6px', 
+                                fontSize: '11px', 
+                                fontWeight: 700 
                               }}>
-                                {cand.is_direct_sku_match ? 'Exact SKU Match' : 'Project Ref Match'}
+                                {isSelected ? 'Selected' : 'Select'}
                               </span>
                             </div>
                           </div>
                         );
                       })}
-
-                      {/* Manual Option */}
-                      <div
-                        onClick={() => setSelectedCandidateKey('MANUAL')}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          border: selectedCandidateKey === 'MANUAL' ? '1.5px solid #3b82f6' : '1px dashed var(--border)',
-                          background: selectedCandidateKey === 'MANUAL' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                          cursor: 'pointer',
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          color: 'var(--text-secondary)'
-                        }}
-                      >
-                        + Select a different project/order manually...
-                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                      No automatic matching orders found for this SKU. Please select destination manually:
+                    <div style={{ padding: '12px', textAlign: 'center', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                      No direct project / item matches found. You can select any project below.
                     </div>
                   )}
+                </div>
 
-                  {/* Manual Dropdown Pickers */}
-                  {(selectedCandidateKey === 'MANUAL' || candidateOrders.length === 0) && (
-                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project *</label>
-                        <select
-                          className="form-control"
-                          style={{ height: '32px', fontSize: '11.5px', fontWeight: 600 }}
-                          value={manualProjectId}
-                          onChange={(e) => {
-                            setManualProjectId(e.target.value);
-                            setManualOrderId('');
-                          }}
-                          required
-                        >
-                          <option value="">-- Select Project --</option>
-                          {Object.values(projects || {}).map(p => (
-                            <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
-                        <select
-                          className="form-control"
-                          style={{ height: '32px', fontSize: '11.5px' }}
-                          value={manualOrderId}
-                          onChange={(e) => setManualOrderId(e.target.value)}
-                          disabled={!manualProjectId}
-                        >
-                          <option value="">-- General Project Order --</option>
-                          {(() => {
-                            const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
-                            return (proj?.orders || []).map(o => (
-                              <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
-                            ));
-                          })()}
-                        </select>
-                      </div>
+                {/* Manual Project Selection Override */}
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px 16px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    Or Select Destination Project Manually:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '32px', fontSize: '11.5px' }}
+                        value={manualProjectId}
+                        onChange={(e) => {
+                          setManualProjectId(e.target.value);
+                          setManualOrderId('');
+                          setSelectedCandidateKey(null);
+                        }}
+                      >
+                        <option value="">-- Choose Project --</option>
+                        {Object.values(projects || {}).map(p => (
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                        ))}
+                      </select>
                     </div>
-                  )}
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '32px', fontSize: '11.5px' }}
+                        value={manualOrderId}
+                        onChange={(e) => setManualOrderId(e.target.value)}
+                        disabled={!manualProjectId}
+                      >
+                        <option value="">-- General Project Order --</option>
+                        {(() => {
+                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
+                          return (proj?.orders || []).map(o => (
+                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Notes Input */}
@@ -2116,44 +2238,206 @@ export default function InvoicesPage() {
               {/* Modal Footer */}
               <div style={{ 
                 display: 'flex', 
-                justifyContent: 'flex-end', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
                 gap: '10px', 
                 padding: '14px 20px', 
                 borderTop: '1px solid var(--border)', 
                 background: 'var(--bg-secondary)', 
                 flexShrink: 0 
               }}>
-                <button 
-                  type="button" 
-                  className="btn btn-sm btn-ghost" 
-                  onClick={() => setAllocModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={isSavingAlloc}
-                  className="btn btn-sm"
+                <button
+                  type="button"
+                  onClick={() => {
+                    const item = allocTargetItem;
+                    setAllocModalOpen(false);
+                    handleOpenIssueModal(item);
+                  }}
+                  className="btn btn-sm btn-ghost"
                   style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    padding: '8px 18px',
-                    borderRadius: '8px',
+                    color: '#f59e0b',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '5px',
+                    fontSize: '11.5px'
                   }}
                 >
-                  {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                  {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                  <AlertTriangle size={13} />
+                  Flag as Issue / Not Found
                 </button>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={() => setAllocModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={isSavingAlloc}
+                    className="btn btn-sm"
+                    style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      color: '#fff',
+                      border: 'none',
+                      fontWeight: 700,
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                    {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                  </button>
+                </div>
               </div>
             </form>
 
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* FLAG / MANAGE ISSUE MODAL */}
+      {issueModalOpen && issueTargetItem && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '480px',
+            padding: '24px',
+            borderRadius: '12px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(245, 158, 11, 0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', display: 'flex' }}>
+                  <AlertTriangle size={20} />
+                </span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Flag Issue / Not Found
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Invoice: <strong style={{ color: 'var(--text-primary)' }}>{issueTargetItem.document_no}</strong> {issueTargetItem.item_code ? `(SKU: ${issueTargetItem.item_code})` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIssueModalOpen(false)}
+                className="btn btn-xs btn-ghost"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitIssue} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Reason Category
+                </label>
+                <select
+                  value={issueReason}
+                  onChange={(e) => setIssueReason(e.target.value)}
+                  className="input input-sm"
+                  style={{ width: '100%', fontSize: '12.5px' }}
+                >
+                  <option value="Order Not Found">Order Not Found in System</option>
+                  <option value="SKU Mismatch">SKU / Item Code Mismatch</option>
+                  <option value="Client Name Mismatch">Client Name / Code Mismatch</option>
+                  <option value="Price Discrepancy">Price / Invoiced Value Discrepancy</option>
+                  <option value="Requires PM Review">Requires PM / Sales Rep Review</option>
+                  <option value="Other">Other / Investigation Needed</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Issue Notes & Explanation
+                </label>
+                <textarea
+                  rows={3}
+                  value={issueNotes}
+                  onChange={(e) => setIssueNotes(e.target.value)}
+                  placeholder="Describe why this invoice cannot be matched or what information is needed..."
+                  className="textarea input-sm"
+                  style={{ width: '100%', fontSize: '12px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{
+                borderTop: '1px solid var(--border)',
+                paddingTop: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                {issueTargetItem.is_flagged_issue ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIssueModalOpen(false);
+                      handleResolveIssue(issueTargetItem);
+                    }}
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11.5px' }}
+                  >
+                    <Check size={13} /> Mark Resolved
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIssueModalOpen(false)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingIssue}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#f59e0b',
+                      color: '#000',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSavingIssue && <RefreshCw size={13} className="animate-spin" />}
+                    {isSavingIssue ? 'Saving...' : 'Save Issue Flag'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
       )}
 
     </div>
