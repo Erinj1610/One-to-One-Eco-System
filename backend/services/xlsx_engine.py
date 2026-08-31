@@ -971,6 +971,46 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
     from openpyxl.utils import get_column_letter
     max_col_letter = get_column_letter(max_col_idx)
 
+    # Conditional row deletion for [DISCOUNT_ROW] if discount is 0%
+    has_discount = False
+    if 'orderDiscount' in tokens:
+        try:
+            has_discount = float(tokens.get('orderDiscount') or 0) > 0
+        except Exception: pass
+    elif 'DISCOUNT_PERCENT' in tokens:
+        try:
+            has_discount = float(str(tokens.get('DISCOUNT_PERCENT', '0')).replace('%', '').strip()) > 0
+        except Exception: pass
+    elif 'DISCOUNT_AMOUNT' in tokens:
+        try:
+            d_val_str = str(tokens.get('DISCOUNT_AMOUNT', '0')).replace('R', '').replace(',', '').strip()
+            has_discount = float(d_val_str) > 0
+        except Exception: pass
+    elif 'DISCOUNT' in tokens:
+        try:
+            d_val_str = str(tokens.get('DISCOUNT', '0')).replace('R', '').replace(',', '').strip()
+            has_discount = float(d_val_str) > 0
+        except Exception: pass
+
+    if not has_discount:
+        for r in range(ws.max_row, 0, -1):
+            is_disc_r = False
+            cell_a = ws.cell(row=r, column=1)
+            if type(cell_a).__name__ != 'MergedCell':
+                val_a = str(cell_a.value or '').strip().upper()
+                if val_a in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
+                    is_disc_r = True
+            if not is_disc_r:
+                for c in range(1, ws.max_column + 1):
+                    cell = ws.cell(row=r, column=c)
+                    if type(cell).__name__ != 'MergedCell':
+                        val = str(cell.value or '').strip().upper()
+                        if '{{DISCOUNT' in val or '{?DISCOUNT' in val or 'DISCOUNT :' in val or 'DISCOUNT:' in val or 'DISCOUNT (' in val:
+                            is_disc_r = True
+                            break
+            if is_disc_r:
+                ws.delete_rows(r, 1)
+
     # 3. Third Pass: Clear Column A text (control markers)
     has_column_a_control_tags = False
     for r in range(1, ws.max_row + 1):
