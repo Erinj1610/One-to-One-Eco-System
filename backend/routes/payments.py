@@ -23,8 +23,8 @@ public_router = APIRouter(prefix="/payments", tags=["Payments Public"])
 
 def recalc_order_payments(db: Session, order_id_str: str):
     """
-    Recalculates an Order's paid amount and outstanding balance from both
-    active Palladium OrderPaymentAllocations and manual payments.
+    Recalculates an Order's paid amount and outstanding balance strictly from
+    active Palladium OrderPaymentAllocations (discarding legacy manual payments).
     """
     try:
         # Find order by po_number or id
@@ -40,28 +40,10 @@ def recalc_order_payments(db: Session, order_id_str: str):
             OrderPaymentAllocation.status == "Active"
         ).all()
 
-        allocated_total = sum(float(a.allocated_amount or 0.0) for a in allocs)
+        allocated_total = round(sum(float(a.allocated_amount or 0.0) for a in allocs), 2)
 
-        # 2. Parse manual payments from order.payments (filter out any previously injected PALLADIUM items to avoid double-counting)
-        manual_payments = []
-        try:
-            raw_payments = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
-            if isinstance(raw_payments, list):
-                for p in raw_payments:
-                    if isinstance(p, dict) and p.get("source") != "PALLADIUM" and not p.get("is_palladium"):
-                        manual_payments.append(p)
-        except Exception:
-            manual_payments = []
-
-        manual_total = sum(float(p.get("amount", 0) or 0.0) for p in manual_payments)
-        combined_paid = round(allocated_total + manual_total, 2)
-
-        # 3. Calculate outstanding
-        order_val = float(order.value or 0.0)
-        outstanding = max(0.0, round(order_val - combined_paid, 2))
-
-        # 4. Build consolidated payments array for order
-        consolidated_payments = list(manual_payments)
+        # 2. Build consolidated payments array strictly from active Palladium allocations
+        consolidated_payments = []
         for a in allocs:
             consolidated_payments.append({
                 "id": f"pal-alloc-{a.id}",
@@ -77,7 +59,10 @@ def recalc_order_payments(db: Session, order_id_str: str):
                 "allocated_by": a.allocated_by
             })
 
-        order.paid = combined_paid
+        order_val = float(order.value or 0.0)
+        outstanding = max(0.0, round(order_val - allocated_total, 2))
+
+        order.paid = allocated_total
         order.outstanding = outstanding
         order.payments = json.dumps(consolidated_payments)
         db.commit()

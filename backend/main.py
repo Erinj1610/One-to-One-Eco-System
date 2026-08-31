@@ -716,6 +716,17 @@ def init_db():
                 db.commit()
                 print("Database seeded with default project tickets.")
 
+            # Ensure legacy manual payments in orders table are cleaned and recalculated strictly from OrderPaymentAllocation
+            try:
+                from models.orm_models import Order
+                from routes.payments import recalc_order_payments
+                all_orders = db.query(Order).all()
+                for ord_obj in all_orders:
+                    recalc_order_payments(db, ord_obj.po_number or str(ord_obj.id))
+                print(f"Database migration: recalculated {len(all_orders)} order payments strictly from authentic Palladium allocations.")
+            except Exception as pay_clean_err:
+                print(f"Database migration order payments cleanup notice: {pay_clean_err}")
+
             print("Database initialized & seeded with default folders.")
         except Exception as seed_err:
             print(f"Seeding error: {seed_err}")

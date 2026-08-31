@@ -11,7 +11,7 @@ import {
 export default function InvoicesPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, getModuleName } = useStore();
+  const { projects, getModuleName, refreshProjects } = useStore();
 
   // Toast notifications
   const [toastMessage, setToastMessage] = useState(null);
@@ -361,6 +361,7 @@ export default function InvoicesPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
       }
@@ -462,6 +463,7 @@ export default function InvoicesPage() {
         fetchSummary();
         fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
         fetchSingleDocumentDetails(selectedDocument.document_no);
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Batch allocation notice: ${data.detail || 'Could not complete batch allocation.'}`);
       }
@@ -491,6 +493,7 @@ export default function InvoicesPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not release allocation.'}`);
       }
@@ -523,6 +526,7 @@ export default function InvoicesPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate line.'}`);
       }
@@ -575,6 +579,7 @@ export default function InvoicesPage() {
         fetchSummary();
         fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
         fetchSingleDocumentDetails(selectedDocument.document_no);
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate items.'}`);
       }
@@ -602,6 +607,7 @@ export default function InvoicesPage() {
         fetchSummary();
         fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
         fetchSingleDocumentDetails(docNo);
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate document.'}`);
       }

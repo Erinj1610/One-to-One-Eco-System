@@ -648,13 +648,16 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
         alloc_by_order_id = {}
         alloc_by_item_id = {}
         alloc_by_proj_id = {}
+        alloc_by_sku = {}
         for a in active_allocations:
             if a.order_id:
-                alloc_by_order_id.setdefault(a.order_id, []).append(a)
+                alloc_by_order_id.setdefault(str(a.order_id), []).append(a)
             if a.order_item_id:
                 alloc_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if a.project_id:
-                alloc_by_proj_id.setdefault(a.project_id, []).append(a)
+                alloc_by_proj_id.setdefault(str(a.project_id), []).append(a)
+            if a.sku:
+                alloc_by_sku.setdefault(str(a.sku).strip().upper(), []).append(a)
 
         # Pre-load active payment allocations for live payment breakdown
         active_payment_allocations = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active").all()
@@ -687,8 +690,57 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             del_hist = parse_history(item.delivery_history)
             pur_hist = parse_history(item.purchase_history)
             rec_hist = parse_history(item.receiving_history)
-            inv_hist = parse_history(item.invoice_history)
 
+            # Derive authentic invoice allocations dynamically from ProcurementAllocation
+            item_inv_allocs = [
+                a for a in alloc_by_item_id.get(str(item.id), [])
+                if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
+            ]
+            if not item_inv_allocs and (item.code or item.one_one_code):
+                item_skus = {s.strip().upper() for s in [item.code, item.one_one_code] if s}
+                for sku_k in item_skus:
+                    for a in alloc_by_sku.get(sku_k, []):
+                        if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")) and not a.order_item_id:
+                            if a not in item_inv_allocs:
+                                item_inv_allocs.append(a)
+
+            if item_inv_allocs:
+                dynamic_inv_hist = []
+                dyn_inv_qty = 0
+                dyn_inv_val = 0.0
+                dyn_inv_refs = set()
+                dyn_inv_date = None
+                for a in item_inv_allocs:
+                    q_val = float(a.allocated_qty or 0.0)
+                    c_val = float(a.unit_cost or item.unit_retail or 0.0)
+                    dyn_inv_qty += int(round(q_val))
+                    dyn_inv_val += q_val * c_val
+                    if a.source_doc_no:
+                        dyn_inv_refs.add(str(a.source_doc_no))
+                    if a.doc_date:
+                        dyn_inv_date = str(a.doc_date).split("T")[0]
+                    dynamic_inv_hist.append({
+                        "id": a.source_doc_no,
+                        "ref": a.source_doc_no,
+                        "allocation_id": a.id,
+                        "qty": q_val,
+                        "unitPrice": c_val,
+                        "total": round(q_val * c_val, 2),
+                        "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                        "by": a.allocated_by_name or "Staff",
+                        "type": "Invoice"
+                    })
+                inv_hist = dynamic_inv_hist
+                inv_qty = dyn_inv_qty
+                inv_ref = "; ".join(sorted(dyn_inv_refs)) if dyn_inv_refs else ""
+                inv_date = dyn_inv_date
+                inv_val = round(dyn_inv_val, 2)
+            else:
+                inv_hist = []
+                inv_qty = 0
+                inv_ref = ""
+                inv_date = ""
+                inv_val = 0.0
 
             items_by_order[item.order_id].append({
                 "id": item.id,
@@ -714,14 +766,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "poRef": item.po_ref,
                 "poQtyOrdered": item.po_qty_ordered,
                 "poEta": item.po_eta,
-                "invoiceQty": item.invoice_qty,
+                "invoiceQty": inv_qty,
                 "poSupplier": item.po_supplier,
                 "poDate": item.po_date,
                 "receivedQty": item.received_qty,
                 "receivedDate": item.received_date,
-                "invoiceRef": item.invoice_ref,
-                "invoiceDate": item.invoice_date,
-                "invoiceValue": item.invoice_value,
+                "invoiceRef": inv_ref,
+                "invoiceDate": inv_date,
+                "invoiceValue": inv_val,
                 "deliveryQty": item.delivery_qty,
                 "deliveryDate": item.delivery_date,
                 "deliveryStatus": item.delivery_status,
@@ -879,18 +931,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
-            try:
-                raw_payments = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
-            except Exception:
-                raw_payments = []
-
-            # Filter out legacy PALLADIUM entries from raw_payments to prevent duplicates
-            manual_payments = [p for p in raw_payments if isinstance(p, dict) and p.get("source") != "PALLADIUM" and not p.get("is_palladium")]
-
-            # Combine manual payments with live OrderPaymentAllocations
+            # Payments are strictly dynamic from authentic Palladium ERP allocations (manual entries deprecated)
             order_pay_allocs = pay_alloc_by_order_id.get(str(order.po_number), []) + pay_alloc_by_order_id.get(str(order.id), [])
             seen_alloc_ids = set()
-            payments_parsed = list(manual_payments)
+            payments_parsed = []
             for pa in order_pay_allocs:
                 if pa.id not in seen_alloc_ids:
                     seen_alloc_ids.add(pa.id)
@@ -908,8 +952,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         "allocated_by": pa.allocated_by
                     })
 
-            calculated_paid = sum(float(p.get("amount", 0) or 0) for p in payments_parsed)
-            effective_paid = max(float(order.paid or 0.0), calculated_paid) if calculated_paid > 0 else float(order.paid or 0.0)
+            effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
             effective_outstanding = max(0.0, round(float(order.value or 0.0) - effective_paid, 2))
 
             order_dict = {
