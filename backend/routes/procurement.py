@@ -15,6 +15,40 @@ from models.orm_models import (
     OrderItem, 
     Project
 )
+import re
+
+def normalize_sku(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+
+def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
+    if not target_sku or not cand_items:
+        return None
+    clean_sku = str(target_sku).strip().upper()
+    norm_sku = normalize_sku(target_sku)
+    
+    # Tier 1: Exact code or one_one_code match
+    for it in cand_items:
+        if (it.code and it.code.strip().upper() == clean_sku) or \
+           (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
+            return it
+
+    # Tier 2: Normalized alphanumeric match (ignores dots, dashes, slashes, spaces)
+    if norm_sku:
+        for it in cand_items:
+            if (it.code and normalize_sku(it.code) == norm_sku) or \
+               (it.one_one_code and normalize_sku(it.one_one_code) == norm_sku):
+                return it
+
+    # Tier 3: Substring / description match
+    for it in cand_items:
+        if it.description and clean_sku in it.description.upper():
+            return it
+        if it.description and norm_sku and norm_sku in normalize_sku(it.description):
+            return it
+
+    return None
 
 logger = logging.getLogger("procurement_routes")
 logger.setLevel(logging.INFO)
@@ -782,7 +816,6 @@ def allocate_procurement_item(
         real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
 
         # 2. Auto-match OrderItem
-        clean_sku = sku.strip().upper()
         matched_item = None
         if order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
@@ -793,30 +826,18 @@ def allocate_procurement_item(
                     OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
                 )
             ).all()
-            for it in proj_items:
-                if (it.code and it.code.strip().upper() == clean_sku) or \
-                   (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
-                   (it.description and clean_sku in it.description.upper()):
-                    matched_item = it
-                    break
+            matched_item = find_best_item_match(proj_items, sku)
 
         # Fallback cross-project SKU match if target project has no matching items
         if not matched_item:
-            cand_items = db.query(OrderItem).filter(
-                or_(
-                    OrderItem.code.ilike(f"%{clean_sku}%"),
-                    OrderItem.one_one_code.ilike(f"%{clean_sku}%")
-                )
-            ).all()
-            if cand_items:
-                matched_item = cand_items[0]
-                # Update project to the actual project containing this item
-                if matched_item.order_id:
-                    p_slug = str(matched_item.order_id).split("--")[0]
-                    found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                    if found_proj:
-                        real_proj_id = found_proj.id
-                        real_proj_name = found_proj.name
+            cand_items = db.query(OrderItem).all()
+            matched_item = find_best_item_match(cand_items, sku)
+            if matched_item and matched_item.order_id:
+                p_slug = str(matched_item.order_id).split("--")[0]
+                found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
+                if found_proj:
+                    real_proj_id = found_proj.id
+                    real_proj_name = found_proj.name
 
         # Resolve order DB ID safely without crashing on string PO numbers
         resolved_order_db_id = None
@@ -996,31 +1017,20 @@ def batch_allocate_procurement_items(
             if order_item_id:
                 matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
             elif proj_items:
-                for p_item in proj_items:
-                    if (p_item.code and p_item.code.strip().upper() == clean_sku) or \
-                       (p_item.one_one_code and p_item.one_one_code.strip().upper() == clean_sku) or \
-                       (p_item.description and clean_sku in p_item.description.upper()):
-                        matched_item = p_item
-                        break
+                matched_item = find_best_item_match(proj_items, sku)
 
             # Fallback cross-project match if not found in selected project
             item_proj_id = real_proj_id
             item_proj_name = real_proj_name
             if not matched_item:
-                cand_items = db.query(OrderItem).filter(
-                    or_(
-                        OrderItem.code.ilike(f"%{clean_sku}%"),
-                        OrderItem.one_one_code.ilike(f"%{clean_sku}%")
-                    )
-                ).all()
-                if cand_items:
-                    matched_item = cand_items[0]
-                    if matched_item.order_id:
-                        p_slug = str(matched_item.order_id).split("--")[0]
-                        found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                        if found_proj:
-                            item_proj_id = found_proj.id
-                            item_proj_name = found_proj.name
+                all_items = db.query(OrderItem).all()
+                matched_item = find_best_item_match(all_items, sku)
+                if matched_item and matched_item.order_id:
+                    p_slug = str(matched_item.order_id).split("--")[0]
+                    found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
+                    if found_proj:
+                        item_proj_id = found_proj.id
+                        item_proj_name = found_proj.name
 
             # Resolve order DB ID safely without crashing on string PO numbers
             resolved_order_db_id = None

@@ -14,6 +14,40 @@ from models.orm_models import (
     OrderItem
 )
 from services.palladium_sync import sync_palladium_sales_invoices
+import re
+
+def normalize_sku(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+
+def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
+    if not target_sku or not cand_items:
+        return None
+    clean_sku = str(target_sku).strip().upper()
+    norm_sku = normalize_sku(target_sku)
+    
+    # Tier 1: Exact code or one_one_code match
+    for it in cand_items:
+        if (it.code and it.code.strip().upper() == clean_sku) or \
+           (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
+            return it
+
+    # Tier 2: Normalized alphanumeric match (ignores dots, dashes, slashes, spaces)
+    if norm_sku:
+        for it in cand_items:
+            if (it.code and normalize_sku(it.code) == norm_sku) or \
+               (it.one_one_code and normalize_sku(it.one_one_code) == norm_sku):
+                return it
+
+    # Tier 3: Substring / description match
+    for it in cand_items:
+        if it.description and clean_sku in it.description.upper():
+            return it
+        if it.description and norm_sku and norm_sku in normalize_sku(it.description):
+            return it
+
+    return None
 
 logger = logging.getLogger(__name__)
 
@@ -574,19 +608,22 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         resolved_order_id = ord_obj.id if ord_obj else None
 
         # Resolve matching OrderItem
-        clean_sku = sku.strip().upper()
         matched_item = direct_item
         if not matched_item and order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
 
         if not matched_item and ord_obj:
             order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
-            for it in order_items:
-                if (it.code and it.code.strip().upper() == clean_sku) or \
-                   (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
-                   (it.description and clean_sku in it.description.upper()):
-                    matched_item = it
-                    break
+            matched_item = find_best_item_match(order_items, sku)
+
+        if not matched_item and real_proj_id:
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.ilike(f"{proj_obj.project_key}%") if proj_obj else False,
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                )
+            ).all()
+            matched_item = find_best_item_match(proj_items, sku)
 
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
@@ -677,17 +714,15 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             if not sku or allocated_qty <= 0:
                 continue
 
-            clean_sku = sku.strip().upper()
             matched_item = None
             if order_item_id:
                 matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
             elif proj_items:
-                for p_item in proj_items:
-                    if (p_item.code and p_item.code.strip().upper() == clean_sku) or \
-                       (p_item.one_one_code and p_item.one_one_code.strip().upper() == clean_sku) or \
-                       (p_item.description and clean_sku in p_item.description.upper()):
-                        matched_item = p_item
-                        break
+                matched_item = find_best_item_match(proj_items, sku)
+
+            if not matched_item:
+                all_items = db.query(OrderItem).all()
+                matched_item = find_best_item_match(all_items, sku)
 
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
