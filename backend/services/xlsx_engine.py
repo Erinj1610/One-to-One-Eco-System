@@ -994,11 +994,22 @@ def merge_xlsx_template(template_path: str, tokens: dict, output_pdf_path: str =
 
     if not has_discount:
         for r in range(ws.max_row, 0, -1):
+            is_disc_r = False
             cell_a = ws.cell(row=r, column=1)
             if type(cell_a).__name__ != 'MergedCell':
                 val_a = str(cell_a.value or '').strip().upper()
                 if val_a in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
-                    ws.delete_rows(r, 1)
+                    is_disc_r = True
+            if not is_disc_r:
+                for c in range(1, ws.max_column + 1):
+                    cell = ws.cell(row=r, column=c)
+                    if type(cell).__name__ != 'MergedCell':
+                        val = str(cell.value or '').strip().upper()
+                        if '{{DISCOUNT' in val or '{?DISCOUNT' in val or 'DISCOUNT :' in val or 'DISCOUNT:' in val or 'DISCOUNT (' in val:
+                            is_disc_r = True
+                            break
+            if is_disc_r:
+                ws.delete_rows(r, 1)
 
     # 3. Third Pass: Clear Column A text (control markers)
     has_column_a_control_tags = False

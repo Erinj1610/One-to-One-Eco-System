@@ -820,14 +820,29 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             d_val_str = str(tokens.get('DISCOUNT', '0')).replace('R', '').replace(',', '').strip()
             has_discount = safe_float(d_val_str) > 0
 
-        # Track conditional [DISCOUNT_ROW] rows that should be removed if discount is 0%
+        def is_discount_row(norm_dir, cell_objs):
+            if norm_dir in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
+                return True
+            for c in (cell_objs or []):
+                u_val = c.get('userEnteredValue', {})
+                f_val = str(c.get('formattedValue', '') or u_val.get('stringValue', '')).strip()
+                if not f_val:
+                    continue
+                f_upper = f_val.upper()
+                if '{{DISCOUNT' in f_upper or '{?DISCOUNT' in f_upper:
+                    return True
+                if 'DISCOUNT :' in f_upper or 'DISCOUNT:' in f_upper or 'DISCOUNT (' in f_upper:
+                    return True
+            return False
+
+        # Track conditional discount rows that should be removed if discount is 0%
         discount_rows_to_delete = []
         if not has_discount:
-            for orig_r_i, norm_dir, _, _ in top_fixed:
-                if norm_dir == '[DISCOUNT_ROW]':
+            for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
+                if is_discount_row(norm_dir, cell_objs):
                     discount_rows_to_delete.append(orig_r_i)
-            for orig_r_i, norm_dir, _, _ in bottom_fixed:
-                if norm_dir == '[DISCOUNT_ROW]':
+            for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
+                if is_discount_row(norm_dir, cell_objs):
                     discount_rows_to_delete.append(orig_r_i + extra_rows)
 
         grid_requests = []
@@ -930,7 +945,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # STEP 5: Targeted token updates for top_fixed rows ONLY on cells containing tokens
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
-            if not has_discount and norm_dir == '[DISCOUNT_ROW]':
+            if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
@@ -958,7 +973,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # STEP 6: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
-            if not has_discount and norm_dir == '[DISCOUNT_ROW]':
+            if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
             actual_r_idx = orig_r_i + extra_rows
             for c_i, c_obj in enumerate(cell_objs):
@@ -1076,7 +1091,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # Ensure all top fixed header rows maintain their exact original row height
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
-            if not has_discount and norm_dir == '[DISCOUNT_ROW]':
+            if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
             if orig_r_i in exact_row_height_by_index:
                 grid_requests.append({
@@ -1096,7 +1111,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
         # Ensure all bottom fixed rows maintain their exact original row height AFTER copyPaste
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
-            if not has_discount and norm_dir == '[DISCOUNT_ROW]':
+            if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
             actual_r_idx = orig_r_i + extra_rows
             if orig_r_i in exact_row_height_by_index:
