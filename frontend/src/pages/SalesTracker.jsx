@@ -1106,6 +1106,31 @@ export default function SalesTracker() {
     return activeOrderItems.filter(item => item.is_credit || item.isCredit).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * -1;
   }, [orderCreditNotes, activeOrderItems]);
 
+  const erpCreditedItems = useMemo(() => {
+    return orderCreditNotes.flatMap(cn => 
+      (cn.items || []).map(it => {
+        const rawQty = it.qtyAction !== undefined ? it.qtyAction : (it.qty !== undefined ? it.qty : -1);
+        const absQty = Math.abs(Number(rawQty) || 1);
+        const unitPrice = Math.abs(Number(it.unitPrice || it.unitRetail || it.price || 0));
+        const totalVal = it.total !== undefined ? it.total : (Number(it.totalValue || it.amount || 0));
+        const finalTotal = totalVal !== undefined && totalVal !== 0 ? -Math.abs(Number(totalVal)) : -(absQty * unitPrice);
+
+        return {
+          id: `${cn.id}-${it.code || it.sku}`,
+          creditNoteId: cn.id,
+          creditNoteDate: cn.date,
+          qty: -absQty,
+          code: it.code || it.sku,
+          description: it.description || it.code || it.sku,
+          unitRetail: unitPrice,
+          totalRetail: finalTotal,
+          allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Palladium ERP',
+          notes: cn.notes || 'Allocated from Palladium ERP'
+        };
+      })
+    );
+  }, [orderCreditNotes]);
+
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
     setSelectedOrderId(order.id);
@@ -3800,7 +3825,7 @@ export default function SalesTracker() {
                                 }}
                                 onClick={() => setSalesTrackerCreditsOpen(!salesTrackerCreditsOpen)}
                               >
-                                🔴 {salesTrackerCreditsOpen ? 'Hide Credited Items ˄' : `Credited Items (${orderCreditNotes.length || 1}) ˅`}
+                                🔴 {salesTrackerCreditsOpen ? 'Hide Credited Items ˄' : `Credited Items (${erpCreditedItems.length || orderCreditNotes.length || 1}) ˅`}
                               </button>
                             )}
                             {activeTab !== 'order' && (
@@ -4215,11 +4240,11 @@ export default function SalesTracker() {
                         </div>
 
                         {/* COLLAPSIBLE CREDITS SECTION AT THE BOTTOM OF THE LEDGER */}
-                        {groupedItems.some(item => item.is_credit || item.isCredit) && (
+                        {erpCreditedItems.length > 0 && (
                           <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-danger)', paddingTop: '16px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-                                🔴 Credited Items & Returns (Managed in Credits tab)
+                              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                                🔴 Credited Items & Returns (Allocated from Palladium ERP — {erpCreditedItems.length} line item{erpCreditedItems.length === 1 ? '' : 's'})
                               </h4>
                               <button 
                                 type="button" 
@@ -4232,145 +4257,51 @@ export default function SalesTracker() {
                             </div>
                             {salesTrackerCreditsOpen && (
                               <div style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                                <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1350px' : activeTab === 'order' ? '1100px' : activeTab === 'invoicing' ? '1100px' : '1200px' }}>
+                                <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'collapse', width: '100%', minWidth: '900px' }}>
                                   <thead>
-                                    <tr style={{ background: 'rgba(239, 68, 68, 0.05)' }}>
-                                      <th colSpan={8} style={{ background: 'rgba(239, 68, 68, 0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}>CORE FITTING DETAILS</th>
-                                      {activeTab === 'order' && (
-                                        <th colSpan={6} style={{ background: 'rgba(239, 68, 68, 0.05)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}>COSTS & SPEC DETAILS</th>
-                                      )}
-                                      {activeTab === 'purchasing' && (
-                                        <th colSpan={10} style={{ background: 'rgba(239, 68, 68, 0.05)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}>PHASE 1: PROCUREMENT & RECEIVING</th>
-                                      )}
-                                      {activeTab === 'invoicing' && (
-                                        <th colSpan={5} style={{ background: 'rgba(239, 68, 68, 0.05)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}>PHASE 2: INVOICING</th>
-                                      )}
-                                      {activeTab === 'delivery' && (
-                                        <th colSpan={5} style={{ background: 'rgba(239, 68, 68, 0.05)', textAlign: 'center', fontWeight: 700, fontSize: '11px', color: 'var(--text-danger)' }}>PHASE 3: DELIVERY LOGISTICS</th>
-                                      )}
-                                    </tr>
-                                    <tr style={{ background: 'rgba(239, 68, 68, 0.05)', borderBottom: '2px solid var(--border-strong)' }}>
-                                      <th style={{ width: '50px', textAlign: 'center', color: 'var(--text-danger)' }}>Qty</th>
-                                      <th style={{ width: '100px', color: 'var(--text-danger)' }}>1:1 Code</th>
-                                      <th style={{ width: '80px', color: 'var(--text-danger)' }}>Type Code</th>
-                                      <th style={{ width: '130px', color: 'var(--text-danger)' }}>Item Code</th>
-                                      <th style={{ width: '250px', color: 'var(--text-danger)' }}>Description</th>
-                                      <th style={{ width: '90px', textAlign: 'right', color: 'var(--text-danger)' }}>Unit Retail</th>
-                                      <th style={{ width: '100px', textAlign: 'right', color: 'var(--text-danger)' }}>Total Retail</th>
-                                      <th style={{ width: '150px', textAlign: 'center', borderRight: '1px solid var(--border-strong)', color: 'var(--text-danger)' }}>Fulfillment</th>
-                                      
-                                      {activeTab === 'order' && (
-                                        <>
-                                          <th style={{ width: '90px', textAlign: 'right', color: 'var(--text-danger)' }}>Cost</th>
-                                          <th style={{ width: '90px', textAlign: 'right', color: 'var(--text-danger)' }}>Total Cost</th>
-                                          <th style={{ width: '65px', textAlign: 'center', color: 'var(--text-danger)' }}>Margin</th>
-                                          <th style={{ width: '90px', color: 'var(--text-danger)' }}>Brand</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Supplier</th>
-                                          <th style={{ width: '120px', borderRight: '1px solid var(--border-strong)', color: 'var(--text-danger)' }}>Fitting Type</th>
-                                        </>
-                                      )}
-
-                                      {activeTab === 'purchasing' && (
-                                        <>
-                                          <th style={{ width: '155px', color: 'var(--text-danger)' }}>Stock Status</th>
-                                          <th style={{ width: '90px', textAlign: 'center', color: 'var(--text-danger)' }}>Stock on Hand</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>PO Reference</th>
-                                          <th style={{ width: '120px', color: 'var(--text-danger)' }}>Supplier</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Date Ordered</th>
-                                          <th style={{ width: '70px', textAlign: 'center', color: 'var(--text-danger)' }}>Qty Ord</th>
-                                          <th style={{ width: '100px', borderRight: '1px solid var(--border-strong)', color: 'var(--text-danger)' }}>Delivery ETA</th>
-                                          <th style={{ width: '70px', textAlign: 'center', color: 'var(--text-danger)' }}>Qty Rec</th>
-                                          <th style={{ width: '110px', color: 'var(--text-danger)' }}>GRN Reference</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Date Rec</th>
-                                          <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)', color: 'var(--text-danger)' }}>Rec Value</th>
-                                        </>
-                                      )}
-
-                                      {activeTab === 'invoicing' && (
-                                        <>
-                                          <th style={{ width: '70px', textAlign: 'center', color: 'var(--text-danger)' }}>Qty Inv</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Invoice Ref</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Date Inv</th>
-                                          <th style={{ width: '100px', textAlign: 'right', color: 'var(--text-danger)' }}>Inv Value</th>
-                                          <th style={{ width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-strong)', color: 'var(--text-danger)' }}>Outstanding</th>
-                                        </>
-                                      )}
-
-                                      {activeTab === 'delivery' && (
-                                        <>
-                                          <th style={{ width: '70px', textAlign: 'center', color: 'var(--text-danger)' }}>Qty Del</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Date Del</th>
-                                          <th style={{ width: '100px', color: 'var(--text-danger)' }}>Status</th>
-                                          <th style={{ width: '200px', color: 'var(--text-danger)' }}>User Comments</th>
-                                          <th style={{ color: 'var(--text-danger)' }}>Waybill Log</th>
-                                        </>
-                                      )}
+                                    <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239, 68, 68, 0.08)', color: 'var(--text-danger)', fontWeight: 700 }}>
+                                      <th style={{ padding: '8px 12px', width: '70px', textAlign: 'center' }}>Qty</th>
+                                      <th style={{ padding: '8px 12px', width: '140px' }}>Credit Note #</th>
+                                      <th style={{ padding: '8px 12px', width: '110px' }}>Date Issued</th>
+                                      <th style={{ padding: '8px 12px', width: '160px' }}>Item Code</th>
+                                      <th style={{ padding: '8px 12px' }}>Description</th>
+                                      <th style={{ padding: '8px 12px', width: '110px', textAlign: 'right' }}>Unit Retail</th>
+                                      <th style={{ padding: '8px 12px', width: '120px', textAlign: 'right' }}>Total Credited</th>
+                                      <th style={{ padding: '8px 12px', width: '140px' }}>Allocated By</th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {groupedItems.filter(item => item.is_credit || item.isCredit).map((item, index) => {
-                                      const lineMargin = item.unitRetail > 0 ? ((item.unitRetail - item.unitCost) / item.unitRetail) * 100 : 0;
-
-                                      return (
-                                        <tr key={item.id} style={{ background: 'rgba(239, 68, 68, 0.04)', borderBottom: '1px solid var(--border)' }}>
-                                          <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)', padding: '6px 8px' }}>{item.qty}</td>
-                                          <td style={{ padding: '6px 8px' }}>{item.oneOneCode || '—'}</td>
-                                          <td style={{ padding: '6px 8px' }}>{item.type || '—'}</td>
-                                          <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-danger)' }}>{item.code}</td>
-                                          <td style={{ padding: '6px 8px' }}>{item.description}</td>
-                                          <td style={{ textAlign: 'right', padding: '6px 8px' }}>R {item.unitRetail?.toLocaleString() || 0}</td>
-                                          <td style={{ textAlign: 'right', color: 'var(--text-danger)', fontWeight: 'bold', padding: '6px 8px' }}>R {(item.qty * item.unitRetail)?.toLocaleString() || 0}</td>
-                                          <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-strong)', padding: '6px 8px', color: 'var(--text-muted)' }}>—</td>
-
-                                          {activeTab === 'order' && (
-                                            <>
-                                              <td style={{ textAlign: 'right', padding: '6px 8px' }}>R {item.unitCost?.toLocaleString() || 0}</td>
-                                              <td style={{ textAlign: 'right', color: 'var(--text-danger)', fontWeight: 'bold', padding: '6px 8px' }}>R {(item.qty * item.unitCost)?.toLocaleString() || 0}</td>
-                                              <td style={{ textAlign: 'center', fontWeight: 'bold', color: lineMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', padding: '6px 8px' }}>{Math.round(lineMargin)}%</td>
-                                              <td style={{ padding: '6px 8px' }}>{item.brand || '—'}</td>
-                                              <td style={{ padding: '6px 8px' }}>{item.supplier || '—'}</td>
-                                              <td style={{ borderRight: '1px solid var(--border-strong)', padding: '6px 8px' }}>Credit Item</td>
-                                            </>
-                                          )}
-
-                                          {activeTab === 'purchasing' && (
-                                            <>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'center', padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'center', padding: '6px 8px' }}>—</td>
-                                              <td style={{ borderRight: '1px solid var(--border-strong)', padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'center', padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'right', borderRight: '1px solid var(--border-strong)', padding: '6px 8px' }}>—</td>
-                                            </>
-                                          )}
-
-                                          {activeTab === 'invoicing' && (
-                                            <>
-                                              <td style={{ textAlign: 'center', padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'right', padding: '6px 8px' }}>—</td>
-                                              <td style={{ textAlign: 'right', borderRight: '1px solid var(--border-strong)', padding: '6px 8px' }}>—</td>
-                                            </>
-                                          )}
-
-                                          {activeTab === 'delivery' && (
-                                            <>
-                                              <td style={{ textAlign: 'center', padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                              <td style={{ padding: '6px 8px' }}>—</td>
-                                            </>
-                                          )}
-                                        </tr>
-                                      );
-                                    })}
+                                    {erpCreditedItems.map((item, index) => (
+                                      <tr key={item.id || index} style={{ background: 'rgba(239, 68, 68, 0.03)', borderBottom: '1px solid var(--border)' }}>
+                                        <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--text-danger)', padding: '8px 12px' }}>
+                                          {item.qty}
+                                        </td>
+                                        <td 
+                                          style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                          onClick={() => navigate('/invoices')}
+                                        >
+                                          🔴 {item.creditNoteId}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                          {item.creditNoteDate || '—'}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                          {item.code}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>
+                                          {item.description}
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '8px 12px', fontFamily: 'monospace' }}>
+                                          R {item.unitRetail?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td style={{ textAlign: 'right', color: 'var(--text-danger)', fontWeight: 'bold', padding: '8px 12px', fontFamily: 'monospace' }}>
+                                          -R {Math.abs(item.totalRetail || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                          {item.allocatedBy || 'Palladium ERP'}
+                                        </td>
+                                      </tr>
+                                    ))}
                                   </tbody>
                                 </table>
                               </div>
