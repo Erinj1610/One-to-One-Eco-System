@@ -328,17 +328,18 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
             )
             db.add(db_order)
             
-            # 4. Create clean OrderItem rows in batch
+            # 4. Create clean OrderItem rows in batch (excluding obsolete manual credits, as all credits come from Palladium ERP)
             for item in order.get("itemsList", []):
                 raw_item_qty = safe_int(item.get("qty", 0))
-                is_credit_val = bool(item.get("isCredit") or item.get("is_credit") or raw_item_qty < 0 or item.get("type") in ("Credit", "Credit Note", "Custom Credit"))
-                db_item_qty = -abs(raw_item_qty) if is_credit_val else raw_item_qty
+                is_credit_val = bool(item.get("isCredit") or item.get("is_credit") or raw_item_qty < 0 or item.get("type") in ("Credit", "Credit Note", "Custom Credit") or str(item.get("id", "")).startswith("C-"))
+                if is_credit_val:
+                    continue
 
                 db_item = OrderItem(
                     id=item.get("id"),
                     order_id=order_id,
-                    qty=db_item_qty,
-                    type="Credit" if is_credit_val else item.get("type"),
+                    qty=raw_item_qty,
+                    type=item.get("type"),
                     one_one_code=item.get("oneOneCode"),
                     code=item.get("code"),
                     description=item.get("description"),
@@ -372,8 +373,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                     receiving_history=item.get("receivingHistory", []),
                     invoice_history=item.get("invoiceHistory", []),
                     stock_on_hand=safe_int(item.get("stockOnHand", 0)),
-                    is_credit=is_credit_val,
-                    item_type="Credit" if is_credit_val else item.get("itemType", "Hardware")
+                    is_credit=False,
+                    item_type=item.get("itemType", "Hardware")
                 )
                 db.add(db_item)
                 
@@ -654,10 +655,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if a.project_id:
                 alloc_by_proj_id.setdefault(a.project_id, []).append(a)
 
-        # Group items by order ID
+        # Group items by order ID (excluding obsolete manual credits)
         items_by_order = {}
         for item in order_items:
             if not item.order_id:
+                continue
+            if item.is_credit or (item.id and str(item.id).startswith("C-")) or (item.qty is not None and item.qty < 0):
                 continue
             if item.order_id not in items_by_order:
                 items_by_order[item.order_id] = []
