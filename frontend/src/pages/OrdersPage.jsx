@@ -147,7 +147,8 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
           const items = Array.isArray(data) ? data : (data.items || []);
           const mapped = items.map(p => ({
             code: p.sku,
-            description: p.name || '',
+            description: p.client_description || p.name || '',
+            client_description: p.client_description || '',
             brand: p.brand || '',
             dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
             unitCost: p.cost_price || 0,
@@ -724,7 +725,9 @@ export default function OrdersPage() {
       code: item.code || '',
       oneOneCode: item.oneOneCode || item.one_one_code || '',
       type: item.type || '',
-      description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || ''),
+      description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || item.client_description || item.clientDescription || ''),
+      clientDescription: item.isSpacer || item.type === 'SPACER' ? '' : (item.clientDescription || item.client_description || item.description || ''),
+      client_description: item.isSpacer || item.type === 'SPACER' ? '' : (item.client_description || item.clientDescription || item.description || ''),
       qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
       brand: item.brand || '',
       retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
