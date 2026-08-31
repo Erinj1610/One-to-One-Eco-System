@@ -35,7 +35,8 @@ import {
   ClipboardList,
   Calendar,
   Clock,
-  Play
+  Play,
+  CreditCard
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -1251,7 +1252,26 @@ export default function SalesTracker() {
     setProgressPaymentDateSent(toInputDate(order.progressPaymentDateSent || ''));
     setDateCompleted(toInputDate(order.dateCompleted || ''));
     setPaymentResponse(order.paymentResponse || '');
-    setOrderPayments(order.payments || []);
+    const rawPayments = order.payments;
+    let parsedPayments = [];
+    if (typeof rawPayments === 'string') {
+      try { parsedPayments = JSON.parse(rawPayments); } catch (_) { parsedPayments = []; }
+    } else if (Array.isArray(rawPayments)) {
+      parsedPayments = rawPayments;
+    }
+    setOrderPayments(parsedPayments);
+
+    const orderIdToFetch = order.id || order.poNumber || order.po_number;
+    if (orderIdToFetch) {
+      fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.payments) {
+            setOrderPayments(data.payments);
+          }
+        })
+        .catch(() => {});
+    }
     setOrderVatRate(order.vatRate !== undefined ? order.vatRate : 15);
     const tempActiveItems = order.itemsList || [];
     const tempDiscount = order.discount || 0;
@@ -5231,31 +5251,35 @@ export default function SalesTracker() {
               <table className="table" style={{ width: '100%', fontSize: '12.5px', marginBottom: '15px' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-primary)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Receipt #</th>
                     <th style={{ textAlign: 'left', padding: '8px' }}>Date</th>
                     <th style={{ textAlign: 'left', padding: '8px' }}>Payment Type</th>
                     <th style={{ textAlign: 'left', padding: '8px' }}>Reference / Notes</th>
-                    <th style={{ textAlign: 'right', padding: '8px', width: '110px' }}>Amount</th>
+                    <th style={{ textAlign: 'right', padding: '8px', width: '120px' }}>Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orderPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        No payments have been logged yet for this order.
+                      <td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        No payments allocated yet for this order.
                       </td>
                     </tr>
                   ) : (
                     orderPayments.map((p, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '8px' }}>{p.date}</td>
+                      <tr key={p.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px', fontWeight: 700, fontFamily: 'monospace', color: '#3b82f6' }}>
+                          {p.receipt_no || p.receiptNo || (p.reference && p.reference.startsWith('RC-') ? p.reference : `RC-00000${idx + 1}`)}
+                        </td>
+                        <td style={{ padding: '8px' }}>{p.date || '—'}</td>
                         <td style={{ padding: '8px' }}>
                           <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(96, 165, 250, 0.15)', color: 'var(--text-info)' }}>
                             {p.type || 'Deposit Payment'}
                           </span>
                         </td>
-                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.notes || p.reference || '—'}</td>
                         <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: 'var(--text-success)', fontFamily: 'monospace' }}>
-                          R {Math.round(p.amount || 0).toLocaleString()}
+                          R {(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))
@@ -5264,27 +5288,22 @@ export default function SalesTracker() {
               </table>
               
               <div style={{ background: 'var(--bg-primary)', borderRadius: '6px', padding: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600 }}>
-                <span>Total Paid Summary:</span>
-                <span style={{ color: 'var(--text-success)', fontFamily: 'monospace' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                <span>Total Paid to Date:</span>
+                <span style={{ color: 'var(--text-success)', fontFamily: 'monospace' }}>R {(Number(orderPaidAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 
             <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button 
                 type="button" 
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-outline"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => {
                   setShowPaymentViewer(false);
-                  navigate('/orders', {
-                    state: {
-                      openOrderId: selectedOrderId,
-                      initialSubTab: 'payments',
-                      projectKey: selectedProjectKey
-                    }
-                  });
+                  navigate('/payments');
                 }}
               >
-                ➕ Add / Edit Payments
+                <CreditCard size={13} /> Open Payments & Allocations Hub
               </button>
               <button type="button" className="btn btn-sm" onClick={() => setShowPaymentViewer(false)}>Close</button>
             </div>

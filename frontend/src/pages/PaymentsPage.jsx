@@ -11,7 +11,7 @@ import {
 export default function PaymentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, getModuleName } = useStore();
+  const { projects, getModuleName, refreshProjects } = useStore();
 
   // Toast notifications
   const [toastMessage, setToastMessage] = useState(null);
@@ -284,6 +284,7 @@ export default function PaymentsPage() {
         await fetchSummary();
         await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
         await fetchAllocations();
+        if (refreshProjects) await refreshProjects();
         if (selectedDocument) {
           setSelectedDocument(null);
         }
@@ -310,6 +311,7 @@ export default function PaymentsPage() {
         await fetchSummary();
         await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
         await fetchAllocations();
+        if (refreshProjects) await refreshProjects();
       } else {
         alert(`Notice: ${data.detail || 'Failed to unallocate.'}`);
       }

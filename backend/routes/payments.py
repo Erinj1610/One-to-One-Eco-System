@@ -508,14 +508,22 @@ def delete_payment_allocation(allocation_id: int, db: Session = Depends(get_db))
 
 @public_router.get("/allocations")
 @router.get("/allocations")
-def get_all_allocations(db: Session = Depends(get_db)):
+def get_all_allocations(order_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """
-    Returns audit trail of all active payment allocations.
+    Returns audit trail of all active payment allocations, optionally filtered by order_id.
     """
     try:
-        allocs = db.query(OrderPaymentAllocation).filter(
-            OrderPaymentAllocation.status == "Active"
-        ).order_by(desc(OrderPaymentAllocation.allocated_at), desc(OrderPaymentAllocation.id)).all()
+        query = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active")
+        if order_id and order_id.strip():
+            oid = order_id.strip()
+            query = query.filter(
+                or_(
+                    OrderPaymentAllocation.order_id == oid,
+                    OrderPaymentAllocation.order_id.ilike(f"%{oid}%")
+                )
+            )
+
+        allocs = query.order_by(desc(OrderPaymentAllocation.allocated_at), desc(OrderPaymentAllocation.id)).all()
 
         orders = db.query(Order).all()
         order_info_map = {str(o.po_number): o for o in orders}
@@ -549,3 +557,56 @@ def get_all_allocations(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching allocations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.get("/order/{order_id}")
+@router.get("/order/{order_id}")
+def get_order_payments_breakdown(order_id: str, db: Session = Depends(get_db)):
+    """
+    Returns the real-time calculated payments and balances for a specific order.
+    """
+    try:
+        order = db.query(Order).filter(
+            or_(Order.po_number == str(order_id), Order.id == int(order_id) if str(order_id).isdigit() else False)
+        ).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        allocs = db.query(OrderPaymentAllocation).filter(
+            OrderPaymentAllocation.order_id.in_([order.po_number, str(order.id)]),
+            OrderPaymentAllocation.status == "Active"
+        ).order_by(desc(OrderPaymentAllocation.allocated_at), desc(OrderPaymentAllocation.id)).all()
+
+        allocated_payments = []
+        for a in allocs:
+            allocated_payments.append({
+                "id": f"pal-alloc-{a.id}",
+                "allocation_id": a.id,
+                "palladium_payment_id": a.palladium_payment_id,
+                "receipt_no": a.receipt_no,
+                "amount": float(a.allocated_amount or 0.0),
+                "type": a.payment_type or "Deposit Payment",
+                "date": a.allocated_at.strftime("%Y-%m-%d") if a.allocated_at else "",
+                "notes": a.notes or f"Allocated from Palladium Receipt {a.receipt_no}",
+                "source": "PALLADIUM",
+                "is_palladium": True,
+                "allocated_by": a.allocated_by
+            })
+
+        total_paid = sum(p["amount"] for p in allocated_payments)
+        total_value = float(order.value or 0.0)
+        outstanding = max(0.0, round(total_value - total_paid, 2))
+
+        return {
+            "order_id": order.po_number or str(order.id),
+            "total_value": total_value,
+            "paid": total_paid,
+            "outstanding": outstanding,
+            "payments": allocated_payments
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching order payments breakdown: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
