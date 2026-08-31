@@ -344,7 +344,7 @@ def get_projects_orders_for_allocation(db: Session = Depends(get_db)):
     Returns list of Projects and their Orders to populate the allocation dropdown.
     """
     try:
-        projects = db.query(Project).order_by(desc(Project.created_at)).all()
+        projects = db.query(Project).order_by(desc(Project.id)).all()
         orders = db.query(Order).all()
 
         orders_by_proj_id = {}
