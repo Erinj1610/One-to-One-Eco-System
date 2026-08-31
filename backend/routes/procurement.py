@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, desc
 
@@ -11,6 +11,7 @@ from models.orm_models import (
     PalladiumPOLine, 
     PalladiumGRNLine, 
     ProcurementAllocation, 
+    AllocationIssue,
     Order, 
     OrderItem, 
     Project
@@ -148,10 +149,20 @@ def get_procurement_summary(db: Session = Depends(get_db)):
             else:
                 partially_allocated_docs += 1
 
+        open_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module.in_(["PO", "GRN"]),
+            AllocationIssue.status == "Open"
+        ).all()
+        po_issues_cnt = sum(1 for i in open_issues if i.module == "PO")
+        grn_issues_cnt = sum(1 for i in open_issues if i.module == "GRN")
+
         return {
             "unallocated_count": unallocated_docs,
             "partially_allocated_count": partially_allocated_docs,
             "fully_allocated_count": fully_allocated_docs,
+            "issues_count": len(open_issues),
+            "po_issues_count": po_issues_cnt,
+            "grn_issues_count": grn_issues_cnt,
             "total_documents": len(doc_stats),
             "total_lines": len(po_lines) + len(grn_lines),
             "total_unallocated_units": round(total_unallocated_units, 2)
@@ -199,6 +210,20 @@ def get_procurement_documents(
                 "allocated_at": ar.allocated_at.isoformat() if ar.allocated_at else None,
                 "notes": ar.notes
             })
+
+        # Load open issues
+        open_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module.in_(["PO", "GRN"]),
+            AllocationIssue.status == "Open"
+        ).all()
+        issue_by_doc = {}
+        issue_by_line = {}
+        for iss in open_issues:
+            issue_by_doc[f"{iss.module}_{iss.document_no}"] = iss
+            if iss.line_id:
+                issue_by_line[f"{iss.module}_{iss.document_no}_{iss.line_id}"] = iss
+            if iss.sku:
+                issue_by_line[f"{iss.module}_{iss.document_no}_{iss.sku}"] = iss
 
         # 1. Fetch PO lines
         po_rows = []
@@ -248,8 +273,17 @@ def get_procurement_documents(
                 target_qty = float(r.order_qty or 0.0)
                 rem_qty = max(0.0, target_qty - total_allocated)
                 l_status = "NEEDS_ALLOCATION" if total_allocated <= 0 else ("PARTIAL" if total_allocated < target_qty else "FULLY_ALLOCATED")
-                if status != "ALL" and l_status != status.upper():
+                
+                iss_l = issue_by_line.get(f"PO_{r.document_no}_{r.id}") or issue_by_line.get(f"PO_{r.document_no}_{r.item_code}") or issue_by_doc.get(f"PO_{r.document_no}")
+                is_l_issue = bool(iss_l)
+
+                if status.upper() in ["ISSUES", "NOT_FOUND"] and not is_l_issue:
                     continue
+                elif status.upper() == "NEEDS_ALLOCATION" and (l_status != "NEEDS_ALLOCATION" or is_l_issue):
+                    continue
+                elif status != "ALL" and status.upper() not in ["ISSUES", "NOT_FOUND", "NEEDS_ALLOCATION"] and l_status != status.upper():
+                    continue
+
                 raw_lines.append({
                     "id": f"PO_{r.id}",
                     "line_id": r.id,
@@ -267,6 +301,11 @@ def get_procurement_documents(
                     "allocated_qty": round(total_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "is_flagged_issue": is_l_issue,
+                    "issue_reason": iss_l.reason if iss_l else None,
+                    "issue_notes": iss_l.notes if iss_l else None,
+                    "issue_flagged_by": iss_l.flagged_by if iss_l else None,
+                    "issue_flagged_at": iss_l.flagged_at.isoformat() if iss_l and iss_l.flagged_at else None,
                     "allocations": active_allocs
                 })
 
@@ -277,8 +316,17 @@ def get_procurement_documents(
                 target_qty = float(r.received_qty or 0.0)
                 rem_qty = max(0.0, target_qty - total_allocated)
                 l_status = "NEEDS_ALLOCATION" if total_allocated <= 0 else ("PARTIAL" if total_allocated < target_qty else "FULLY_ALLOCATED")
-                if status != "ALL" and l_status != status.upper():
+                
+                iss_l = issue_by_line.get(f"GRN_{r.document_no}_{r.id}") or issue_by_line.get(f"GRN_{r.document_no}_{r.item_code}") or issue_by_doc.get(f"GRN_{r.document_no}")
+                is_l_issue = bool(iss_l)
+
+                if status.upper() in ["ISSUES", "NOT_FOUND"] and not is_l_issue:
                     continue
+                elif status.upper() == "NEEDS_ALLOCATION" and (l_status != "NEEDS_ALLOCATION" or is_l_issue):
+                    continue
+                elif status != "ALL" and status.upper() not in ["ISSUES", "NOT_FOUND", "NEEDS_ALLOCATION"] and l_status != status.upper():
+                    continue
+
                 raw_lines.append({
                     "id": f"GRN_{r.id}",
                     "line_id": r.id,
@@ -296,6 +344,11 @@ def get_procurement_documents(
                     "allocated_qty": round(total_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "is_flagged_issue": is_l_issue,
+                    "issue_reason": iss_l.reason if iss_l else None,
+                    "issue_notes": iss_l.notes if iss_l else None,
+                    "issue_flagged_by": iss_l.flagged_by if iss_l else None,
+                    "issue_flagged_at": iss_l.flagged_at.isoformat() if iss_l and iss_l.flagged_at else None,
                     "allocations": active_allocs
                 })
 
@@ -353,6 +406,8 @@ def get_procurement_documents(
                 l_status = "FULLY_ALLOCATED"
                 doc_dict[dkey]["allocated_lines_count"] += 1
 
+            iss_l = issue_by_line.get(f"PO_{r.document_no}_{r.id}") or issue_by_line.get(f"PO_{r.document_no}_{r.item_code}") or issue_by_doc.get(f"PO_{r.document_no}")
+
             line_item = {
                 "id": f"PO_{r.id}",
                 "line_id": r.id,
@@ -375,6 +430,11 @@ def get_procurement_documents(
                 "allocated_qty": round(line_allocated, 2),
                 "unallocated_qty": round(rem_qty, 2),
                 "allocation_status": l_status,
+                "is_flagged_issue": bool(iss_l),
+                "issue_reason": iss_l.reason if iss_l else None,
+                "issue_notes": iss_l.notes if iss_l else None,
+                "issue_flagged_by": iss_l.flagged_by if iss_l else None,
+                "issue_flagged_at": iss_l.flagged_at.isoformat() if iss_l and iss_l.flagged_at else None,
                 "allocations": active_allocs
             }
 
@@ -426,6 +486,8 @@ def get_procurement_documents(
                 l_status = "FULLY_ALLOCATED"
                 doc_dict[dkey]["allocated_lines_count"] += 1
 
+            iss_l = issue_by_line.get(f"GRN_{r.document_no}_{r.id}") or issue_by_line.get(f"GRN_{r.document_no}_{r.item_code}") or issue_by_doc.get(f"GRN_{r.document_no}")
+
             line_item = {
                 "id": f"GRN_{r.id}",
                 "line_id": r.id,
@@ -448,6 +510,11 @@ def get_procurement_documents(
                 "allocated_qty": round(line_allocated, 2),
                 "unallocated_qty": round(rem_qty, 2),
                 "allocation_status": l_status,
+                "is_flagged_issue": bool(iss_l),
+                "issue_reason": iss_l.reason if iss_l else None,
+                "issue_notes": iss_l.notes if iss_l else None,
+                "issue_flagged_by": iss_l.flagged_by if iss_l else None,
+                "issue_flagged_at": iss_l.flagged_at.isoformat() if iss_l and iss_l.flagged_at else None,
                 "allocations": active_allocs
             }
 
@@ -475,7 +542,19 @@ def get_procurement_documents(
 
             d["allocation_status"] = doc_status
 
-            if status != "ALL" and doc_status != status.upper():
+            iss_d = issue_by_doc.get(d["id"])
+            is_d_issue = bool(iss_d) or any(l.get("is_flagged_issue") for l in d["lines"])
+            d["is_flagged_issue"] = is_d_issue
+            d["issue_reason"] = iss_d.reason if iss_d else (next((l["issue_reason"] for l in d["lines"] if l.get("issue_reason")), None))
+            d["issue_notes"] = iss_d.notes if iss_d else (next((l["issue_notes"] for l in d["lines"] if l.get("issue_notes")), None))
+            d["issue_flagged_by"] = iss_d.flagged_by if iss_d else (next((l["issue_flagged_by"] for l in d["lines"] if l.get("issue_flagged_by")), None))
+            d["issue_flagged_at"] = iss_d.flagged_at.isoformat() if iss_d and iss_d.flagged_at else (next((l["issue_flagged_at"] for l in d["lines"] if l.get("issue_flagged_at")), None))
+
+            if status.upper() in ["ISSUES", "NOT_FOUND"] and not is_d_issue:
+                continue
+            elif status.upper() == "NEEDS_ALLOCATION" and (doc_status != "NEEDS_ALLOCATION" or is_d_issue):
+                continue
+            elif status != "ALL" and status.upper() not in ["ISSUES", "NOT_FOUND", "NEEDS_ALLOCATION"] and doc_status != status.upper():
                 continue
 
             doc_list.append(d)
@@ -1220,4 +1299,97 @@ def unallocate_procurement_item(
     except Exception as e:
         db.rollback()
         logger.error(f"Error unallocating item #{payload.get('allocation_id')}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/flag-issue")
+@router.post("/flag-issue")
+def flag_procurement_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Flags a PO or GRN document or line item with an Issue / Not Found status.
+    """
+    try:
+        module = str(payload.get("module") or "PO").strip().upper()
+        document_no = str(payload.get("document_no") or "").strip()
+        line_id = payload.get("line_id")
+        sku = payload.get("sku")
+        reason = str(payload.get("reason") or "Order Not Found").strip()
+        notes = str(payload.get("notes") or "").strip()
+        flagged_by = str(payload.get("flagged_by") or "Staff").strip()
+
+        if not document_no:
+            raise HTTPException(status_code=400, detail="Missing document_no")
+
+        query = db.query(AllocationIssue).filter(
+            AllocationIssue.module == module,
+            AllocationIssue.document_no == document_no,
+            AllocationIssue.status == "Open"
+        )
+        if line_id:
+            query = query.filter(AllocationIssue.line_id == int(line_id))
+        elif sku:
+            query = query.filter(AllocationIssue.sku == str(sku))
+
+        issue = query.first()
+        if not issue:
+            issue = AllocationIssue(
+                module=module,
+                document_no=document_no,
+                line_id=int(line_id) if line_id else None,
+                sku=str(sku) if sku else None,
+                reason=reason,
+                notes=notes,
+                flagged_by=flagged_by,
+                flagged_at=datetime.now(timezone.utc),
+                status="Open"
+            )
+            db.add(issue)
+        else:
+            issue.reason = reason
+            issue.notes = notes
+            issue.flagged_by = flagged_by
+            issue.flagged_at = datetime.now(timezone.utc)
+
+        db.commit()
+        return {"status": "success", "message": f"{module} {document_no} flagged as '{reason}'"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error flagging procurement issue: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/resolve-issue")
+@router.post("/resolve-issue")
+def resolve_procurement_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Resolves an Issue / Not Found flag on a PO or GRN document or line item.
+    """
+    try:
+        module = str(payload.get("module") or "PO").strip().upper()
+        document_no = str(payload.get("document_no") or "").strip()
+        resolved_by = str(payload.get("resolved_by") or "Staff").strip()
+
+        if not document_no:
+            raise HTTPException(status_code=400, detail="Missing document_no")
+
+        issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == module,
+            AllocationIssue.document_no == document_no,
+            AllocationIssue.status == "Open"
+        ).all()
+
+        for iss in issues:
+            iss.status = "Resolved"
+            iss.resolved_at = datetime.now(timezone.utc)
+            iss.resolved_by = resolved_by
+
+        db.commit()
+        return {"status": "success", "message": f"Issues on {module} {document_no} resolved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error resolving procurement issue: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

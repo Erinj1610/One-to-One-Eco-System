@@ -73,6 +73,13 @@ export default function PurchasingPage() {
   const [batchNotes, setBatchNotes] = useState('');
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
+  // Issue Flagging State
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueTargetItem, setIssueTargetItem] = useState(null);
+  const [issueReason, setIssueReason] = useState('Order Not Found');
+  const [issueNotes, setIssueNotes] = useState('');
+  const [isSavingIssue, setIsSavingIssue] = useState(false);
+
   // -------------------------------------------------------------
   // FETCH SUMMARY & DOCUMENTS
   // -------------------------------------------------------------
@@ -107,6 +114,8 @@ export default function PurchasingPage() {
         statusParam = 'PARTIAL';
       } else if (newTab === 'FULLY_ALLOCATED') {
         statusParam = 'FULLY_ALLOCATED';
+      } else if (newTab === 'ISSUES') {
+        statusParam = 'ISSUES';
       }
 
       const params = new URLSearchParams({
@@ -499,6 +508,78 @@ export default function PurchasingPage() {
       }
     } catch (e) {
       alert(`Error: ${e.message}`);
+    }
+  };
+
+  const handleOpenIssueModal = (docOrLine) => {
+    setIssueTargetItem(docOrLine);
+    setIssueReason(docOrLine.issue_reason || 'Order Not Found');
+    setIssueNotes(docOrLine.issue_notes || '');
+    setIssueModalOpen(true);
+  };
+
+  const handleSubmitIssue = async (e) => {
+    if (e) e.preventDefault();
+    if (!issueTargetItem) return;
+
+    setIsSavingIssue(true);
+    try {
+      const moduleType = (issueTargetItem.document_type || issueTargetItem.doc_type || (issueTargetItem.document_no?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+      const res = await fetch(`${API_BASE}/api/procurement/flag-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleType,
+          document_no: issueTargetItem.document_no,
+          line_id: issueTargetItem.line_id || issueTargetItem.id || null,
+          sku: issueTargetItem.item_code || issueTargetItem.sku || null,
+          reason: issueReason,
+          notes: issueNotes,
+          flagged_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`⚠️ ${issueTargetItem.document_no} flagged as "${issueReason}"`);
+        setIssueModalOpen(false);
+        if (allocModalOpen) setAllocModalOpen(false);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not flag issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setIsSavingIssue(false);
+    }
+  };
+
+  const handleResolveIssue = async (docOrLine) => {
+    if (!docOrLine) return;
+    try {
+      const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docOrLine.document_no?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+      const res = await fetch(`${API_BASE}/api/procurement/resolve-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleType,
+          document_no: docOrLine.document_no,
+          resolved_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`✅ Issue on ${docOrLine.document_no} resolved!`);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not resolve issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
     }
   };
 
@@ -1137,6 +1218,19 @@ export default function PurchasingPage() {
                   ✅ Fully Allocated ({procurementSummary.fully_allocated_count})
                 </button>
                 <button
+                  onClick={() => setActiveFilterTab('ISSUES')}
+                  className={`btn btn-xs ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent',
+                    color: activeFilterTab === 'ISSUES' ? '#fff' : '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.4)'
+                  }}
+                >
+                  ⚠️ Issues / Not Found ({procurementSummary.issues_count || 0})
+                </button>
+                <button
                   onClick={() => setActiveFilterTab('PO')}
                   className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
                   style={{ fontSize: '11.5px', fontWeight: 600 }}
@@ -1297,7 +1391,22 @@ export default function PurchasingPage() {
 
                           {/* Allocation Status Badge */}
                           <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {doc.allocation_status === 'NEEDS_ALLOCATION' && (
+                            {doc.is_flagged_issue ? (
+                              <span style={{ 
+                                background: 'rgba(239, 68, 68, 0.12)', 
+                                color: '#ef4444', 
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }} title={doc.issue_notes ? `${doc.issue_reason}: ${doc.issue_notes}` : doc.issue_reason}>
+                                ⚠️ {doc.issue_reason || 'Issue / Not Found'}
+                              </span>
+                            ) : doc.allocation_status === 'NEEDS_ALLOCATION' ? (
                               <span style={{ 
                                 background: 'rgba(245, 158, 11, 0.12)', 
                                 color: '#f59e0b', 
@@ -1312,8 +1421,7 @@ export default function PurchasingPage() {
                               }}>
                                 <AlertTriangle size={10} /> Needs Allocation ({doc.unallocated_lines_count} items)
                               </span>
-                            )}
-                            {doc.allocation_status === 'PARTIAL' && (
+                            ) : doc.allocation_status === 'PARTIAL' ? (
                               <span style={{ 
                                 background: 'rgba(59, 130, 246, 0.12)', 
                                 color: '#3b82f6', 
@@ -1325,8 +1433,7 @@ export default function PurchasingPage() {
                               }}>
                                 ⏳ Partial ({doc.allocated_lines_count}/{doc.total_lines} allocated)
                               </span>
-                            )}
-                            {doc.allocation_status === 'FULLY_ALLOCATED' && (
+                            ) : (
                               <span style={{ 
                                 background: 'rgba(16, 185, 129, 0.12)', 
                                 color: '#10b981', 
@@ -1346,28 +1453,48 @@ export default function PurchasingPage() {
 
                           {/* Action Button */}
                           <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedDocument(doc);
-                              }}
-                              className="btn btn-xs"
-                              style={{
-                                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                                color: '#fff',
-                                border: 'none',
-                                fontWeight: 700,
-                                fontSize: '11px',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
-                              }}
-                            >
-                              <Sparkles size={11} /> Open & Allocate
-                            </button>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDocument(doc);
+                                }}
+                                className="btn btn-xs"
+                                style={{
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                              >
+                                <Sparkles size={11} /> Open & Allocate
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  doc.is_flagged_issue ? handleResolveIssue(doc) : handleOpenIssueModal(doc);
+                                }}
+                                className="btn btn-xs btn-ghost"
+                                style={{
+                                  color: doc.is_flagged_issue ? '#10b981' : '#f59e0b',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '10.5px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px'
+                                }}
+                                title={doc.is_flagged_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
+                              >
+                                {doc.is_flagged_issue ? 'Resolve' : 'Flag'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1978,29 +2105,187 @@ export default function PurchasingPage() {
               {/* Modal Footer */}
               <div style={{ 
                 display: 'flex', 
-                justifyContent: 'flex-end', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
                 gap: '10px', 
                 padding: '14px 20px', 
                 borderTop: '1px solid var(--border)', 
                 background: 'var(--bg-secondary)', 
                 flexShrink: 0 
               }}>
-                <button 
-                  type="button" 
-                  className="btn btn-sm btn-ghost" 
-                  onClick={() => setAllocModalOpen(false)}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const item = allocTargetItem;
+                    setAllocModalOpen(false);
+                    handleOpenIssueModal(item);
+                  }}
+                  className="btn btn-sm btn-ghost"
+                  style={{
+                    color: '#f59e0b',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '11.5px'
+                  }}
                 >
-                  Cancel
+                  <AlertTriangle size={13} />
+                  Flag as Issue / Not Found
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-sm btn-primary" 
-                  disabled={isSavingAlloc}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={() => setAllocModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-sm btn-primary" 
+                    disabled={isSavingAlloc}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                  >
+                    {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                    Confirm Allocation
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FLAG / MANAGE ISSUE MODAL */}
+      {issueModalOpen && issueTargetItem && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '20px'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '480px',
+            padding: '24px',
+            borderRadius: '12px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(245, 158, 11, 0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', display: 'flex' }}>
+                  <AlertTriangle size={20} />
+                </span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Flag Issue / Not Found
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Doc: <strong style={{ color: 'var(--text-primary)' }}>{issueTargetItem.document_no}</strong> {issueTargetItem.item_code ? `(SKU: ${issueTargetItem.item_code})` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIssueModalOpen(false)}
+                className="btn btn-xs btn-ghost"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitIssue} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Reason Category
+                </label>
+                <select
+                  value={issueReason}
+                  onChange={(e) => setIssueReason(e.target.value)}
+                  className="input input-sm"
+                  style={{ width: '100%', fontSize: '12.5px' }}
                 >
-                  {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                  Confirm Allocation
-                </button>
+                  <option value="Order Not Found">Order Not Found in System</option>
+                  <option value="SKU Mismatch">SKU / Item Code Mismatch</option>
+                  <option value="Quantity / Spec Discrepancy">Quantity / Spec Discrepancy</option>
+                  <option value="Requires PM Review">Requires PM / Estimator Review</option>
+                  <option value="Duplicate Order Item">Duplicate Order Item</option>
+                  <option value="Other">Other / Investigation Needed</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Issue Notes & Explanation
+                </label>
+                <textarea
+                  rows={3}
+                  value={issueNotes}
+                  onChange={(e) => setIssueNotes(e.target.value)}
+                  placeholder="Describe why this document / item cannot be matched or what information is needed..."
+                  className="textarea input-sm"
+                  style={{ width: '100%', fontSize: '12px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{
+                borderTop: '1px solid var(--border)',
+                paddingTop: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                {issueTargetItem.is_flagged_issue ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIssueModalOpen(false);
+                      handleResolveIssue(issueTargetItem);
+                    }}
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11.5px' }}
+                  >
+                    <Check size={13} /> Mark Resolved
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIssueModalOpen(false)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingIssue}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#f59e0b',
+                      color: '#000',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSavingIssue && <RefreshCw size={13} className="animate-spin" />}
+                    {isSavingIssue ? 'Saving...' : 'Save Issue Flag'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

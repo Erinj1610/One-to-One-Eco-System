@@ -820,6 +820,26 @@ class OrderPaymentAllocation(Base):
     notes = Column(Text, nullable=True)
 
 
+class AllocationIssue(Base):
+    __tablename__ = "allocation_issues"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    module = Column(String, index=True, nullable=False)      # "PO", "GRN", "INVOICE", "PAYMENT"
+    document_no = Column(String, index=True, nullable=False) # e.g. "PO-000000312", "IN-000000485", "RC-000000674"
+    line_id = Column(Integer, nullable=True)
+    sku = Column(String, nullable=True)
+    amount = Column(Float, default=0.0)
+    customer_vendor = Column(String, nullable=True)
+    reason = Column(String, default="Order Not Found")       # "Order Not Found", "Price Mismatch", "Requires PM Review", "Other"
+    notes = Column(Text, nullable=True)
+    flagged_by = Column(String, default="Staff")
+    flagged_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="Open")                  # "Open", "Resolved"
+    resolved_at = Column(DateTime, nullable=True)
+    resolved_by = Column(String, nullable=True)
+
+
+
 
 
 

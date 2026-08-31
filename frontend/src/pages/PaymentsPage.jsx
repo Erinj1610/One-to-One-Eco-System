@@ -64,6 +64,13 @@ export default function PaymentsPage() {
   const [unallocConfirmId, setUnallocConfirmId] = useState(null);
   const [isDeletingAlloc, setIsDeletingAlloc] = useState(false);
 
+  // Issue Flagging State
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueTargetItem, setIssueTargetItem] = useState(null);
+  const [issueReason, setIssueReason] = useState('Order Not Found');
+  const [issueNotes, setIssueNotes] = useState('');
+  const [isSavingIssue, setIsSavingIssue] = useState(false);
+
   // -------------------------------------------------------------
   // FETCH SUMMARY & DOCUMENTS
   // -------------------------------------------------------------
@@ -87,6 +94,7 @@ export default function PaymentsPage() {
       if (newTab === 'NEEDS_ALLOCATION') statusParam = 'unallocated';
       else if (newTab === 'PARTIAL') statusParam = 'unallocated';
       else if (newTab === 'FULLY_ALLOCATED') statusParam = 'allocated';
+      else if (newTab === 'ISSUES') statusParam = 'issues';
 
       const params = new URLSearchParams({ status: statusParam });
       if (newQ && newQ.trim()) params.append('search', newQ.trim());
@@ -97,7 +105,9 @@ export default function PaymentsPage() {
         if (newTab === 'PARTIAL') {
           items = items.filter(p => p.status === 'Partially Allocated');
         } else if (newTab === 'NEEDS_ALLOCATION') {
-          items = items.filter(p => p.status === 'Unallocated' || p.status === 'Partially Allocated');
+          items = items.filter(p => (p.status === 'Unallocated' || p.status === 'Partially Allocated') && !p.is_flagged_issue);
+        } else if (newTab === 'ISSUES') {
+          items = items.filter(p => p.is_flagged_issue);
         }
         if (newCustomer && newCustomer !== 'All Clients') {
           items = items.filter(p => p.customer_name === newCustomer || p.customer_code === newCustomer);
@@ -197,6 +207,7 @@ export default function PaymentsPage() {
       if (payment.customer_name) params.append('customer_name', payment.customer_name);
       if (payment.customer_code) params.append('customer_code', payment.customer_code);
       if (payment.reference) params.append('reference', payment.reference);
+      if (avail) params.append('payment_amount', avail);
 
       const res = await fetch(`${API_BASE}/api/payments/candidate-orders?${params.toString()}`);
       if (res.ok) {
@@ -215,6 +226,70 @@ export default function PaymentsPage() {
       console.error('Failed to load candidate orders:', e);
     } finally {
       setIsLoadingCandidates(false);
+    }
+  };
+
+  const handleOpenIssueModal = (payment) => {
+    setIssueTargetItem(payment);
+    setIssueReason(payment.issue_reason || 'Order Not Found');
+    setIssueNotes(payment.issue_notes || '');
+    setIssueModalOpen(true);
+  };
+
+  const handleSubmitIssue = async (e) => {
+    if (e) e.preventDefault();
+    if (!issueTargetItem) return;
+
+    setIsSavingIssue(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/flag-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receipt_no: issueTargetItem.receipt_no,
+          reason: issueReason,
+          notes: issueNotes,
+          flagged_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`⚠️ ${issueTargetItem.receipt_no} flagged as "${issueReason}"`);
+        setIssueModalOpen(false);
+        if (allocModalOpen) setAllocModalOpen(false);
+        await fetchSummary();
+        await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
+      } else {
+        alert(data.detail || 'Could not flag issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setIsSavingIssue(false);
+    }
+  };
+
+  const handleResolveIssue = async (payment) => {
+    if (!payment) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/resolve-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receipt_no: payment.receipt_no,
+          resolved_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`✅ Issue on ${payment.receipt_no} resolved!`);
+        await fetchSummary();
+        await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
+      } else {
+        alert(data.detail || 'Could not resolve issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
     }
   };
 
@@ -743,6 +818,25 @@ export default function PaymentsPage() {
               </button>
 
               <button
+                onClick={() => setActiveFilterTab('ISSUES')}
+                className={`btn btn-sm ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-outline'}`}
+                style={{ 
+                  borderRadius: '20px', 
+                  fontSize: '11.5px', 
+                  padding: '5px 14px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderColor: '#ef4444',
+                  color: activeFilterTab === 'ISSUES' ? '#ffffff' : '#ef4444',
+                  background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent'
+                }}
+              >
+                ⚠️ Issues / Not Found ({paymentsSummary.issues_count || 0})
+              </button>
+
+              <button
                 onClick={() => setActiveFilterTab('ALL')}
                 className={`btn btn-sm ${activeFilterTab === 'ALL' ? 'btn-secondary' : 'btn-outline'}`}
                 style={{ 
@@ -965,29 +1059,46 @@ export default function PaymentsPage() {
                             </td>
 
                             <td style={{ padding: '12px 16px' }}>
-                              <span style={{
-                                padding: '3px 10px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                background: isFully ? 'rgba(16,185,129,0.12)' : (isPartial ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)'),
-                                color: isFully ? '#10b981' : (isPartial ? '#3b82f6' : '#f59e0b'),
-                                border: `1px solid ${isFully ? 'rgba(16,185,129,0.3)' : (isPartial ? 'rgba(59,130,246,0.3)' : 'rgba(245,158,11,0.3)')}`
-                              }}>
-                                {isFully ? (
-                                  <>✅ Fully Allocated</>
-                                ) : isPartial ? (
-                                  <>⏳ Partially (R {p.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} left)</>
-                                ) : (
-                                  <>🚨 Needs Allocation</>
-                                )}
-                              </span>
+                              {p.is_flagged_issue ? (
+                                <span style={{
+                                  padding: '3px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  color: '#ef4444',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)'
+                                }} title={p.issue_notes ? `${p.issue_reason}: ${p.issue_notes}` : p.issue_reason}>
+                                  ⚠️ {p.issue_reason || 'Issue / Not Found'}
+                                </span>
+                              ) : (
+                                <span style={{
+                                  padding: '3px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  background: isFully ? 'rgba(16,185,129,0.12)' : (isPartial ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)'),
+                                  color: isFully ? '#10b981' : (isPartial ? '#3b82f6' : '#f59e0b'),
+                                  border: `1px solid ${isFully ? 'rgba(16,185,129,0.3)' : (isPartial ? 'rgba(59,130,246,0.3)' : 'rgba(245,158,11,0.3)')}`
+                                }}>
+                                  {isFully ? (
+                                    <>✅ Fully Allocated</>
+                                  ) : isPartial ? (
+                                    <>⏳ Partially (R {p.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} left)</>
+                                  ) : (
+                                    <>🚨 Needs Allocation</>
+                                  )}
+                                </span>
+                              )}
                             </td>
 
-                            <td style={{ padding: '12px 16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => handleOpenAllocModal(p)}
                                 className="btn btn-sm btn-primary"
@@ -999,12 +1110,27 @@ export default function PaymentsPage() {
                                   gap: '6px',
                                   fontSize: '11.5px',
                                   fontWeight: 600,
-                                  padding: '5px 14px',
+                                  padding: '5px 12px',
                                   borderRadius: '6px'
                                 }}
                               >
                                 <ExternalLink size={13} />
-                                Open & Allocate
+                                Allocate
+                              </button>
+
+                              <button
+                                onClick={() => p.is_flagged_issue ? handleResolveIssue(p) : handleOpenIssueModal(p)}
+                                className="btn btn-sm btn-ghost"
+                                style={{
+                                  color: p.is_flagged_issue ? '#10b981' : '#f59e0b',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '11px',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px'
+                                }}
+                                title={p.is_flagged_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
+                              >
+                                {p.is_flagged_issue ? 'Resolve' : 'Flag Issue'}
                               </button>
                             </td>
                           </tr>
@@ -1145,6 +1271,9 @@ export default function PaymentsPage() {
                             <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
                               Total: R {cand.total_value.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Incl. VAT)
                             </div>
+                            <div style={{ fontSize: '10px', color: '#6366f1', marginTop: '2px', fontWeight: 600 }}>
+                              70%: R {(cand.deposit_70 || (cand.total_value * 0.7)).toLocaleString(undefined, { minimumFractionDigits: 2 })} | 30%: R {(cand.balance_30 || (cand.total_value * 0.3)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1222,36 +1351,85 @@ export default function PaymentsPage() {
               </div>
 
               {/* ALLOCATION AMOUNT & TYPE */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    Allocated Amount (Rands)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={allocAmount}
-                    onChange={(e) => setAllocAmount(e.target.value)}
-                    className="input input-sm"
-                    style={{ width: '100%', fontSize: '13px', fontWeight: 700 }}
-                  />
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      Allocated Amount (Rands)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={allocAmount}
+                      onChange={(e) => setAllocAmount(e.target.value)}
+                      className="input input-sm"
+                      style={{ width: '100%', fontSize: '13px', fontWeight: 700 }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      Payment Type
+                    </label>
+                    <select
+                      value={allocPaymentType}
+                      onChange={(e) => setAllocPaymentType(e.target.value)}
+                      className="input input-sm"
+                      style={{ width: '100%', fontSize: '12px' }}
+                    >
+                      <option value="Deposit Payment">Deposit Payment (70%)</option>
+                      <option value="Balance Payment">Balance Payment (30%)</option>
+                      <option value="Interim Payment">Interim Payment</option>
+                      <option value="Full Settlement">Full Settlement (100%)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    Payment Type
-                  </label>
-                  <select
-                    value={allocPaymentType}
-                    onChange={(e) => setAllocPaymentType(e.target.value)}
-                    className="input input-sm"
-                    style={{ width: '100%', fontSize: '12px' }}
+                {/* Quick-Fill Calculation Shortcuts */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {(() => {
+                    const activeCand = candidateOrders.find(c => String(c.order_id) === String(selectedCandidateKey));
+                    if (!activeCand) return null;
+                    const dep70 = activeCand.deposit_70 || (activeCand.total_value * 0.7);
+                    const bal30 = activeCand.balance_30 || (activeCand.total_value * 0.3);
+                    const outVal = activeCand.outstanding > 0 ? activeCand.outstanding : activeCand.total_value;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { setAllocAmount(dep70.toFixed(2)); setAllocPaymentType('Deposit Payment'); }}
+                          className="btn btn-xs btn-outline"
+                          style={{ fontSize: '10px', padding: '2px 8px', borderColor: '#6366f1', color: '#6366f1' }}
+                        >
+                          70% Deposit (R {dep70.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAllocAmount(bal30.toFixed(2)); setAllocPaymentType('Balance Payment'); }}
+                          className="btn btn-xs btn-outline"
+                          style={{ fontSize: '10px', padding: '2px 8px', borderColor: '#8b5cf6', color: '#8b5cf6' }}
+                        >
+                          30% Balance (R {bal30.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAllocAmount(outVal.toFixed(2))}
+                          className="btn btn-xs btn-outline"
+                          style={{ fontSize: '10px', padding: '2px 8px' }}
+                        >
+                          Full Outstanding (R {outVal.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                        </button>
+                      </>
+                    );
+                  })()}
+                  <button
+                    type="button"
+                    onClick={() => setAllocAmount((allocTargetItem?.remaining_amount > 0 ? allocTargetItem.remaining_amount : allocTargetItem?.amount || 0).toFixed(2))}
+                    className="btn btn-xs btn-outline"
+                    style={{ fontSize: '10px', padding: '2px 8px' }}
                   >
-                    <option value="Deposit Payment">Deposit Payment</option>
-                    <option value="Balance Payment">Balance Payment</option>
-                    <option value="Interim Payment">Interim Payment</option>
-                    <option value="Full Settlement">Full Settlement</option>
-                  </select>
+                    Max Available (R {(allocTargetItem?.remaining_amount > 0 ? allocTargetItem.remaining_amount : allocTargetItem?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                  </button>
                 </div>
               </div>
 
@@ -1276,35 +1454,58 @@ export default function PaymentsPage() {
                 paddingTop: '16px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'flex-end',
+                justifyContent: 'space-between',
                 gap: '10px'
               }}>
                 <button
                   type="button"
-                  onClick={() => setAllocModalOpen(false)}
+                  onClick={() => {
+                    const it = allocTargetItem;
+                    setAllocModalOpen(false);
+                    handleOpenIssueModal(it);
+                  }}
                   className="btn btn-sm btn-ghost"
-                  style={{ border: '1px solid var(--border)' }}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isSavingAlloc || (!selectedCandidateKey && !manualOrderId)}
-                  className="btn btn-sm btn-primary"
                   style={{
-                    background: '#3b82f6',
-                    color: '#fff',
-                    fontWeight: 700,
-                    padding: '6px 18px',
+                    color: '#f59e0b',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '5px',
+                    fontSize: '11.5px'
                   }}
                 >
-                  {isSavingAlloc && <RefreshCw size={13} className="animate-spin" />}
-                  {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                  <AlertTriangle size={13} />
+                  Flag as Issue / Not Found
                 </button>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAllocModalOpen(false)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingAlloc || (!selectedCandidateKey && !manualOrderId)}
+                    className="btn btn-sm btn-primary"
+                    style={{
+                      background: '#3b82f6',
+                      color: '#fff',
+                      fontWeight: 700,
+                      padding: '6px 18px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSavingAlloc && <RefreshCw size={13} className="animate-spin" />}
+                    {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                  </button>
+                </div>
               </div>
 
             </form>
@@ -1366,6 +1567,140 @@ export default function PaymentsPage() {
                 {isDeletingAlloc ? 'Releasing...' : 'Yes, Unallocate'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FLAG / MANAGE ISSUE MODAL */}
+      {issueModalOpen && issueTargetItem && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '20px'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '480px',
+            padding: '24px',
+            borderRadius: '12px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(245, 158, 11, 0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '6px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', display: 'flex' }}>
+                  <AlertTriangle size={20} />
+                </span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Flag Issue / Not Found
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    Receipt: <strong style={{ color: 'var(--text-primary)' }}>{issueTargetItem.receipt_no}</strong> (R {Number(issueTargetItem.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIssueModalOpen(false)}
+                className="btn btn-xs btn-ghost"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitIssue} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Reason Category
+                </label>
+                <select
+                  value={issueReason}
+                  onChange={(e) => setIssueReason(e.target.value)}
+                  className="input input-sm"
+                  style={{ width: '100%', fontSize: '12.5px' }}
+                >
+                  <option value="Order Not Found">Order Not Found in System</option>
+                  <option value="Price / Amount Mismatch">Price / Amount Mismatch</option>
+                  <option value="Client Name Mismatch">Client Name / Code Mismatch</option>
+                  <option value="Requires PM Review">Requires PM / Sales Rep Review</option>
+                  <option value="Duplicate Payment">Duplicate Payment</option>
+                  <option value="Other">Other / Investigation Needed</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                  Issue Notes & Explanation
+                </label>
+                <textarea
+                  rows={3}
+                  value={issueNotes}
+                  onChange={(e) => setIssueNotes(e.target.value)}
+                  placeholder="Describe why this payment cannot be matched or what information is needed..."
+                  className="textarea input-sm"
+                  style={{ width: '100%', fontSize: '12px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{
+                borderTop: '1px solid var(--border)',
+                paddingTop: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                {issueTargetItem.is_flagged_issue ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIssueModalOpen(false);
+                      handleResolveIssue(issueTargetItem);
+                    }}
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11.5px' }}
+                  >
+                    <Check size={13} /> Mark Resolved
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIssueModalOpen(false)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingIssue}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#f59e0b',
+                      color: '#000',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSavingIssue && <RefreshCw size={13} className="animate-spin" />}
+                    {isSavingIssue ? 'Saving...' : 'Save Issue Flag'}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

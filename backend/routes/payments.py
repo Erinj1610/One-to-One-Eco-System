@@ -10,6 +10,7 @@ from database.cloud_sql import get_db
 from models.orm_models import (
     PalladiumPayment,
     OrderPaymentAllocation,
+    AllocationIssue,
     Project,
     Order
 )
@@ -137,12 +138,18 @@ def get_payments_summary(db: Session = Depends(get_db)):
             if not latest_sync or (p.last_synced_at and p.last_synced_at > latest_sync):
                 latest_sync = p.last_synced_at
 
+        issues_count = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PAYMENT",
+            AllocationIssue.status == "Open"
+        ).count()
+
         return {
             "total_documents": len(all_payments),
             "total_payments_count": len(all_payments),
             "unallocated_count": unallocated_cnt,
             "partially_allocated_count": partially_allocated_cnt,
             "fully_allocated_count": fully_allocated_cnt,
+            "issues_count": issues_count,
             "total_amount_synced": round(total_amount_synced, 2),
             "total_amount_allocated": round(total_amount_allocated, 2),
             "total_amount_unallocated": round(max(0.0, total_amount_synced - total_amount_allocated), 2),
@@ -159,10 +166,11 @@ def get_candidate_orders_for_payment(
     customer_name: Optional[str] = Query(None),
     customer_code: Optional[str] = Query(None),
     reference: Optional[str] = Query(None),
+    payment_amount: Optional[float] = Query(None),
     db: Session = Depends(get_db)
 ):
     """
-    Finds active orders that match the customer name, code, or reference keywords.
+    Finds active orders that match the customer name, code, reference keywords, or payment amount (70% deposit / 30% balance).
     """
     try:
         projects = db.query(Project).all()
@@ -176,6 +184,8 @@ def get_candidate_orders_for_payment(
         ref = (reference or "").strip().lower()
         ref_words = [w for w in ref.replace('-', ' ').replace('/', ' ').split() if len(w) > 2]
 
+        p_amt = float(payment_amount) if payment_amount is not None and payment_amount > 0 else None
+
         candidates = []
         for o in orders:
             proj = proj_map.get(o.project_id) or (proj_by_key.get(o.project_key) if o.project_key else None)
@@ -186,20 +196,38 @@ def get_candidate_orders_for_payment(
 
             match_score = 0
             if c_code and c_code in client_str:
-                match_score += 10
+                match_score += 12
             if c_name and (c_name in client_str or any(word in client_str for word in c_name.split() if len(word) > 3)):
-                match_score += 8
+                match_score += 10
 
             for w in ref_words:
                 if w in order_name or w in client_str:
-                    match_score += 5
+                    match_score += 6
 
             total_val_excl = float(o.value or 0.0)
             total_val_incl = round(total_val_excl * 1.15, 2)
+            deposit_70 = round(total_val_incl * 0.70, 2)
+            balance_30 = round(total_val_incl * 0.30, 2)
             paid_amt = float(o.paid or 0.0)
             outstanding_amt = max(0.0, round(total_val_incl - paid_amt, 2))
 
-            if match_score > 0 or not (c_name or c_code or ref):
+            # Smart Amount Proximity Boost
+            if p_amt is not None and p_amt > 0:
+                for target_amt in [deposit_70, balance_30, total_val_incl, outstanding_amt]:
+                    if target_amt > 0:
+                        diff = abs(p_amt - target_amt)
+                        pct_diff = diff / target_amt
+                        if diff <= 2.0 or pct_diff <= 0.005:
+                            match_score += 45
+                            break
+                        elif pct_diff <= 0.03:
+                            match_score += 25
+                            break
+                        elif pct_diff <= 0.08:
+                            match_score += 15
+                            break
+
+            if match_score > 0 or not (c_name or c_code or ref or p_amt):
                 candidates.append({
                     "project_id": proj.id if proj else o.project_id,
                     "project_key": o.project_key or (proj.project_key if proj else None),
@@ -209,6 +237,8 @@ def get_candidate_orders_for_payment(
                     "client": o.client_company or o.client_name or (proj.client_name if proj else "Client"),
                     "total_value": total_val_incl,
                     "total_value_excl": total_val_excl,
+                    "deposit_70": deposit_70,
+                    "balance_30": balance_30,
                     "paid_amount": paid_amt,
                     "outstanding": outstanding_amt,
                     "match_score": match_score
@@ -253,6 +283,13 @@ def get_payments_list(
             OrderPaymentAllocation.status == "Active"
         ).all()
 
+        # Load open issues for payments
+        open_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PAYMENT",
+            AllocationIssue.status == "Open"
+        ).all()
+        issue_map = {iss.document_no: iss for iss in open_issues}
+
         # Group allocations by payment ID
         alloc_map: Dict[int, List[OrderPaymentAllocation]] = {}
         for a in active_allocs:
@@ -279,8 +316,13 @@ def get_payments_list(
 
             alloc_status = "Fully Allocated" if is_fully_allocated else ("Partially Allocated" if is_partially_allocated else "Unallocated")
 
+            issue_obj = issue_map.get(p.receipt_no)
+            is_issue = bool(issue_obj)
+
             # Filter by status if requested
-            if status == "unallocated" and is_fully_allocated:
+            if status == "issues" and not is_issue:
+                continue
+            elif status == "unallocated" and (is_fully_allocated or is_issue):
                 continue
             elif status == "allocated" and allocated_amt <= 0.01:
                 continue
@@ -314,6 +356,11 @@ def get_payments_list(
                 "allocated_amount": round(allocated_amt, 2),
                 "remaining_amount": remaining_amt,
                 "status": alloc_status,
+                "is_flagged_issue": is_issue,
+                "issue_reason": issue_obj.reason if issue_obj else None,
+                "issue_notes": issue_obj.notes if issue_obj else None,
+                "issue_flagged_by": issue_obj.flagged_by if issue_obj else None,
+                "issue_flagged_at": issue_obj.flagged_at.isoformat() if issue_obj and issue_obj.flagged_at else None,
                 "reference": p.reference,
                 "payment_method": p.payment_method or "EFT",
                 "bank_account": p.bank_account,
@@ -326,6 +373,92 @@ def get_payments_list(
         return results
     except Exception as e:
         logger.error(f"Error listing payments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/flag-issue")
+@router.post("/flag-issue")
+def flag_payment_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Flags a payment receipt with an Issue / Not Found status.
+    """
+    try:
+        receipt_no = str(payload.get("receipt_no") or "").strip()
+        reason = str(payload.get("reason") or "Order Not Found").strip()
+        notes = str(payload.get("notes") or "").strip()
+        flagged_by = str(payload.get("flagged_by") or "Staff").strip()
+
+        if not receipt_no:
+            raise HTTPException(status_code=400, detail="Missing receipt_no")
+
+        pmt = db.query(PalladiumPayment).filter(PalladiumPayment.receipt_no == receipt_no).first()
+
+        issue = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PAYMENT",
+            AllocationIssue.document_no == receipt_no,
+            AllocationIssue.status == "Open"
+        ).first()
+
+        if not issue:
+            issue = AllocationIssue(
+                module="PAYMENT",
+                document_no=receipt_no,
+                amount=pmt.amount if pmt else 0.0,
+                customer_vendor=pmt.customer_name if pmt else None,
+                reason=reason,
+                notes=notes,
+                flagged_by=flagged_by,
+                flagged_at=datetime.now(timezone.utc),
+                status="Open"
+            )
+            db.add(issue)
+        else:
+            issue.reason = reason
+            issue.notes = notes
+            issue.flagged_by = flagged_by
+            issue.flagged_at = datetime.now(timezone.utc)
+
+        db.commit()
+        return {"status": "success", "message": f"Receipt {receipt_no} flagged as '{reason}'"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error flagging payment issue: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/resolve-issue")
+@router.post("/resolve-issue")
+def resolve_payment_issue(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Resolves an Issue / Not Found flag on a payment receipt.
+    """
+    try:
+        receipt_no = str(payload.get("receipt_no") or "").strip()
+        resolved_by = str(payload.get("resolved_by") or "Staff").strip()
+
+        if not receipt_no:
+            raise HTTPException(status_code=400, detail="Missing receipt_no")
+
+        issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PAYMENT",
+            AllocationIssue.document_no == receipt_no,
+            AllocationIssue.status == "Open"
+        ).all()
+
+        for iss in issues:
+            iss.status = "Resolved"
+            iss.resolved_at = datetime.now(timezone.utc)
+            iss.resolved_by = resolved_by
+
+        db.commit()
+        return {"status": "success", "message": f"Issue on receipt {receipt_no} resolved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error resolving payment issue: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
