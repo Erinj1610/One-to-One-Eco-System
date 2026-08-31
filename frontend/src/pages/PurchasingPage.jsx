@@ -341,10 +341,11 @@ export default function PurchasingPage() {
         alert("Please select a target Project to allocate to.");
         return;
       }
-      const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
-      payload.project_id = proj ? (proj.id || 1) : 1;
-      payload.project_name = proj ? proj.name : 'Selected Project';
-      payload.order_id = manualOrderId ? Number(manualOrderId) : null;
+      const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
+      payload.project_id = proj?.id || null;
+      payload.project_key = proj?.key || manualProjectId;
+      payload.project_name = proj ? proj.name : manualProjectId;
+      payload.order_id = manualOrderId || null;
       payload.fitting_code = allocTargetItem.item_code;
     }
 
@@ -421,7 +422,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
     const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id) && (l.unallocated_qty || 0) > 0);
 
     if (selectedLines.length === 0) {
@@ -435,9 +436,10 @@ export default function PurchasingPage() {
       vendor_name: selectedDocument.vendor_name,
       doc_date: selectedDocument.transaction_date,
       eta: batchEta,
-      project_id: proj ? (proj.id || 1) : 1,
-      project_name: proj ? proj.name : 'Selected Project',
-      order_id: batchOrderId ? Number(batchOrderId) : null,
+      project_id: proj?.id || null,
+      project_key: proj?.key || batchProjectId,
+      project_name: proj ? proj.name : batchProjectId,
+      order_id: batchOrderId || null,
       allocated_by_name: 'Staff',
       notes: batchNotes || `Batch allocated ${selectedLines.length} items`,
       items: selectedLines.map(l => ({

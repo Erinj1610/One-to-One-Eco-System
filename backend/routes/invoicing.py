@@ -351,6 +351,190 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@public_router.get("/candidate-orders")
+@router.get("/candidate-orders")
+def get_invoicing_candidate_orders(
+    sku: str = Query(..., description="Item Code / SKU to find candidate orders for"),
+    db: Session = Depends(get_db)
+):
+    """
+    Finds active client project orders and fittings in the portal matching the given SKU.
+    Resolves project and order even with composite slug order IDs.
+    """
+    try:
+        clean_sku = sku.strip()
+        if not clean_sku:
+            return {"sku": "", "candidate_count": 0, "candidates": []}
+
+        all_projects = {p.id: p for p in db.query(Project).all()}
+        proj_by_key = {p.project_key: p for p in all_projects.values() if p.project_key}
+        all_orders = db.query(Order).all()
+        order_by_id = {o.id: o for o in all_orders}
+
+        order_items = db.query(OrderItem).filter(
+            or_(
+                OrderItem.code.ilike(f"%{clean_sku}%"),
+                OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
+                OrderItem.description.ilike(f"%{clean_sku}%")
+            )
+        ).all()
+
+        candidates = []
+        for it in order_items:
+            # Skip obsolete manual credit entries
+            if it.is_credit or (it.id and str(it.id).startswith("C-")) or (it.qty is not None and it.qty < 0):
+                continue
+
+            matched_order = None
+            matched_proj = None
+
+            if str(it.order_id).isdigit() and int(it.order_id) in order_by_id:
+                matched_order = order_by_id[int(it.order_id)]
+                matched_proj = all_projects.get(matched_order.project_id)
+
+            if not matched_order and it.order_id:
+                parts = str(it.order_id).split('--')
+                proj_prefix = parts[0] if parts else ''
+                
+                if proj_prefix in proj_by_key:
+                    matched_proj = proj_by_key[proj_prefix]
+                else:
+                    for p in all_projects.values():
+                        if p.project_key and (p.project_key == proj_prefix or p.project_key in str(it.order_id)):
+                            matched_proj = p
+                            break
+
+                if matched_proj:
+                    proj_orders = [o for o in all_orders if o.project_id == matched_proj.id]
+                    for o in proj_orders:
+                        if len(parts) > 1:
+                            order_slug = parts[1].replace('-', ' ').strip().lower()
+                            if order_slug and order_slug in (o.quote_name or '').lower():
+                                matched_order = o
+                                break
+                    if not matched_order and proj_orders:
+                        matched_order = proj_orders[0]
+
+            req_qty = int(it.qty or 0)
+            invoiced_qty = int(it.invoice_qty or 0)
+            rem = max(0, req_qty - invoiced_qty)
+
+            candidates.append({
+                "order_item_id": it.id,
+                "order_id": matched_order.id if matched_order else None,
+                "order_po_number": matched_order.po_number if matched_order else (it.order_id or '—'),
+                "order_quote_name": matched_order.quote_name if matched_order else (matched_order.po_number if matched_order else 'Spec Order'),
+                "project_id": matched_proj.id if matched_proj else None,
+                "project_key": matched_proj.project_key if matched_proj else None,
+                "project_name": matched_proj.name if matched_proj else (it.order_id or 'General Project'),
+                "fitting_code": it.code or it.one_one_code or sku,
+                "description": it.description or it.code or sku,
+                "required_qty": req_qty,
+                "invoiced_qty": invoiced_qty,
+                "remaining_needed": rem,
+                "is_direct_sku_match": bool(it.code and it.code.strip().upper() == clean_sku.upper())
+            })
+
+        return {
+            "sku": clean_sku,
+            "candidate_count": len(candidates),
+            "candidates": candidates
+        }
+    except Exception as e:
+        logger.error(f"Error fetching invoicing candidate orders for {sku}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def resolve_target_project_and_order(db: Session, project_id_input, project_key_input, project_name, order_id_input, order_item_id_input):
+    """
+    Robustly resolves the authentic Project and Order records from database without ever falling back to arbitrary project IDs.
+    """
+    proj = None
+    ord_obj = None
+    matched_item = None
+
+    # 1. If order_item_id is provided, try to look up item and its parent order & project
+    if order_item_id_input:
+        matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id_input)).first()
+        if matched_item and matched_item.order_id:
+            if str(matched_item.order_id).isdigit():
+                ord_obj = db.query(Order).filter(Order.id == int(matched_item.order_id)).first()
+            if not ord_obj:
+                ord_obj = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
+            if ord_obj and ord_obj.project_id:
+                proj = db.query(Project).filter(Project.id == ord_obj.project_id).first()
+
+    # 2. If order_id_input is provided, try to find the Order
+    if not ord_obj and order_id_input:
+        if str(order_id_input).isdigit():
+            ord_obj = db.query(Order).filter(Order.id == int(order_id_input)).first()
+        if not ord_obj:
+            ord_obj = db.query(Order).filter(Order.po_number == str(order_id_input)).first()
+        if ord_obj and ord_obj.project_id:
+            proj = db.query(Project).filter(Project.id == ord_obj.project_id).first()
+
+    # 3. Match project by project_key
+    target_key = str(project_key_input or '').strip()
+    if not target_key and project_id_input and not str(project_id_input).isdigit():
+        target_key = str(project_id_input).strip()
+
+    if not proj and target_key:
+        proj = db.query(Project).filter(Project.project_key == target_key).first()
+        if not proj:
+            proj = db.query(Project).filter(Project.project_key.ilike(target_key)).first()
+
+    # 4. Match project by numeric project_id (verifying name consistency if provided)
+    if not proj and project_id_input and str(project_id_input).isdigit():
+        pid_num = int(project_id_input)
+        if pid_num > 0:
+            candidate_proj = db.query(Project).filter(Project.id == pid_num).first()
+            if candidate_proj:
+                if project_name:
+                    p_name_clean = str(project_name).strip().lower()
+                    if candidate_proj.name and (p_name_clean in candidate_proj.name.lower() or candidate_proj.name.lower() in p_name_clean):
+                        proj = candidate_proj
+                    elif pid_num != 1: # Don't default to Upper Primrose if name doesn't match
+                        proj = candidate_proj
+                else:
+                    proj = candidate_proj
+
+    # 5. Match project by project_name
+    if not proj and project_name:
+        p_name_clean = str(project_name).strip()
+        if p_name_clean:
+            proj = db.query(Project).filter(Project.name.ilike(f"%{p_name_clean}%")).first()
+            if not proj:
+                proj = db.query(Project).filter(Project.client_name.ilike(f"%{p_name_clean}%")).first()
+
+    # 6. If order is still not resolved, but project has orders, select matching order or first order
+    if not ord_obj and proj:
+        p_orders = db.query(Order).filter(Order.project_id == proj.id).all()
+        if order_id_input and p_orders:
+            for o in p_orders:
+                if str(o.id) == str(order_id_input) or str(o.po_number) == str(order_id_input):
+                    ord_obj = o
+                    break
+        if not ord_obj and p_orders:
+            ord_obj = p_orders[0]
+
+    # If still no project found, create one or use the provided name without defaulting to ID 1!
+    if not proj and (target_key or project_name):
+        import re
+        clean_key = target_key or re.sub(r'[^a-z0-9\-]', '-', (project_name or '').lower()).strip('-')
+        clean_name = project_name or target_key
+        proj = Project(
+            name=clean_name,
+            project_key=clean_key,
+            client_name="General Client",
+            status="Ongoing"
+        )
+        db.add(proj)
+        db.flush()
+        db.refresh(proj)
+
+    return proj, ord_obj, matched_item
+
+
 @public_router.post("/allocate")
 @router.post("/allocate")
 def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_db)):
@@ -362,6 +546,7 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         source_doc_no = str(payload.get("source_doc_no") or "").strip()
         sku = str(payload.get("sku") or "").strip()
         project_id_input = payload.get("project_id")
+        project_key_input = payload.get("project_key")
         project_name = payload.get("project_name")
         order_id = payload.get("order_id")
         order_item_id = payload.get("order_item_id")
@@ -372,63 +557,36 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes")
 
-        if not source_doc_no or not sku or not project_id_input or allocated_qty <= 0:
+        if not source_doc_no or not sku or (not project_id_input and not project_key_input and not project_name) or allocated_qty <= 0:
             raise HTTPException(status_code=400, detail="Missing required allocation parameters.")
 
-        # Resolve Project Entity
-        proj = None
-        if str(project_id_input).isdigit():
-            proj = db.query(Project).filter(Project.id == int(project_id_input)).first()
-        if not proj:
-            proj = db.query(Project).filter(Project.project_key == str(project_id_input)).first()
-        if not proj and project_name:
-            proj = db.query(Project).filter(Project.name.ilike(f"%{project_name}%")).first()
+        # Resolve Project and Order
+        proj, ord_obj, direct_item = resolve_target_project_and_order(
+            db, project_id_input, project_key_input, project_name, order_id, order_item_id
+        )
 
-        real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
-        real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
+        real_proj_id = proj.id if proj else None
+        real_proj_name = proj.name if proj else (project_name or "Project")
 
-        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
-        p_order_keys = [o.po_number for o in p_orders if o.po_number] + [str(o.id) for o in p_orders]
-        if proj and proj.project_key:
-            p_order_keys.append(proj.project_key)
+        if not real_proj_id:
+            raise HTTPException(status_code=400, detail="Could not resolve target project. Please specify a valid project.")
 
-        proj_items = []
-        if p_order_keys:
-            proj_items = db.query(OrderItem).filter(
-                or_(
-                    OrderItem.order_id.in_(p_order_keys),
-                    OrderItem.order_id.ilike(f"{proj.project_key}%") if proj and proj.project_key else False
-                )
-            ).all()
+        resolved_order_id = ord_obj.id if ord_obj else None
 
+        # Resolve matching OrderItem
         clean_sku = sku.strip().upper()
-        matched_item = None
-        if order_item_id:
+        matched_item = direct_item
+        if not matched_item and order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-        elif proj_items:
-            for it in proj_items:
+
+        if not matched_item and ord_obj:
+            order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+            for it in order_items:
                 if (it.code and it.code.strip().upper() == clean_sku) or \
                    (it.one_one_code and it.one_one_code.strip().upper() == clean_sku) or \
                    (it.description and clean_sku in it.description.upper()):
                     matched_item = it
                     break
-
-        resolved_order_id = None
-        if order_id:
-            if str(order_id).isdigit():
-                resolved_order_id = int(order_id)
-            else:
-                ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
-                if ord_match:
-                    resolved_order_id = ord_match.id
-
-        if not resolved_order_id and matched_item and matched_item.order_id:
-            if str(matched_item.order_id).isdigit():
-                resolved_order_id = int(matched_item.order_id)
-            else:
-                ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
-                if ord_match:
-                    resolved_order_id = ord_match.id
 
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
@@ -448,34 +606,10 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             notes=notes
         )
         db.add(alloc)
+        db.flush()
 
-        is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
         if matched_item:
-            matched_item.invoice_ref = source_doc_no
-            if is_credit_doc:
-                matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
-                matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
-            else:
-                matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-                matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-
-            if doc_date:
-                matched_item.invoice_date = str(doc_date).split("T")[0]
-            else:
-                matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            
-            i_hist = list(matched_item.invoice_history or [])
-            i_hist.append({
-                "id": source_doc_no,
-                "ref": source_doc_no,
-                "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
-                "unitPrice": unit_cost,
-                "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
-                "date": matched_item.invoice_date,
-                "by": allocated_by,
-                "type": "Credit Note" if is_credit_doc else "Invoice"
-            })
-            matched_item.invoice_history = i_hist
+            recalc_order_item_invoicing(db, matched_item)
 
         db.commit()
         logger.info(f"Allocated invoice {source_doc_no} (qty {allocated_qty}) to {real_proj_name}.")
@@ -484,6 +618,9 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             "message": f"Successfully allocated {allocated_qty} units from {source_doc_no} to {real_proj_name}.",
             "allocation_id": alloc.id
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error allocating invoice item: {e}", exc_info=True)
@@ -499,6 +636,7 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
     try:
         source_doc_no = str(payload.get("source_doc_no") or "").strip()
         project_id_input = payload.get("project_id")
+        project_key_input = payload.get("project_key")
         project_name = payload.get("project_name")
         order_id = payload.get("order_id")
         doc_date = payload.get("doc_date") or payload.get("transaction_date")
@@ -506,34 +644,27 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
         notes = payload.get("notes") or "Batch invoice allocation"
         items = payload.get("items") or []
 
-        if not source_doc_no or not project_id_input or not items:
-            raise HTTPException(status_code=400, detail="Missing source_doc_no, project_id, or items list.")
+        if not source_doc_no or (not project_id_input and not project_key_input and not project_name) or not items:
+            raise HTTPException(status_code=400, detail="Missing source_doc_no, project destination, or items list.")
 
-        # Resolve Project Entity
-        proj = None
-        if str(project_id_input).isdigit():
-            proj = db.query(Project).filter(Project.id == int(project_id_input)).first()
-        if not proj:
-            proj = db.query(Project).filter(Project.project_key == str(project_id_input)).first()
-        if not proj and project_name:
-            proj = db.query(Project).filter(Project.name.ilike(f"%{project_name}%")).first()
+        # Resolve Project and Order
+        proj, ord_obj, _ = resolve_target_project_and_order(
+            db, project_id_input, project_key_input, project_name, order_id, None
+        )
 
-        real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
-        real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
+        real_proj_id = proj.id if proj else None
+        real_proj_name = proj.name if proj else (project_name or "Project")
 
-        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
-        p_order_keys = [o.po_number for o in p_orders if o.po_number] + [str(o.id) for o in p_orders]
-        if proj and proj.project_key:
-            p_order_keys.append(proj.project_key)
+        if not real_proj_id:
+            raise HTTPException(status_code=400, detail="Could not resolve target project. Please specify a valid project.")
+
+        resolved_item_order_id = ord_obj.id if ord_obj else None
 
         proj_items = []
-        if p_order_keys:
-            proj_items = db.query(OrderItem).filter(
-                or_(
-                    OrderItem.order_id.in_(p_order_keys),
-                    OrderItem.order_id.ilike(f"{proj.project_key}%") if proj and proj.project_key else False
-                )
-            ).all()
+        if ord_obj:
+            proj_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+        elif proj and proj.project_key:
+            proj_items = db.query(OrderItem).filter(OrderItem.order_id.ilike(f"{proj.project_key}%")).all()
 
         count_allocated = 0
         for it in items:
@@ -558,34 +689,12 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                         matched_item = p_item
                         break
 
-            item_proj_id = real_proj_id
-            item_proj_name = real_proj_name
-
-            resolved_item_order_id = None
-            if order_id:
-                if str(order_id).isdigit():
-                    resolved_item_order_id = int(order_id)
-                else:
-                    ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
-                    if ord_match:
-                        resolved_item_order_id = ord_match.id
-
-            if not resolved_item_order_id and matched_item and matched_item.order_id:
-                if str(matched_item.order_id).isdigit():
-                    resolved_item_order_id = int(matched_item.order_id)
-                else:
-                    ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
-                    if ord_match:
-                        resolved_item_order_id = ord_match.id
-            elif not resolved_item_order_id and p_orders:
-                resolved_item_order_id = p_orders[0].id
-
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
                 source_doc_no=source_doc_no,
                 sku=sku,
-                project_id=item_proj_id,
-                project_name=item_proj_name,
+                project_id=real_proj_id,
+                project_name=real_proj_name,
                 order_id=resolved_item_order_id,
                 order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
                 fitting_code=fitting_code or (matched_item.code if matched_item else sku),
@@ -598,34 +707,10 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 notes=notes
             )
             db.add(alloc)
+            db.flush()
 
-            is_credit_doc = str(source_doc_no).upper().startswith(("CN-", "CR-"))
             if matched_item:
-                matched_item.invoice_ref = source_doc_no
-                if is_credit_doc:
-                    matched_item.invoice_qty = max(0, (matched_item.invoice_qty or 0) - int(allocated_qty))
-                    matched_item.invoice_value = max(0.0, (matched_item.invoice_value or 0.0) - float(allocated_qty * unit_cost))
-                else:
-                    matched_item.invoice_qty = (matched_item.invoice_qty or 0) + int(allocated_qty)
-                    matched_item.invoice_value = (matched_item.invoice_value or 0.0) + float(allocated_qty * unit_cost)
-
-                if doc_date:
-                    matched_item.invoice_date = str(doc_date).split("T")[0]
-                else:
-                    matched_item.invoice_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                
-                i_hist = list(matched_item.invoice_history or [])
-                i_hist.append({
-                    "id": source_doc_no,
-                    "ref": source_doc_no,
-                    "qty": -abs(allocated_qty) if is_credit_doc else allocated_qty,
-                    "unitPrice": unit_cost,
-                    "total": -round(abs(allocated_qty) * unit_cost, 2) if is_credit_doc else round(allocated_qty * unit_cost, 2),
-                    "date": matched_item.invoice_date,
-                    "by": allocated_by,
-                    "type": "Credit Note" if is_credit_doc else "Invoice"
-                })
-                matched_item.invoice_history = i_hist
+                recalc_order_item_invoicing(db, matched_item)
 
             count_allocated += 1
 
@@ -636,20 +721,91 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             "message": f"Successfully allocated {count_allocated} items from {source_doc_no} to {real_proj_name}.",
             "count": count_allocated
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error in batch invoice allocation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def recalc_order_item_invoicing(db: Session, item: OrderItem):
+    """
+    Recalculates invoice_qty, invoice_value, invoice_ref, invoice_date, and invoice_history
+    for an OrderItem strictly from active Tax Invoices (IN-...) in Cloud SQL.
+    Credit Notes (CN-...) are tracked in the order's Credits ledger and do not reduce invoice_qty to 0.
+    """
+    active_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.order_item_id == str(item.id),
+        ProcurementAllocation.status == "Active"
+    ).all()
+
+    if not active_allocs and (item.code or item.one_one_code):
+        active_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.order_item_id.is_(None),
+            or_(
+                ProcurementAllocation.sku == item.code,
+                ProcurementAllocation.sku == item.one_one_code
+            ),
+            ProcurementAllocation.status == "Active"
+        ).all()
+
+    # Filter strictly for non-credit invoices (IN-...)
+    inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
+
+    new_hist = []
+    total_qty = 0.0
+    total_val = 0.0
+    refs = set()
+    latest_date = None
+
+    for a in inv_allocs:
+        qty_val = float(a.allocated_qty or 0.0)
+        cost_val = float(a.unit_cost or 0.0)
+
+        total_qty += qty_val
+        total_val += qty_val * cost_val
+        if a.source_doc_no:
+            refs.add(str(a.source_doc_no))
+        if a.doc_date:
+            latest_date = str(a.doc_date).split("T")[0]
+
+        new_hist.append({
+            "id": a.source_doc_no,
+            "ref": a.source_doc_no,
+            "allocation_id": a.id,
+            "qty": qty_val,
+            "unitPrice": cost_val,
+            "total": round(qty_val * cost_val, 2),
+            "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+            "by": a.allocated_by_name or "Staff",
+            "type": "Invoice"
+        })
+
+    item.invoice_history = new_hist
+    item.invoice_qty = int(round(total_qty))
+    item.invoice_value = round(total_val, 2)
+    item.invoice_ref = "; ".join(sorted(refs)) if refs else None
+    item.invoice_date = latest_date
+
+
 @public_router.post("/unallocate")
 @router.post("/unallocate")
 def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_db)):
     """
-    Cancels an active invoice allocation and updates OrderItem invoice_qty and invoice_history.
+    Cancels an active invoice allocation (or list of allocation IDs) and updates OrderItem invoice fields.
     """
     try:
         allocation_id = payload.get("allocation_id")
+        allocation_ids = payload.get("allocation_ids")
+        document_no = payload.get("document_no")
+
+        if allocation_ids or (document_no and not allocation_id):
+            return batch_unallocate_invoicing_items(payload, db)
+
         if not allocation_id:
             raise HTTPException(status_code=400, detail="Missing allocation_id.")
 
@@ -668,25 +824,15 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
             clean_sku = alloc.sku.strip().upper()
             cand_items = db.query(OrderItem).filter(
                 or_(
-                    OrderItem.code.ilike(f"%{clean_sku}%"),
-                    OrderItem.one_one_code.ilike(f"%{clean_sku}%")
+                    OrderItem.code.ilike(clean_sku),
+                    OrderItem.one_one_code.ilike(clean_sku)
                 )
             ).all()
             if cand_items:
                 matched_item = cand_items[0]
 
         if matched_item:
-            i_hist = list(matched_item.invoice_history or [])
-            new_hist = [h for h in i_hist if h.get("id") != alloc.source_doc_no and h.get("ref") != alloc.source_doc_no]
-            matched_item.invoice_history = new_hist
-            matched_item.invoice_qty = sum(int(h.get("qty") or 0) for h in new_hist)
-            matched_item.invoice_value = sum(float(h.get("total") or 0.0) for h in new_hist)
-            
-            if new_hist:
-                matched_item.invoice_ref = "; ".join(set(str(h.get("ref")) for h in new_hist if h.get("ref")))
-            else:
-                matched_item.invoice_ref = None
-                matched_item.invoice_date = None
+            recalc_order_item_invoicing(db, matched_item)
 
         db.commit()
         logger.info(f"Unallocated invoice #{allocation_id} for {alloc.sku} ({alloc.source_doc_no}).")
@@ -695,8 +841,87 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
             "message": f"Successfully unallocated {alloc.sku} from {alloc.source_doc_no}."
         }
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error unallocating invoice item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/batch-unallocate")
+@router.post("/batch-unallocate")
+def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Cancels multiple active invoice allocations in bulk by allocation IDs, document_no, or line SKUs.
+    """
+    try:
+        allocation_ids = payload.get("allocation_ids") or []
+        document_no = payload.get("document_no")
+        skus = payload.get("skus") or []
+
+        query = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active"
+        )
+
+        if allocation_ids:
+            clean_ids = [int(i) for i in allocation_ids if str(i).isdigit()]
+            if clean_ids:
+                query = query.filter(ProcurementAllocation.id.in_(clean_ids))
+        elif document_no:
+            query = query.filter(ProcurementAllocation.source_doc_no == str(document_no).strip())
+            if skus:
+                clean_skus = [str(s).strip().upper() for s in skus if s]
+                query = query.filter(func.upper(ProcurementAllocation.sku).in_(clean_skus))
+        else:
+            raise HTTPException(status_code=400, detail="Missing allocation_ids or document_no.")
+
+        allocs_to_cancel = query.all()
+        if not allocs_to_cancel:
+            return {"status": "success", "message": "No active allocations found to unallocate.", "count": 0}
+
+        affected_item_ids = set()
+        affected_skus = set()
+
+        for alloc in allocs_to_cancel:
+            alloc.status = "Cancelled"
+            if alloc.order_item_id:
+                affected_item_ids.add(str(alloc.order_item_id))
+            if alloc.sku:
+                affected_skus.add(alloc.sku.strip().upper())
+
+        # Recalculate OrderItems
+        affected_items = []
+        if affected_item_ids:
+            affected_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
+        
+        if affected_skus:
+            cand_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.code.in_(list(affected_skus)),
+                    OrderItem.one_one_code.in_(list(affected_skus))
+                )
+            ).all()
+            for ci in cand_items:
+                if ci not in affected_items:
+                    affected_items.append(ci)
+
+        for it in affected_items:
+            recalc_order_item_invoicing(db, it)
+
+        db.commit()
+        count = len(allocs_to_cancel)
+        logger.info(f"Bulk unallocated {count} allocations.")
+        return {
+            "status": "success",
+            "message": f"Successfully unallocated {count} allocation(s).",
+            "count": count
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in batch unallocate: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

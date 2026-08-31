@@ -214,7 +214,10 @@ export default function InvoicesPage() {
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS
   // -------------------------------------------------------------
-  const handleOpenAllocModal = (line) => {
+  // -------------------------------------------------------------
+  // ALLOCATION ACTIONS
+  // -------------------------------------------------------------
+  const handleOpenAllocModal = async (line) => {
     const unalloc = Number(line.unallocated_qty || 0);
     setAllocTargetItem(line);
     setAllocQty(unalloc > 0 ? unalloc : 1);
@@ -223,8 +226,29 @@ export default function InvoicesPage() {
     const cleanSku = (line.item_code || '').trim().toUpperCase();
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
     const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
-    const candidates = [];
 
+    // 1. First try fetching live candidates from backend API
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/candidate-orders?sku=${encodeURIComponent(line.item_code)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.candidates && data.candidates.length > 0) {
+          const backendCandidates = data.candidates.map(cand => ({
+            ...cand,
+            is_direct_sku_match: cand.is_direct_sku_match !== false
+          }));
+          setCandidateOrders(backendCandidates);
+          setSelectedCandidateKey(String(backendCandidates[0].order_item_id));
+          setManualProjectId(backendCandidates[0].project_key || backendCandidates[0].project_id || '');
+          setManualOrderId(backendCandidates[0].order_id || '');
+          setAllocModalOpen(true);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: Client-side candidate matcher
+    const candidates = [];
     Object.values(projects || {}).forEach(p => {
       const pName = (p.name || '').toLowerCase();
       const pKey = (p.key || '').toLowerCase();
@@ -249,11 +273,11 @@ export default function InvoicesPage() {
             else if (isDescMatch) itemScore += 20;
 
             candidates.push({
-              project_id: p.id || 1,
+              project_id: p.id || null,
               project_name: p.name,
-              project_key: p.key,
-              order_id: o.id,
-              order_po_number: o.id || o.po_number,
+              project_key: p.key || pKey,
+              order_id: o.dbId || o.id,
+              order_po_number: o.poNumber || o.id,
               order_item_id: it.id,
               fitting_code: it.code || it.oneOneCode || line.item_code,
               description: it.description || it.name,
@@ -272,7 +296,7 @@ export default function InvoicesPage() {
 
     if (candidates.length > 0) {
       setSelectedCandidateKey(String(candidates[0].order_item_id));
-      setManualProjectId(candidates[0].project_id || '');
+      setManualProjectId(candidates[0].project_key || candidates[0].project_id || '');
       setManualOrderId(candidates[0].order_id || '');
     } else {
       setSelectedCandidateKey('MANUAL');
@@ -301,9 +325,10 @@ export default function InvoicesPage() {
     if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
       const cand = candidateOrders.find(c => String(c.order_item_id) === String(selectedCandidateKey));
       if (cand) {
-        payload.project_id = cand.project_id;
+        payload.project_id = cand.project_id || null;
+        payload.project_key = cand.project_key || null;
         payload.project_name = cand.project_name;
-        payload.order_id = cand.order_id;
+        payload.order_id = cand.order_id || null;
         payload.order_item_id = cand.order_item_id;
         payload.fitting_code = cand.fitting_code;
       }
@@ -312,10 +337,11 @@ export default function InvoicesPage() {
         alert("Please select a target Project to allocate to.");
         return;
       }
-      const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
-      payload.project_id = proj ? (proj.id || 1) : 1;
-      payload.project_name = proj ? proj.name : 'Selected Project';
-      payload.order_id = manualOrderId ? Number(manualOrderId) : null;
+      const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
+      payload.project_id = proj?.id || null;
+      payload.project_key = proj?.key || manualProjectId;
+      payload.project_name = proj?.name || manualProjectId;
+      payload.order_id = manualOrderId || null;
       payload.fitting_code = allocTargetItem.item_code;
     }
 
@@ -375,7 +401,7 @@ export default function InvoicesPage() {
       });
       if (score > bestMatchCount) {
         bestMatchCount = score;
-        bestProjId = p.id || p.key;
+        bestProjId = p.key || p.id;
       }
     });
 
@@ -395,7 +421,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+    const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
     const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id) && (l.unallocated_qty || 0) > 0);
 
     if (selectedLines.length === 0) {
@@ -406,9 +432,10 @@ export default function InvoicesPage() {
     const payload = {
       source_doc_no: selectedDocument.document_no,
       doc_date: selectedDocument.transaction_date,
-      project_id: proj ? (proj.id || 1) : 1,
-      project_name: proj ? proj.name : 'Selected Project',
-      order_id: batchOrderId ? Number(batchOrderId) : null,
+      project_id: proj?.id || null,
+      project_key: proj?.key || batchProjectId,
+      project_name: proj?.name || batchProjectId,
+      order_id: batchOrderId || null,
       allocated_by_name: 'Staff',
       notes: batchNotes || `Batch allocated ${selectedLines.length} invoice items`,
       items: selectedLines.map(l => ({
@@ -445,7 +472,7 @@ export default function InvoicesPage() {
     }
   };
 
-  // Unallocate Handler
+  // Unallocate Single Allocation Handler
   const handleUnallocate = async (allocationId, docNo) => {
     if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
       return;
@@ -472,12 +499,132 @@ export default function InvoicesPage() {
     }
   };
 
+  // Unallocate Entire Line (All allocations for a specific line item)
+  const handleUnallocateLine = async (line, docNo) => {
+    const allocIds = (line.allocations || []).map(a => a.id).filter(Boolean);
+    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+      return;
+    }
+    try {
+      const payload = allocIds.length > 0
+        ? { allocation_ids: allocIds }
+        : { document_no: docNo, skus: [line.item_code] };
+
+      const res = await fetch(`${API_BASE}/api/invoicing/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Item unallocated.'}`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.document_no);
+        }
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate line.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocation: ${e.message}`);
+    }
+  };
+
+  // Bulk Unallocate Multiple Selected Lines
+  const handleBulkUnallocateSelected = async () => {
+    if (!selectedDocument || selectedLineIds.size === 0) return;
+
+    const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id));
+    const allocIdsToCancel = [];
+    const skusToCancel = [];
+
+    selectedLines.forEach(l => {
+      if (l.allocations && l.allocations.length > 0) {
+        l.allocations.forEach(a => {
+          if (a.id) allocIdsToCancel.push(a.id);
+        });
+      } else if (l.allocated_qty > 0) {
+        skusToCancel.push(l.item_code);
+      }
+    });
+
+    if (allocIdsToCancel.length === 0 && skusToCancel.length === 0) {
+      alert("None of the selected items have active allocations to release.");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+      return;
+    }
+
+    try {
+      const payload = allocIdsToCancel.length > 0
+        ? { allocation_ids: allocIdsToCancel }
+        : { document_no: selectedDocument.document_no, skus: skusToCancel };
+
+      const res = await fetch(`${API_BASE}/api/invoicing/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Selected items unallocated.'}`);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        fetchSingleDocumentDetails(selectedDocument.document_no);
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate items.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocations: ${e.message}`);
+    }
+  };
+
+  // Bulk Unallocate Entire Document
+  const handleUnallocateEntireDocument = async (docNo) => {
+    if (!docNo) return;
+    if (!window.confirm(`Are you sure you want to unallocate ALL items from invoice ${docNo}? Every item in this document will return to unallocated.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_no: docNo })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Entire document unallocated.'}`);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        fetchSingleDocumentDetails(docNo);
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate document.'}`);
+      }
+    } catch (e) {
+      alert(`Error in bulk unallocation: ${e.message}`);
+    }
+  };
+
   // Multi-select helpers
   const handleToggleSelectLine = (lineId) => {
     const next = new Set(selectedLineIds);
     if (next.has(lineId)) next.delete(lineId);
     else next.add(lineId);
     setSelectedLineIds(next);
+  };
+
+  const handleSelectAllLines = () => {
+    if (!selectedDocument || !selectedDocument.lines) return;
+    if (selectedLineIds.size === selectedDocument.lines.length) {
+      setSelectedLineIds(new Set());
+    } else {
+      setSelectedLineIds(new Set(selectedDocument.lines.map(l => l.line_id)));
+    }
   };
 
   const handleSelectAllUnallocated = () => {
@@ -493,6 +640,11 @@ export default function InvoicesPage() {
   const unallocatedLinesInDoc = useMemo(() => {
     if (!selectedDocument || !selectedDocument.lines) return [];
     return selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
+  }, [selectedDocument]);
+
+  const allocatedLinesInDoc = useMemo(() => {
+    if (!selectedDocument || !selectedDocument.lines) return [];
+    return selectedDocument.lines.filter(l => (l.allocated_qty || 0) > 0);
   }, [selectedDocument]);
 
   return (
@@ -757,83 +909,160 @@ export default function InvoicesPage() {
                     transition: 'width 0.3s ease'
                   }} />
                 </div>
+                {selectedDocument.allocated_qty > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <button
+                      onClick={() => handleUnallocateEntireDocument(selectedDocument.document_no)}
+                      className="btn btn-xs"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        padding: '3px 9px',
+                        fontSize: '10.5px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Release all allocations in this document back to unallocated pool"
+                    >
+                      <Trash2 size={11} /> Unallocate Entire Document
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* BATCH ALLOCATION ACTION BAR (When items are selected) */}
-          {selectedLineIds.size > 0 && (
-            <div style={{ 
-              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
-              border: '1.5px solid #3b82f6', 
-              borderRadius: '10px', 
-              padding: '12px 18px', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
-              color: '#fff'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
-                  {selectedLineIds.size} items selected
-                </span>
-                <span style={{ fontSize: '12.5px', color: '#cbd5e1' }}>
-                  Allocate all selected invoice lines to the same project order in one click:
-                </span>
-              </div>
+          {/* BATCH ALLOCATION & UNALLOCATION ACTION BAR (When items are selected) */}
+          {selectedLineIds.size > 0 && (() => {
+            const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id));
+            const unallocCount = selectedLines.filter(l => (l.unallocated_qty || 0) > 0).length;
+            const allocCount = selectedLines.filter(l => (l.allocated_qty || 0) > 0).length;
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  onClick={() => setSelectedLineIds(new Set())}
-                  className="btn btn-xs btn-ghost"
-                  style={{ color: '#94a3b8', fontSize: '11.5px' }}
-                >
-                  Clear Selection
-                </button>
-                <button
-                  onClick={handleOpenBatchModal}
-                  className="btn btn-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    fontSize: '12px',
-                    padding: '6px 14px',
-                    borderRadius: '8px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
-                  }}
-                >
-                  <Sparkles size={14} /> Allocate Selected to Project Order
-                </button>
+            return (
+              <div style={{ 
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
+                border: '1.5px solid #3b82f6', 
+                borderRadius: '10px', 
+                padding: '12px 18px', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+                color: '#fff',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                    {selectedLineIds.size} items selected
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                    {unallocCount > 0 && allocCount > 0 
+                      ? `${unallocCount} unallocated, ${allocCount} allocated items`
+                      : (unallocCount > 0 ? `${unallocCount} unallocated item(s) ready to assign` : `${allocCount} allocated item(s) ready to release`)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setSelectedLineIds(new Set())}
+                    className="btn btn-xs btn-ghost"
+                    style={{ color: '#94a3b8', fontSize: '11.5px' }}
+                  >
+                    Clear Selection
+                  </button>
+
+                  {allocCount > 0 && (
+                    <button
+                      onClick={handleBulkUnallocateSelected}
+                      className="btn btn-sm"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        color: '#fca5a5',
+                        border: '1px solid rgba(239, 68, 68, 0.5)',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      title="Unallocate all active allocations for the selected items"
+                    >
+                      <Trash2 size={13} /> Bulk Unallocate Selected ({allocCount})
+                    </button>
+                  )}
+
+                  {unallocCount > 0 && (
+                    <button
+                      onClick={handleOpenBatchModal}
+                      className="btn btn-sm"
+                      style={{
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
+                      }}
+                    >
+                      <Sparkles size={14} /> Allocate Selected ({unallocCount})
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Document Line Items Table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
                   Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
                 </span>
+                
+                <button
+                  onClick={handleSelectAllLines}
+                  className="btn btn-xs btn-ghost"
+                  style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 8px' }}
+                >
+                  {selectedLineIds.size === (selectedDocument.lines?.length || 0) ? 'Deselect All' : `Select All (${selectedDocument.lines?.length || 0})`}
+                </button>
+
                 {unallocatedLinesInDoc.length > 0 && (
                   <button
                     onClick={handleSelectAllUnallocated}
                     className="btn btn-xs btn-ghost"
-                    style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 8px' }}
+                    style={{ border: '1px solid rgba(245, 158, 11, 0.4)', color: '#f59e0b', fontSize: '10.5px', padding: '2px 8px' }}
                   >
-                    {selectedLineIds.size === unallocatedLinesInDoc.length ? 'Deselect All' : `Select All Unallocated (${unallocatedLinesInDoc.length})`}
+                    Select Unallocated ({unallocatedLinesInDoc.length})
+                  </button>
+                )}
+
+                {allocatedLinesInDoc.length > 0 && (
+                  <button
+                    onClick={() => setSelectedLineIds(new Set(allocatedLinesInDoc.map(l => l.line_id)))}
+                    className="btn btn-xs btn-ghost"
+                    style={{ border: '1px solid rgba(239, 68, 68, 0.4)', color: '#ef4444', fontSize: '10.5px', padding: '2px 8px' }}
+                  >
+                    Select Allocated ({allocatedLinesInDoc.length})
                   </button>
                 )}
               </div>
 
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Tip: Select multiple items to allocate them together, or allocate individually
+                Tip: Use checkboxes to bulk allocate or bulk unallocate multiple lines
               </span>
             </div>
 
@@ -844,10 +1073,9 @@ export default function InvoicesPage() {
                     <th style={{ width: '40px', textAlign: 'center' }}>
                       <input 
                         type="checkbox" 
-                        checked={unallocatedLinesInDoc.length > 0 && selectedLineIds.size === unallocatedLinesInDoc.length}
-                        onChange={handleSelectAllUnallocated}
-                        disabled={unallocatedLinesInDoc.length === 0}
-                        title="Select/Deselect All Unallocated Items"
+                        checked={(selectedDocument.lines?.length || 0) > 0 && selectedLineIds.size === selectedDocument.lines.length}
+                        onChange={handleSelectAllLines}
+                        title="Select/Deselect All Items"
                       />
                     </th>
                     <th style={{ width: '30px' }}></th>
@@ -880,7 +1108,6 @@ export default function InvoicesPage() {
                             <input 
                               type="checkbox" 
                               checked={isSelected}
-                              disabled={!isUnallocated}
                               onChange={() => handleToggleSelectLine(line.line_id)}
                             />
                           </td>
@@ -983,35 +1210,62 @@ export default function InvoicesPage() {
 
                           {/* Action Button */}
                           <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {line.unallocated_qty > 0 ? (
-                              <button
-                                onClick={() => handleOpenAllocModal(line)}
-                                className="btn btn-xs"
-                                style={{
-                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                                  color: '#fff',
-                                  border: 'none',
-                                  fontWeight: 700,
-                                  fontSize: '11px',
-                                  padding: '5px 12px',
-                                  borderRadius: '6px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
-                                }}
-                              >
-                                <Sparkles size={11} /> Allocate
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => setExpandedLineId(isExpanded ? null : line.line_id)}
-                                className="btn btn-xs btn-ghost"
-                                style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
-                              >
-                                View ({line.allocations?.length || 0})
-                              </button>
-                            )}
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                              {line.unallocated_qty > 0 && (
+                                <button
+                                  onClick={() => handleOpenAllocModal(line)}
+                                  className="btn btn-xs"
+                                  style={{
+                                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '11px',
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                  }}
+                                >
+                                  <Sparkles size={11} /> Allocate
+                                </button>
+                              )}
+
+                              {line.allocated_qty > 0 && (
+                                <button
+                                  onClick={() => handleUnallocateLine(line, selectedDocument.document_no)}
+                                  className="btn btn-xs"
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.08)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    padding: '5px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                  title="Release all allocations for this item"
+                                >
+                                  <Trash2 size={11} /> Unallocate
+                                </button>
+                              )}
+
+                              {hasAllocations && (
+                                <button
+                                  onClick={() => setExpandedLineId(isExpanded ? null : line.line_id)}
+                                  className="btn btn-xs btn-ghost"
+                                  style={{ fontSize: '11px', color: 'var(--text-secondary)', padding: '5px 6px' }}
+                                  title="View allocated projects & orders"
+                                >
+                                  {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
 
@@ -1531,7 +1785,7 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1547,9 +1801,9 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
                           ));
                         })()}
                       </select>
@@ -1718,11 +1972,11 @@ export default function InvoicesPage() {
                 {/* Candidate Orders List */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 700 }}>
-                    Select Destination Match:
+                    Select Destination Project & Fitting:
                   </label>
                   
                   {candidateOrders.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
                       {candidateOrders.map((cand) => {
                         const isSelected = selectedCandidateKey === String(cand.order_item_id);
                         return (
@@ -1730,8 +1984,8 @@ export default function InvoicesPage() {
                             key={cand.order_item_id}
                             onClick={() => {
                               setSelectedCandidateKey(String(cand.order_item_id));
-                              setManualProjectId(cand.project_id);
-                              setManualOrderId(cand.order_id);
+                              setManualProjectId(cand.project_key || cand.project_id || '');
+                              setManualOrderId(cand.order_id || '');
                             }}
                             style={{
                               padding: '10px 14px',
@@ -1809,7 +2063,7 @@ export default function InvoicesPage() {
                         >
                           <option value="">-- Select Project --</option>
                           {Object.values(projects || {}).map(p => (
-                            <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                            <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
                           ))}
                         </select>
                       </div>
@@ -1825,9 +2079,9 @@ export default function InvoicesPage() {
                         >
                           <option value="">-- General Project Order --</option>
                           {(() => {
-                            const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId);
+                            const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
                             return (proj?.orders || []).map(o => (
-                              <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
+                              <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
                             ));
                           })()}
                         </select>
