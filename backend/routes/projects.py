@@ -931,18 +931,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             # Client Invoices and Credit Notes are strictly dynamic from authentic Palladium ERP allocations
 
-            try:
-                raw_payments = json.loads(order.payments) if isinstance(order.payments, str) and order.payments.strip() else (order.payments or [])
-            except Exception:
-                raw_payments = []
-
-            # Filter out legacy PALLADIUM entries from raw_payments to prevent duplicates
-            manual_payments = [p for p in raw_payments if isinstance(p, dict) and p.get("source") != "PALLADIUM" and not p.get("is_palladium")]
-
-            # Combine manual payments with live OrderPaymentAllocations
+            # Payments are strictly dynamic from authentic Palladium ERP allocations (manual entries deprecated)
             order_pay_allocs = pay_alloc_by_order_id.get(str(order.po_number), []) + pay_alloc_by_order_id.get(str(order.id), [])
             seen_alloc_ids = set()
-            payments_parsed = list(manual_payments)
+            payments_parsed = []
             for pa in order_pay_allocs:
                 if pa.id not in seen_alloc_ids:
                     seen_alloc_ids.add(pa.id)
@@ -960,8 +952,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         "allocated_by": pa.allocated_by
                     })
 
-            calculated_paid = sum(float(p.get("amount", 0) or 0) for p in payments_parsed)
-            effective_paid = max(float(order.paid or 0.0), calculated_paid) if calculated_paid > 0 else float(order.paid or 0.0)
+            effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
             effective_outstanding = max(0.0, round(float(order.value or 0.0) - effective_paid, 2))
 
             order_dict = {
