@@ -194,7 +194,8 @@ def get_candidate_orders_for_payment(
         for o in orders:
             proj = proj_map.get(o.project_id) or (proj_by_key.get(o.project_key) if o.project_key else None)
             proj_name = proj.name if proj else (o.project_full_name or "")
-            client_str = f"{o.client_company or ''} {o.client_name or ''} {o.client_contact or ''} {proj.client if proj else ''}".lower()
+            proj_client = proj.client_name if proj else ""
+            client_str = f"{o.client_company or ''} {o.client_name or ''} {o.client_contact or ''} {proj_client}".lower()
             order_name = f"{o.quote_name or ''} {o.po_number or ''} {proj_name}".lower()
 
             match_score = 0
@@ -214,7 +215,7 @@ def get_candidate_orders_for_payment(
                     "project_name": proj_name or "Project",
                     "order_id": o.po_number or str(o.id),
                     "quote_name": o.quote_name or "Spec Order",
-                    "client": o.client_company or o.client or o.client_name or (proj.client if proj else "Client"),
+                    "client": o.client_company or o.client_name or (proj.client_name if proj else "Client"),
                     "total_value": float(o.value or 0.0),
                     "paid_amount": float(o.paid or 0.0),
                     "outstanding": float(o.outstanding or 0.0),
