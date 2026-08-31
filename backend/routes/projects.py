@@ -953,7 +953,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     })
 
             effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
-            effective_outstanding = max(0.0, round(float(order.value or 0.0) - effective_paid, 2))
+            order_val_excl = float(order.value or 0.0)
+            order_val_incl = round(order_val_excl * 1.15, 2)
+            effective_outstanding = max(0.0, round(order_val_incl - effective_paid, 2))
 
             order_dict = {
                 "id": order.po_number,
@@ -964,6 +966,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "supplier": order.supplier_name,
                 "items": order.items_count,
                 "value": order.value,
+                "valueInclVat": order_val_incl,
                 "costValue": total_cost_value,
                 "paid": effective_paid,
                 "outstanding": effective_outstanding,

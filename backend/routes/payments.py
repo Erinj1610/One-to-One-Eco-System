@@ -59,8 +59,9 @@ def recalc_order_payments(db: Session, order_id_str: str):
                 "allocated_by": a.allocated_by
             })
 
-        order_val = float(order.value or 0.0)
-        outstanding = max(0.0, round(order_val - allocated_total, 2))
+        order_val_excl = float(order.value or 0.0)
+        order_val_incl = round(order_val_excl * 1.15, 2)
+        outstanding = max(0.0, round(order_val_incl - allocated_total, 2))
 
         order.paid = allocated_total
         order.outstanding = outstanding
@@ -193,6 +194,11 @@ def get_candidate_orders_for_payment(
                 if w in order_name or w in client_str:
                     match_score += 5
 
+            total_val_excl = float(o.value or 0.0)
+            total_val_incl = round(total_val_excl * 1.15, 2)
+            paid_amt = float(o.paid or 0.0)
+            outstanding_amt = max(0.0, round(total_val_incl - paid_amt, 2))
+
             if match_score > 0 or not (c_name or c_code or ref):
                 candidates.append({
                     "project_id": proj.id if proj else o.project_id,
@@ -201,9 +207,10 @@ def get_candidate_orders_for_payment(
                     "order_id": o.po_number or str(o.id),
                     "quote_name": o.quote_name or "Spec Order",
                     "client": o.client_company or o.client_name or (proj.client_name if proj else "Client"),
-                    "total_value": float(o.value or 0.0),
-                    "paid_amount": float(o.paid or 0.0),
-                    "outstanding": float(o.outstanding or 0.0),
+                    "total_value": total_val_incl,
+                    "total_value_excl": total_val_excl,
+                    "paid_amount": paid_amt,
+                    "outstanding": outstanding_amt,
                     "match_score": match_score
                 })
 
@@ -348,15 +355,20 @@ def get_projects_orders_for_allocation(db: Session = Depends(get_db)):
 
             order_list = []
             for o in p_orders:
+                o_val_excl = float(o.value or 0.0)
+                o_val_incl = round(o_val_excl * 1.15, 2)
+                paid_amt = float(o.paid or 0.0)
+                out_amt = max(0.0, round(o_val_incl - paid_amt, 2))
                 order_list.append({
                     "id": o.po_number or str(o.id),
                     "db_id": o.id,
                     "po_number": o.po_number,
                     "quote_name": o.quote_name or "General Order",
                     "client": o.client_company or o.client or o.client_name or p.name,
-                    "value": float(o.value or 0.0),
-                    "paid": float(o.paid or 0.0),
-                    "outstanding": float(o.outstanding or 0.0),
+                    "value": o_val_incl,
+                    "value_excl": o_val_excl,
+                    "paid": paid_amt,
+                    "outstanding": out_amt,
                     "status": o.status or "Active"
                 })
 
@@ -579,12 +591,14 @@ def get_order_payments_breakdown(order_id: str, db: Session = Depends(get_db)):
             })
 
         total_paid = sum(p["amount"] for p in allocated_payments)
-        total_value = float(order.value or 0.0)
-        outstanding = max(0.0, round(total_value - total_paid, 2))
+        total_value_excl = float(order.value or 0.0)
+        total_value_incl = round(total_value_excl * 1.15, 2)
+        outstanding = max(0.0, round(total_value_incl - total_paid, 2))
 
         return {
             "order_id": order.po_number or str(order.id),
-            "total_value": total_value,
+            "total_value": total_value_incl,
+            "total_value_excl": total_value_excl,
             "paid": total_paid,
             "outstanding": outstanding,
             "payments": allocated_payments
