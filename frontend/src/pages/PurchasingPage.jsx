@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
@@ -1670,10 +1671,22 @@ export default function PurchasingPage() {
       )}
 
       {/* ============================================================ */}
-      {/* BATCH ALLOCATION MODAL (Multiple items to 1 Project Order)   */}
+      {/* BATCH ALLOCATION MODAL (Multiple Items at Once)              */}
       {/* ============================================================ */}
-      {batchModalOpen && selectedDocument && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {batchModalOpen && selectedDocument && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -1839,14 +1852,27 @@ export default function PurchasingPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ============================================================ */}
       {/* SINGLE ITEM ALLOCATION MODAL                                 */}
       {/* ============================================================ */}
-      {allocModalOpen && allocTargetItem && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {allocModalOpen && allocTargetItem && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -1864,7 +1890,7 @@ export default function PurchasingPage() {
                   Allocate {allocTargetItem.doc_type} Line to Project Order
                 </h3>
                 <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Document: <strong>{allocTargetItem.document_no}</strong> • Supplier: <strong>{allocTargetItem.vendor_name}</strong>
+                  Document: <strong>{allocTargetItem.document_no}</strong> • Vendor: <strong>{allocTargetItem.vendor_name}</strong>
                 </p>
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setAllocModalOpen(false)}>
@@ -2155,20 +2181,23 @@ export default function PurchasingPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* FLAG / MANAGE ISSUE MODAL */}
-      {issueModalOpen && issueTargetItem && (
+      {issueModalOpen && issueTargetItem && createPortal(
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
           background: 'rgba(0,0,0,0.7)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000,
+          zIndex: 99999,
           padding: '20px'
         }}>
           <div className="card" style={{
@@ -2289,7 +2318,8 @@ export default function PurchasingPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

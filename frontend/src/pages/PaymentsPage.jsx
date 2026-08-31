@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
@@ -1149,16 +1150,18 @@ export default function PaymentsPage() {
       {/* ============================================================ */}
       {/* ALLOCATION MODAL (Single / Candidate Order Allocation)       */}
       {/* ============================================================ */}
-      {allocModalOpen && allocTargetItem && (
+      {allocModalOpen && allocTargetItem && createPortal(
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
           background: 'rgba(0,0,0,0.65)',
           backdropFilter: 'blur(3px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000,
+          zIndex: 99999,
           padding: '20px'
         }}>
           <div className="card" style={{
@@ -1209,19 +1212,19 @@ export default function PaymentsPage() {
                 gap: '8px'
               }}>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Client: </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Client:</span>{' '}
                   <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.customer_name}</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Date: </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Date:</span>{' '}
                   <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.payment_date || '—'}</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Total Value: </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Value:</span>{' '}
                   <strong style={{ color: 'var(--text-primary)' }}>R {allocTargetItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Available Pool: </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Available Pool:</span>{' '}
                   <strong style={{ color: '#f59e0b' }}>R {(allocTargetItem.remaining_amount || allocTargetItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                 </div>
               </div>
@@ -1510,20 +1513,23 @@ export default function PaymentsPage() {
 
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* UNALLOCATE CONFIRMATION MODAL */}
-      {unallocConfirmId && (
+      {unallocConfirmId && createPortal(
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
           background: 'rgba(0,0,0,0.65)',
           backdropFilter: 'blur(3px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000,
+          zIndex: 99999,
           padding: '20px'
         }}>
           <div className="card" style={{
@@ -1568,20 +1574,23 @@ export default function PaymentsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* FLAG / MANAGE ISSUE MODAL */}
-      {issueModalOpen && issueTargetItem && (
+      {issueModalOpen && issueTargetItem && createPortal(
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
           background: 'rgba(0,0,0,0.7)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000,
+          zIndex: 99999,
           padding: '20px'
         }}>
           <div className="card" style={{
@@ -1702,7 +1711,8 @@ export default function PaymentsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
@@ -1862,8 +1863,20 @@ export default function InvoicesPage() {
       {/* ============================================================ */}
       {/* BATCH ALLOCATION MODAL (Multiple items to 1 Project Order)   */}
       {/* ============================================================ */}
-      {batchModalOpen && selectedDocument && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {batchModalOpen && selectedDocument && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -1913,7 +1926,7 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- Select Destination Project --</option>
                         {Object.values(projects || {}).map(p => (
-                          <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
                         ))}
                       </select>
                     </div>
@@ -1929,9 +1942,9 @@ export default function InvoicesPage() {
                       >
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
-                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === batchProjectId) || (p.id && String(p.id) === String(batchProjectId)) || p.name === batchProjectId);
+                          const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId);
                           return (proj?.orders || []).map(o => (
-                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
+                            <option key={o.id} value={o.id}>{o.quoteName || o.quote_name || `Order #${o.id}`}</option>
                           ));
                         })()}
                       </select>
@@ -1942,7 +1955,7 @@ export default function InvoicesPage() {
                 {/* Items Being Allocated List */}
                 <div>
                   <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                    Invoice Lines to be Allocated ({selectedLineIds.size}):
+                    Lines to be Allocated ({selectedLineIds.size}):
                   </div>
                   <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)' }}>
                     <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
@@ -1951,16 +1964,18 @@ export default function InvoicesPage() {
                           <th style={{ padding: '6px 10px' }}>SKU</th>
                           <th style={{ padding: '6px 10px' }}>Description</th>
                           <th style={{ padding: '6px 10px', textAlign: 'center' }}>Qty</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Price (Excl)</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Unit Excl</th>
+                          <th style={{ padding: '6px 10px', textAlign: 'right' }}>Total Excl</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id)).map(l => (
                           <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{l.item_code}</td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
                             <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
                             <td style={{ padding: '6px 10px', textAlign: 'right' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1968,21 +1983,20 @@ export default function InvoicesPage() {
                   </div>
                 </div>
 
-                {/* Notes Input */}
+                {/* Internal Notes */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
                     Internal Allocation Note (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Invoiced as per deposit invoice / Progress claim #1..."
+                    placeholder="e.g. Invoiced deposit for Living Room joinery..."
                     className="form-control"
                     style={{ height: '34px', fontSize: '12px' }}
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
                   />
                 </div>
-
               </div>
 
               {/* Modal Footer */}
@@ -2004,35 +2018,37 @@ export default function InvoicesPage() {
                 </button>
                 <button 
                   type="submit" 
-                  disabled={isSavingBatchAlloc}
-                  className="btn btn-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    padding: '8px 18px',
-                    borderRadius: '8px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
+                  className="btn btn-sm btn-primary" 
+                  disabled={isSavingBatchAlloc || !batchProjectId}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
                 >
                   {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                  {isSavingBatchAlloc ? 'Allocating...' : `Confirm Allocation (${selectedLineIds.size} items)`}
+                  Confirm Batch Allocation ({selectedLineIds.size} lines)
                 </button>
               </div>
             </form>
-
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ============================================================ */}
       {/* SINGLE ALLOCATION MODAL (1 Item to 1 Order)                  */}
       {/* ============================================================ */}
-      {allocModalOpen && allocTargetItem && (
-        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      {allocModalOpen && allocTargetItem && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
           <div className="modal-content" style={{ width: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '12px', overflow: 'hidden' }}>
             
             {/* Modal Header */}
@@ -2078,144 +2094,128 @@ export default function InvoicesPage() {
                       onChange={(e) => setAllocQty(Number(e.target.value))}
                       required
                     />
-                    <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-                      Max available: <strong>{allocTargetItem.unallocated_qty} {allocTargetItem.item_unit}</strong>
-                    </span>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Available: <strong>{allocTargetItem.unallocated_qty} units</strong>
+                    </div>
                   </div>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
-                      Unit Price (Excl)
+                      Line Unit Price (Excl VAT)
                     </label>
                     <input
                       type="text"
-                      disabled
-                      value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                       className="form-control"
-                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+                      style={{ height: '34px', fontSize: '12px', background: 'var(--bg-secondary)', fontWeight: 600 }}
+                      value={`R ${Number(allocTargetItem.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                      disabled
                     />
                   </div>
                 </div>
 
-                {/* Candidate Orders List */}
+                {/* Candidate Orders (Intelligent ERP Matching) */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 700 }}>
-                    Select Destination Project & Fitting:
-                  </label>
-                  
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={13} color="#3b82f6" />
+                    Intelligent Candidate Order Matches:
+                  </div>
+
                   {candidateOrders.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                      {candidateOrders.map((cand) => {
-                        const isSelected = selectedCandidateKey === String(cand.order_item_id);
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {candidateOrders.map(cand => {
+                        const isSelected = selectedCandidateKey === cand.candidate_key;
                         return (
-                          <div
-                            key={cand.order_item_id}
-                            onClick={() => {
-                              setSelectedCandidateKey(String(cand.order_item_id));
-                              setManualProjectId(cand.project_key || cand.project_id || '');
-                              setManualOrderId(cand.order_id || '');
-                            }}
+                          <div 
+                            key={cand.candidate_key}
+                            onClick={() => handleSelectCandidate(cand)}
                             style={{
-                              padding: '10px 14px',
-                              borderRadius: '8px',
                               border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary)',
+                              borderRadius: '8px',
+                              padding: '10px 14px',
                               cursor: 'pointer',
                               display: 'flex',
                               justifyContent: 'space-between',
-                              alignItems: 'center'
+                              alignItems: 'center',
+                              transition: 'all 0.15s ease'
                             }}
                           >
                             <div>
                               <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}>
-                                {cand.project_name} — Order #{cand.order_po_number}
+                                {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span> {cand.order_title}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                Fitting: <strong style={{ color: '#3b82f6' }}>{cand.fitting_code}</strong> ({cand.description})
+                                Client: <strong style={{ color: 'var(--text-primary)' }}>{cand.client}</strong> • Match: <span style={{ color: '#3b82f6', fontWeight: 600 }}>{cand.match_type}</span>
                               </div>
                             </div>
 
                             <div style={{ textAlign: 'right' }}>
                               <span style={{ 
-                                padding: '2px 6px', 
-                                borderRadius: '4px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                background: cand.is_direct_sku_match ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-                                color: cand.is_direct_sku_match ? '#10b981' : '#3b82f6'
+                                background: isSelected ? '#3b82f6' : 'var(--bg-secondary)', 
+                                color: isSelected ? '#fff' : 'var(--text-primary)', 
+                                padding: '4px 10px', 
+                                borderRadius: '6px', 
+                                fontSize: '11px', 
+                                fontWeight: 700 
                               }}>
-                                {cand.is_direct_sku_match ? 'Exact SKU Match' : 'Project Ref Match'}
+                                {isSelected ? 'Selected' : 'Select'}
                               </span>
                             </div>
                           </div>
                         );
                       })}
-
-                      {/* Manual Option */}
-                      <div
-                        onClick={() => setSelectedCandidateKey('MANUAL')}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          border: selectedCandidateKey === 'MANUAL' ? '1.5px solid #3b82f6' : '1px dashed var(--border)',
-                          background: selectedCandidateKey === 'MANUAL' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                          cursor: 'pointer',
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          color: 'var(--text-secondary)'
-                        }}
-                      >
-                        + Select a different project/order manually...
-                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                      No automatic matching orders found for this SKU. Please select destination manually:
+                    <div style={{ padding: '12px', textAlign: 'center', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                      No direct project / item matches found. You can select any project below.
                     </div>
                   )}
+                </div>
 
-                  {/* Manual Dropdown Pickers */}
-                  {(selectedCandidateKey === 'MANUAL' || candidateOrders.length === 0) && (
-                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project *</label>
-                        <select
-                          className="form-control"
-                          style={{ height: '32px', fontSize: '11.5px', fontWeight: 600 }}
-                          value={manualProjectId}
-                          onChange={(e) => {
-                            setManualProjectId(e.target.value);
-                            setManualOrderId('');
-                          }}
-                          required
-                        >
-                          <option value="">-- Select Project --</option>
-                          {Object.values(projects || {}).map(p => (
-                            <option key={p.key || p.id} value={p.key || p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
-                        <select
-                          className="form-control"
-                          style={{ height: '32px', fontSize: '11.5px' }}
-                          value={manualOrderId}
-                          onChange={(e) => setManualOrderId(e.target.value)}
-                          disabled={!manualProjectId}
-                        >
-                          <option value="">-- General Project Order --</option>
-                          {(() => {
-                            const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
-                            return (proj?.orders || []).map(o => (
-                              <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
-                            ));
-                          })()}
-                        </select>
-                      </div>
+                {/* Manual Project Selection Override */}
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px 16px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    Or Select Destination Project Manually:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Project</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '32px', fontSize: '11.5px' }}
+                        value={manualProjectId}
+                        onChange={(e) => {
+                          setManualProjectId(e.target.value);
+                          setManualOrderId('');
+                          setSelectedCandidateKey(null);
+                        }}
+                      >
+                        <option value="">-- Choose Project --</option>
+                        {Object.values(projects || {}).map(p => (
+                          <option key={p.key || p.id} value={p.id || p.key}>{p.name}</option>
+                        ))}
+                      </select>
                     </div>
-                  )}
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Order (Optional)</label>
+                      <select
+                        className="form-control"
+                        style={{ height: '32px', fontSize: '11.5px' }}
+                        value={manualOrderId}
+                        onChange={(e) => setManualOrderId(e.target.value)}
+                        disabled={!manualProjectId}
+                      >
+                        <option value="">-- General Project Order --</option>
+                        {(() => {
+                          const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualProjectId) || (p.id && String(p.id) === String(manualProjectId)) || p.name === manualProjectId);
+                          return (proj?.orders || []).map(o => (
+                            <option key={o.dbId || o.id} value={o.dbId || o.id}>{o.quote_name || o.quoteName || o.poNumber || `Order #${o.id}`}</option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Notes Input */}
@@ -2299,20 +2299,23 @@ export default function InvoicesPage() {
             </form>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* FLAG / MANAGE ISSUE MODAL */}
-      {issueModalOpen && issueTargetItem && (
+      {issueModalOpen && issueTargetItem && createPortal(
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
           background: 'rgba(0,0,0,0.7)',
           backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10000,
+          zIndex: 99999,
           padding: '20px'
         }}>
           <div className="card" style={{
@@ -2433,7 +2436,8 @@ export default function InvoicesPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
