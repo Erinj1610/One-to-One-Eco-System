@@ -1143,7 +1143,7 @@ export default function PaymentsPage() {
                               Outstanding: R {cand.outstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </div>
                             <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                              Total: R {cand.total_value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              Total: R {cand.total_value.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Incl. VAT)
                             </div>
                           </div>
                         </div>
