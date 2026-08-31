@@ -36,7 +36,8 @@ import {
   Calendar,
   Download,
   Settings,
-  GripVertical
+  GripVertical,
+  CreditCard
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -5392,6 +5393,15 @@ export default function OrdersPage() {
                             </span>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline"
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', fontSize: '11.5px', fontWeight: 600 }}
+                          onClick={() => navigate('/payments')}
+                        >
+                          <CreditCard size={13} /> Open Payments & Allocations
+                        </button>
                       </div>
                     );
                   })()}

@@ -25,6 +25,7 @@ import OrdersPage from './pages/OrdersPage';
 import LogisticsPage from './pages/LogisticsPage';
 import PurchasingPage from './pages/PurchasingPage';
 import InvoicesPage from './pages/InvoicesPage';
+import PaymentsPage from './pages/PaymentsPage';
 import DocsPage from './pages/DocsPage';
 import HrPage from './pages/HrPage';
 import ReportsPage from './pages/ReportsPage';
@@ -78,6 +79,7 @@ function AppInner({ devBypass, setDevBypass }) {
           <Route path="purchasing"  element={<PurchasingPage />} />
           <Route path="logistics"  element={<LogisticsPage />} />
           <Route path="invoices"   element={<InvoicesPage />} />
+          <Route path="payments"   element={<PaymentsPage />} />
           <Route path="docs"       element={<DocsPage />} />
           <Route path="hr"         element={<HrPage />} />
           <Route path="reports"    element={<ReportsPage />} />

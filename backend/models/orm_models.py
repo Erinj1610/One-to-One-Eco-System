@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime, LargeBinary
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, ForeignKey, Enum, JSON, Boolean, Date, DateTime, LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -782,6 +782,43 @@ class PalladiumInvoiceLine(Base):
     currency_code = Column(String, default="ZAR")
     sales_rep = Column(String, nullable=True)
     last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PalladiumPayment(Base):
+    __tablename__ = "palladium_payments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    palladium_payment_id = Column(BigInteger, unique=True, index=True, nullable=False) # lngCustPayID in tblCustPay
+    receipt_no = Column(String, index=True, nullable=False) # strSource (e.g. "RC-000000674")
+    payment_date = Column(DateTime, nullable=True)          # dteJournalDate
+    system_date = Column(DateTime, nullable=True)           # dteSystemDate
+    customer_code = Column(String, index=True, nullable=True) # strCustName (e.g. "RMH001")
+    customer_name = Column(String, index=True, nullable=True) # strCustDesc from tblCustomers
+    amount = Column(Float, default=0.0)                     # decDeposit or decAmount
+    reference = Column(String, index=True, nullable=True)   # strComment
+    payment_method = Column(String, nullable=True)          # strPaidBy (e.g. "EFT")
+    bank_account = Column(String, nullable=True)            # intBankAcct
+    captured_by = Column(String, nullable=True)             # strUserName
+    currency_code = Column(String, default="ZAR")
+    is_reversed = Column(Boolean, default=False)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OrderPaymentAllocation(Base):
+    __tablename__ = "order_payment_allocations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    palladium_payment_id = Column(BigInteger, index=True, nullable=False)
+    receipt_no = Column(String, index=True, nullable=False)
+    order_id = Column(String, index=True, nullable=False)   # Order po_number / id (e.g. "Q-2026-001")
+    project_key = Column(String, index=True, nullable=True) # Project key (e.g. "testej")
+    allocated_amount = Column(Float, default=0.0)
+    payment_type = Column(String, default="Deposit Payment") # "Deposit Payment", "Balance Payment", "Interim Payment"
+    allocated_by = Column(String, nullable=True)
+    allocated_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="Active")                # "Active", "Cancelled"
+    notes = Column(Text, nullable=True)
+
 
 
 

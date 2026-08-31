@@ -1206,14 +1206,15 @@ export function StoreProvider({ children }) {
     { id: 'purchasing', label: 'Purchasing & Receiving', icon: 'ClipboardList', path: '/purchasing', sectionId: 'projects_sec', visible: true, order: 5 },
     { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 6 },
     { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/invoices', sectionId: 'projects_sec', visible: true, order: 7 },
-    { id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true, order: 8 },
-    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 9 },
-    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 10 },
-    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 11 },
-    { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 12 },
-    { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 13 },
-    { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 14 },
-    { id: 'reports', label: 'Sales & KPIs', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 15 }
+    { id: 'payments', label: 'Payments', icon: 'CreditCard', path: '/payments', sectionId: 'projects_sec', visible: true, order: 8 },
+    { id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true, order: 9 },
+    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 10 },
+    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 11 },
+    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 12 },
+    { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 13 },
+    { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 14 },
+    { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 15 },
+    { id: 'reports', label: 'Sales & KPIs', icon: 'BarChart', path: '/reports', sectionId: 'other_modules', visible: true, order: 16 }
   ];
   const defaultSections = [
     { id: 'general', label: 'General', order: 0 },
