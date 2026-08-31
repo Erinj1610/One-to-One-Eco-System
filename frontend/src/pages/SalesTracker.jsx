@@ -163,10 +163,10 @@ const getItemDefaults = (item) => {
     resolved.invoiceDate = iHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
     resolved.invoiceValue = iHistory.reduce((sum, h) => sum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(resolved.unitRetail) || 0)), 0);
   } else {
-    resolved.invoiceQty = Number(resolved.invoiceQty) || 0;
-    resolved.invoiceRef = resolved.invoiceRef || '';
-    resolved.invoiceDate = resolved.invoiceDate || '';
-    resolved.invoiceValue = resolved.invoiceQty * (Number(resolved.unitRetail) || 0);
+    resolved.invoiceQty = 0;
+    resolved.invoiceRef = '';
+    resolved.invoiceDate = '';
+    resolved.invoiceValue = 0;
   }
   
   // Process delivery history if exists to sync with warehouse documents
