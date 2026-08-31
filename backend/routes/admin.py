@@ -358,6 +358,20 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_s
             detail=f"Master Google Sheet URL for {target_key} is missing. Please set your live Google Sheet links under Settings > Templates."
         )
 
+    # Resolve custom configured Google Sheet tab name for this specific document type
+    doc_config = db.query(TemplateConfig).filter(
+        or_(
+            TemplateConfig.template_key == doc_type,
+            TemplateConfig.template_key == doc_type.upper(),
+            TemplateConfig.template_key == doc_type.lower()
+        )
+    ).first()
+    configured_tab_name = ""
+    if doc_config and doc_config.config_json:
+        configured_tab_name = str(doc_config.config_json.get("excel_tab_name") or doc_config.config_json.get("tab_name") or "").strip()
+    
+    effective_sheet_name = configured_tab_name or doc_type
+
     service_account_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "GOOGLE_SERVICE_ACCOUNT_JSON").first()
     credentials_json = (service_account_config.config_json or {}) if service_account_config else None
 
@@ -366,7 +380,7 @@ def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_s
         pdf_path, sheet_id, sheet_url = merge_google_sheet(
             template_source=master_gsheet_url,
             tokens=data,
-            sheet_name=doc_type,
+            sheet_name=effective_sheet_name,
             output_pdf_name=f"{doc_type.lower()}.pdf",
             credentials_json=credentials_json,
             is_save_action=is_save_action
@@ -411,11 +425,23 @@ def generate_batch_documents(request_body: dict = Body(...), db: Session = Depen
         if not master_gsheet_url:
             continue
 
+        doc_config = db.query(TemplateConfig).filter(
+            or_(
+                TemplateConfig.template_key == dt,
+                TemplateConfig.template_key == dt.upper(),
+                TemplateConfig.template_key == dt.lower()
+            )
+        ).first()
+        configured_tab_name = ""
+        if doc_config and doc_config.config_json:
+            configured_tab_name = str(doc_config.config_json.get("excel_tab_name") or doc_config.config_json.get("tab_name") or "").strip()
+        effective_sheet_name = configured_tab_name or dt
+
         try:
             pdf_p, _, _ = merge_google_sheet(
                 template_source=master_gsheet_url,
                 tokens=data,
-                sheet_name=dt,
+                sheet_name=effective_sheet_name,
                 output_pdf_name=f"{dt.lower()}.pdf",
                 credentials_json=credentials_json,
                 is_save_action=is_save_action

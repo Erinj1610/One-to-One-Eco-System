@@ -208,37 +208,65 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         raw_target = str(sheet_name).strip().lower()
         clean_target = ''.join(c for c in raw_target if c.isalnum())
 
-        alias_set = {clean_target}
-        if clean_target in ('quotation', 'quote'):
-            alias_set.update(['quotation', 'quote', 'quotes', 'summarizedquotation'])
-        elif clean_target in ('boq', 'boqdoc'):
-            alias_set.update(['boq', 'boqdoc', 'demoboq', 'detailedboq', 'billofquantities'])
-        elif clean_target in ('schedule', 'lightingschedule'):
-            alias_set.update(['schedule', 'lightingschedule'])
-        elif 'deposit' in clean_target:
-            alias_set.update(['depositinvoice', 'deposit', 'proformainvoice', 'proforma', 'proformainv', 'taxinvoice', 'invoice'])
-        elif 'proforma' in clean_target or 'proform' in clean_target:
-            alias_set.update(['proformainvoice', 'proforma', 'proformainv', 'depositinvoice', 'deposit', 'taxinvoice'])
-        elif 'balance' in clean_target:
-            alias_set.update(['balanceinvoice', 'balance', 'taxinvoice', 'invoice'])
-        elif 'tax' in clean_target:
-            alias_set.update(['taxinvoice', 'tax', 'invoice'])
-        elif 'statement' in clean_target:
-            alias_set.update(['progressstatement', 'statement', 'summary'])
-
+        # Step 1: EXACT match check across all sheets
         for s in valid_template_sheets:
             raw_s = s['properties']['title'].strip().lower()
             clean_s = ''.join(c for c in raw_s if c.isalnum())
-            if clean_s in alias_set or any(a in clean_s for a in alias_set):
+            if raw_s == raw_target or clean_s == clean_target:
                 target_sheet = s
                 target_gid = s['properties']['sheetId']
-                logger.info(f"Matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
+                logger.info(f"Exact matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
                 break
+
+        # Step 2: Strict semantic alias matching (preventing loose 'invoice' cross-over)
+        if not target_sheet:
+            alias_set = set()
+            if 'balance' in clean_target:
+                alias_set = {'balanceinvoice', 'balance', 'balanceinv', 'finalbalance', 'balanceinvoicefull'}
+            elif 'tax' in clean_target:
+                alias_set = {'taxinvoice', 'taxinvoicefull', 'fulltaxinvoice', 'taxinv', 'commercialtaxinvoice', 'tax'}
+            elif 'proforma' in clean_target or 'proform' in clean_target or 'deposit' in clean_target:
+                alias_set = {'proformainvoice', 'proforma', 'proformainv', 'depositinvoice', 'depositinv', 'deposit'}
+            elif clean_target in ('quotation', 'quote', 'quotes', 'summarizedquotation'):
+                alias_set = {'quotation', 'quote', 'quotes', 'summarizedquotation'}
+            elif clean_target in ('boq', 'boqdoc', 'billofquantities', 'billofquantity'):
+                alias_set = {'boq', 'boqdoc', 'demoboq', 'detailedboq', 'billofquantities', 'billofquantity'}
+            elif clean_target in ('schedule', 'lightingschedule'):
+                alias_set = {'schedule', 'lightingschedule', 'lightschedule'}
+            elif 'statement' in clean_target or 'progress' in clean_target:
+                alias_set = {'progressstatement', 'statement', 'progress'}
+            elif 'packing' in clean_target:
+                alias_set = {'packinglist', 'packing'}
+            elif 'delivery' in clean_target:
+                alias_set = {'deliverynote', 'delivery'}
+            elif 'designfee' in clean_target or 'proposal' in clean_target:
+                alias_set = {'designfeeproposal', 'designfee', 'proposal'}
+
+            # Pass 2a: Exact alias match
+            for s in valid_template_sheets:
+                raw_s = s['properties']['title'].strip().lower()
+                clean_s = ''.join(c for c in raw_s if c.isalnum())
+                if clean_s in alias_set:
+                    target_sheet = s
+                    target_gid = s['properties']['sheetId']
+                    logger.info(f"Alias matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
+                    break
+
+            # Pass 2b: Substring alias match
+            if not target_sheet and alias_set:
+                for s in valid_template_sheets:
+                    raw_s = s['properties']['title'].strip().lower()
+                    clean_s = ''.join(c for c in raw_s if c.isalnum())
+                    if any(a in clean_s for a in alias_set):
+                        target_sheet = s
+                        target_gid = s['properties']['sheetId']
+                        logger.info(f"Sub-alias matched target sheet tab '{s['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
+                        break
     
     if not target_sheet and valid_template_sheets:
         target_sheet = valid_template_sheets[0]
         target_gid = target_sheet['properties']['sheetId']
-        logger.warn(f"Fallback to default first tab '{target_sheet['properties']['title']}' (GID={target_gid})")
+        logger.warning(f"Fallback to default first tab '{target_sheet['properties']['title']}' (GID={target_gid}) for requested '{sheet_name}'")
 
     working_spreadsheet_id = template_id
     sheet_url = f"https://docs.google.com/spreadsheets/d/{template_id}"
