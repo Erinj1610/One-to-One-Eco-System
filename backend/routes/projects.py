@@ -644,11 +644,15 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
         order_items = db.query(OrderItem).all()
 
         # Pre-load active procurement allocations for live PO & GRN document mapping
+        import re
         active_allocations = db.query(ProcurementAllocation).filter(ProcurementAllocation.status == "Active").all()
         alloc_by_order_id = {}
         alloc_by_item_id = {}
         alloc_by_proj_id = {}
-        alloc_by_sku = {}
+        alloc_by_sku_po = {}
+        alloc_by_sku_grn = {}
+        alloc_by_sku_inv = {}
+
         for a in active_allocations:
             if a.order_id:
                 alloc_by_order_id.setdefault(str(a.order_id), []).append(a)
@@ -657,7 +661,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if a.project_id:
                 alloc_by_proj_id.setdefault(str(a.project_id), []).append(a)
             if a.sku:
-                alloc_by_sku.setdefault(str(a.sku).strip().upper(), []).append(a)
+                norm_sku = re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper()
+                if norm_sku:
+                    if a.allocation_type == "PO":
+                        alloc_by_sku_po.setdefault(norm_sku, []).append(a)
+                    elif a.allocation_type == "GRN":
+                        alloc_by_sku_grn.setdefault(norm_sku, []).append(a)
+                    elif a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")):
+                        alloc_by_sku_inv.setdefault(norm_sku, []).append(a)
 
         # Pre-load active payment allocations for live payment breakdown
         active_payment_allocations = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active").all()
@@ -691,7 +702,6 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             pur_hist = parse_history(item.purchase_history)
             rec_hist = parse_history(item.receiving_history)
 
-            import re
             item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
 
             # 1. Derive authentic PO allocations dynamically from ProcurementAllocation
@@ -700,8 +710,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 if a.allocation_type == "PO"
             ]
             if not item_po_allocs and item_norm_skus:
-                for a in active_allocations:
-                    if a.allocation_type == "PO" and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                for s in item_norm_skus:
+                    for a in alloc_by_sku_po.get(s, []):
                         if not a.order_item_id or a.order_item_id == str(item.id):
                             if a not in item_po_allocs:
                                 item_po_allocs.append(a)
@@ -757,8 +767,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 if a.allocation_type == "GRN"
             ]
             if not item_grn_allocs and item_norm_skus:
-                for a in active_allocations:
-                    if a.allocation_type == "GRN" and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                for s in item_norm_skus:
+                    for a in alloc_by_sku_grn.get(s, []):
                         if not a.order_item_id or a.order_item_id == str(item.id):
                             if a not in item_grn_allocs:
                                 item_grn_allocs.append(a)
@@ -794,8 +804,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
             ]
             if not item_inv_allocs and item_norm_skus:
-                for a in active_allocations:
-                    if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")) and re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper() in item_norm_skus:
+                for s in item_norm_skus:
+                    for a in alloc_by_sku_inv.get(s, []):
                         if not a.order_item_id or a.order_item_id == str(item.id):
                             if a not in item_inv_allocs:
                                 item_inv_allocs.append(a)

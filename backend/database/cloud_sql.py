@@ -72,8 +72,12 @@ try:
             echo=False,
             pool_pre_ping=True,
             pool_recycle=300,
-            pool_size=10,
-            max_overflow=20
+            pool_size=15,
+            max_overflow=25,
+            pool_reset_on_return="rollback",
+            connect_args={
+                "options": "-c idle_in_transaction_session_timeout=15000 -c statement_timeout=30000"
+            }
         )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
@@ -84,5 +88,12 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         db.close()
