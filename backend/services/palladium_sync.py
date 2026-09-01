@@ -340,17 +340,22 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
             if not doc_no or not item_code:
                 continue
 
+            order_qty = float(r.get("order_qty") or 0.0)
+            total_val = float(r.get("total_value_excl") or 0.0)
+            raw_cost = float(r.get("unit_cost") or 0.0)
+            effective_cost = raw_cost if raw_cost > 0 else (round(total_val / order_qty, 2) if order_qty > 0 else 0.0)
+
             po_obj = PalladiumPOLine(
                 document_no=doc_no,
                 vendor_name=str(r.get("vendor_name") or "").strip() or None,
                 item_code=item_code,
                 item_description=str(r.get("item_description") or "").strip() or None,
                 item_unit=str(r.get("item_unit") or "").strip() or "EA",
-                order_qty=float(r.get("order_qty") or 0.0),
+                order_qty=order_qty,
                 open_qty=float(r.get("open_qty") or 0.0),
                 shipped_qty=float(r.get("shipped_qty") or 0.0),
-                unit_cost=float(r.get("unit_cost") or 0.0),
-                total_value_excl=float(r.get("total_value_excl") or 0.0),
+                unit_cost=effective_cost,
+                total_value_excl=total_val,
                 currency_code=str(r.get("currency_code") or "ZAR").strip(),
                 exchange_rate=float(r.get("exchange_rate") or 1.0),
                 transaction_date=r.get("transaction_date"),
@@ -430,15 +435,20 @@ def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[
             if not doc_no or not item_code:
                 continue
 
+            rec_qty = float(r.get("received_qty") or 0.0)
+            tot_val = float(r.get("line_total_excl") or 0.0)
+            raw_cost = float(r.get("unit_cost") or 0.0)
+            effective_cost = raw_cost if raw_cost > 0 else (round(tot_val / rec_qty, 2) if rec_qty > 0 else 0.0)
+
             grn_obj = PalladiumGRNLine(
                 document_no=doc_no,
                 vendor_name=str(r.get("vendor_name") or "").strip() or None,
                 item_code=item_code,
                 item_description=str(r.get("item_description") or "").strip() or None,
                 item_unit=str(r.get("item_unit") or "").strip() or "EA",
-                received_qty=float(r.get("received_qty") or 0.0),
-                unit_cost=float(r.get("unit_cost") or 0.0),
-                line_total_excl=float(r.get("line_total_excl") or 0.0),
+                received_qty=rec_qty,
+                unit_cost=effective_cost,
+                line_total_excl=tot_val,
                 line_total_incl=float(r.get("line_total_incl") or 0.0),
                 transaction_date=r.get("transaction_date"),
                 location=str(r.get("location") or "").strip() or None,
