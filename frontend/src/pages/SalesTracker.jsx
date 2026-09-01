@@ -949,9 +949,9 @@ export default function SalesTracker() {
   // Dynamic KPI Metrics calculations (All, Pending, Active, Complete)
   const kpis = useMemo(() => {
     const getGroupMetrics = (groupList) => {
-      const value = groupList.reduce((sum, o) => sum + (o.value || 0), 0);
-      const paid = groupList.reduce((sum, o) => sum + (o.paid || 0), 0);
-      const outstanding = Math.max(0, value - paid);
+      const value = groupList.reduce((sum, o) => sum + (Number(o.value) || 0), 0);
+      const paid = groupList.reduce((sum, o) => sum + (Number(o.paid) || 0), 0);
+      const outstanding = groupList.reduce((sum, o) => sum + (Number(o.outstanding) || 0), 0);
       return {
         qty: groupList.length,
         value,
@@ -3791,7 +3791,9 @@ export default function SalesTracker() {
                   const nonCreditItems = activeOrderItems.filter(item => !item.is_credit && !item.isCredit);
                   const totalMasterQty = nonCreditItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
                   const totalMasterCost = activeOrderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-                  const totalMasterRetail = activeOrderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+                  const totalMasterRetailGross = activeOrderItems.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+                  const totalCreditDeduction = totalCreditVal || 0;
+                  const totalMasterRetail = Math.max(0, totalMasterRetailGross - totalCreditDeduction);
                   const masterDiscounted = Math.max(0, totalMasterRetail * (1 - (Number(orderDiscount) || 0) / 100));
 
                   // Delivery metrics calculated from items directly
@@ -4503,7 +4505,7 @@ export default function SalesTracker() {
                                   {/* RIGHT SIDE: FINANCIAL SUMMARY & MONTHLY REALIZATION GRID */}
                                   <div style={{ borderLeft: '1.5px solid var(--border)', paddingLeft: '30px', display: 'flex', flexDirection: 'column' }}>
                                     <h4 style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                      Financial Calculations & Summaries
+                                          Financial Calculations & Summaries
                                     </h4>
 
                                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
@@ -4515,6 +4517,13 @@ export default function SalesTracker() {
                                           <span style={{ color: 'var(--text-secondary)' }}>SUB TOTAL</span>
                                           <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>R {Math.round(subTotal).toLocaleString()}</strong>
                                         </div>
+
+                                        {totalCreditDeduction > 0 && (
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                                            <span style={{ color: 'var(--text-danger)', fontSize: '11px' }}>LESS: CREDITED (CN)</span>
+                                            <strong style={{ fontFamily: 'monospace', color: 'var(--text-danger)' }}>- R {Math.round(totalCreditDeduction).toLocaleString()}</strong>
+                                          </div>
+                                        )}
 
                                         {/* Discount */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>

@@ -2807,8 +2807,10 @@ export default function OrdersPage() {
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                 {(() => {
                   const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-                  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                  const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+                  const netRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
+                  const discountedRetail = Math.max(0, netRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
                   
                   // Calculate dynamic status and percentages
@@ -2898,6 +2900,11 @@ export default function OrdersPage() {
                       <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
                         <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                        {totalCreditedRetail > 0 && (
+                          <span style={{ fontSize: '8.5px', color: 'var(--text-danger)', fontWeight: 600 }}>
+                            Credited: -R {Math.round(totalCreditedRetail * 1.15).toLocaleString()}
+                          </span>
+                        )}
                       </div>
                       <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
@@ -3506,7 +3513,9 @@ export default function OrdersPage() {
 
                 {(() => {
                   const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+                  const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
                   const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade || item.unit_trade) || 0)), 0);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
@@ -3554,7 +3563,9 @@ export default function OrdersPage() {
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Billed Retail EX VAT</span>
                           <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalRetail).toLocaleString()}</span>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Subtotal before discount</span>
+                          <span style={{ fontSize: '10px', color: totalCreditedRetail > 0 ? 'var(--text-danger)' : 'var(--text-tertiary)' }}>
+                            {totalCreditedRetail > 0 ? `Less CN: -R ${Math.round(totalCreditedRetail).toLocaleString()}` : 'Subtotal before discount'}
+                          </span>
                         </div>
 
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
