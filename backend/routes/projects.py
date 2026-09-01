@@ -1059,9 +1059,15 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     })
 
             effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
+            total_credited_excl = round(sum(abs(float(cn.get("totalValue", 0) or cn.get("value", 0) or 0)) for cn in credit_notes_parsed), 2)
+            total_credited_incl = round(total_credited_excl * 1.15, 2)
+
             order_val_excl = float(order.value or 0.0)
             order_val_incl = round(order_val_excl * 1.15, 2)
-            effective_outstanding = max(0.0, round(order_val_incl - effective_paid, 2))
+
+            net_order_val_excl = max(0.0, round(order_val_excl - total_credited_excl, 2))
+            net_order_val_incl = max(0.0, round(order_val_incl - total_credited_incl, 2))
+            effective_outstanding = max(0.0, round(net_order_val_incl - effective_paid, 2))
 
             order_dict = {
                 "id": order.po_number,
@@ -1071,8 +1077,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "poNumber": order.po_number,
                 "supplier": order.supplier_name,
                 "items": order.items_count,
-                "value": order.value,
-                "valueInclVat": order_val_incl,
+                "value": net_order_val_excl,
+                "grossValue": order_val_excl,
+                "creditedValue": total_credited_excl,
+                "valueInclVat": net_order_val_incl,
+                "grossValueInclVat": order_val_incl,
+                "creditedValueInclVat": total_credited_incl,
                 "costValue": total_cost_value,
                 "paid": effective_paid,
                 "outstanding": effective_outstanding,

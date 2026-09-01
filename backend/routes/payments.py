@@ -173,9 +173,21 @@ def get_candidate_orders_for_payment(
     Finds active orders that match the customer name, code, reference keywords, or payment amount (70% deposit / 30% balance).
     """
     try:
+        from models.orm_models import ProcurementAllocation
         projects = db.query(Project).all()
         orders = db.query(Order).all()
         
+        # Pre-load active credit notes by order_id
+        active_credit_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active"
+        ).all()
+        cn_by_order = {}
+        for ca in active_credit_allocs:
+            if str(ca.source_doc_no).upper().startswith(("CN-", "CR-")):
+                if ca.order_id:
+                    cn_by_order[str(ca.order_id)] = cn_by_order.get(str(ca.order_id), 0.0) + float((ca.allocated_qty or 0) * (ca.unit_cost or 0))
+
         proj_map = {p.id: p for p in projects}
         proj_by_key = {p.project_key: p for p in projects if p.project_key}
 
@@ -204,7 +216,8 @@ def get_candidate_orders_for_payment(
                 if w in order_name or w in client_str:
                     match_score += 6
 
-            total_val_excl = float(o.value or 0.0)
+            ord_cn_val = cn_by_order.get(str(o.po_number), 0.0) or cn_by_order.get(str(o.id), 0.0)
+            total_val_excl = max(0.0, round(float(o.value or 0.0) - ord_cn_val, 2))
             total_val_incl = round(total_val_excl * 1.15, 2)
             deposit_70 = round(total_val_incl * 0.70, 2)
             balance_30 = round(total_val_incl * 0.30, 2)
@@ -486,6 +499,17 @@ def get_projects_orders_for_allocation(db: Session = Depends(get_db)):
         projects = db.query(Project).order_by(desc(Project.id)).all()
         orders = db.query(Order).all()
 
+        from models.orm_models import ProcurementAllocation
+        active_credit_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active"
+        ).all()
+        cn_by_order = {}
+        for ca in active_credit_allocs:
+            if str(ca.source_doc_no).upper().startswith(("CN-", "CR-")):
+                if ca.order_id:
+                    cn_by_order[str(ca.order_id)] = cn_by_order.get(str(ca.order_id), 0.0) + float((ca.allocated_qty or 0) * (ca.unit_cost or 0))
+
         orders_by_proj_id = {}
         orders_by_proj_key = {}
         for o in orders:
@@ -502,7 +526,8 @@ def get_projects_orders_for_allocation(db: Session = Depends(get_db)):
 
             order_list = []
             for o in p_orders:
-                o_val_excl = float(o.value or 0.0)
+                ord_cn_val = cn_by_order.get(str(o.po_number), 0.0) or cn_by_order.get(str(o.id), 0.0)
+                o_val_excl = max(0.0, round(float(o.value or 0.0) - ord_cn_val, 2))
                 o_val_incl = round(o_val_excl * 1.15, 2)
                 paid_amt = float(o.paid or 0.0)
                 out_amt = max(0.0, round(o_val_incl - paid_amt, 2))
