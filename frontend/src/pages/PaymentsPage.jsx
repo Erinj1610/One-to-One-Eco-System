@@ -114,6 +114,9 @@ export default function PaymentsPage() {
           items = items.filter(p => p.customer_name === newCustomer || p.customer_code === newCustomer);
         }
         setPaymentsDocs(items || []);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('Payments list fetch status:', res.status, errData);
       }
     } catch (err) {
       console.error('Failed to fetch payments:', err);

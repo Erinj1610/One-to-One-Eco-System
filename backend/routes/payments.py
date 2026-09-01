@@ -290,19 +290,33 @@ def get_payments_list(
         ).all()
         issue_map = {iss.document_no: iss for iss in open_issues}
 
-        # Group allocations by payment ID
+        # Group allocations by payment ID and collect referenced order IDs
         alloc_map: Dict[int, List[OrderPaymentAllocation]] = {}
+        allocated_order_ids = set()
         for a in active_allocs:
             alloc_map.setdefault(a.palladium_payment_id, []).append(a)
+            if a.order_id:
+                allocated_order_ids.add(str(a.order_id))
 
-        # Load project & order lookup for enriched display
-        orders = db.query(Order).all()
-        order_info_map = {str(o.po_number): o for o in orders}
-        for o in orders:
-            order_info_map[str(o.id)] = o
-
-        projects = db.query(Project).all()
-        project_map = {str(p.project_key): p.name for p in projects if p.project_key}
+        # Efficient lookup maps for only referenced orders & projects
+        order_info_map = {}
+        project_map = {}
+        if allocated_order_ids:
+            int_ids = [int(oid) for oid in allocated_order_ids if oid.isdigit()]
+            po_refs = list(allocated_order_ids)
+            query_conds = []
+            if int_ids:
+                query_conds.append(Order.id.in_(int_ids))
+            if po_refs:
+                query_conds.append(Order.po_number.in_(po_refs))
+            matched_orders = db.query(Order).filter(or_(*query_conds)).all() if query_conds else []
+            for o in matched_orders:
+                order_info_map[str(o.po_number)] = o
+                order_info_map[str(o.id)] = o
+            proj_keys = {o.project_key for o in matched_orders if o.project_key}
+            if proj_keys:
+                matched_projs = db.query(Project).filter(Project.project_key.in_(list(proj_keys))).all()
+                project_map = {str(p.project_key): p.name for p in matched_projs if p.project_key}
 
         results = []
         for p in payments:

@@ -2,36 +2,52 @@ import json
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+_MIGRATIONS_RUN = False
+
 def run_migrations(db: Session):
     """
     Ensure the relational tables have the required columns for full operational sync.
+    Runs once safely without issuing redundant locking DDL statements.
     """
-    # 1. Alter projects table to add needed columns
-    proj_columns = [
-        ("project_key", "VARCHAR"),
-        ("client_name", "VARCHAR"),
-        ("pm_name", "VARCHAR"),
-        ("target_margin", "FLOAT"),
-        ("actual_margin", "FLOAT"),
-        ("offering", "VARCHAR"),
-        ("sqm", "VARCHAR"),
-        ("status", "VARCHAR"),
-        ("deadline", "VARCHAR"),
-        ("days_left", "VARCHAR"),
-        ("complete_status", "VARCHAR"),
-        ("s1", "VARCHAR"),
-        ("s2", "VARCHAR"),
-        ("s3", "VARCHAR"),
-        ("s4", "VARCHAR"),
-        ("s5", "VARCHAR")
-    ]
-    for col_name, col_type in proj_columns:
-        try:
-            db.execute(text(f"ALTER TABLE projects ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            print(f"Migration warning (projects.{col_name}): {e}")
+    global _MIGRATIONS_RUN
+    if _MIGRATIONS_RUN:
+        return
+
+    # 1. Alter projects table only if columns are missing
+    try:
+        existing_cols = {
+            row[0] for row in db.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'projects'"
+            )).fetchall()
+        }
+        proj_columns = [
+            ("project_key", "VARCHAR"),
+            ("client_name", "VARCHAR"),
+            ("pm_name", "VARCHAR"),
+            ("target_margin", "FLOAT"),
+            ("actual_margin", "FLOAT"),
+            ("offering", "VARCHAR"),
+            ("sqm", "VARCHAR"),
+            ("status", "VARCHAR"),
+            ("deadline", "VARCHAR"),
+            ("days_left", "VARCHAR"),
+            ("complete_status", "VARCHAR"),
+            ("s1", "VARCHAR"),
+            ("s2", "VARCHAR"),
+            ("s3", "VARCHAR"),
+            ("s4", "VARCHAR"),
+            ("s5", "VARCHAR")
+        ]
+        for col_name, col_type in proj_columns:
+            if col_name not in existing_cols:
+                try:
+                    db.execute(text(f"ALTER TABLE projects ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
+                    db.commit()
+                except Exception as e:
+                    db.rollback()
+                    print(f"Migration warning (projects.{col_name}): {e}")
+    except Exception as e:
+        print(f"Migration column check warning: {e}")
 
     # 2. Recreate order_items table with expanded columns matching spreadsheet items list
     try:
@@ -564,8 +580,6 @@ def sync_key_to_relational(key: str, value, db: Session):
     """
     Route synchronization depending on which setting key is saved.
     """
-    run_migrations(db)
-    
     if key == "contacts":
         sync_contacts(value, db)
     elif key == "projectManagers":
