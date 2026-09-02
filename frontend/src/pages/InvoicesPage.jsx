@@ -1035,7 +1035,13 @@ export default function InvoicesPage() {
                   {selectedDocument.reference && (
                     <div>Project Ref: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.reference}</strong></div>
                   )}
-                  <div>Total (Excl): <strong style={{ color: 'var(--text-primary)' }}>R {Number(selectedDocument.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+                  <div>Total (Excl): <strong style={{ color: 'var(--text-primary)' }}>R {Number(selectedDocument.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                    {selectedDocument.is_foreign_currency && (
+                      <span style={{ fontSize: '10.5px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px', fontWeight: 600 }}>
+                        {selectedDocument.currency_code} {Number(selectedDocument.foreign_document_subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} (@ {selectedDocument.exchange_rate})
+                      </span>
+                    )}
+                  </div>
                   {selectedDocument.document_discount > 0 && (
                     <div>Doc Discount: <strong style={{ color: '#059669' }}>-R {Number(selectedDocument.document_discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
                   )}
@@ -1709,7 +1715,12 @@ export default function InvoicesPage() {
 
                           {/* Total Value */}
                           <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            R {Number(doc.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <div>R {Number(doc.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            {doc.is_foreign_currency && (
+                              <div style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
+                                {doc.currency_code} {Number(doc.foreign_document_subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </div>
+                            )}
                           </td>
 
                           {/* Allocation Status */}
