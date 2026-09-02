@@ -751,6 +751,15 @@ export default function SalesTracker() {
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
@@ -924,6 +933,22 @@ export default function SalesTracker() {
     return list;
   }, [projects]);
 
+  // Memoized unique dropdown lists for instant O(1) filter rendering
+  const projectOptions = useMemo(() => {
+    const list = Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort();
+    return list.map(projName => {
+      const foundObj = allOrders.find(o => o.projectName === projName);
+      return { key: foundObj?.projectKey || projName, name: projName };
+    });
+  }, [allOrders]);
+
+  const clientOptions = useMemo(() => {
+    return Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort();
+  }, [allOrders]);
+
+  const pmOptions = useMemo(() => {
+    return Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort();
+  }, [allOrders]);
 
   // Check router state from location for automatic redirection/filtering
   useEffect(() => {
@@ -976,8 +1001,8 @@ export default function SalesTracker() {
   // Filtered orders list for the ledger overview
   const filteredOrders = useMemo(() => {
     return dateFilteredOrders.filter(o => {
-      const query = searchQuery.toLowerCase();
-      const matchesSearch = 
+      const query = debouncedSearchQuery.toLowerCase().trim();
+      const matchesSearch = !query ||
         (o.id || '').toLowerCase().includes(query) ||
         (o.quote_name || '').toLowerCase().includes(query) ||
         (o.projectName || '').toLowerCase().includes(query) ||
@@ -1004,7 +1029,7 @@ export default function SalesTracker() {
 
       return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi;
     });
-  }, [dateFilteredOrders, searchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter]);
+  }, [dateFilteredOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter]);
 
   // Sort Logic for All Columns in Sales Tracker Module
   const sortedOrders = useMemo(() => {
@@ -3248,12 +3273,9 @@ export default function SalesTracker() {
                     onChange={e => setProjectFilterKey(e.target.value)}
                   >
                     <option value="All">All Projects</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort().map(projName => {
-                      const foundObj = allOrders.find(o => o.projectName === projName);
-                      return (
-                        <option key={foundObj.projectKey} value={foundObj.projectKey}>{projName}</option>
-                      );
-                    })}
+                    {projectOptions.map(p => (
+                      <option key={p.key} value={p.key}>{p.name}</option>
+                    ))}
                   </select>
 
                   <select 
@@ -3263,7 +3285,7 @@ export default function SalesTracker() {
                     onChange={e => setClientFilter(e.target.value)}
                   >
                     <option value="All">All Clients</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort().map(client => (
+                    {clientOptions.map(client => (
                       <option key={client} value={client}>{client}</option>
                     ))}
                   </select>
@@ -3275,7 +3297,7 @@ export default function SalesTracker() {
                     onChange={e => setPmFilter(e.target.value)}
                   >
                     <option value="All">All PMs</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort().map(pm => (
+                    {pmOptions.map(pm => (
                       <option key={pm} value={pm}>{pm}</option>
                     ))}
                   </select>

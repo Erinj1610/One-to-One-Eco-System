@@ -509,6 +509,15 @@ export default function OrdersPage() {
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
@@ -1138,89 +1147,108 @@ export default function OrdersPage() {
   const [poProjectSearch, setPoProjectSearch] = useState("");
   const [linkProjectSearch, setLinkProjectSearch] = useState("");
 
-  // Aggregate all orders/quotations from all projects in the store
-  const allOrders = Object.values(projects).flatMap(p => 
-    (p.orders || []).map(o => {
-      // Calculate progress percentages dynamically
-      let totalQtyForProc = 0;
-      let totalProcQty = 0;
-      let totalQtyForInv = 0;
-      let totalInvQty = 0;
-      let totalQtyForDel = 0;
-      let totalDelQty = 0;
+  // Aggregate all orders/quotations from all projects in the store (Memoized to prevent recomputing on keystrokes)
+  const allOrders = useMemo(() => {
+    return Object.values(projects).flatMap(p => 
+      (p.orders || []).map(o => {
+        // Calculate progress percentages dynamically
+        let totalQtyForProc = 0;
+        let totalProcQty = 0;
+        let totalQtyForInv = 0;
+        let totalInvQty = 0;
+        let totalQtyForDel = 0;
+        let totalDelQty = 0;
 
-      const itemsList = o.itemsList || [];
-      itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
-        const q = Number(item.qty) || 0;
-        const isService = (item.itemType || item.item_type) === 'Service';
-        
-        // Simple mock defaults to calculate progress
-        const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+        const itemsList = o.itemsList || [];
+        itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+          const q = Number(item.qty) || 0;
+          const isService = (item.itemType || item.item_type) === 'Service';
+          
+          // Simple mock defaults to calculate progress
+          const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
-        if (isService) {
+          if (isService) {
+            totalQtyForInv += q;
+            totalInvQty += Number(invoiced) || 0;
+            return;
+          }
+
+          totalQtyForProc += q;
           totalQtyForInv += q;
+          totalQtyForDel += q;
+
+          const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+          const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+          const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+          totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
           totalInvQty += Number(invoiced) || 0;
-          return;
+          totalDelQty += Number(delivered) || 0;
+        });
+
+        const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+        const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+        const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+        // Standalone Payment Status calculation
+        const totalPaidVal = Number(o.paid) || 0;
+        const totalRetailVal = Number(o.value) || 0;
+        const valueInclVat = totalRetailVal * 1.15;
+        let paymentStatus = 'Unpaid';
+        if (totalPaidVal > 0) {
+          if (totalPaidVal >= valueInclVat - 1) { // 1 ZAR tolerance for rounding
+            paymentStatus = 'Fully Paid';
+          } else {
+            paymentStatus = 'Partially Paid';
+          }
         }
 
-        totalQtyForProc += q;
-        totalQtyForInv += q;
-        totalQtyForDel += q;
-
-        const received = item.receivedQty !== undefined ? item.receivedQty : 0;
-        const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
-        const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
-
-        totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
-        totalInvQty += Number(invoiced) || 0;
-        totalDelQty += Number(delivered) || 0;
-      });
-
-      const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-      const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-      const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
-
-      // Standalone Payment Status calculation
-      const totalPaidVal = Number(o.paid) || 0;
-      const totalRetailVal = Number(o.value) || 0;
-      const valueInclVat = totalRetailVal * 1.15;
-      let paymentStatus = 'Unpaid';
-      if (totalPaidVal > 0) {
-        if (totalPaidVal >= valueInclVat - 1) { // 1 ZAR tolerance for rounding
-          paymentStatus = 'Fully Paid';
-        } else {
-          paymentStatus = 'Partially Paid';
+        // Dynamic Overhanging Order Status computation
+        let computedStatus = o.status; 
+        if (o.status !== 'Draft') {
+          const isFullyPaid = paymentStatus === 'Fully Paid';
+          if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
+            computedStatus = 'Pending';
+          } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+            computedStatus = 'Complete';
+          } else {
+            computedStatus = 'Ongoing';
+          }
         }
-      }
 
-      // Dynamic Overhanging Order Status computation
-      let computedStatus = o.status; 
-      if (o.status !== 'Draft') {
-        const isFullyPaid = paymentStatus === 'Fully Paid';
-        if (totalPaidVal === 0 && procPct === 0 && delPct === 0) {
-          computedStatus = 'Pending';
-        } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
-          computedStatus = 'Complete';
-        } else {
-          computedStatus = 'Ongoing';
-        }
-      }
+        const effectiveClient = (o.clientCompany || o.client_company || o.clientContact || o.client_contact || o.client || o.client_name || p.client || '').trim();
+        return {
+          ...o,
+          projectKey: p.key,
+          projectName: o.projectFullName || o.project_full_name || p.name,
+          projectClient: effectiveClient || p.client,
+          client: effectiveClient || p.client,
+          clientCompany: o.clientCompany !== undefined ? o.clientCompany : (o.client_company !== undefined ? o.client_company : ''),
+          clientContact: o.clientContact !== undefined ? o.clientContact : (o.client_contact !== undefined ? o.client_contact : ''),
+          projectPm: o.pmName || o.pm_name || p.pm || p.pmName || '',
+          paymentStatus,
+          status: computedStatus
+        };
+      })
+    );
+  }, [projects]);
 
-      const effectiveClient = (o.clientCompany || o.client_company || o.clientContact || o.client_contact || o.client || o.client_name || p.client || '').trim();
-      return {
-        ...o,
-        projectKey: p.key,
-        projectName: o.projectFullName || o.project_full_name || p.name,
-        projectClient: effectiveClient || p.client,
-        client: effectiveClient || p.client,
-        clientCompany: o.clientCompany !== undefined ? o.clientCompany : (o.client_company !== undefined ? o.client_company : ''),
-        clientContact: o.clientContact !== undefined ? o.clientContact : (o.client_contact !== undefined ? o.client_contact : ''),
-        projectPm: o.pmName || o.pm_name || p.pm || p.pmName || '',
-        paymentStatus,
-        status: computedStatus
-      };
-    })
-  );
+  // Memoized unique dropdown lists for instant O(1) filter rendering
+  const projectOptions = useMemo(() => {
+    const list = Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort();
+    return list.map(projName => {
+      const foundObj = allOrders.find(o => o.projectName === projName);
+      return { key: foundObj?.projectKey || projName, name: projName };
+    });
+  }, [allOrders]);
+
+  const clientOptions = useMemo(() => {
+    return Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort();
+  }, [allOrders]);
+
+  const pmOptions = useMemo(() => {
+    return Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort();
+  }, [allOrders]);
 
   // Check router state from location for automatic redirection/filtering
   useEffect(() => {
@@ -1237,13 +1265,14 @@ export default function OrdersPage() {
         }
       }
     }
-  }, [location.state]);
+  }, [location.state, allOrders]);
 
   // Filtered orders/quotations list for the ledger overview
   const isAnyFilterActive = searchQuery !== '' || filterStatus !== 'All' || projectFilterKey !== 'All' || clientFilter !== 'All' || pmFilter !== 'All' || paymentStatusFilter !== 'All' || !!startDate || !!endDate;
 
   const handleClearFilters = () => {
     setSearchQuery('');
+    setDebouncedSearchQuery('');
     setFilterStatus('All');
     setProjectFilterKey('All');
     setClientFilter('All');
@@ -1253,34 +1282,36 @@ export default function OrdersPage() {
     setEndDate('');
   };
 
-  const filteredOrders = allOrders.filter(o => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch = 
-      (o.id || '').toLowerCase().includes(query) ||
-      (o.quote_name || '').toLowerCase().includes(query) ||
-      (o.projectName || '').toLowerCase().includes(query) ||
-      (o.projectClient || '').toLowerCase().includes(query) ||
-      (o.projectPm || '').toLowerCase().includes(query);
+  const filteredOrders = useMemo(() => {
+    const query = debouncedSearchQuery.toLowerCase().trim();
+    return allOrders.filter(o => {
+      const matchesSearch = !query ||
+        (o.id || '').toLowerCase().includes(query) ||
+        (o.quote_name || '').toLowerCase().includes(query) ||
+        (o.projectName || '').toLowerCase().includes(query) ||
+        (o.projectClient || '').toLowerCase().includes(query) ||
+        (o.projectPm || '').toLowerCase().includes(query);
+        
+      const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
+      const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
+      const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter || o.client === clientFilter || o.clientCompany === clientFilter || o.clientContact === clientFilter;
+      const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
+      const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
       
-    const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
-    const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
-    const matchesClient = clientFilter === 'All' || o.projectClient === clientFilter || o.client === clientFilter || o.clientCompany === clientFilter || o.clientContact === clientFilter;
-    const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
-    const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
-    
-    let matchesDate = true;
-    if (startDate || endDate) {
-      if (o.orderDate) {
-        const orderTime = new Date(o.orderDate).getTime();
-        if (startDate && orderTime < new Date(startDate).getTime()) matchesDate = false;
-        if (endDate && orderTime > new Date(endDate).getTime() + 86400000) matchesDate = false;
-      } else {
-        matchesDate = false;
+      let matchesDate = true;
+      if (startDate || endDate) {
+        if (o.orderDate) {
+          const orderTime = new Date(o.orderDate).getTime();
+          if (startDate && orderTime < new Date(startDate).getTime()) matchesDate = false;
+          if (endDate && orderTime > new Date(endDate).getTime() + 86400000) matchesDate = false;
+        } else {
+          matchesDate = false;
+        }
       }
-    }
-    
-    return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesDate;
-  });
+      
+      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesDate;
+    });
+  }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate]);
 
   // Sort Logic for All Columns in Orders Module
   const sortedOrders = useMemo(() => {
@@ -1349,15 +1380,24 @@ export default function OrdersPage() {
   };
 
   // Dynamic statistics
-  const totalCostCompany = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
-  const totalValueCompany = filteredOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-  const blendedMarginCompany = totalValueCompany > 0 ? Math.round(((totalValueCompany - totalCostCompany) / totalValueCompany) * 100) : 0;
-  const lowMarginPoCount = filteredOrders.filter(o => {
-    const cost = o.costValue || 0;
-    const retail = o.value || 0;
-    if (retail === 0) return false;
-    return ((retail - cost) / retail) * 100 < 39;
-  }).length;
+  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount } = useMemo(() => {
+    const cost = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
+    const value = filteredOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+    const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
+    const lowMargin = filteredOrders.filter(o => {
+      const c = o.costValue || 0;
+      const r = o.value || 0;
+      if (r === 0) return false;
+      return ((r - c) / r) * 100 < 39;
+    }).length;
+
+    return {
+      totalCostCompany: cost,
+      totalValueCompany: value,
+      blendedMarginCompany: margin,
+      lowMarginPoCount: lowMargin
+    };
+  }, [filteredOrders]);
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
@@ -2528,12 +2568,9 @@ export default function OrdersPage() {
                     onChange={e => setProjectFilterKey(e.target.value)}
                   >
                     <option value="All">All Projects</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort().map(projName => {
-                      const foundObj = allOrders.find(o => o.projectName === projName);
-                      return (
-                        <option key={foundObj.projectKey} value={foundObj.projectKey}>{projName}</option>
-                      );
-                    })}
+                    {projectOptions.map(p => (
+                      <option key={p.key} value={p.key}>{p.name}</option>
+                    ))}
                   </select>
 
                   <select 
@@ -2543,7 +2580,7 @@ export default function OrdersPage() {
                     onChange={e => setClientFilter(e.target.value)}
                   >
                     <option value="All">All Clients</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectClient).filter(Boolean))).sort().map(client => (
+                    {clientOptions.map(client => (
                       <option key={client} value={client}>{client}</option>
                     ))}
                   </select>
@@ -2555,7 +2592,7 @@ export default function OrdersPage() {
                     onChange={e => setPmFilter(e.target.value)}
                   >
                     <option value="All">All PMs</option>
-                    {Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort().map(pm => (
+                    {pmOptions.map(pm => (
                       <option key={pm} value={pm}>{pm}</option>
                     ))}
                   </select>
