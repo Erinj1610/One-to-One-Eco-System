@@ -4,7 +4,7 @@ import { API_BASE } from '../api_config';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
-  ChevronDown, ChevronUp, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
@@ -959,6 +959,25 @@ export default function ReportsPage() {
     });
   });
 
+  const currentPeriodIdx = selectorPeriods.findIndex(p => p.key === selectedPeriodKey);
+  const handlePrevMonth = () => {
+    if (currentPeriodIdx > 0) {
+      setSelectedPeriodKey(selectorPeriods[currentPeriodIdx - 1].key);
+    }
+  };
+  const handleNextMonth = () => {
+    if (currentPeriodIdx < selectorPeriods.length - 1) {
+      setSelectedPeriodKey(selectorPeriods[currentPeriodIdx + 1].key);
+    }
+  };
+  const handleCurrentMonth = () => {
+    const now = new Date();
+    const nowKey = `${now.getMonth()}_${now.getFullYear()}`;
+    if (selectorPeriods.some(p => p.key === nowKey)) {
+      setSelectedPeriodKey(nowKey);
+    }
+  };
+
   // Budget Manager: Edit cell changes in state config
   const handleBudgetValueChange = (division, field, subfield, val) => {
     const num = parseFloat(val) || 0;
@@ -1083,18 +1102,94 @@ export default function ReportsPage() {
         </div>
 
         {activeReport === 'sales_kpi' && (
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Period:</span>
-            <select 
-              value={selectedPeriodKey} 
-              onChange={(e) => setSelectedPeriodKey(e.target.value)} 
-              className="form-control" 
-              style={{ width: '180px', height: '38px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'inherit', padding: '0 10px', fontSize: '13px' }}
+            
+            <div style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '2px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+              <button 
+                onClick={handlePrevMonth} 
+                disabled={currentPeriodIdx <= 0}
+                className="btn btn-xs btn-ghost"
+                style={{ 
+                  height: '32px', 
+                  width: '32px', 
+                  padding: 0, 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  cursor: currentPeriodIdx <= 0 ? 'not-allowed' : 'pointer',
+                  opacity: currentPeriodIdx <= 0 ? 0.3 : 1
+                }}
+                title="Previous Month"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              <select 
+                value={selectedPeriodKey} 
+                onChange={(e) => setSelectedPeriodKey(e.target.value)} 
+                style={{ 
+                  minWidth: '150px', 
+                  height: '32px', 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: 'var(--text-primary)', 
+                  padding: '0 8px', 
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'center'
+                }}
+              >
+                {selectorPeriods.map(p => (
+                  <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+              </select>
+
+              <button 
+                onClick={handleNextMonth} 
+                disabled={currentPeriodIdx >= selectorPeriods.length - 1}
+                className="btn btn-xs btn-ghost"
+                style={{ 
+                  height: '32px', 
+                  width: '32px', 
+                  padding: 0, 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  cursor: currentPeriodIdx >= selectorPeriods.length - 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentPeriodIdx >= selectorPeriods.length - 1 ? 0.3 : 1
+                }}
+                title="Next Month"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            <button
+              onClick={handleCurrentMonth}
+              className="btn btn-xs"
+              style={{
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                color: 'var(--text-primary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer'
+              }}
+              title="Jump to Current Month"
             >
-              {selectorPeriods.map(p => (
-                <option key={p.key} value={p.key}>{p.label}</option>
-              ))}
-            </select>
+              <Calendar size={13} style={{ color: '#3b82f6' }} /> Today
+            </button>
           </div>
         )}
       </div>
