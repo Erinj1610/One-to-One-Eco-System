@@ -101,6 +101,15 @@ export default function CrmPage() {
   }, [location.state, combinedContacts]);
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [filterType, setFilterType] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -314,12 +323,13 @@ export default function CrmPage() {
 
   // Apply filters for Search, Category, and Dates
   const filteredClients = useMemo(() => {
+    const q = debouncedSearch.toLowerCase().trim();
     return clientData.filter(c => {
-      const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.company.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = !q || c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q);
       const matchType = filterType === 'All' || c.type === filterType;
       return matchSearch && matchType && c.passDateFilter;
     });
-  }, [clientData, search, filterType]);
+  }, [clientData, debouncedSearch, filterType]);
 
   // Segmented calculations for Top KPI Cards (Clickable)
   const funnels = useMemo(() => {

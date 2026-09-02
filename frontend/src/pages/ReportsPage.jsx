@@ -406,90 +406,91 @@ export default function ReportsPage() {
       
       // Process item-level and clientInvoices-level invoice entries
       const itemsList = order.itemsList || [];
-      const clientInvoices = order.clientInvoices || [];
+      const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
       
       let processedInvoicedTotal = 0;
 
-      // 1. Iterate over line items and their invoiceHistory
-      itemsList.forEach(item => {
-        const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-        if (iHist.length > 0) {
-          iHist.forEach(h => {
-            const hRef = h.ref || item.invoiceRef;
-            const hDate = h.date || item.invoiceDate;
-            const hVal = (Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0);
-            if (hRef && hDate && hVal > 0) {
-              const parsedDate = parseDateString(hDate);
-              if (parsedDate) {
-                processedInvoicedTotal += hVal;
-                const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
-                const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
-
-                if (invMonth === selectedMonthName && invYear === selectedYear) {
-                  dynamicInvoiced[div].actual += hVal;
-                }
-                if (invFy === currentFinancialYear) {
-                  const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
-                  if (invSeqVal <= selectedSeqIndex) {
-                    dynamicInvoiced[div].ytdActual += hVal;
-                  }
-                  dynamicAnnual[div].invoiced += hVal;
-                }
-              }
-            }
-          });
-        } else if (item.invoiceRef && item.invoiceDate) {
-          const itemVal = (Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
-          if (itemVal > 0) {
-            const parsedDate = parseDateString(item.invoiceDate);
+      // 1. If authentic clientInvoices exist on the order, calculate from clientInvoices
+      if (clientInvoices.length > 0) {
+        clientInvoices.forEach(cinv => {
+          const cRef = cinv.id || cinv.ref || order.invoiceRef;
+          const cDate = cinv.date || order.invoiceDate;
+          const cVal = Number(cinv.totalValue ?? cinv.value ?? cinv.amount ?? ((cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0;
+          if (cRef && cDate && cVal > 0) {
+            const parsedDate = parseDateString(cDate);
             if (parsedDate) {
-              processedInvoicedTotal += itemVal;
+              processedInvoicedTotal += cVal;
               const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
               const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
 
               if (invMonth === selectedMonthName && invYear === selectedYear) {
-                dynamicInvoiced[div].actual += itemVal;
+                dynamicInvoiced[div].actual += cVal;
               }
               if (invFy === currentFinancialYear) {
                 const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
                 if (invSeqVal <= selectedSeqIndex) {
-                  dynamicInvoiced[div].ytdActual += itemVal;
+                  dynamicInvoiced[div].ytdActual += cVal;
                 }
-                dynamicAnnual[div].invoiced += itemVal;
+                dynamicAnnual[div].invoiced += cVal;
               }
             }
           }
-        }
-      });
+        });
+      } else {
+        // 2. Iterate over line items and their invoiceHistory
+        itemsList.forEach(item => {
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => !String(h.id || h.ref).toUpperCase().startsWith('CN-') && !String(h.id || h.ref).toUpperCase().startsWith('CR-')) : [];
+          if (iHist.length > 0) {
+            iHist.forEach(h => {
+              const hRef = h.ref || item.invoiceRef;
+              const hDate = h.date || item.invoiceDate;
+              const hVal = Number(h.total ?? ((Number(h.qty) || 0) * (Number(h.rate) || Number(h.unitPrice) || Number(item.unitRetail) || 0))) || 0;
+              if (hRef && hDate && hVal > 0) {
+                const parsedDate = parseDateString(hDate);
+                if (parsedDate) {
+                  processedInvoicedTotal += hVal;
+                  const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
+                  const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
 
-      // 2. If no item-level invoices were processed, check order-level clientInvoices or order.invoiceRef
-      if (processedInvoicedTotal === 0) {
-        if (clientInvoices.length > 0) {
-          clientInvoices.forEach(cinv => {
-            const cRef = cinv.id || cinv.ref || order.invoiceRef;
-            const cDate = cinv.date || order.invoiceDate;
-            const cVal = (cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitRetail) || 0)), 0) || orderValue;
-            if (cRef && cDate && cVal > 0) {
-              const parsedDate = parseDateString(cDate);
+                  if (invMonth === selectedMonthName && invYear === selectedYear) {
+                    dynamicInvoiced[div].actual += hVal;
+                  }
+                  if (invFy === currentFinancialYear) {
+                    const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
+                    if (invSeqVal <= selectedSeqIndex) {
+                      dynamicInvoiced[div].ytdActual += hVal;
+                    }
+                    dynamicAnnual[div].invoiced += hVal;
+                  }
+                }
+              }
+            });
+          } else if (item.invoiceRef && item.invoiceDate && Number(item.invoiceQty) > 0) {
+            const itemVal = (Number(item.invoiceQty) || 0) * (Number(item.unitRetail) || 0);
+            if (itemVal > 0) {
+              const parsedDate = parseDateString(item.invoiceDate);
               if (parsedDate) {
-                processedInvoicedTotal += cVal;
+                processedInvoicedTotal += itemVal;
                 const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
                 const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
 
                 if (invMonth === selectedMonthName && invYear === selectedYear) {
-                  dynamicInvoiced[div].actual += cVal;
+                  dynamicInvoiced[div].actual += itemVal;
                 }
                 if (invFy === currentFinancialYear) {
                   const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
                   if (invSeqVal <= selectedSeqIndex) {
-                    dynamicInvoiced[div].ytdActual += cVal;
+                    dynamicInvoiced[div].ytdActual += itemVal;
                   }
-                  dynamicAnnual[div].invoiced += cVal;
+                  dynamicAnnual[div].invoiced += itemVal;
                 }
               }
             }
-          });
-        } else if (order.invoiceRef && order.invoiceDate) {
+          }
+        });
+
+        // 3. Fallback to order-level invoiceRef if no item or clientInvoices found
+        if (processedInvoicedTotal === 0 && order.invoiceRef && order.invoiceDate) {
           const parsedDate = parseDateString(order.invoiceDate);
           if (parsedDate) {
             processedInvoicedTotal += orderValue;
@@ -679,47 +680,16 @@ export default function ReportsPage() {
         // Sales Invoiced
         if (type === 'invoiced') {
           const itemsList = order.itemsList || [];
-          const clientInvoices = order.clientInvoices || [];
+          const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
           const invoiceGroupsMap = {};
 
-          itemsList.forEach(item => {
-            const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
-            if (iHist.length > 0) {
-              iHist.forEach(h => {
-                const hRef = h.ref || item.invoiceRef;
-                const hDate = h.date || item.invoiceDate;
-                const hVal = (Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0);
-                if (hRef && hDate && hVal > 0) {
-                  const parsedDate = parseDateString(hDate);
-                  if (parsedDate) {
-                    const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
-                    const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
-                    let match = false;
-                    if (extraFilter === 'ytd') {
-                      if (invFy === currentFinancialYear && getFyMonthSequenceVal(invMonthIdx) <= selectedSeqIndex) match = true;
-                    } else {
-                      if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
-                    }
-                    if (match) {
-                      const groupKey = `${order.id || 'N/A'}_${hRef}_${hDate}`;
-                      if (!invoiceGroupsMap[groupKey]) {
-                        invoiceGroupsMap[groupKey] = {
-                          projectName: proj.name,
-                          orderId: `${order.id || 'N/A'} (${hRef})`,
-                          quote_name: order.quote_name || 'General Spec',
-                          date: hDate,
-                          value: 0
-                        };
-                      }
-                      invoiceGroupsMap[groupKey].value += hVal;
-                    }
-                  }
-                }
-              });
-            } else if (item.invoiceRef && item.invoiceDate) {
-              const itemVal = (Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
-              if (itemVal > 0) {
-                const parsedDate = parseDateString(item.invoiceDate);
+          if (clientInvoices.length > 0) {
+            clientInvoices.forEach(cinv => {
+              const cRef = cinv.id || cinv.ref || order.invoiceRef;
+              const cDate = cinv.date || order.invoiceDate;
+              const cVal = Number(cinv.totalValue ?? cinv.value ?? cinv.amount ?? ((cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0;
+              if (cRef && cDate && cVal > 0) {
+                const parsedDate = parseDateString(cDate);
                 if (parsedDate) {
                   const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
                   const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
@@ -730,33 +700,50 @@ export default function ReportsPage() {
                     if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                   }
                   if (match) {
-                    const groupKey = `${order.id || 'N/A'}_${item.invoiceRef}_${item.invoiceDate}`;
-                    if (!invoiceGroupsMap[groupKey]) {
-                      invoiceGroupsMap[groupKey] = {
-                        projectName: proj.name,
-                        orderId: `${order.id || 'N/A'} (${item.invoiceRef})`,
-                        quote_name: order.quote_name || 'General Spec',
-                        date: item.invoiceDate,
-                        value: 0
-                      };
-                    }
-                    invoiceGroupsMap[groupKey].value += itemVal;
+                    list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cRef})`, quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal });
                   }
                 }
               }
-            }
-          });
-
-          if (Object.keys(invoiceGroupsMap).length > 0) {
-            Object.values(invoiceGroupsMap).forEach(g => list.push(g));
+            });
           } else {
-            if (clientInvoices.length > 0) {
-              clientInvoices.forEach(cinv => {
-                const cRef = cinv.id || cinv.ref || order.invoiceRef;
-                const cDate = cinv.date || order.invoiceDate;
-                const cVal = (cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitRetail) || 0)), 0) || orderValue;
-                if (cRef && cDate && cVal > 0) {
-                  const parsedDate = parseDateString(cDate);
+            itemsList.forEach(item => {
+              const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => !String(h.id || h.ref).toUpperCase().startsWith('CN-') && !String(h.id || h.ref).toUpperCase().startsWith('CR-')) : [];
+              if (iHist.length > 0) {
+                iHist.forEach(h => {
+                  const hRef = h.ref || item.invoiceRef;
+                  const hDate = h.date || item.invoiceDate;
+                  const hVal = Number(h.total ?? ((Number(h.qty) || 0) * (Number(h.rate) || Number(h.unitPrice) || Number(item.unitRetail) || 0))) || 0;
+                  if (hRef && hDate && hVal > 0) {
+                    const parsedDate = parseDateString(hDate);
+                    if (parsedDate) {
+                      const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
+                      const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
+                      let match = false;
+                      if (extraFilter === 'ytd') {
+                        if (invFy === currentFinancialYear && getFyMonthSequenceVal(invMonthIdx) <= selectedSeqIndex) match = true;
+                      } else {
+                        if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
+                      }
+                      if (match) {
+                        const groupKey = `${order.id || 'N/A'}_${hRef}_${hDate}`;
+                        if (!invoiceGroupsMap[groupKey]) {
+                          invoiceGroupsMap[groupKey] = {
+                            projectName: proj.name,
+                            orderId: `${order.id || 'N/A'} (${hRef})`,
+                            quote_name: order.quote_name || 'General Spec',
+                            date: hDate,
+                            value: 0
+                          };
+                        }
+                        invoiceGroupsMap[groupKey].value += hVal;
+                      }
+                    }
+                  }
+                });
+              } else if (item.invoiceRef && item.invoiceDate && Number(item.invoiceQty) > 0) {
+                const itemVal = (Number(item.invoiceQty) || 0) * (Number(item.unitRetail) || 0);
+                if (itemVal > 0) {
+                  const parsedDate = parseDateString(item.invoiceDate);
                   if (parsedDate) {
                     const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
                     const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
@@ -767,11 +754,25 @@ export default function ReportsPage() {
                       if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                     }
                     if (match) {
-                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cRef})`, quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal });
+                      const groupKey = `${order.id || 'N/A'}_${item.invoiceRef}_${item.invoiceDate}`;
+                      if (!invoiceGroupsMap[groupKey]) {
+                        invoiceGroupsMap[groupKey] = {
+                          projectName: proj.name,
+                          orderId: `${order.id || 'N/A'} (${item.invoiceRef})`,
+                          quote_name: order.quote_name || 'General Spec',
+                          date: item.invoiceDate,
+                          value: 0
+                        };
+                      }
+                      invoiceGroupsMap[groupKey].value += itemVal;
                     }
                   }
                 }
-              });
+              }
+            });
+
+            if (Object.keys(invoiceGroupsMap).length > 0) {
+              Object.values(invoiceGroupsMap).forEach(g => list.push(g));
             } else if (order.invoiceRef && order.invoiceDate) {
               const parsedDate = parseDateString(order.invoiceDate);
               if (parsedDate) {

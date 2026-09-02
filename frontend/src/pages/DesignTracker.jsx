@@ -26,6 +26,15 @@ export default function DesignTracker() {
 
   // Dashboard Filters state
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [pmFilter, setPmFilter] = useState('All PMs');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [offeringFilter, setOfferingFilter] = useState('All Offerings');
@@ -177,8 +186,8 @@ export default function DesignTracker() {
       }
 
       // Search Query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
+      if (debouncedSearchQuery) {
+        const q = debouncedSearchQuery.toLowerCase().trim();
         const matches = 
           row.projectName.toLowerCase().includes(q) ||
           row.projectClientName.toLowerCase().includes(q) ||
@@ -191,7 +200,7 @@ export default function DesignTracker() {
 
       return true;
     });
-  }, [designRows, pmFilter, statusFilter, offeringFilter, activeKpiFilter, searchQuery, startDate, endDate]);
+  }, [designRows, pmFilter, statusFilter, offeringFilter, activeKpiFilter, debouncedSearchQuery, startDate, endDate]);
 
   // Compute KPI summaries dynamically
   const kpiData = useMemo(() => {

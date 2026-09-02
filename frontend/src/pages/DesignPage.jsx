@@ -160,6 +160,15 @@ export default function DesignPage() {
 
   // Search & Filter states
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [filterStatus, setFilterStatus] = useState('All');
   const [projectFilterKey, setProjectFilterKey] = useState('All');
 
@@ -338,11 +347,12 @@ export default function DesignPage() {
   }, [dateFilteredFees]);
 
   const filteredFees = useMemo(() => {
+    const q = debouncedSearchQuery.toLowerCase().trim();
     return dateFilteredFees.filter(f => {
-      const matchesSearch = 
-        f.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        f.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        f.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = !q ||
+        f.id.toLowerCase().includes(q) ||
+        f.projectName.toLowerCase().includes(q) ||
+        f.name.toLowerCase().includes(q);
         
       const matchesStatus = filterStatus === 'All' || f.status === filterStatus;
       const matchesProject = projectFilterKey === 'All' || f.projectKey === projectFilterKey;
@@ -361,7 +371,7 @@ export default function DesignPage() {
 
       return matchesSearch && matchesStatus && matchesProject && matchesKpi;
     });
-  }, [dateFilteredFees, searchQuery, filterStatus, projectFilterKey, activeKpiFilter]);
+  }, [dateFilteredFees, debouncedSearchQuery, filterStatus, projectFilterKey, activeKpiFilter]);
 
   // Aggregate metrics
   const stats = useMemo(() => {

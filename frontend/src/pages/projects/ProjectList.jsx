@@ -140,6 +140,15 @@ export default function ProjectList() {
   };
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [pmFilter, setPmFilter] = useState('All PMs');
   const [clientFilter, setClientFilter] = useState('All Clients');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
@@ -314,9 +323,11 @@ export default function ProjectList() {
       }
 
       // Search matches (Project name, Client, or PM)
-      const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) || 
-                            (p.client || '').toLowerCase().includes(search.toLowerCase()) ||
-                            (p.pm || '').toLowerCase().includes(search.toLowerCase());
+      const q = debouncedSearch.toLowerCase().trim();
+      const matchesSearch = !q ||
+                            (p.name || '').toLowerCase().includes(q) || 
+                            (p.client || '').toLowerCase().includes(q) ||
+                            (p.pm || '').toLowerCase().includes(q);
       
       // PM matches
       const matchesPm = pmFilter === 'All PMs' || p.pm === pmFilter;
