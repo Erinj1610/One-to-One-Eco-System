@@ -511,6 +511,35 @@ export default function ReportsPage() {
         }
       }
 
+      // 4. Process allocated Credit Notes and deduct from invoiced revenue
+      const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
+        ? order.creditNotes
+        : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
+
+      creditNotes.forEach(cn => {
+        const cnRef = cn.id || cn.ref;
+        const cnDate = cn.date || order.invoiceDate;
+        const cnVal = Math.abs(Number(cn.totalValue ?? cn.value ?? cn.amount ?? ((cn.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0);
+        if (cnRef && cnDate && cnVal > 0) {
+          const parsedDate = parseDateString(cnDate);
+          if (parsedDate) {
+            const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
+            const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
+
+            if (invMonth === selectedMonthName && invYear === selectedYear) {
+              dynamicInvoiced[div].actual -= cnVal;
+            }
+            if (invFy === currentFinancialYear) {
+              const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
+              if (invSeqVal <= selectedSeqIndex) {
+                dynamicInvoiced[div].ytdActual -= cnVal;
+              }
+              dynamicAnnual[div].invoiced -= cnVal;
+            }
+          }
+        }
+      });
+
       const isEligibleForInvoiced = processedInvoicedTotal > 0;
 
       const orderDateParsed = getOrderMonthAndYear(order, 'order');
@@ -677,10 +706,13 @@ export default function ReportsPage() {
         const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
         const isEligibleForInvoiced = hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
-        // Sales Invoiced
+        // Sales Invoiced (Invoices - Credit Notes)
         if (type === 'invoiced') {
           const itemsList = order.itemsList || [];
           const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
+          const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
+            ? order.creditNotes
+            : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
           const invoiceGroupsMap = {};
 
           if (clientInvoices.length > 0) {
@@ -700,7 +732,7 @@ export default function ReportsPage() {
                     if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                   }
                   if (match) {
-                    list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cRef})`, quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal });
+                    list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cRef})`, quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal, isCredit: false });
                   }
                 }
               }
@@ -732,7 +764,8 @@ export default function ReportsPage() {
                             orderId: `${order.id || 'N/A'} (${hRef})`,
                             quote_name: order.quote_name || 'General Spec',
                             date: hDate,
-                            value: 0
+                            value: 0,
+                            isCredit: false
                           };
                         }
                         invoiceGroupsMap[groupKey].value += hVal;
@@ -761,7 +794,8 @@ export default function ReportsPage() {
                           orderId: `${order.id || 'N/A'} (${item.invoiceRef})`,
                           quote_name: order.quote_name || 'General Spec',
                           date: item.invoiceDate,
-                          value: 0
+                          value: 0,
+                          isCredit: false
                         };
                       }
                       invoiceGroupsMap[groupKey].value += itemVal;
@@ -785,11 +819,34 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${order.invoiceRef})`, quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue });
+                  list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${order.invoiceRef})`, quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue, isCredit: false });
                 }
               }
             }
           }
+
+          // Process and include Credit Notes in drilldown
+          creditNotes.forEach(cn => {
+            const cnRef = cn.id || cn.ref;
+            const cnDate = cn.date || order.invoiceDate;
+            const cnVal = Math.abs(Number(cn.totalValue ?? cn.value ?? cn.amount ?? ((cn.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0);
+            if (cnRef && cnDate && cnVal > 0) {
+              const parsedDate = parseDateString(cnDate);
+              if (parsedDate) {
+                const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
+                const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
+                let match = false;
+                if (extraFilter === 'ytd') {
+                  if (invFy === currentFinancialYear && getFyMonthSequenceVal(invMonthIdx) <= selectedSeqIndex) match = true;
+                } else {
+                  if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
+                }
+                if (match) {
+                  list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cnRef})`, quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
+                }
+              }
+            }
+          });
         }
 
         // To Be Invoiced (Awaiting Stock)
@@ -1840,20 +1897,52 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedDrilldownItems.map((item, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
-                        <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>{item.orderId}</td>
-                        <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{item.quote_name || 'General Spec'}</td>
-                        <td style={{ padding: '12px', color: '#475569', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={12} style={{ color: '#64748b' }} /> {item.date}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, fontSize: '13px', color: '#059669' }}>{formatZar(item.value)}</td>
-                      </tr>
-                    ))}
+                    {sortedDrilldownItems.map((item, idx) => {
+                      const isCred = item.isCredit || item.value < 0;
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s', background: isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent' }} onMouseOver={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.08)' : '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent'}>
+                          <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
+                          <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              {item.orderId}
+                              {isCred && (
+                                <span style={{
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  color: '#dc2626',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  padding: '1px 6px',
+                                  borderRadius: '6px',
+                                  fontSize: '10px',
+                                  fontWeight: 800
+                                }}>
+                                  CREDIT NOTE
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{item.quote_name || 'General Spec'}</td>
+                          <td style={{ padding: '12px', color: '#475569', fontWeight: 500 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={12} style={{ color: '#64748b' }} /> {item.date}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, fontSize: '13px', color: isCred ? '#dc2626' : '#059669' }}>
+                            {isCred ? `- ${formatZar(Math.abs(item.value))}` : formatZar(item.value)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
+                      <td colSpan={4} style={{ padding: '12px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>
+                        TOTAL NET VALUE:
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: (sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0)) < 0 ? '#dc2626' : '#059669' }}>
+                        {formatZar(sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
 
               )}
