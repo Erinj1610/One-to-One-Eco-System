@@ -1719,34 +1719,7 @@ export default function InvoicesPage() {
                               }} title={doc.issue_notes ? `${doc.issue_reason}: ${doc.issue_notes}` : doc.issue_reason}>
                                 ⚠️ {doc.issue_reason || 'Issue / Not Found'}
                               </span>
-                            ) : doc.allocation_status === 'Needs Allocation' ? (
-                              <span style={{ 
-                                background: 'rgba(245, 158, 11, 0.12)', 
-                                color: '#f59e0b', 
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10.5px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                <AlertTriangle size={11} /> Needs Allocation
-                              </span>
-                            ) : doc.allocation_status === 'Partially Allocated' ? (
-                              <span style={{ 
-                                background: 'rgba(59, 130, 246, 0.12)', 
-                                color: '#3b82f6', 
-                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10.5px', 
-                                fontWeight: 700 
-                              }}>
-                                ⏳ Partial ({doc.allocated_qty}/{doc.total_qty})
-                              </span>
-                            ) : (
+                            ) : doc.allocation_status === 'Fully Allocated' || (Number(doc.allocated_qty) > 0 && Number(doc.allocated_qty) >= Number(doc.total_qty)) ? (
                               <span style={{ 
                                 background: 'rgba(16, 185, 129, 0.12)', 
                                 color: '#10b981', 
@@ -1760,6 +1733,33 @@ export default function InvoicesPage() {
                                 gap: '4px'
                               }}>
                                 <Check size={11} /> Fully Allocated
+                              </span>
+                            ) : doc.allocation_status === 'Partially Allocated' || (Number(doc.allocated_qty) > 0 && Number(doc.allocated_qty) < Number(doc.total_qty)) ? (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.12)', 
+                                color: '#3b82f6', 
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700 
+                              }}>
+                                ⏳ Partial ({doc.allocated_qty}/{doc.total_qty})
+                              </span>
+                            ) : (
+                              <span style={{ 
+                                background: 'rgba(245, 158, 11, 0.12)', 
+                                color: '#f59e0b', 
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10.5px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <AlertTriangle size={11} /> Needs Allocation
                               </span>
                             )}
                           </td>
