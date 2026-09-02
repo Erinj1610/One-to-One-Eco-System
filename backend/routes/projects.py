@@ -926,30 +926,44 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             except Exception:
                 delivery_notes_parsed = []
 
-            # Dynamically assemble live allocated POs and GRNs from ProcurementAllocation
+            # Dynamically assemble live allocated POs, GRNs, and Invoices from ProcurementAllocation
             order_item_ids = {str(item.get("id")) for item in order_items_list if item.get("id")}
+            order_keys = {str(k) for k in [order.id, order.po_number] if k}
+            proj_keys = {str(k) for k in [order.project_id, order.project_key] if k}
             seen_alloc_ids = set()
             order_allocs = []
 
-            # 1. Match allocations by items present in this order
+            # 1. Match allocations by item IDs present in this order
             for it_id in order_item_ids:
                 for a in alloc_by_item_id.get(it_id, []):
                     if a.id not in seen_alloc_ids:
                         seen_alloc_ids.add(a.id)
                         order_allocs.append(a)
 
-            # 2. Match allocations directly assigned to this order ID
-            for a in alloc_by_order_id.get(order.id, []):
-                if a.id not in seen_alloc_ids:
-                    seen_alloc_ids.add(a.id)
-                    order_allocs.append(a)
-
-            # 3. Project-level fallback if order has no direct items linked
-            if not order_allocs and order.project_id:
-                for a in alloc_by_proj_id.get(order.project_id, []):
+            # 2. Match allocations directly assigned to this order ID / po_number
+            for ok in order_keys:
+                for a in alloc_by_order_id.get(ok, []):
                     if a.id not in seen_alloc_ids:
                         seen_alloc_ids.add(a.id)
                         order_allocs.append(a)
+
+            # 3. Match allocations by item SKU or fitting code within this order
+            for item in order_items_list:
+                item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.get("code"), item.get("oneOneCode")] if s}
+                for s in item_norm_skus:
+                    for a in (alloc_by_sku_po.get(s, []) + alloc_by_sku_grn.get(s, []) + alloc_by_sku_inv.get(s, [])):
+                        if (a.order_id and str(a.order_id) in order_keys) or (a.project_id and str(a.project_id) in proj_keys):
+                            if a.id not in seen_alloc_ids:
+                                seen_alloc_ids.add(a.id)
+                                order_allocs.append(a)
+
+            # 4. Project-level allocation fallback (if unassigned to another order or directly for this order)
+            for pk in proj_keys:
+                for a in alloc_by_proj_id.get(pk, []):
+                    if not a.order_id or str(a.order_id) in order_keys:
+                        if a.id not in seen_alloc_ids:
+                            seen_alloc_ids.add(a.id)
+                            order_allocs.append(a)
 
             po_groups = {}
             grn_groups = {}

@@ -643,8 +643,9 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         if not matched_item and real_proj_id:
             proj_items = db.query(OrderItem).filter(
                 or_(
-                    OrderItem.order_id.ilike(f"{proj_obj.project_key}%") if proj_obj else False,
-                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
+                    OrderItem.order_id.ilike(f"{proj.project_key}%") if (proj and proj.project_key) else False,
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()]),
+                    OrderItem.order_id.in_([o.po_number for o in db.query(Order).filter(Order.project_id == real_proj_id).all() if o.po_number])
                 )
             ).all()
             matched_item = find_best_item_match(proj_items, sku)
