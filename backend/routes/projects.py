@@ -996,15 +996,15 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                                 if a.id not in seen_alloc_ids:
                                     seen_alloc_ids.add(a.id)
                                     order_allocs.append(a)
-                        elif a.project_id and str(a.project_id) in proj_keys:
+                        elif a.allocation_type != 'INVOICE' and a.project_id and str(a.project_id) in proj_keys:
                             if a.id not in seen_alloc_ids:
                                 seen_alloc_ids.add(a.id)
                                 order_allocs.append(a)
 
-            # 4. Project-level allocation fallback (strictly if unassigned to any order)
+            # 4. Project-level allocation fallback (strictly for PO/GRN if unassigned to any specific order)
             for pk in proj_keys:
                 for a in alloc_by_proj_id.get(pk, []):
-                    if not a.order_id and not a.order_item_id:
+                    if not a.order_id and not a.order_item_id and a.allocation_type != 'INVOICE':
                         if a.id not in seen_alloc_ids:
                             seen_alloc_ids.add(a.id)
                             order_allocs.append(a)
