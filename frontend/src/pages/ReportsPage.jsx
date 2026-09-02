@@ -251,8 +251,10 @@ export default function ReportsPage() {
     const name = `${pmName} ${oneOneRep} ${salesRep}`.trim().toLowerCase();
     const proj = (projName || '').trim().toLowerCase();
 
-    // Ignore generic/placeholder names
-    const isGenericName = !name || name === 'martin döller' || name === 'merlyn mittins' || name === 'select project manager...' || name === 'tbd';
+    // Check for internal / office
+    if (name.includes('internal') || name.includes('office') || proj.includes('internal') || proj.includes('office') || proj.includes('decorex') || proj.includes('head office')) {
+      return 'INTERNAL - Office';
+    }
     
     if (name.includes('ryan')) return 'MODUS PROFESSIONAL ( Ryan )';
     if (name.includes('thando')) return 'MODUS SIGNATURE ( Thando )';
@@ -271,16 +273,19 @@ export default function ReportsPage() {
     if (proj.includes('signature')) return 'MODUS SIGNATURE ( Thando )';
     if (proj.includes('made')) return 'MADE ( Jon-Peer)';
     if (proj.includes('luxe')) return 'LUXELINE';
+    if (proj.includes('mood') || proj.includes('store')) return 'MOOD STORES';
 
     // Unallocated fallback row so unassigned orders are clearly visible
     return 'UNALLOCATED / UNASSIGNED';
   };
 
   const getOrderDivision = (order, proj) => {
-    if (order.division && order.division !== 'INTERNAL - Office' && order.division !== 'Auto-Detect (PM Name)' && order.division !== 'UNALLOCATED / UNASSIGNED') {
+    if (order.division && order.division !== 'Auto-Detect (PM Name)' && order.division !== 'UNALLOCATED / UNASSIGNED') {
       return order.division;
     }
-    if (proj.division && proj.division !== 'INTERNAL - Office') return proj.division;
+    if (proj.division && proj.division !== 'Auto-Detect (PM Name)' && proj.division !== 'UNALLOCATED / UNASSIGNED') {
+      return proj.division;
+    }
     
     const pm = order.pmName || order.pm_name || order.pm || order['PM NAME'] || order['PM'] || order.salesRep || order.sales_rep || order['Sales Rep'] || order['SALES REP'] || proj.pm || proj.pmName || '';
     const rep = order.oneOneRep || order.one_to_one_rep || order['One One Rep'] || '';
