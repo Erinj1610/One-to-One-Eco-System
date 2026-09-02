@@ -1033,7 +1033,41 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 first_a = doc_items[0]
                 doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
                 is_credit_doc = str(doc_no).upper().startswith(("CN-", "CR-"))
-                inv_total_val = sum(float((a.allocated_qty or 0) * (a.unit_cost or 0)) for a in doc_items) * (-1.0 if is_credit_doc else 1.0)
+
+                parsed_items = []
+                inv_total_val = 0.0
+
+                for a in doc_items:
+                    is_fee_line = (
+                        str(a.sku).strip() in ('4500-0000', '4300-0000', '4050-0000') or
+                        'handling' in str(a.sku).lower() or
+                        'handling' in str(a.fitting_code or '').lower() or
+                        'courier' in str(a.sku).lower() or
+                        'restock' in str(a.sku).lower() or
+                        'fee' in str(a.fitting_code or '').lower()
+                    )
+
+                    if is_credit_doc:
+                        line_multiplier = 1.0 if is_fee_line else -1.0
+                        item_qty_action = abs(a.allocated_qty) if is_fee_line else -abs(a.allocated_qty)
+                    else:
+                        line_multiplier = 1.0
+                        item_qty_action = a.allocated_qty
+
+                    line_val = float((a.allocated_qty or 0) * (a.unit_cost or 0)) * line_multiplier
+                    inv_total_val += line_val
+
+                    parsed_items.append({
+                        "code": a.fitting_code or a.sku,
+                        "description": a.sku,
+                        "qtyAction": item_qty_action,
+                        "unitPrice": a.unit_cost,
+                        "total": round(line_val, 2),
+                        "is_fee": is_fee_line
+                    })
+
+                inv_total_val = round(inv_total_val, 2)
+
                 dynamic_client_invoices.append({
                     "id": doc_no,
                     "doc_type": "Credit Note" if is_credit_doc else "Invoice",
@@ -1044,16 +1078,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     "amount": inv_total_val,
                     "notes": first_a.notes or ("Credit Note allocated from Palladium ERP" if is_credit_doc else "Allocated from Palladium ERP"),
                     "allocated_by": first_a.allocated_by_name,
-                    "items": [
-                        {
-                            "code": a.fitting_code or a.sku,
-                            "description": a.sku,
-                            "qtyAction": -abs(a.allocated_qty) if is_credit_doc else a.allocated_qty,
-                            "unitPrice": a.unit_cost,
-                            "total": float((a.allocated_qty or 0) * (a.unit_cost or 0)) * (-1.0 if is_credit_doc else 1.0)
-                        }
-                        for a in doc_items
-                    ]
+                    "items": parsed_items
                 })
 
             credit_notes_parsed = [inv for inv in dynamic_client_invoices if inv.get("is_credit")]
