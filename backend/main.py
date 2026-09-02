@@ -9,7 +9,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Import routers
-from routes.projects import router as projects_router
+from routes.projects import router as projects_router, public_router as projects_public_router
 from routes.admin import router as admin_router
 from routes.documents import router as documents_router
 from routes.hr import router as hr_router
@@ -76,6 +76,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 from services.firebase_auth import verify_firebase_token
 
+app.include_router(projects_public_router, prefix="/api/projects", tags=["projects"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(orders_router, prefix="/api/orders", tags=["orders"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(admin_router, prefix="/admin", tags=["admin"], dependencies=[Depends(verify_firebase_token)])

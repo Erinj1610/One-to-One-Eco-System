@@ -324,6 +324,8 @@ def list_invoicing_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@public_router.get("/document/{document_no}")
+@router.get("/document/{document_no}")
 @public_router.get("/documents/{document_no}")
 @router.get("/documents/{document_no}")
 def get_invoicing_document_details(
