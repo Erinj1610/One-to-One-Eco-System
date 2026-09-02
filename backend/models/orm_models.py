@@ -784,6 +784,11 @@ class PalladiumInvoiceLine(Base):
     document_total = Column(Float, default=0.0)
     transaction_date = Column(DateTime, nullable=True)
     currency_code = Column(String, default="ZAR")
+    exchange_rate = Column(Float, default=1.0)
+    foreign_unit_price = Column(Float, default=0.0)
+    foreign_line_total = Column(Float, default=0.0)
+    foreign_document_subtotal = Column(Float, default=0.0)
+    is_foreign_currency = Column(Boolean, default=False)
     sales_rep = Column(String, nullable=True)
     last_synced_at = Column(DateTime, default=datetime.utcnow)
 

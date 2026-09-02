@@ -517,6 +517,10 @@ def sync_palladium_sales_invoices(db_session: Optional[Session] = None) -> Dict[
                 [Document Total] AS document_total,
                 [Transaction Date] AS transaction_date,
                 [Currency Code] AS currency_code,
+                [Exchange Rate] AS exchange_rate,
+                [Is Foreign Trans] AS is_foreign,
+                [Unit Price Foreign] AS unit_price_foreign,
+                [Line Total Foreign] AS line_total_foreign,
                 [Sales Rep] AS sales_rep
             FROM biSalesAnalysis
             ORDER BY [Transaction Date] DESC
@@ -534,6 +538,24 @@ def sync_palladium_sales_invoices(db_session: Optional[Session] = None) -> Dict[
             if not doc_no or not item_code:
                 continue
 
+            rate = float(r.get("exchange_rate") or 1.0)
+            curr_code = str(r.get("currency_code") or "ZAR").strip().upper()
+            is_foreign = (str(r.get("is_foreign") or "").strip().lower() == "yes") or (curr_code and curr_code != "ZAR")
+
+            raw_doc_subtotal = float(r.get("document_subtotal") or 0.0)
+            raw_doc_discount = float(r.get("document_discount") or 0.0)
+            raw_doc_total = float(r.get("document_total") or 0.0)
+
+            # If foreign currency, convert document subtotal, discount, and total to Home Currency (ZAR)
+            if is_foreign and rate > 0:
+                doc_subtotal_zar = round(raw_doc_subtotal * rate, 2)
+                doc_discount_zar = round(raw_doc_discount * rate, 2)
+                doc_total_zar = round(raw_doc_total * rate, 2)
+            else:
+                doc_subtotal_zar = raw_doc_subtotal
+                doc_discount_zar = raw_doc_discount
+                doc_total_zar = raw_doc_total
+
             inv_obj = PalladiumInvoiceLine(
                 document_no=doc_no,
                 customer_code=str(r.get("customer_code") or "").strip() or None,
@@ -547,13 +569,18 @@ def sync_palladium_sales_invoices(db_session: Optional[Session] = None) -> Dict[
                 unit_price_incl=float(r.get("unit_price_incl") or 0.0),
                 line_total_excl=float(r.get("line_total_excl") or 0.0),
                 line_total_incl=float(r.get("line_total_incl") or 0.0),
-                document_subtotal=float(r.get("document_subtotal") or 0.0),
-                document_discount=float(r.get("document_discount") or 0.0),
+                document_subtotal=doc_subtotal_zar,
+                document_discount=doc_discount_zar,
                 line_disc_perc=float(r.get("line_disc_perc") or 0.0),
                 line_disc_amount=float(r.get("line_disc_amount") or 0.0),
-                document_total=float(r.get("document_total") or 0.0),
+                document_total=doc_total_zar,
                 transaction_date=r.get("transaction_date"),
-                currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                currency_code=curr_code,
+                exchange_rate=rate,
+                foreign_unit_price=float(r.get("unit_price_foreign") or 0.0),
+                foreign_line_total=float(r.get("line_total_foreign") or 0.0),
+                foreign_document_subtotal=raw_doc_subtotal,
+                is_foreign_currency=is_foreign,
                 sales_rep=str(r.get("sales_rep") or "").strip() or None,
                 last_synced_at=now_dt
             )
