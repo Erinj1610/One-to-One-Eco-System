@@ -780,10 +780,6 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             elif proj_items:
                 matched_item = find_best_item_match(proj_items, sku)
 
-            if not matched_item:
-                all_items = db.query(OrderItem).all()
-                matched_item = find_best_item_match(all_items, sku)
-
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
                 source_doc_no=source_doc_no,
