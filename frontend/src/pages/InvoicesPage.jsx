@@ -1036,6 +1036,9 @@ export default function InvoicesPage() {
                     <div>Project Ref: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.reference}</strong></div>
                   )}
                   <div>Total (Excl): <strong style={{ color: 'var(--text-primary)' }}>R {Number(selectedDocument.total_value_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+                  {selectedDocument.document_discount > 0 && (
+                    <div>Doc Discount: <strong style={{ color: '#059669' }}>-R {Number(selectedDocument.document_discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+                  )}
                 </div>
               </div>
 
@@ -1288,7 +1291,14 @@ export default function InvoicesPage() {
 
                           {/* Unit Price Excl */}
                           <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>
-                            R {Number(line.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                              <span>R {Number(line.effective_unit_price_excl || line.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                              {(line.line_disc_perc > 0 || (line.effective_unit_price_excl && line.effective_unit_price_excl < line.unit_price_excl)) && (
+                                <span style={{ fontSize: '9.5px', color: '#059669', fontWeight: 700 }}>
+                                  {line.line_disc_perc > 0 ? `-${line.line_disc_perc}% off` : 'Discounted'}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Invoiced Qty */}
