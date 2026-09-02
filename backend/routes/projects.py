@@ -952,15 +952,25 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.get("code"), item.get("oneOneCode")] if s}
                 for s in item_norm_skus:
                     for a in (alloc_by_sku_po.get(s, []) + alloc_by_sku_grn.get(s, []) + alloc_by_sku_inv.get(s, [])):
-                        if (a.order_id and str(a.order_id) in order_keys) or (a.project_id and str(a.project_id) in proj_keys):
+                        if a.order_id:
+                            if str(a.order_id) in order_keys:
+                                if a.id not in seen_alloc_ids:
+                                    seen_alloc_ids.add(a.id)
+                                    order_allocs.append(a)
+                        elif a.order_item_id:
+                            if str(a.order_item_id) in order_item_ids:
+                                if a.id not in seen_alloc_ids:
+                                    seen_alloc_ids.add(a.id)
+                                    order_allocs.append(a)
+                        elif a.project_id and str(a.project_id) in proj_keys:
                             if a.id not in seen_alloc_ids:
                                 seen_alloc_ids.add(a.id)
                                 order_allocs.append(a)
 
-            # 4. Project-level allocation fallback (if unassigned to another order or directly for this order)
+            # 4. Project-level allocation fallback (strictly if unassigned to any order)
             for pk in proj_keys:
                 for a in alloc_by_proj_id.get(pk, []):
-                    if not a.order_id or str(a.order_id) in order_keys:
+                    if not a.order_id and not a.order_item_id:
                         if a.id not in seen_alloc_ids:
                             seen_alloc_ids.add(a.id)
                             order_allocs.append(a)
