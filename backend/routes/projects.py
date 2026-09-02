@@ -840,7 +840,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if not item_inv_allocs and item_norm_skus:
                 for s in item_norm_skus:
                     for a in alloc_by_sku_inv.get(s, []):
-                        if not a.order_item_id or a.order_item_id == str(item.id):
+                        if (a.order_id and str(a.order_id) == str(item.order_id)) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
                             if a not in item_inv_allocs:
                                 item_inv_allocs.append(a)
 
@@ -970,6 +970,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             # 1. Match allocations by item IDs present in this order
             for it_id in order_item_ids:
                 for a in alloc_by_item_id.get(it_id, []):
+                    if a.order_id and str(a.order_id) not in order_keys:
+                        continue
                     if a.id not in seen_alloc_ids:
                         seen_alloc_ids.add(a.id)
                         order_allocs.append(a)
