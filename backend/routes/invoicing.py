@@ -994,7 +994,7 @@ def flag_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get_db
     """
     try:
         document_no = str(payload.get("document_no") or "").strip()
-        line_id = payload.get("line_id")
+        raw_line_id = payload.get("line_id")
         sku = payload.get("sku")
         reason = str(payload.get("reason") or "Order Not Found").strip()
         notes = str(payload.get("notes") or "").strip()
@@ -1003,15 +1003,24 @@ def flag_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get_db
         if not document_no:
             raise HTTPException(status_code=400, detail="Missing document_no")
 
+        # Safely parse line_id to integer if provided
+        parsed_line_id = None
+        if raw_line_id is not None:
+            clean_lid_str = str(raw_line_id).replace("INV_", "").replace("PO_", "").replace("GRN_", "").strip()
+            if clean_lid_str.isdigit():
+                parsed_line_id = int(clean_lid_str)
+
         query = db.query(AllocationIssue).filter(
             AllocationIssue.module == "INVOICE",
             AllocationIssue.document_no == document_no,
             AllocationIssue.status == "Open"
         )
-        if line_id:
-            query = query.filter(AllocationIssue.line_id == int(line_id))
+        if parsed_line_id is not None:
+            query = query.filter(AllocationIssue.line_id == parsed_line_id)
         elif sku:
             query = query.filter(AllocationIssue.sku == str(sku))
+        else:
+            query = query.filter(AllocationIssue.line_id.is_(None))
 
         issue = query.first()
         if not issue:
@@ -1019,7 +1028,7 @@ def flag_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get_db
             issue = AllocationIssue(
                 module="INVOICE",
                 document_no=document_no,
-                line_id=int(line_id) if line_id else None,
+                line_id=parsed_line_id,
                 sku=str(sku) if sku else (inv.item_code if inv else None),
                 amount=inv.document_total if inv else 0.0,
                 customer_vendor=inv.customer_name if inv else None,

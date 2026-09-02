@@ -1311,7 +1311,7 @@ def flag_procurement_issue(payload: dict = Body(...), db: Session = Depends(get_
     try:
         module = str(payload.get("module") or "PO").strip().upper()
         document_no = str(payload.get("document_no") or "").strip()
-        line_id = payload.get("line_id")
+        raw_line_id = payload.get("line_id")
         sku = payload.get("sku")
         reason = str(payload.get("reason") or "Order Not Found").strip()
         notes = str(payload.get("notes") or "").strip()
@@ -1320,23 +1320,43 @@ def flag_procurement_issue(payload: dict = Body(...), db: Session = Depends(get_
         if not document_no:
             raise HTTPException(status_code=400, detail="Missing document_no")
 
+        # Safely parse line_id to integer if provided as line id or prefixed string
+        parsed_line_id = None
+        if raw_line_id is not None:
+            clean_lid_str = str(raw_line_id).replace("PO_", "").replace("GRN_", "").replace("INV_", "").strip()
+            if clean_lid_str.isdigit():
+                parsed_line_id = int(clean_lid_str)
+
         query = db.query(AllocationIssue).filter(
             AllocationIssue.module == module,
             AllocationIssue.document_no == document_no,
             AllocationIssue.status == "Open"
         )
-        if line_id:
-            query = query.filter(AllocationIssue.line_id == int(line_id))
+        if parsed_line_id is not None:
+            query = query.filter(AllocationIssue.line_id == parsed_line_id)
         elif sku:
             query = query.filter(AllocationIssue.sku == str(sku))
+        else:
+            query = query.filter(AllocationIssue.line_id.is_(None))
 
         issue = query.first()
         if not issue:
+            if module == "PO":
+                pal_doc = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == document_no).first()
+                cust_vend = pal_doc.vendor_name if pal_doc else None
+                doc_amt = float(pal_doc.total_value_excl or 0.0) if pal_doc else 0.0
+            else:
+                pal_doc = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == document_no).first()
+                cust_vend = pal_doc.vendor_name if pal_doc else None
+                doc_amt = float(pal_doc.line_total_excl or 0.0) if pal_doc else 0.0
+
             issue = AllocationIssue(
                 module=module,
                 document_no=document_no,
-                line_id=int(line_id) if line_id else None,
+                line_id=parsed_line_id,
                 sku=str(sku) if sku else None,
+                amount=doc_amt,
+                customer_vendor=cust_vend,
                 reason=reason,
                 notes=notes,
                 flagged_by=flagged_by,

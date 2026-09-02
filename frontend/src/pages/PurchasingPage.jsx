@@ -559,7 +559,7 @@ export default function PurchasingPage() {
         body: JSON.stringify({
           module: moduleType,
           document_no: issueTargetItem.document_no,
-          line_id: issueTargetItem.line_id || issueTargetItem.id || null,
+          line_id: issueTargetItem.line_id !== undefined ? issueTargetItem.line_id : (typeof issueTargetItem.id === 'number' ? issueTargetItem.id : null),
           sku: issueTargetItem.item_code || issueTargetItem.sku || null,
           reason: issueReason,
           notes: issueNotes,
