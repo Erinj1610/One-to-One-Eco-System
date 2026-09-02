@@ -233,9 +233,13 @@ def list_invoicing_documents(
                     "transaction_date": line.transaction_date.isoformat() if line.transaction_date else None,
                     "currency_code": line.currency_code or "ZAR",
                     "sales_rep": line.sales_rep,
+                    "document_subtotal": float(line.document_subtotal or 0.0),
+                    "document_discount": float(line.document_discount or 0.0),
+                    "document_total": float(line.document_total or 0.0),
                     "lines_count": 0,
                     "total_qty": 0.0,
                     "allocated_qty": 0.0,
+                    "raw_lines_total_excl": 0.0,
                     "total_value_excl": 0.0,
                     "lines_sample": []
                 }
@@ -246,14 +250,15 @@ def list_invoicing_documents(
             docs_grouped[d_no]["lines_count"] += 1
             docs_grouped[d_no]["total_qty"] += line_qty
             docs_grouped[d_no]["allocated_qty"] += allocated
-            docs_grouped[d_no]["total_value_excl"] += float(line.line_total_excl or 0.0)
+            docs_grouped[d_no]["raw_lines_total_excl"] += float(line.line_total_excl or 0.0)
             
             if len(docs_grouped[d_no]["lines_sample"]) < 4:
                 docs_grouped[d_no]["lines_sample"].append({
                     "sku": line.item_code,
                     "description": line.item_description,
                     "qty": line_qty,
-                    "unit_price_excl": float(line.unit_price_excl or 0.0)
+                    "unit_price_excl": float(line.unit_price_excl or 0.0),
+                    "line_disc_perc": float(line.line_disc_perc or 0.0)
                 })
 
         doc_list = list(docs_grouped.values())
@@ -272,7 +277,10 @@ def list_invoicing_documents(
             
             d["allocation_status"] = status
             d["unallocated_qty"] = max(0.0, tot - alc)
-            d["total_value_excl"] = round(d["total_value_excl"], 2)
+            if d.get("document_subtotal") and d["document_subtotal"] != 0:
+                d["total_value_excl"] = round(d["document_subtotal"], 2)
+            else:
+                d["total_value_excl"] = round(d["raw_lines_total_excl"], 2)
 
             iss_d = issue_map.get(d["document_no"])
             is_d_issue = bool(iss_d)
@@ -297,15 +305,17 @@ def list_invoicing_documents(
         filtered_docs.sort(key=lambda x: x.get("transaction_date") or "", reverse=True)
 
         total_count = len(filtered_docs)
-        total_pages = max(1, (total_count + page_size - 1) // page_size)
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_docs = filtered_docs[start_idx:end_idx]
+        import math
+        limit = page_size
+        total_pages = max(1, math.ceil(total_count / limit))
+        start_idx = (page - 1) * limit
+        paginated_docs = filtered_docs[start_idx:start_idx + limit]
 
         return {
-            "total_documents": total_count,
+            "status": "success",
             "page": page,
-            "page_size": page_size,
+            "limit": limit,
+            "total_documents": total_count,
             "total_pages": total_pages,
             "documents": paginated_docs
         }
@@ -314,20 +324,23 @@ def list_invoicing_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@public_router.get("/document/{document_no}")
-@router.get("/document/{document_no}")
-def get_invoicing_document_details(document_no: str, db: Session = Depends(get_db)):
+@public_router.get("/documents/{document_no}")
+@router.get("/documents/{document_no}")
+def get_invoicing_document_details(
+    document_no: str,
+    db: Session = Depends(get_db)
+):
     """
-    Returns full details for a single invoice document, including all line items and their active allocations.
+    Fetches full line item breakdown for a single invoice or credit note,
+    including allocation status per line item and live discount calculations.
     """
     try:
         lines = db.query(PalladiumInvoiceLine).filter(PalladiumInvoiceLine.document_no == document_no).all()
         if not lines:
-            raise HTTPException(status_code=404, detail=f"Invoice document {document_no} not found.")
+            raise HTTPException(status_code=404, detail=f"Document {document_no} not found.")
 
         first_line = lines[0]
         allocs = db.query(ProcurementAllocation).filter(
-            ProcurementAllocation.allocation_type == "INVOICE",
             ProcurementAllocation.source_doc_no == document_no,
             ProcurementAllocation.status == "Active"
         ).all()
@@ -335,7 +348,7 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
         alloc_by_sku = {}
         for a in allocs:
             alloc_by_sku.setdefault(a.sku, []).append({
-                "id": a.id,
+                "allocation_id": a.id,
                 "project_id": a.project_id,
                 "project_name": a.project_name,
                 "order_id": a.order_id,
@@ -353,6 +366,11 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
         doc_total_allocated = 0.0
         doc_total_val = 0.0
 
+        doc_subtotal = float(first_line.document_subtotal or 0.0)
+        doc_discount = float(first_line.document_discount or 0.0)
+        raw_lines_sum = sum(float(l.line_total_excl or 0.0) for l in lines)
+        global_doc_disc_ratio = (abs(doc_subtotal) / abs(raw_lines_sum)) if (doc_subtotal != 0 and raw_lines_sum != 0) else 1.0
+
         for line in lines:
             line_qty = abs(float(line.qty or 0.0))
             line_sku = line.item_code
@@ -367,6 +385,13 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
             else:
                 l_status = "Unallocated"
 
+            l_disc_p = float(line.line_disc_perc or 0.0)
+            l_disc_a = float(line.line_disc_amount or 0.0)
+            line_disc_factor = (1.0 - (l_disc_p / 100.0)) if l_disc_p > 0 else 1.0
+            base_unit_price = float(line.unit_price_excl or 0.0)
+            effective_unit_price = round(base_unit_price * line_disc_factor * global_doc_disc_ratio, 2)
+            effective_line_total = round(float(line.line_total_excl or 0.0) * line_disc_factor * global_doc_disc_ratio, 2)
+
             doc_total_qty += line_qty
             doc_total_allocated += min(line_qty, total_alloc_qty)
             doc_total_val += float(line.line_total_excl or 0.0)
@@ -377,15 +402,21 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
                 "item_description": line.item_description,
                 "item_unit": line.item_unit or "EA",
                 "invoiced_qty": line_qty,
-                "unit_price_excl": float(line.unit_price_excl or 0.0),
+                "unit_price_excl": base_unit_price,
+                "effective_unit_price_excl": effective_unit_price,
                 "unit_price_incl": float(line.unit_price_incl or 0.0),
                 "line_total_excl": float(line.line_total_excl or 0.0),
+                "effective_line_total_excl": effective_line_total,
                 "line_total_incl": float(line.line_total_incl or 0.0),
+                "line_disc_perc": l_disc_p,
+                "line_disc_amount": l_disc_a,
                 "allocated_qty": total_alloc_qty,
                 "unallocated_qty": unalloc_qty,
                 "status": l_status,
                 "allocations": sku_allocs
             })
+
+        final_doc_val = round(doc_subtotal, 2) if doc_subtotal != 0 else round(doc_total_val, 2)
 
         return {
             "document_no": document_no,
@@ -399,7 +430,9 @@ def get_invoicing_document_details(document_no: str, db: Session = Depends(get_d
             "total_qty": doc_total_qty,
             "allocated_qty": doc_total_allocated,
             "unallocated_qty": max(0.0, doc_total_qty - doc_total_allocated),
-            "total_value_excl": round(doc_total_val, 2),
+            "document_subtotal": doc_subtotal,
+            "document_discount": doc_discount,
+            "total_value_excl": final_doc_val,
             "lines": parsed_lines
         }
     except HTTPException:

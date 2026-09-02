@@ -677,6 +677,38 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if pa.order_id:
                 pay_alloc_by_order_id.setdefault(str(pa.order_id), []).append(pa)
 
+        # Pre-load Palladium invoice lines discount metadata
+        pal_inv_lines = db.query(
+            PalladiumInvoiceLine.document_no,
+            PalladiumInvoiceLine.item_code,
+            PalladiumInvoiceLine.document_subtotal,
+            PalladiumInvoiceLine.document_discount,
+            PalladiumInvoiceLine.line_disc_perc,
+            PalladiumInvoiceLine.line_disc_amount,
+            PalladiumInvoiceLine.unit_price_excl,
+            PalladiumInvoiceLine.line_total_excl
+        ).all()
+
+        pal_doc_meta = {}
+        pal_item_meta = {}
+        for pil in pal_inv_lines:
+            d_no = str(pil.document_no).strip()
+            if d_no not in pal_doc_meta:
+                pal_doc_meta[d_no] = {
+                    "document_subtotal": float(pil.document_subtotal or 0.0),
+                    "document_discount": float(pil.document_discount or 0.0),
+                    "raw_lines_sum": 0.0
+                }
+            pal_doc_meta[d_no]["raw_lines_sum"] += float(pil.line_total_excl or 0.0)
+            
+            sku_k = (d_no, str(pil.item_code).strip())
+            pal_item_meta[sku_k] = {
+                "line_disc_perc": float(pil.line_disc_perc or 0.0),
+                "line_disc_amount": float(pil.line_disc_amount or 0.0),
+                "unit_price_excl": float(pil.unit_price_excl or 0.0),
+                "line_total_excl": float(pil.line_total_excl or 0.0)
+            }
+
         # Group items by order ID (excluding obsolete manual credits)
         items_by_order = {}
         for item in order_items:
@@ -1034,6 +1066,11 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 doc_date_str = first_a.doc_date or (first_a.allocated_at.strftime("%Y-%m-%d") if first_a.allocated_at else None)
                 is_credit_doc = str(doc_no).upper().startswith(("CN-", "CR-"))
 
+                d_meta = pal_doc_meta.get(str(doc_no).strip(), {})
+                doc_subtotal = d_meta.get("document_subtotal", 0.0)
+                raw_lines_sum = d_meta.get("raw_lines_sum", 0.0)
+                global_doc_disc_ratio = (abs(doc_subtotal) / abs(raw_lines_sum)) if (doc_subtotal != 0 and raw_lines_sum != 0) else 1.0
+
                 parsed_items = []
                 inv_total_val = 0.0
 
@@ -1047,6 +1084,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         'fee' in str(a.fitting_code or '').lower()
                     )
 
+                    it_meta = pal_item_meta.get((str(doc_no).strip(), str(a.sku).strip()), {})
+                    line_disc_p = it_meta.get("line_disc_perc", 0.0)
+                    line_disc_factor = (1.0 - (line_disc_p / 100.0)) if line_disc_p > 0 else 1.0
+                    base_unit_cost = float(a.unit_cost or it_meta.get("unit_price_excl", 0.0))
+                    effective_unit_cost = base_unit_cost * line_disc_factor * global_doc_disc_ratio
+
                     if is_credit_doc:
                         line_multiplier = 1.0 if is_fee_line else -1.0
                         item_qty_action = abs(a.allocated_qty) if is_fee_line else -abs(a.allocated_qty)
@@ -1054,16 +1097,17 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         line_multiplier = 1.0
                         item_qty_action = a.allocated_qty
 
-                    line_val = float((a.allocated_qty or 0) * (a.unit_cost or 0)) * line_multiplier
+                    line_val = float((a.allocated_qty or 0) * effective_unit_cost) * line_multiplier
                     inv_total_val += line_val
 
                     parsed_items.append({
                         "code": a.fitting_code or a.sku,
                         "description": a.sku,
                         "qtyAction": item_qty_action,
-                        "unitPrice": a.unit_cost,
+                        "unitPrice": round(effective_unit_cost, 2),
                         "total": round(line_val, 2),
-                        "is_fee": is_fee_line
+                        "is_fee": is_fee_line,
+                        "line_disc_perc": line_disc_p
                     })
 
                 inv_total_val = round(inv_total_val, 2)
