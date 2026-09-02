@@ -9,6 +9,7 @@ class QuoteCreate(BaseModel):
     phase_name: str
 
 router = APIRouter()
+public_router = APIRouter()
 
 from typing import Optional, Any
 
@@ -634,10 +635,11 @@ def list_quotes(project_id: int, db: Session = Depends(get_db)):
     quotes = db.query(Quote).filter(Quote.project_id == project_id).all()
     return [{"id": q.id, "phase_name": q.phase_name, "fulfillment": q.fulfillment_percentage, "status": q.status} for q in quotes]
 
+@public_router.get("/all")
 @router.get("/all")
 def list_all_projects_relational(db: Session = Depends(get_db)):
     import json
-    from models.orm_models import Order, OrderItem, ProcurementAllocation, OrderPaymentAllocation
+    from models.orm_models import Order, OrderItem, ProcurementAllocation, OrderPaymentAllocation, PalladiumInvoiceLine
     try:
         projects = db.query(Project).all()
         orders = db.query(Order).all()
