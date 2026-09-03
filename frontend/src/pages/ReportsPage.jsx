@@ -155,20 +155,40 @@ export default function ReportsPage() {
       if (formattedDate && formattedDate.includes('T')) {
         formattedDate = formattedDate.split('T')[0];
       }
+
+      // Extract clean invoice / credit note number if present
+      let invNum = item.invoiceNo || '';
+      if (!invNum && item.orderId) {
+        const match = item.orderId.match(/\((IN-[0-9]+|CN-[0-9]+|CR-[0-9]+)\)/i);
+        if (match) {
+          invNum = match[1];
+        } else if (item.orderId.startsWith('IN-') || item.orderId.startsWith('CN-') || item.orderId.startsWith('CR-')) {
+          invNum = item.orderId;
+        }
+      }
+
+      // Clean order ID
+      let cleanOrderId = item.orderId || '';
+      if (cleanOrderId.includes('(')) {
+        cleanOrderId = cleanOrderId.replace(/\s*\([^)]*\)/g, '').trim();
+      }
+
       return {
+        "Invoice / CN #": invNum || '—',
         "Project Name": item.projectName || '',
-        "Quote ID / Inv": item.orderId || '',
+        "Quote / Order ID": cleanOrderId,
         "Quote / Order Name": item.quote_name || 'General Spec',
         "Date": formattedDate,
-        "Document Type": isCred ? 'Credit Note' : (item.orderId && (item.orderId.includes('IN-') || item.orderId.includes('CN-')) ? 'Tax Invoice' : 'Order Allocation'),
+        "Document Type": isCred ? 'Credit Note' : (invNum.startsWith('IN-') ? 'Tax Invoice' : (item.docType || 'Order Allocation')),
         "Value (ZAR)": Number(Number(item.value || 0).toFixed(2))
       };
     });
 
     const totalVal = sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0);
     rows.push({
+      "Invoice / CN #": "",
       "Project Name": "TOTAL NET VALUE",
-      "Quote ID / Inv": "",
+      "Quote / Order ID": "",
       "Quote / Order Name": "",
       "Date": "",
       "Document Type": "",
@@ -178,11 +198,12 @@ export default function ReportsPage() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
 
     worksheet['!cols'] = [
+      { wch: 18 }, // Invoice / CN # (Dedicated first column for easy matching)
       { wch: 28 }, // Project Name
-      { wch: 38 }, // Quote ID / Inv
-      { wch: 38 }, // Quote Name
-      { wch: 16 }, // Date
-      { wch: 20 }, // Document Type
+      { wch: 32 }, // Quote / Order ID
+      { wch: 36 }, // Quote Name
+      { wch: 15 }, // Date
+      { wch: 18 }, // Document Type
       { wch: 20 }  // Value (ZAR)
     ];
 
@@ -789,7 +810,7 @@ export default function ReportsPage() {
                     if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                   }
                   if (match) {
-                    list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cRef})`, quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal, isCredit: false });
+                    list.push({ projectName: proj.name, invoiceNo: cRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal, isCredit: false, docType: 'Tax Invoice' });
                   }
                 }
               }
@@ -818,11 +839,13 @@ export default function ReportsPage() {
                         if (!invoiceGroupsMap[groupKey]) {
                           invoiceGroupsMap[groupKey] = {
                             projectName: proj.name,
-                            orderId: `${order.id || 'N/A'} (${hRef})`,
+                            invoiceNo: hRef,
+                            orderId: order.po_number || order.id || 'N/A',
                             quote_name: order.quote_name || 'General Spec',
                             date: hDate,
                             value: 0,
-                            isCredit: false
+                            isCredit: false,
+                            docType: 'Tax Invoice'
                           };
                         }
                         invoiceGroupsMap[groupKey].value += hVal;
@@ -848,11 +871,13 @@ export default function ReportsPage() {
                       if (!invoiceGroupsMap[groupKey]) {
                         invoiceGroupsMap[groupKey] = {
                           projectName: proj.name,
-                          orderId: `${order.id || 'N/A'} (${item.invoiceRef})`,
+                          invoiceNo: item.invoiceRef,
+                          orderId: order.po_number || order.id || 'N/A',
                           quote_name: order.quote_name || 'General Spec',
                           date: item.invoiceDate,
                           value: 0,
-                          isCredit: false
+                          isCredit: false,
+                          docType: 'Tax Invoice'
                         };
                       }
                       invoiceGroupsMap[groupKey].value += itemVal;
@@ -876,7 +901,7 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${order.invoiceRef})`, quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue, isCredit: false });
+                  list.push({ projectName: proj.name, invoiceNo: order.invoiceRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue, isCredit: false, docType: 'Tax Invoice' });
                 }
               }
             }
@@ -899,7 +924,7 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (${cnRef})`, quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
+                  list.push({ projectName: proj.name, invoiceNo: cnRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
                 }
               }
             }
@@ -2042,11 +2067,19 @@ export default function ReportsPage() {
                         </div>
                       </th>
                       <th 
+                        onClick={() => handleDrilldownSort('invoiceNo')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          INVOICE / CN # {renderDrilldownSortIcon('invoiceNo')}
+                        </div>
+                      </th>
+                      <th 
                         onClick={() => handleDrilldownSort('orderId')}
                         style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
                       >
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                          QUOTE ID / INV {renderDrilldownSortIcon('orderId')}
+                          QUOTE ID {renderDrilldownSortIcon('orderId')}
                         </div>
                       </th>
                       <th 
@@ -2078,31 +2111,39 @@ export default function ReportsPage() {
                   <tbody>
                     {sortedDrilldownItems.map((item, idx) => {
                       const isCred = item.isCredit || item.value < 0;
+                      const invCode = item.invoiceNo || (item.orderId && item.orderId.match(/\((IN-[0-9]+|CN-[0-9]+|CR-[0-9]+)\)/i)?.[1]) || '';
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s', background: isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent' }} onMouseOver={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.08)' : '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent'}>
                           <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
-                          <td style={{ padding: '12px', fontFamily: 'monospace', color: '#334155', fontWeight: 600 }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                              {item.orderId}
-                              {isCred && (
-                                <span style={{
-                                  background: 'rgba(239, 68, 68, 0.12)',
-                                  color: '#dc2626',
-                                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                                  padding: '1px 6px',
-                                  borderRadius: '6px',
-                                  fontSize: '10px',
-                                  fontWeight: 800
-                                }}>
-                                  CREDIT NOTE
-                                </span>
-                              )}
-                            </div>
+                          <td style={{ padding: '12px', fontFamily: 'monospace', color: isCred ? '#dc2626' : '#1e40af', fontWeight: 700 }}>
+                            {invCode ? (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                {invCode}
+                                {isCred && (
+                                  <span style={{
+                                    background: 'rgba(239, 68, 68, 0.12)',
+                                    color: '#dc2626',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    fontSize: '9.5px',
+                                    fontWeight: 800
+                                  }}>
+                                    CREDIT
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontWeight: 400 }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px', fontFamily: 'monospace', color: '#475569', fontSize: '11.5px' }}>
+                            {item.orderId}
                           </td>
                           <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{item.quote_name || 'General Spec'}</td>
                           <td style={{ padding: '12px', color: '#475569', fontWeight: 500 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Calendar size={12} style={{ color: '#64748b' }} /> {item.date}
+                              <Calendar size={12} style={{ color: '#64748b' }} /> {item.date ? String(item.date).split('T')[0] : '—'}
                             </div>
                           </td>
                           <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, fontSize: '13px', color: isCred ? '#dc2626' : '#059669' }}>
@@ -2114,7 +2155,7 @@ export default function ReportsPage() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
-                      <td colSpan={4} style={{ padding: '12px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>
+                      <td colSpan={5} style={{ padding: '12px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>
                         TOTAL NET VALUE:
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: (sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0)) < 0 ? '#dc2626' : '#059669' }}>
