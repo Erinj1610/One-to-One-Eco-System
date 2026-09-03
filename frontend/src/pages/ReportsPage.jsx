@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, FileSpreadsheet
+  ArrowUpDown, ArrowUp, ArrowDown, Download, FileSpreadsheet, Layers
 } from 'lucide-react';
 
 const MONTHS_LIST = [
@@ -29,14 +29,15 @@ const DEFAULT_BUDGETS_CONFIG = {
       'UNALLOCATED / UNASSIGNED'
     ],
     budgetsKPI1: {
-      'MODUS PROFESSIONAL ( Ryan )': { monthly: 1020000.00, ytd: 6953000.00 },
-      'MOOD STORES': { monthly: 0.00, ytd: 0.00 },
-      'MODUS PROJECTS ( Dani )': { monthly: 1200000.00, ytd: 4560000.00 },
-      'PROJECTS (Dani own)': { monthly: 400000.00, ytd: 2800000.00 },
-      'MODUS SIGNATURE ( Thando )': { monthly: 37500.00, ytd: 682500.00 },
-      'MADE ( Jon-Peer)': { monthly: 120000.00, ytd: 840000.00 },
-      'LUXELINE': { monthly: 120000.00, ytd: 400000.00 },
-      'INTERNAL - Office': { monthly: 0.00, ytd: 0.00 }
+      'MODUS PROFESSIONAL ( Ryan )': [1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000, 1020000],
+      'MOOD STORES': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      'MODUS PROJECTS ( Dani )': [1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000, 1200000],
+      'PROJECTS (Dani own)': [400000, 400000, 400000, 400000, 400000, 400000, 400000, 400000, 400000, 400000, 400000, 400000],
+      'MODUS SIGNATURE ( Thando )': [37500, 37500, 37500, 37500, 37500, 37500, 37500, 37500, 37500, 37500, 37500, 37500],
+      'MADE ( Jon-Peer)': [120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000],
+      'LUXELINE': [120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000, 120000],
+      'INTERNAL - Office': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      'UNALLOCATED / UNASSIGNED': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     targetsKPI2: {
       'MODUS PROFESSIONAL ( Ryan )': 3400381.18,
@@ -92,8 +93,49 @@ const DEFAULT_BUDGETS_CONFIG = {
   }
 };
 
+// Helper: Safely resolve 12-month budget array for a division (with backward-compatibility)
+const getMonthlyBudgets = (fyConfig, div) => {
+  if (!fyConfig || !fyConfig.budgetsKPI1) return Array(12).fill(0);
+  const raw = fyConfig.budgetsKPI1[div];
+  if (Array.isArray(raw)) {
+    const res = Array(12).fill(0);
+    for (let i = 0; i < Math.min(raw.length, 12); i++) {
+      res[i] = Number(raw[i]) || 0;
+    }
+    return res;
+  }
+  if (raw && typeof raw === 'object' && 'monthly' in raw) {
+    return Array(12).fill(Number(raw.monthly) || 0);
+  }
+  if (typeof raw === 'number') {
+    return Array(12).fill(raw);
+  }
+  return Array(12).fill(0);
+};
+
+// Helper: Get FY month labels and metadata (March to February)
+const getFyMonthLabels = (fyStr = '2026-2027') => {
+  const parts = String(fyStr || '2026-2027').split('-');
+  const y1 = parseInt(parts[0]) || 2026;
+  const y2 = parseInt(parts[1]) || (y1 + 1);
+  return [
+    { idx: 0, name: 'March', short: 'Mar', year: y1, label: `Mar '${String(y1).slice(2)}` },
+    { idx: 1, name: 'April', short: 'Apr', year: y1, label: `Apr '${String(y1).slice(2)}` },
+    { idx: 2, name: 'May', short: 'May', year: y1, label: `May '${String(y1).slice(2)}` },
+    { idx: 3, name: 'June', short: 'Jun', year: y1, label: `Jun '${String(y1).slice(2)}` },
+    { idx: 4, name: 'July', short: 'Jul', year: y1, label: `Jul '${String(y1).slice(2)}` },
+    { idx: 5, name: 'August', short: 'Aug', year: y1, label: `Aug '${String(y1).slice(2)}` },
+    { idx: 6, name: 'September', short: 'Sep', year: y1, label: `Sep '${String(y1).slice(2)}` },
+    { idx: 7, name: 'October', short: 'Oct', year: y1, label: `Oct '${String(y1).slice(2)}` },
+    { idx: 8, name: 'November', short: 'Nov', year: y1, label: `Nov '${String(y1).slice(2)}` },
+    { idx: 9, name: 'December', short: 'Dec', year: y1, label: `Dec '${String(y1).slice(2)}` },
+    { idx: 10, name: 'January', short: 'Jan', year: y2, label: `Jan '${String(y2).slice(2)}` },
+    { idx: 11, name: 'February', short: 'Feb', year: y2, label: `Feb '${String(y2).slice(2)}` }
+  ];
+};
+
 export default function ReportsPage() {
-  const { projects, supportTickets } = useStore();
+  const { projects } = useStore();
   
   // Selection States
   const [activeReport, setActiveReport] = useState('sales_kpi'); // 'sales_kpi', 'budget_manager', 'operational_kpis', 'stock_valuation'
@@ -108,6 +150,8 @@ export default function ReportsPage() {
   // Budget Manager Active Editing States
   const [mgmtFy, setMgmtFy] = useState('2026-2027');
   const [newDivisionName, setNewDivisionName] = useState('');
+  const [expandedDivisions, setExpandedDivisions] = useState({});
+  const toggleDivisionExpand = (div) => setExpandedDivisions(prev => ({ ...prev, [div]: !prev[div] }));
 
   // Drilldown Modal Sort State
   const [drilldownSortField, setDrilldownSortField] = useState(null);
@@ -377,7 +421,6 @@ export default function ReportsPage() {
     if (typeof rawDate === 'string' && rawDate.includes('/')) {
       const dateParts = rawDate.split('/');
       if (dateParts.length === 3) {
-        const day = parseInt(dateParts[0], 10);
         const monthIndex = parseInt(dateParts[1], 10) - 1;
         const year = parseInt(dateParts[2], 10);
         if (!isNaN(monthIndex) && !isNaN(year) && monthIndex >= 0 && monthIndex < 12) {
@@ -440,6 +483,21 @@ export default function ReportsPage() {
     return false;
   };
 
+  const formatZar = (val) => {
+    if (val === undefined || val === null) return 'R 0.00';
+    return (val < 0 ? '-' : '') + 'R ' + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getVarianceColor = (val, invert = false) => {
+    if (val === 0) return 'var(--text-secondary)';
+    const isGood = invert ? val < 0 : val > 0;
+    return isGood ? '#10b981' : '#f43f5e';
+  };
+
+  const sumAwaitingStockTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
+  const sumPipelineTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
+  const sumAnnualTotal = (row) => ((row && row.invoiced) || 0) + ((row && row.toInvoice) || 0) + ((row && row.pipeline) || 0) + ((row && row.tbc) || 0);
+
   // Initialize Aggregated KPI Models
   const dynamicInvoiced = {};
   const dynamicAwaiting = {};
@@ -452,19 +510,16 @@ export default function ReportsPage() {
   const prevMonthName = MONTHS_LIST[prevMonthIdx];
 
   activeDivisionsList.forEach(div => {
-    const baselineKPI1 = (activeFyConfig.budgetsKPI1 && activeFyConfig.budgetsKPI1[div]) || { monthly: 0, ytd: 0 };
-    const baselineKPI2 = (activeFyConfig.targetsKPI2 && activeFyConfig.targetsKPI2[div]) || 0;
-    const baselineKPI3 = (activeFyConfig.targetsKPI3 && activeFyConfig.targetsKPI3[div]) || 0;
-    const baselineKPI4 = (activeFyConfig.budgetsKPI4 && activeFyConfig.budgetsKPI4[div]) || 0;
+    const monthlyBudgets = getMonthlyBudgets(activeFyConfig, div);
+    const currentMonthBudget = monthlyBudgets[selectedSeqIndex] || 0;
+    const computedYtdBudget = monthlyBudgets.slice(0, selectedSeqIndex + 1).reduce((s, b) => s + (Number(b) || 0), 0);
+    const fullYearAnnualBudget = monthlyBudgets.reduce((s, b) => s + (Number(b) || 0), 0);
     const baselineKPI5 = (activeFyConfig.targetsKPI5 && activeFyConfig.targetsKPI5[div]) || 0;
 
-    // YTD Budget logic: monthly_budget * number of elapsed months in FY sequence (selectedSeqIndex + 1)
-    const computedYtdBudget = baselineKPI1.monthly * (selectedSeqIndex + 1);
-
-    dynamicInvoiced[div] = { actual: 0, budget: baselineKPI1.monthly, ytdActual: 0, ytdBudget: computedYtdBudget };
-    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI2 };
-    dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: baselineKPI3 };
-    dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: baselineKPI4 };
+    dynamicInvoiced[div] = { actual: 0, budget: currentMonthBudget, ytdActual: 0, ytdBudget: computedYtdBudget };
+    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
+    dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
+    dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: fullYearAnnualBudget };
     dynamicDelivered[div] = { 
       prevQty: 0, prevValue: 0, 
       selectedQty: 0, selectedValue: 0, 
@@ -728,9 +783,9 @@ export default function ReportsPage() {
 
     const orderValExclVat = parentOrder 
       ? (parentOrder.value || (parentOrder.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0))
-      : safe_float(dn.total_value || dn.value, 0);
+      : (Number(dn.total_value) || Number(dn.value) || 0);
 
-    const orderKey = targetOrderId || dn.id || Math.random().toString();
+    const orderKey = targetOrderId || dn.id || `dn_${div}_${dnMonth}_${dnYear}`;
 
     // Previous Month Delivered
     if (dnMonth === prevMonthName && dnYear === prevMonthYear) {
@@ -760,6 +815,32 @@ export default function ReportsPage() {
     }
   });
 
+  // -------------------------------------------------------------
+  // CASCADING SHORTFALL TARGETS CALCULATION
+  // KPI 1 Deficit -> KPI 2 Target -> KPI 3 Target
+  // -------------------------------------------------------------
+  Object.keys(dynamicInvoiced).forEach(div => {
+    // 1. KPI 1 YTD Variance
+    const kpi1Row = dynamicInvoiced[div];
+    const kpi1YtdVariance = (kpi1Row?.ytdActual || 0) - (kpi1Row?.ytdBudget || 0);
+
+    // 2. KPI 2 Target: If KPI 1 is behind budget (negative variance), Target is the deficit amount; if on track/ahead, Target is 0
+    const kpi2Target = kpi1YtdVariance < 0 ? Math.abs(kpi1YtdVariance) : 0;
+    if (dynamicAwaiting[div]) {
+      dynamicAwaiting[div].target = kpi2Target;
+    }
+
+    // 3. KPI 2 Variance: Total Awaiting Stock minus KPI 2 Target
+    const kpi2TotalAwaiting = sumAwaitingStockTotal(dynamicAwaiting[div] || { col0: 0, col1: 0, col2: 0, col3: 0 });
+    const kpi2Variance = kpi2TotalAwaiting - kpi2Target;
+
+    // 4. KPI 3 Target: If KPI 2 has a remaining shortfall (negative variance), Target is the remaining deficit amount; if covered, Target is 0
+    const kpi3Target = kpi2Variance < 0 ? Math.abs(kpi2Variance) : 0;
+    if (dynamicPipeline[div]) {
+      dynamicPipeline[div].target = kpi3Target;
+    }
+  });
+
   // Trigger drilldown popup details handler
   const triggerDrilldown = (title, division, type, extraFilter = null) => {
     const isAllDivisions = !division || division === 'ALL' || division === 'ALL_DIVISIONS' || division === 'All Divisions' || division === 'Total' || division === 'TOTAL';
@@ -770,10 +851,11 @@ export default function ReportsPage() {
         const div = getOrderDivision(order, proj);
         if (!isAllDivisions && div !== division) return;
 
-        const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
+        const itemsList = order.itemsList || [];
+        const orderValue = order.value || itemsList.reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
         
         // Compute precise actual invoiced value from line items / invoice history
-        const invoicedValue = (order.itemsList || []).reduce((s, item) => {
+        const invoicedValue = itemsList.reduce((s, item) => {
           const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
           if (iHist.length > 0) {
             return s + iHist.reduce((hSum, h) => hSum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
@@ -785,12 +867,11 @@ export default function ReportsPage() {
         }, 0) || (order.invoiceRef && order.invoiceDate ? orderValue : 0);
 
         const orderDateParsed = getOrderMonthAndYear(order, 'order');
-        const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
+        const orderFy = orderDateParsed ? getFinancialYearForPeriod(orderDateParsed.monthIdx, orderDateParsed.year) : null;
         const isEligibleForInvoiced = hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
         // Sales Invoiced (Invoices - Credit Notes)
         if (type === 'invoiced') {
-          const itemsList = order.itemsList || [];
           const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
           const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
             ? order.creditNotes
@@ -1000,7 +1081,7 @@ export default function ReportsPage() {
             if (extraFilter === 'invoiced') {
               // Handled by invoiced sum logic or we show actual value here if needed
               if (isEligibleForInvoiced) {
-                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: processedInvoicedTotal, docType: 'Annual Billed' });
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: invoicedValue, docType: 'Annual Billed' });
               }
             } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status) {
               let orderOutstandingTotal = 0;
@@ -1066,26 +1147,42 @@ export default function ReportsPage() {
     }
   };
 
-  // Budget Manager: Edit cell changes in state config
-  const handleBudgetValueChange = (division, field, subfield, val) => {
+  // Budget Manager: Edit specific month budget (0..11) for a division
+  const handleMonthlyBudgetChange = (division, monthIdx, val) => {
     const num = parseFloat(val) || 0;
     const configCopy = { ...budgetsConfig };
     if (!configCopy[mgmtFy]) {
-      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
+      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {} };
     }
     const fyConf = configCopy[mgmtFy];
+    if (!fyConf.budgetsKPI1) fyConf.budgetsKPI1 = {};
 
-    if (field === 'budgetsKPI1') {
-      if (!fyConf.budgetsKPI1[division]) fyConf.budgetsKPI1[division] = { monthly: 0, ytd: 0 };
-      fyConf.budgetsKPI1[division][subfield] = num;
-    } else if (field === 'targetsKPI2') {
-      fyConf.targetsKPI2[division] = num;
-    } else if (field === 'targetsKPI3') {
-      fyConf.targetsKPI3[division] = num;
-    } else if (field === 'budgetsKPI4') {
-      fyConf.budgetsKPI4[division] = num;
-    }
+    const currentArr = getMonthlyBudgets(fyConf, division);
+    const updatedArr = [...currentArr];
+    updatedArr[monthIdx] = num;
+    fyConf.budgetsKPI1[division] = updatedArr;
+
     setBudgetsConfig(configCopy);
+  };
+
+  // Budget Manager: Quick apply flat monthly amount across all 12 months
+  const handleApplyFlatMonthly = (division, monthlyVal) => {
+    const num = parseFloat(monthlyVal) || 0;
+    const configCopy = { ...budgetsConfig };
+    if (!configCopy[mgmtFy]) {
+      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {} };
+    }
+    const fyConf = configCopy[mgmtFy];
+    if (!fyConf.budgetsKPI1) fyConf.budgetsKPI1 = {};
+    fyConf.budgetsKPI1[division] = Array(12).fill(num);
+    setBudgetsConfig(configCopy);
+  };
+
+  // Budget Manager: Quick distribute annual total evenly across 12 months (÷12)
+  const handleDistributeAnnual = (division, annualVal) => {
+    const num = parseFloat(annualVal) || 0;
+    const monthly = Math.round((num / 12) * 100) / 100;
+    handleApplyFlatMonthly(division, monthly);
   };
 
   // Budget Manager: Add Team Division
@@ -1093,20 +1190,20 @@ export default function ReportsPage() {
     if (!newDivisionName.trim()) return;
     const configCopy = { ...budgetsConfig };
     if (!configCopy[mgmtFy]) {
-      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
+      configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {} };
     }
     const fyConf = configCopy[mgmtFy];
     if (!fyConf.divisions) fyConf.divisions = [];
-    if (fyConf.divisions.includes(newDivisionName)) return;
+    if (fyConf.divisions.includes(newDivisionName.trim())) return;
 
-    fyConf.divisions.push(newDivisionName);
-    fyConf.budgetsKPI1[newDivisionName] = { monthly: 0, ytd: 0 };
-    fyConf.targetsKPI2[newDivisionName] = 0;
-    fyConf.targetsKPI3[newDivisionName] = 0;
-    fyConf.budgetsKPI4[newDivisionName] = 0;
+    const trimmedName = newDivisionName.trim();
+    fyConf.divisions.push(trimmedName);
+    if (!fyConf.budgetsKPI1) fyConf.budgetsKPI1 = {};
+    fyConf.budgetsKPI1[trimmedName] = Array(12).fill(0);
 
     saveBudgetsConfig(configCopy);
     setNewDivisionName('');
+    setExpandedDivisions(prev => ({ ...prev, [trimmedName]: true }));
   };
 
   // Budget Manager: Delete Division
@@ -1116,10 +1213,10 @@ export default function ReportsPage() {
     if (!fyConf) return;
 
     fyConf.divisions = (fyConf.divisions || []).filter(d => d !== division);
-    delete fyConf.budgetsKPI1[division];
-    delete fyConf.targetsKPI2[division];
-    delete fyConf.targetsKPI3[division];
-    delete fyConf.budgetsKPI4[division];
+    if (fyConf.budgetsKPI1) delete fyConf.budgetsKPI1[division];
+    if (fyConf.targetsKPI2) delete fyConf.targetsKPI2[division];
+    if (fyConf.targetsKPI3) delete fyConf.targetsKPI3[division];
+    if (fyConf.budgetsKPI4) delete fyConf.budgetsKPI4[division];
 
     saveBudgetsConfig(configCopy);
   };
@@ -1132,24 +1229,6 @@ export default function ReportsPage() {
     { label: 'LED Stock Value', current: 875851.74, target: 300000.00 },
     { label: 'Stock Value', current: 3261123.14, target: 2400000.00 }
   ];
-
-  const formatZar = (val) => {
-    if (val === undefined || val === null) return 'R 0.00';
-    return (val < 0 ? '-' : '') + 'R ' + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const getVarianceColor = (val, invert = false) => {
-    if (val === 0) return 'var(--text-secondary)';
-    const isGood = invert ? val < 0 : val > 0;
-    return isGood ? '#10b981' : '#f43f5e';
-  };
-
-  const sumAwaitingStockTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
-  const sumPipelineTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
-  const sumAnnualTotal = (row) => (row.invoiced || 0) + (row.toInvoice || 0) + (row.pipeline || 0) + (row.tbc || 0);
-
-  const newFaultsCount = (supportTickets || []).filter(t => t.status === 'New' || t.status === 'Open').length;
-  const closedFaultsCount = (supportTickets || []).filter(t => t.status === 'Closed' || t.status === 'Resolved').length;
 
   if (isLoadingBudgets) {
     return (
@@ -1902,18 +1981,22 @@ export default function ReportsPage() {
         </>
       )}
 
-      {/* VIEW 2: BUDGET & TARGET MANAGER (HISTORICAL EDITOR) */}
+      {/* VIEW 2: BUDGET & TARGET MANAGER (12-MONTH SCHEDULE & CASCADING SHORTFALL ENGINE) */}
       {activeReport === 'budget_manager' && (
         <div className="card" style={{ padding: '24px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+          {/* TOP BAR */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Users style={{ color: '#3b82f6' }} />
-              <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Configure Budgets & Team Divisions</h2>
+              <div>
+                <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Configure Budgets & Team Divisions</h2>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Set 12-month budget schedules per division with automatic cascading shortfall recovery</div>
+              </div>
               <select 
                 value={mgmtFy} 
                 onChange={(e) => setMgmtFy(e.target.value)} 
                 className="form-control" 
-                style={{ width: '130px', height: '36px', padding: '0 8px', fontSize: '13px', background: 'var(--bg-primary)', color: 'inherit', border: '1px solid var(--border)', borderRadius: '6px' }}
+                style={{ width: '130px', height: '36px', padding: '0 8px', fontSize: '13px', background: 'var(--bg-primary)', color: 'inherit', border: '1px solid var(--border)', borderRadius: '6px', marginLeft: '8px' }}
               >
                 <option value="2024-2025">FY 2024-2025</option>
                 <option value="2025-2026">FY 2025-2026</option>
@@ -1932,13 +2015,35 @@ export default function ReportsPage() {
             </button>
           </div>
 
+          {/* CASCADING ARCHITECTURE INFO CALLOUT */}
+          <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '14px 18px', marginBottom: '20px', fontSize: '12px', lineHeight: '1.6' }}>
+            <div style={{ fontWeight: 700, color: '#3b82f6', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Layers size={15} /> Cascading Shortfall & Dynamic Budget Architecture
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginTop: '8px' }}>
+              <div style={{ background: 'var(--bg-card)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <strong>KPI 1 (Sales Invoiced):</strong> Sets the monthly budget per month. YTD budget dynamically sums elapsed months from March.
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <strong>KPI 2 (To Be Invoiced):</strong> Target = Shortfall of KPI 1 YTD (<code>max(0, -KPI1 YTD Variance)</code>). If on track/ahead, Target is R 0.
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <strong>KPI 3 (Sales Pipeline):</strong> Target = Remaining deficit from KPI 2 (<code>max(0, -KPI2 Variance)</code>). If covered, Target is R 0.
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <strong>KPI 4 (Annual Limit):</strong> Automatically calculated as the full 12-month sum of KPI 1 monthly budgets.
+              </div>
+            </div>
+          </div>
+
           {/* ADD DIVISION FORM */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <input 
               type="text" 
-              placeholder="e.g. MODUS SIGNATURE ( Thando )" 
+              placeholder="Add New Division Name (e.g. MODUS SIGNATURE ( Thando ))" 
               value={newDivisionName}
               onChange={(e) => setNewDivisionName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addTeamDivision()}
               className="form-control"
               style={{ flex: 1, height: '38px', padding: '0 12px', fontSize: '13px', background: 'var(--bg-card)', color: 'inherit', border: '1px solid var(--border)', borderRadius: '6px' }}
             />
@@ -1951,93 +2056,239 @@ export default function ReportsPage() {
             </button>
           </div>
 
-          {/* EDITABLE VALUES TABLE */}
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-primary)', borderBottom: '2px solid var(--border)', textAlign: 'left' }}>
-                  <th style={{ padding: '12px' }}>Team Division Name</th>
-                  <th style={{ padding: '12px' }}>KPI 1: Monthly Budget (ZAR)</th>
-                  <th style={{ padding: '12px' }}>KPI 2: Awaiting Stock Target</th>
-                  <th style={{ padding: '12px' }}>KPI 3: Pipeline Target</th>
-                  <th style={{ padding: '12px' }}>KPI 4: Annual Limit Budget</th>
-                  <th style={{ padding: '12px' }}>KPI 5: Delivered Orders Target</th>
-                  <th style={{ padding: '12px', textAlign: 'center' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mgmtFyConfig.divisions.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No divisions defined for this Financial Year yet. Add one above!
-                    </td>
-                  </tr>
-                ) : (
-                  mgmtFyConfig.divisions.map(div => {
-                    const kpi1 = (mgmtFyConfig.budgetsKPI1 && mgmtFyConfig.budgetsKPI1[div]) || { monthly: 0, ytd: 0 };
-                    const kpi2 = (mgmtFyConfig.targetsKPI2 && mgmtFyConfig.targetsKPI2[div]) || 0;
-                    const kpi3 = (mgmtFyConfig.targetsKPI3 && mgmtFyConfig.targetsKPI3[div]) || 0;
-                    const kpi4 = (mgmtFyConfig.budgetsKPI4 && mgmtFyConfig.budgetsKPI4[div]) || 0;
-                    const kpi5 = (mgmtFyConfig.targetsKPI5 && mgmtFyConfig.targetsKPI5[div]) || 0;
+          {/* DIVISION CARDS WITH 12-MONTH ACCORDIONS */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {mgmtFyConfig.divisions.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-primary)', borderRadius: '8px' }}>
+                No divisions defined for this Financial Year yet. Add one above!
+              </div>
+            ) : (
+              mgmtFyConfig.divisions.map(div => {
+                const monthlyArr = getMonthlyBudgets(mgmtFyConfig, div);
+                const annualSum = monthlyArr.reduce((s, b) => s + (Number(b) || 0), 0);
+                const monthlyAvg = annualSum / 12;
+                const isExpanded = !!expandedDivisions[div];
+                const fyLabels = getFyMonthLabels(mgmtFy);
+                const kpi5Target = (mgmtFyConfig.targetsKPI5 && mgmtFyConfig.targetsKPI5[div]) || 0;
 
-                    return (
-                      <tr key={div} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '12px', fontWeight: 600 }}>{div}</td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input 
-                            type="number" 
-                            value={kpi1.monthly}
-                            onChange={(e) => handleBudgetValueChange(div, 'budgetsKPI1', 'monthly', e.target.value)}
-                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input 
-                            type="number" 
-                            value={kpi2}
-                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI2', null, e.target.value)}
-                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input 
-                            type="number" 
-                            value={kpi3}
-                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI3', null, e.target.value)}
-                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input 
-                            type="number" 
-                            value={kpi4}
-                            onChange={(e) => handleBudgetValueChange(div, 'budgetsKPI4', null, e.target.value)}
-                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <input 
-                            type="number" 
-                            value={kpi5}
-                            onChange={(e) => handleBudgetValueChange(div, 'targetsKPI5', null, e.target.value)}
-                            style={{ width: '130px', padding: '6px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <button 
-                            onClick={() => deleteTeamDivision(div)}
-                            style={{ background: 'transparent', border: 'none', color: '#f43f5e', cursor: 'pointer', padding: '4px' }}
+                return (
+                  <div key={div} style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)', overflow: 'hidden' }}>
+                    {/* DIVISION HEADER BAR */}
+                    <div 
+                      style={{ 
+                        padding: '14px 18px', 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        flexWrap: 'wrap', 
+                        gap: '12px',
+                        background: isExpanded ? 'rgba(59, 130, 246, 0.05)' : 'var(--bg-card)',
+                        borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => toggleDivisionExpand(div)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ color: isExpanded ? '#3b82f6' : 'var(--text-secondary)' }}>
+                          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </span>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '14px', color: isExpanded ? '#3b82f6' : 'inherit' }}>{div}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {isExpanded ? 'Click header to collapse 12-month schedule' : 'Click header to edit 12 monthly budgets'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                        {/* ANNUAL BUDGET BADGE */}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Annual KPI 1 Total</div>
+                          <div style={{ fontSize: '14px', fontWeight: 700, color: '#10b981' }}>{formatZar(annualSum)}</div>
+                        </div>
+
+                        {/* MONTHLY AVERAGE BADGE */}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Monthly Average</div>
+                          <div style={{ fontSize: '13px', fontWeight: 600 }}>{formatZar(monthlyAvg)} / mo</div>
+                        </div>
+
+                        {/* TOGGLE BUTTON */}
+                        <button
+                          onClick={() => toggleDivisionExpand(div)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '6px 12px', height: '32px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          {isExpanded ? 'Collapse' : 'Edit Schedule'}
+                        </button>
+
+                        {/* DELETE BUTTON */}
+                        <button 
+                          onClick={() => deleteTeamDivision(div)}
+                          title={`Delete ${div}`}
+                          style={{ background: 'transparent', border: 'none', color: '#f43f5e', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* EXPANDED 12-MONTH SCHEDULE PANEL */}
+                    {isExpanded && (
+                      <div style={{ padding: '20px', background: 'var(--bg-card)' }}>
+                        {/* QUICK SPREAD TOOLBAR */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '18px', padding: '12px 16px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Quick Distribution Tools:</span>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <input
+                              type="number"
+                              placeholder="Monthly Amount"
+                              id={`quick_m_${div}`}
+                              style={{ width: '130px', height: '30px', padding: '0 8px', fontSize: '12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                            />
+                            <button
+                              className="btn btn-secondary"
+                              style={{ height: '30px', fontSize: '11px', padding: '0 10px', borderRadius: '4px' }}
+                              onClick={() => {
+                                const el = document.getElementById(`quick_m_${div}`);
+                                if (el && el.value) handleApplyFlatMonthly(div, el.value);
+                              }}
+                            >
+                              Apply to All 12 Mos
+                            </button>
+                          </div>
+
+                          <div style={{ height: '16px', width: '1px', background: 'var(--border)' }} />
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <input
+                              type="number"
+                              placeholder="Annual Total Amount"
+                              id={`quick_a_${div}`}
+                              style={{ width: '140px', height: '30px', padding: '0 8px', fontSize: '12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                            />
+                            <button
+                              className="btn btn-secondary"
+                              style={{ height: '30px', fontSize: '11px', padding: '0 10px', borderRadius: '4px' }}
+                              onClick={() => {
+                                const el = document.getElementById(`quick_a_${div}`);
+                                if (el && el.value) handleDistributeAnnual(div, el.value);
+                              }}
+                            >
+                              Distribute Evenly (÷12)
+                            </button>
+                          </div>
+
+                          <button
+                            className="btn btn-secondary"
+                            style={{ height: '30px', fontSize: '11px', padding: '0 10px', borderRadius: '4px', marginLeft: 'auto', color: '#f43f5e' }}
+                            onClick={() => handleApplyFlatMonthly(div, 0)}
                           >
-                            <Trash2 size={16} />
+                            Clear All Months
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                        </div>
+
+                        {/* 12-MONTH INPUTS GRID (March to February) */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
+                          {fyLabels.map(m => {
+                            const val = monthlyArr[m.idx] || 0;
+                            const pct = annualSum > 0 ? ((val / annualSum) * 100).toFixed(1) : '0.0';
+                            return (
+                              <div 
+                                key={m.idx} 
+                                style={{ 
+                                  background: 'var(--bg-primary)', 
+                                  border: '1px solid var(--border)', 
+                                  borderRadius: '6px', 
+                                  padding: '10px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '6px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 700, fontSize: '12px' }}>{m.label}</span>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{pct}%</span>
+                                </div>
+                                <input
+                                  type="number"
+                                  value={val}
+                                  onChange={(e) => handleMonthlyBudgetChange(div, m.idx, e.target.value)}
+                                  style={{ 
+                                    width: '100%', 
+                                    padding: '6px 8px', 
+                                    fontSize: '12px', 
+                                    background: 'var(--bg-card)', 
+                                    border: '1px solid var(--border)', 
+                                    borderRadius: '4px', 
+                                    color: 'inherit',
+                                    fontWeight: 600,
+                                    boxSizing: 'border-box'
+                                  }}
+                                />
+                                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                                  {formatZar(val)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* KPI 5 TARGET ROW */}
+                        <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                          <div style={{ fontSize: '12px' }}>
+                            <strong>KPI 5: Delivered Orders Target [ZAR]</strong> (Optional baseline)
+                          </div>
+                          <input
+                            type="number"
+                            value={kpi5Target}
+                            onChange={(e) => {
+                              const num = parseFloat(e.target.value) || 0;
+                              const configCopy = { ...budgetsConfig };
+                              if (!configCopy[mgmtFy]) configCopy[mgmtFy] = { divisions: [], budgetsKPI1: {} };
+                              if (!configCopy[mgmtFy].targetsKPI5) configCopy[mgmtFy].targetsKPI5 = {};
+                              configCopy[mgmtFy].targetsKPI5[div] = num;
+                              setBudgetsConfig(configCopy);
+                            }}
+                            style={{ width: '180px', padding: '6px 8px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', color: 'inherit' }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
+
+          {/* TOTAL COMPANY SUMMARY CARD */}
+          {mgmtFyConfig.divisions.length > 0 && (
+            <div style={{ marginTop: '24px', padding: '16px 20px', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>Total Company Budget (All {mgmtFyConfig.divisions.length} Divisions)</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Full Financial Year {mgmtFy} Annual Target</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981' }}>
+                  {formatZar(
+                    mgmtFyConfig.divisions.reduce((tot, div) => {
+                      const mArr = getMonthlyBudgets(mgmtFyConfig, div);
+                      return tot + mArr.reduce((s, b) => s + (Number(b) || 0), 0);
+                    }, 0)
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  Average {formatZar(
+                    mgmtFyConfig.divisions.reduce((tot, div) => {
+                      const mArr = getMonthlyBudgets(mgmtFyConfig, div);
+                      return tot + mArr.reduce((s, b) => s + (Number(b) || 0), 0);
+                    }, 0) / 12
+                  )} / month
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
