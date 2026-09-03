@@ -392,10 +392,9 @@ def get_invoicing_document_details(
 
             l_disc_p = float(line.line_disc_perc or 0.0)
             l_disc_a = float(line.line_disc_amount or 0.0)
-            line_disc_factor = (1.0 - (l_disc_p / 100.0)) if l_disc_p > 0 else 1.0
             base_unit_price = float(line.unit_price_excl or 0.0)
-            effective_unit_price = round(base_unit_price * line_disc_factor * global_doc_disc_ratio, 2)
-            effective_line_total = round(float(line.line_total_excl or 0.0) * line_disc_factor * global_doc_disc_ratio, 2)
+            effective_unit_price = round(base_unit_price * global_doc_disc_ratio, 2)
+            effective_line_total = round(float(line.line_total_excl or 0.0) * global_doc_disc_ratio, 2)
 
             doc_total_qty += line_qty
             doc_total_allocated += min(line_qty, total_alloc_qty)
