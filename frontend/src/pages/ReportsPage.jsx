@@ -483,6 +483,21 @@ export default function ReportsPage() {
     return false;
   };
 
+  const formatZar = (val) => {
+    if (val === undefined || val === null) return 'R 0.00';
+    return (val < 0 ? '-' : '') + 'R ' + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getVarianceColor = (val, invert = false) => {
+    if (val === 0) return 'var(--text-secondary)';
+    const isGood = invert ? val < 0 : val > 0;
+    return isGood ? '#10b981' : '#f43f5e';
+  };
+
+  const sumAwaitingStockTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
+  const sumPipelineTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
+  const sumAnnualTotal = (row) => ((row && row.invoiced) || 0) + ((row && row.toInvoice) || 0) + ((row && row.pipeline) || 0) + ((row && row.tbc) || 0);
+
   // Initialize Aggregated KPI Models
   const dynamicInvoiced = {};
   const dynamicAwaiting = {};
@@ -1214,21 +1229,6 @@ export default function ReportsPage() {
     { label: 'LED Stock Value', current: 875851.74, target: 300000.00 },
     { label: 'Stock Value', current: 3261123.14, target: 2400000.00 }
   ];
-
-  const formatZar = (val) => {
-    if (val === undefined || val === null) return 'R 0.00';
-    return (val < 0 ? '-' : '') + 'R ' + Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const getVarianceColor = (val, invert = false) => {
-    if (val === 0) return 'var(--text-secondary)';
-    const isGood = invert ? val < 0 : val > 0;
-    return isGood ? '#10b981' : '#f43f5e';
-  };
-
-  const sumAwaitingStockTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
-  const sumPipelineTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
-  const sumAnnualTotal = (row) => (row.invoiced || 0) + (row.toInvoice || 0) + (row.pipeline || 0) + (row.tbc || 0);
 
   if (isLoadingBudgets) {
     return (
