@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
-  ArrowUpDown, ArrowUp, ArrowDown, Download, FileSpreadsheet
+  ArrowUpDown, ArrowUp, ArrowDown, Download, FileSpreadsheet, Layers
 } from 'lucide-react';
 
 const MONTHS_LIST = [
@@ -94,7 +94,7 @@ const DEFAULT_BUDGETS_CONFIG = {
 };
 
 // Helper: Safely resolve 12-month budget array for a division (with backward-compatibility)
-export const getMonthlyBudgets = (fyConfig, div) => {
+const getMonthlyBudgets = (fyConfig, div) => {
   if (!fyConfig || !fyConfig.budgetsKPI1) return Array(12).fill(0);
   const raw = fyConfig.budgetsKPI1[div];
   if (Array.isArray(raw)) {
@@ -114,7 +114,7 @@ export const getMonthlyBudgets = (fyConfig, div) => {
 };
 
 // Helper: Get FY month labels and metadata (March to February)
-export const getFyMonthLabels = (fyStr = '2026-2027') => {
+const getFyMonthLabels = (fyStr = '2026-2027') => {
   const parts = String(fyStr || '2026-2027').split('-');
   const y1 = parseInt(parts[0]) || 2026;
   const y2 = parseInt(parts[1]) || (y1 + 1);
@@ -135,7 +135,7 @@ export const getFyMonthLabels = (fyStr = '2026-2027') => {
 };
 
 export default function ReportsPage() {
-  const { projects, supportTickets } = useStore();
+  const { projects } = useStore();
   
   // Selection States
   const [activeReport, setActiveReport] = useState('sales_kpi'); // 'sales_kpi', 'budget_manager', 'operational_kpis', 'stock_valuation'
@@ -421,7 +421,6 @@ export default function ReportsPage() {
     if (typeof rawDate === 'string' && rawDate.includes('/')) {
       const dateParts = rawDate.split('/');
       if (dateParts.length === 3) {
-        const day = parseInt(dateParts[0], 10);
         const monthIndex = parseInt(dateParts[1], 10) - 1;
         const year = parseInt(dateParts[2], 10);
         if (!isNaN(monthIndex) && !isNaN(year) && monthIndex >= 0 && monthIndex < 12) {
@@ -769,9 +768,9 @@ export default function ReportsPage() {
 
     const orderValExclVat = parentOrder 
       ? (parentOrder.value || (parentOrder.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0))
-      : safe_float(dn.total_value || dn.value, 0);
+      : (Number(dn.total_value) || Number(dn.value) || 0);
 
-    const orderKey = targetOrderId || dn.id || Math.random().toString();
+    const orderKey = targetOrderId || dn.id || `dn_${div}_${dnMonth}_${dnYear}`;
 
     // Previous Month Delivered
     if (dnMonth === prevMonthName && dnYear === prevMonthYear) {
@@ -837,10 +836,11 @@ export default function ReportsPage() {
         const div = getOrderDivision(order, proj);
         if (!isAllDivisions && div !== division) return;
 
-        const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
+        const itemsList = order.itemsList || [];
+        const orderValue = order.value || itemsList.reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
         
         // Compute precise actual invoiced value from line items / invoice history
-        const invoicedValue = (order.itemsList || []).reduce((s, item) => {
+        const invoicedValue = itemsList.reduce((s, item) => {
           const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
           if (iHist.length > 0) {
             return s + iHist.reduce((hSum, h) => hSum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
@@ -852,12 +852,11 @@ export default function ReportsPage() {
         }, 0) || (order.invoiceRef && order.invoiceDate ? orderValue : 0);
 
         const orderDateParsed = getOrderMonthAndYear(order, 'order');
-        const invoiceDateParsed = getOrderMonthAndYear(order, 'invoice');
+        const orderFy = orderDateParsed ? getFinancialYearForPeriod(orderDateParsed.monthIdx, orderDateParsed.year) : null;
         const isEligibleForInvoiced = hasValidInvoiceRefAndDate(order) && invoicedValue > 0;
 
         // Sales Invoiced (Invoices - Credit Notes)
         if (type === 'invoiced') {
-          const itemsList = order.itemsList || [];
           const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
           const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
             ? order.creditNotes
@@ -1067,7 +1066,7 @@ export default function ReportsPage() {
             if (extraFilter === 'invoiced') {
               // Handled by invoiced sum logic or we show actual value here if needed
               if (isEligibleForInvoiced) {
-                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: processedInvoicedTotal, docType: 'Annual Billed' });
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: invoicedValue, docType: 'Annual Billed' });
               }
             } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status) {
               let orderOutstandingTotal = 0;
@@ -1230,9 +1229,6 @@ export default function ReportsPage() {
   const sumAwaitingStockTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
   const sumPipelineTotal = (row) => row.col0 + row.col1 + row.col2 + row.col3;
   const sumAnnualTotal = (row) => (row.invoiced || 0) + (row.toInvoice || 0) + (row.pipeline || 0) + (row.tbc || 0);
-
-  const newFaultsCount = (supportTickets || []).filter(t => t.status === 'New' || t.status === 'Open').length;
-  const closedFaultsCount = (supportTickets || []).filter(t => t.status === 'Closed' || t.status === 'Resolved').length;
 
   if (isLoadingBudgets) {
     return (
