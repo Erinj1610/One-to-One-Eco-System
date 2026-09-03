@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, FolderOpen, Calendar, ShieldCheck, Save, Users, Edit3, Trash2,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Download, FileSpreadsheet
 } from 'lucide-react';
 
 const MONTHS_LIST = [
@@ -144,6 +145,57 @@ export default function ReportsPage() {
       return 0;
     });
   }, [drilldownModal.items, drilldownSortField, drilldownSortDirection]);
+
+  const handleExportDrilldownToExcel = () => {
+    if (!sortedDrilldownItems || sortedDrilldownItems.length === 0) return;
+
+    const rows = sortedDrilldownItems.map(item => {
+      const isCred = item.isCredit || item.value < 0;
+      let formattedDate = item.date || 'N/A';
+      if (formattedDate && formattedDate.includes('T')) {
+        formattedDate = formattedDate.split('T')[0];
+      }
+      return {
+        "Project Name": item.projectName || '',
+        "Quote ID / Inv": item.orderId || '',
+        "Quote / Order Name": item.quote_name || 'General Spec',
+        "Date": formattedDate,
+        "Document Type": isCred ? 'Credit Note' : (item.orderId && (item.orderId.includes('IN-') || item.orderId.includes('CN-')) ? 'Tax Invoice' : 'Order Allocation'),
+        "Value (ZAR)": Number(Number(item.value || 0).toFixed(2))
+      };
+    });
+
+    const totalVal = sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0);
+    rows.push({
+      "Project Name": "TOTAL NET VALUE",
+      "Quote ID / Inv": "",
+      "Quote / Order Name": "",
+      "Date": "",
+      "Document Type": "",
+      "Value (ZAR)": Number(totalVal.toFixed(2))
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+
+    worksheet['!cols'] = [
+      { wch: 28 }, // Project Name
+      { wch: 38 }, // Quote ID / Inv
+      { wch: 38 }, // Quote Name
+      { wch: 16 }, // Date
+      { wch: 20 }, // Document Type
+      { wch: 20 }  // Value (ZAR)
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Drilldown_Extract");
+
+    const cleanTitle = (drilldownModal.title || 'Drilldown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanSub = (drilldownModal.subtitle || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const fileName = `${cleanTitle}_${cleanSub}_${todayStr}.xlsx`;
+
+    XLSX.writeFile(workbook, fileName);
+  };
 
   // Load budgets config from db and delivery notes for KPI 5
   const [deliveryNotes, setDeliveryNotes] = useState([]);
@@ -1929,19 +1981,46 @@ export default function ReportsPage() {
                   Team Division: {drilldownModal.subtitle}
                 </div>
               </div>
-              <button 
-                onClick={() => setDrilldownModal({ isOpen: false, title: '', subtitle: '', items: [] })}
-                style={{ 
-                  background: '#ffffff', border: '1px solid #e2e8f0', 
-                  color: '#475569', cursor: 'pointer', display: 'flex', 
-                  alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', 
-                  borderRadius: '50%', transition: 'all 0.2s' 
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.color = '#ef4444'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-              >
-                <X size={16} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {sortedDrilldownItems.length > 0 && (
+                  <button
+                    onClick={handleExportDrilldownToExcel}
+                    style={{
+                      background: '#059669',
+                      border: '1px solid #047857',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = '#047857'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = '#059669'; }}
+                    title="Export to Excel (.xlsx)"
+                  >
+                    <Download size={14} /> Export Excel
+                  </button>
+                )}
+                <button 
+                  onClick={() => setDrilldownModal({ isOpen: false, title: '', subtitle: '', items: [] })}
+                  style={{ 
+                    background: '#ffffff', border: '1px solid #e2e8f0', 
+                    color: '#475569', cursor: 'pointer', display: 'flex', 
+                    alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', 
+                    borderRadius: '50%', transition: 'all 0.2s' 
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.color = '#ef4444'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             {/* Modal Content */}
@@ -2051,8 +2130,34 @@ export default function ReportsPage() {
             {/* Modal Footer */}
             <div style={{
               padding: '16px 24px', borderTop: '1px solid #e2e8f0',
-              display: 'flex', justifyContent: 'flex-end', background: '#f8fafc'
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc'
             }}>
+              <div>
+                {sortedDrilldownItems.length > 0 && (
+                  <button 
+                    onClick={handleExportDrilldownToExcel}
+                    style={{
+                      background: '#10b981',
+                      border: '1px solid #059669',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = '#059669'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = '#10b981'; }}
+                  >
+                    <Download size={15} /> Export to Excel (.xlsx)
+                  </button>
+                )}
+              </div>
               <button 
                 className="btn btn-secondary" 
                 onClick={() => setDrilldownModal({ isOpen: false, title: '', subtitle: '', items: [] })}
