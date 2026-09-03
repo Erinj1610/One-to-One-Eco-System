@@ -1090,9 +1090,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
                     it_meta = pal_item_meta.get((str(doc_no).strip(), str(a.sku).strip()), {})
                     line_disc_p = it_meta.get("line_disc_perc", 0.0)
-                    line_disc_factor = (1.0 - (line_disc_p / 100.0)) if line_disc_p > 0 else 1.0
                     base_unit_cost = float(a.unit_cost or it_meta.get("unit_price_excl", 0.0))
-                    effective_unit_cost = base_unit_cost * line_disc_factor * global_doc_disc_ratio
+                    effective_unit_cost = base_unit_cost * global_doc_disc_ratio
 
                     if is_credit_doc:
                         line_multiplier = 1.0 if is_fee_line else -1.0
