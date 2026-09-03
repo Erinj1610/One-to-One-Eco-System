@@ -178,12 +178,11 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 "is_preferred": bool(vr.get('is_preferred'))
             })
 
-        # 5. Fetch existing products from Portal Cloud SQL for matching
-        existing_products = {p.sku.strip(): p for p in db.query(Product).all() if p.sku}
+        # 5. Prepare payload for high-performance single-query PostgreSQL bulk update
+        payload = []
+        new_items = []
+        existing_skus = set(r[0] for r in db.query(Product.sku).all() if r[0])
         now_dt = datetime.now(timezone.utc)
-
-        updated_count = 0
-        created_count = 0
 
         for item in palladium_items:
             raw_sku = item.get('sku')
@@ -211,35 +210,32 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             vend_list = vend_map.get(sku) or []
             primary_vendor = vend_list[0]['vendor_name'] if len(vend_list) > 0 else None
 
-            if sku in existing_products:
-                prod = existing_products[sku]
-                prod.name = name
-                if category:
-                    prod.category = category
-                if family:
-                    prod.family = family
-                prod.supplier_name = primary_vendor
-                prod.supplier_details_json = vend_list
-                prod.cost_price = cost_val
-                prod.retail_price = selling_val
-                prod.trade_price = selling_val
-                prod.stock_level = int(sum_avail)
-                prod.stock_available = sum_avail
-                prod.stock_on_hand = sum_on_hand
-                prod.stock_allocated = sum_alloc
-                prod.stock_on_order = sum_on_order
-                prod.is_active = is_active
-                prod.unit_of_measure = uom
-                if lead_str:
-                    prod.lead_time = lead_str
-                if loc_json:
-                    prod.stock_locations_json = loc_json
-                prod.palladium_last_synced_at = now_dt
-                updated_count += 1
+            row_data = {
+                "sku": sku,
+                "name": name,
+                "category": category,
+                "family": family,
+                "supplier_name": primary_vendor,
+                "supplier_details_json": json.dumps(vend_list) if vend_list else None,
+                "cost_price": cost_val,
+                "retail_price": selling_val,
+                "sum_avail": sum_avail,
+                "sum_on_hand": sum_on_hand,
+                "sum_alloc": sum_alloc,
+                "sum_on_order": sum_on_order,
+                "is_active": is_active,
+                "unit_of_measure": uom,
+                "lead_time": lead_str,
+                "stock_locations_json": json.dumps(loc_json) if loc_json else None
+            }
+
+            if sku in existing_skus:
+                payload.append(row_data)
             else:
-                new_prod = Product(
+                new_items.append(Product(
                     sku=sku,
                     name=name,
+                    client_description=name,
                     category=category,
                     family=family,
                     supplier_name=primary_vendor,
@@ -257,10 +253,67 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     lead_time=lead_str,
                     stock_locations_json=loc_json,
                     palladium_last_synced_at=now_dt
-                )
-                db.add(new_prod)
-                existing_products[sku] = new_prod
-                created_count += 1
+                ))
+
+        # Bulk update existing items in a single query
+        updated_count = 0
+        if payload:
+            bulk_sql = """
+            UPDATE products AS p
+            SET 
+                name = v.name,
+                client_description = CASE 
+                    WHEN p.client_description IS NULL OR p.client_description = p.name OR p.client_description = '' 
+                    THEN v.name 
+                    ELSE p.client_description 
+                END,
+                category = COALESCE(v.category, p.category),
+                family = COALESCE(v.family, p.family),
+                supplier_name = COALESCE(v.supplier_name, p.supplier_name),
+                supplier_details_json = CASE WHEN v.supplier_details_json IS NOT NULL THEN CAST(v.supplier_details_json AS json) ELSE p.supplier_details_json END,
+                cost_price = v.cost_price,
+                retail_price = v.retail_price,
+                trade_price = v.retail_price,
+                stock_level = CAST(v.sum_avail AS integer),
+                stock_available = v.sum_avail,
+                stock_on_hand = v.sum_on_hand,
+                stock_allocated = v.sum_alloc,
+                stock_on_order = v.sum_on_order,
+                is_active = v.is_active,
+                unit_of_measure = v.unit_of_measure,
+                lead_time = v.lead_time,
+                stock_locations_json = CASE WHEN v.stock_locations_json IS NOT NULL THEN CAST(v.stock_locations_json AS json) ELSE p.stock_locations_json END,
+                palladium_last_synced_at = NOW()
+            FROM json_to_recordset(CAST(:payload AS json)) AS v(
+                sku text,
+                name text,
+                category text,
+                family text,
+                supplier_name text,
+                supplier_details_json text,
+                cost_price float8,
+                retail_price float8,
+                sum_avail float8,
+                sum_on_hand float8,
+                sum_alloc float8,
+                sum_on_order float8,
+                is_active boolean,
+                unit_of_measure text,
+                lead_time text,
+                stock_locations_json text
+            )
+            WHERE p.sku = v.sku;
+            """
+            CHUNK_SIZE = 500
+            for i in range(0, len(payload), CHUNK_SIZE):
+                chunk = payload[i:i + CHUNK_SIZE]
+                res = db.execute(text(bulk_sql), {'payload': json.dumps(chunk)})
+                updated_count += res.rowcount
+
+        created_count = 0
+        if new_items:
+            db.add_all(new_items)
+            created_count = len(new_items)
 
         db.commit()
 

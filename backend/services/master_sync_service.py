@@ -81,6 +81,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             erp_result = sync_palladium_to_cloud_sql(db_session=db)
             logger.info(f"[MasterSync] Step 1 Complete: Synced {erp_result.get('synced_count', 0)} ERP items.")
         except Exception as erp_err:
+            try: db.rollback()
+            except Exception: pass
             logger.error(f"[MasterSync] Palladium ERP sync error: {erp_err}")
             erp_result = {"status": "error", "error": str(erp_err), "synced_count": 0}
 
@@ -94,6 +96,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             pay_result = sync_palladium_payments(db_session=db)
             logger.info(f"[MasterSync] Step 2 Complete: Synced {po_result.get('po_lines_synced', 0)} PO lines, {grn_result.get('grn_lines_synced', 0)} GRN lines, {inv_result.get('invoice_lines_synced', 0)} Invoice lines, & {pay_result.get('payments_synced', 0)} Payments.")
         except Exception as proc_err:
+            try: db.rollback()
+            except Exception: pass
             logger.error(f"[MasterSync] Procurement, Invoicing & Payments sync error: {proc_err}")
             po_result = {"status": "error", "error": str(proc_err), "po_lines_synced": 0}
 
@@ -104,6 +108,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             sheet_result = sync_specs_from_sheet(db=db)
             logger.info(f"[MasterSync] Step 3 Complete: Synced {sheet_result.get('updated_count', 0)} product specifications.")
         except Exception as sheet_err:
+            try: db.rollback()
+            except Exception: pass
             logger.error(f"[MasterSync] Google Sheet specs sync error: {sheet_err}")
             sheet_result = {"status": "error", "error": str(sheet_err), "updated_count": 0}
 
@@ -114,6 +120,8 @@ def execute_master_sync(db_session: Optional[Session] = None) -> Dict[str, Any]:
             inbox_result = sync_new_items_to_inbox(db=db)
             logger.info(f"[MasterSync] Step 4 Complete: Added {inbox_result.get('new_items_added', 0)} new products to 'NEW ITEMS' tab.")
         except Exception as inbox_err:
+            try: db.rollback()
+            except Exception: pass
             logger.error(f"[MasterSync] Google Sheet inbox sync error: {inbox_err}")
             inbox_result = {"status": "error", "error": str(inbox_err), "new_items_added": 0}
 

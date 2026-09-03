@@ -417,8 +417,8 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         wetworks = parse_field(r[28]) if len(r) > 28 else None
         selection = parse_field(r[29]) if len(r) > 29 else None
 
-        # Apply updates to product ORM model
-        if name_desc is not None: prod.name = name_desc
+        # Apply updates to product ORM model (Palladium ERP is master for name/description)
+        if name_desc is not None and not prod.name: prod.name = name_desc
         if category is not None: prod.category = category
         if foh_codes is not None: prod.foh_code_description = foh_codes
         if family is not None: prod.family = family
