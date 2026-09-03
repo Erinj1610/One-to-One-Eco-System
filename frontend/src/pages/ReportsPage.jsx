@@ -176,6 +176,7 @@ export default function ReportsPage() {
       return {
         "Invoice / CN #": invNum || '—',
         "Project Name": item.projectName || '',
+        "Division": item.division || 'Unassigned',
         "Quote / Order ID": cleanOrderId,
         "Quote / Order Name": item.quote_name || 'General Spec',
         "Date": formattedDate,
@@ -188,6 +189,7 @@ export default function ReportsPage() {
     rows.push({
       "Invoice / CN #": "",
       "Project Name": "TOTAL NET VALUE",
+      "Division": "",
       "Quote / Order ID": "",
       "Quote / Order Name": "",
       "Date": "",
@@ -200,6 +202,7 @@ export default function ReportsPage() {
     worksheet['!cols'] = [
       { wch: 18 }, // Invoice / CN # (Dedicated first column for easy matching)
       { wch: 28 }, // Project Name
+      { wch: 28 }, // Division
       { wch: 32 }, // Quote / Order ID
       { wch: 36 }, // Quote Name
       { wch: 15 }, // Date
@@ -759,12 +762,13 @@ export default function ReportsPage() {
 
   // Trigger drilldown popup details handler
   const triggerDrilldown = (title, division, type, extraFilter = null) => {
+    const isAllDivisions = !division || division === 'ALL' || division === 'ALL_DIVISIONS' || division === 'All Divisions' || division === 'Total' || division === 'TOTAL';
     const list = [];
     Object.values(projects || {}).forEach(proj => {
       const orders = proj.orders || [];
       orders.forEach(order => {
         const div = getOrderDivision(order, proj);
-        if (div !== division) return;
+        if (!isAllDivisions && div !== division) return;
 
         const orderValue = order.value || (order.itemsList || []).reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
         
@@ -810,7 +814,7 @@ export default function ReportsPage() {
                     if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                   }
                   if (match) {
-                    list.push({ projectName: proj.name, invoiceNo: cRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal, isCredit: false, docType: 'Tax Invoice' });
+                    list.push({ projectName: proj.name, division: div, invoiceNo: cRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cDate, value: cVal, isCredit: false, docType: 'Tax Invoice' });
                   }
                 }
               }
@@ -839,6 +843,7 @@ export default function ReportsPage() {
                         if (!invoiceGroupsMap[groupKey]) {
                           invoiceGroupsMap[groupKey] = {
                             projectName: proj.name,
+                            division: div,
                             invoiceNo: hRef,
                             orderId: order.po_number || order.id || 'N/A',
                             quote_name: order.quote_name || 'General Spec',
@@ -871,6 +876,7 @@ export default function ReportsPage() {
                       if (!invoiceGroupsMap[groupKey]) {
                         invoiceGroupsMap[groupKey] = {
                           projectName: proj.name,
+                          division: div,
                           invoiceNo: item.invoiceRef,
                           orderId: order.po_number || order.id || 'N/A',
                           quote_name: order.quote_name || 'General Spec',
@@ -901,7 +907,7 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, invoiceNo: order.invoiceRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue, isCredit: false, docType: 'Tax Invoice' });
+                  list.push({ projectName: proj.name, division: div, invoiceNo: order.invoiceRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.invoiceDate, value: orderValue, isCredit: false, docType: 'Tax Invoice' });
                 }
               }
             }
@@ -924,7 +930,7 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, invoiceNo: cnRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
+                  list.push({ projectName: proj.name, division: div, invoiceNo: cnRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
                 }
               }
             }
@@ -953,12 +959,12 @@ export default function ReportsPage() {
                   if (extraFilter !== null) {
                     const targetMonth = rollingMonths[extraFilter];
                     if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
-                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal });
+                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal, docType: 'Awaiting Stock' });
                     }
                   } else {
                     const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
                     if (inRolling) {
-                      list.push({ projectName: proj.name, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal });
+                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal, docType: 'Awaiting Stock' });
                     }
                   }
                 }
@@ -976,12 +982,12 @@ export default function ReportsPage() {
               if (extraFilter !== null) {
                 const targetMonth = rollingMonths[extraFilter];
                 if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                  list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                  list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Pipeline Spec' });
                 }
               } else {
                 const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
                 if (inRolling) {
-                  list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+                  list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Pipeline Spec' });
                 }
               }
             }
@@ -994,7 +1000,7 @@ export default function ReportsPage() {
             if (extraFilter === 'invoiced') {
               // Handled by invoiced sum logic or we show actual value here if needed
               if (isEligibleForInvoiced) {
-                list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: processedInvoicedTotal });
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: processedInvoicedTotal, docType: 'Annual Billed' });
               }
             } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status) {
               let orderOutstandingTotal = 0;
@@ -1011,10 +1017,10 @@ export default function ReportsPage() {
                 orderOutstandingTotal += outstandingVal;
               });
               if (orderOutstandingTotal > 0) {
-                list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderOutstandingTotal });
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderOutstandingTotal, docType: 'Annual Awaiting' });
               }
             } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced))) {
-              list.push({ projectName: proj.name, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue });
+              list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Annual Pipeline' });
             }
           }
         }
@@ -1024,7 +1030,7 @@ export default function ReportsPage() {
     setDrilldownModal({
       isOpen: true,
       title: `${title}`,
-      subtitle: division,
+      subtitle: isAllDivisions ? 'All Divisions Combined (Company Total)' : `Division: ${division}`,
       items: list
     });
   };
@@ -1362,12 +1368,38 @@ export default function ReportsPage() {
                   {/* TOTAL ROW */}
                   <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                     <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0);
+                        if (tot !== 0) triggerDrilldown('Actual Invoiced (Total)', 'ALL', 'invoiced');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) !== 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) !== 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) !== 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0))}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0)) }}>
                       {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.actual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.budget, 0))}
                     </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0);
+                        if (tot !== 0) triggerDrilldown('YTD Actual Invoiced (Total)', 'ALL', 'invoiced', 'ytd');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) !== 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) !== 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) !== 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0))}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0)) }}>
                       {formatZar(Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdActual, 0) - Object.values(dynamicInvoiced).reduce((s, r) => s + r.ytdBudget, 0))}
@@ -1447,11 +1479,77 @@ export default function ReportsPage() {
                   {/* TOTAL ROW */}
                   <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                     <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[0].label} Awaiting Stock (Total)`, 'ALL', 'awaiting', 0);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col0, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[1].label} Awaiting Stock (Total)`, 'ALL', 'awaiting', 1);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col1, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[2].label} Awaiting Stock (Total)`, 'ALL', 'awaiting', 2);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col2, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[3].label} Awaiting Stock (Total)`, 'ALL', 'awaiting', 3);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.col3, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0);
+                        if (tot > 0) triggerDrilldown('Total Awaiting Stock (All Divisions)', 'ALL', 'awaiting');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        fontWeight: 600,
+                        cursor: Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0))}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0)) }}>
                       {formatZar(Object.values(dynamicAwaiting).reduce((s, r) => s + sumAwaitingStockTotal(r), 0) - Object.values(dynamicAwaiting).reduce((s, r) => s + r.target, 0))}
@@ -1531,11 +1629,77 @@ export default function ReportsPage() {
                   {/* TOTAL ROW */}
                   <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                     <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[0].label} Pipeline (Total)`, 'ALL', 'pipeline', 0);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col0, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[1].label} Pipeline (Total)`, 'ALL', 'pipeline', 1);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col1, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[2].label} Pipeline (Total)`, 'ALL', 'pipeline', 2);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col2, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0);
+                        if (tot > 0) triggerDrilldown(`${rollingMonths[3].label} Pipeline (Total)`, 'ALL', 'pipeline', 3);
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.col3, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0);
+                        if (tot > 0) triggerDrilldown('Total Pipeline Projections (All Divisions)', 'ALL', 'pipeline');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        fontWeight: 600,
+                        cursor: Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0))}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0)) }}>
                       {formatZar(Object.values(dynamicPipeline).reduce((s, r) => s + sumPipelineTotal(r), 0) - Object.values(dynamicPipeline).reduce((s, r) => s + r.target, 0))}
@@ -1605,11 +1769,50 @@ export default function ReportsPage() {
                   {/* TOTAL ROW */}
                   <tr style={{ background: 'rgba(0,0,0,0.08)', fontWeight: 700 }}>
                     <td style={{ padding: '12px 16px' }}>TOTAL</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0);
+                        if (tot > 0) triggerDrilldown('Annual Billed Actual (Total)', 'ALL', 'annual', 'invoiced');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.invoiced, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0);
+                        if (tot > 0) triggerDrilldown('Annual Awaiting Invoice (Total)', 'ALL', 'annual', 'toInvoice');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.toInvoice, 0))}
+                    </td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0);
+                        if (tot > 0) triggerDrilldown('Annual Pipeline Target (Total)', 'ALL', 'annual', 'pipeline');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0))}
+                    </td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0))}</td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}</td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0)) }}>
                       {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}
@@ -2067,6 +2270,14 @@ export default function ReportsPage() {
                         </div>
                       </th>
                       <th 
+                        onClick={() => handleDrilldownSort('division')}
+                        style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          DIVISION {renderDrilldownSortIcon('division')}
+                        </div>
+                      </th>
+                      <th 
                         onClick={() => handleDrilldownSort('invoiceNo')}
                         style={{ padding: '12px', fontWeight: 700, cursor: 'pointer', userSelect: 'none' }}
                       >
@@ -2115,6 +2326,7 @@ export default function ReportsPage() {
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', transition: 'background 0.2s', background: isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent' }} onMouseOver={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.08)' : '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.background = isCred ? 'rgba(239, 68, 68, 0.03)' : 'transparent'}>
                           <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{item.projectName}</td>
+                          <td style={{ padding: '12px', color: '#475569', fontWeight: 600, fontSize: '11.5px' }}>{item.division || 'Unassigned'}</td>
                           <td style={{ padding: '12px', fontFamily: 'monospace', color: isCred ? '#dc2626' : '#1e40af', fontWeight: 700 }}>
                             {invCode ? (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -2155,7 +2367,7 @@ export default function ReportsPage() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
-                      <td colSpan={5} style={{ padding: '12px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>
+                      <td colSpan={6} style={{ padding: '12px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>
                         TOTAL NET VALUE:
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, fontSize: '14px', color: (sortedDrilldownItems.reduce((s, it) => s + (Number(it.value) || 0), 0)) < 0 ? '#dc2626' : '#059669' }}>
