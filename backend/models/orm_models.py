@@ -247,6 +247,7 @@ class Order(Base):
     purchase_orders = Column(JSON, nullable=True)
     goods_received_notes = Column(JSON, nullable=True)
     client_invoices = Column(JSON, nullable=True)
+    takeoff_data = Column(JSON, nullable=True)
 
     order_date = Column(String, nullable=True)
     quotation_sent_date = Column(String, nullable=True)

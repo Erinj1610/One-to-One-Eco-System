@@ -1227,7 +1227,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "projectClass": order.project_class,
                 "division": order.division,
                 "pfNumber": order.pf_number,
-                "discount": order.discount or 0.0
+                "discount": order.discount or 0.0,
+                "takeoffData": order.takeoff_data
             }
             orders_by_project[order.project_key].append(order_dict)
 

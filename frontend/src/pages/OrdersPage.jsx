@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
+import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -438,9 +439,7 @@ export default function OrdersPage() {
   const [orderEta, setOrderEta] = useState('');
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
   const [orderPayments, setOrderPayments] = useState([]);
-
-
-
+  const [takeoffData, setTakeoffData] = useState({ countUpRows: [], specifications: {} });
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
   
   // Link/Unlink modal state
@@ -1435,6 +1434,17 @@ export default function OrdersPage() {
     }
     setOrderPayments(parsedPayments);
 
+    const rawTakeoff = order.takeoffData || order.takeoff_data;
+    let parsedTakeoff = { countUpRows: [], specifications: {} };
+    if (rawTakeoff) {
+      if (typeof rawTakeoff === 'string') {
+        try { parsedTakeoff = JSON.parse(rawTakeoff); } catch (_) {}
+      } else if (typeof rawTakeoff === 'object') {
+        parsedTakeoff = rawTakeoff;
+      }
+    }
+    setTakeoffData(parsedTakeoff);
+
     const orderIdToFetch = order.id || order.poNumber || order.po_number;
     if (orderIdToFetch) {
       fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
@@ -2065,7 +2075,9 @@ export default function OrdersPage() {
       fileSource,
       projectClass,
       quotationSentDate,
-      division
+      division,
+      takeoffData: takeoffData,
+      takeoff_data: takeoffData
     };
 
     // 1. Direct Cloud SQL order update
@@ -2194,6 +2206,47 @@ export default function OrdersPage() {
     } finally {
       setIsSyncingVault(false);
     }
+  };
+
+  // Dedicated saver for Takeoff & Specification data
+  const handleSaveTakeoffData = async (newTakeoffData) => {
+    setTakeoffData(newTakeoffData);
+    if (!selectedOrderId) return;
+    try {
+      await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ takeoffData: newTakeoffData, takeoff_data: newTakeoffData })
+      });
+      // Also update projects store
+      setProjects(prev => {
+        const next = { ...prev };
+        for (const pKey of Object.keys(next)) {
+          if (next[pKey]?.orders) {
+            next[pKey].orders = next[pKey].orders.map(o => {
+              if (String(o.id) === String(selectedOrderId) || String(o.poNumber) === String(selectedOrderId)) {
+                return { ...o, takeoffData: newTakeoffData, takeoff_data: newTakeoffData };
+              }
+              return o;
+            });
+          }
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error("Error saving takeoff data:", err);
+    }
+  };
+
+  // Compiler callback: receives generated items from Takeoff engine and populates into activeOrderItems
+  const handleGenerateBOQFromTakeoff = (generatedItems, mode = 'append') => {
+    if (mode === 'replace') {
+      setActiveOrderItems(generatedItems);
+    } else {
+      setActiveOrderItems(prev => [...prev, ...generatedItems]);
+    }
+    setWorkspaceSubTab('boq');
+    alert(`✨ Generated ${generatedItems.length} items from Takeoff into the BOQ Spreadsheet!\nClick 'Save & Update' when you are ready to commit changes to database.`);
   };
 
   // Create a brand-new Purchase Order / Quotation
@@ -3058,6 +3111,13 @@ export default function OrdersPage() {
             {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '20px', gap: '4px', overflowX: 'auto' }}>
               <button 
+                className={`btn btn-sm ${workspaceSubTab === 'takeoff' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                onClick={() => setWorkspaceSubTab('takeoff')}
+              >
+                <Sparkles size={14} /> ⚡ Takeoff & Specification
+              </button>
+              <button 
                 className={`btn btn-sm ${workspaceSubTab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
                 onClick={() => setWorkspaceSubTab('boq')}
@@ -3108,6 +3168,18 @@ export default function OrdersPage() {
               </button>
             </div>
 
+            {/* SUB-TAB 0: TAKEOFF & SPECIFICATION ENGINE */}
+            {workspaceSubTab === 'takeoff' && (
+              <TakeoffSpecEngine
+                orderId={selectedOrderId}
+                projectKey={selectedProjectKey}
+                orderSupplier={orderSupplier}
+                initialTakeoffData={takeoffData}
+                onSaveTakeoffData={handleSaveTakeoffData}
+                onGenerateBOQ={handleGenerateBOQFromTakeoff}
+              />
+            )}
+
             {workspaceSubTab === 'boq' && (
               
               /* SUB-TAB 1: BOQ SPREADSHEET ENGINE */
@@ -3118,13 +3190,23 @@ export default function OrdersPage() {
                     <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)' }}>
                       📋 Project Registration Form & Metadata Vitals
                     </h3>
-                    <button 
-                      className="btn btn-ghost btn-xs" 
-                      onClick={() => setShowRegForm(!showRegForm)}
-                      style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                    >
-                      {showRegForm ? 'Collapse Form ✕' : 'Expand Form ➔'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button 
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => setWorkspaceSubTab('takeoff')}
+                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Open Takeoff & Spec Engine to count fixtures and generate items"
+                      >
+                        <Sparkles size={11} /> ⚡ Populate from Takeoff & Spec
+                      </button>
+                      <button 
+                        className="btn btn-ghost btn-xs" 
+                        onClick={() => setShowRegForm(!showRegForm)}
+                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      >
+                        {showRegForm ? 'Collapse Form ✕' : 'Expand Form ➔'}
+                      </button>
+                    </div>
                   </div>
                   
                   {showRegForm && (
