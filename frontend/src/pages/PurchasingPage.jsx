@@ -6,7 +6,8 @@ import { API_BASE } from '../api_config';
 import { 
   ClipboardList, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
   ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
-  CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square
+  CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 export default function PurchasingPage() {
@@ -86,6 +87,8 @@ export default function PurchasingPage() {
   const [wizardExpandedDocNos, setWizardExpandedDocNos] = useState(new Set());
   const [isSubmittingWizard, setIsSubmittingWizard] = useState(false);
   const [wizardSubmitProgress, setWizardSubmitProgress] = useState(null);
+  const [wizardSortField, setWizardSortField] = useState('document_no');
+  const [wizardSortDirection, setWizardSortDirection] = useState('asc');
 
   // Issue Flagging State
   const [issueModalOpen, setIssueModalOpen] = useState(false);
@@ -743,6 +746,24 @@ export default function PurchasingPage() {
       else next.add(docNo);
       return next;
     });
+  };
+
+  const handleWizardSort = (field) => {
+    if (wizardSortField === field) {
+      setWizardSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setWizardSortField(field);
+      setWizardSortDirection('asc');
+    }
+  };
+
+  const renderWizardSortIcon = (field) => {
+    if (wizardSortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.35, verticalAlign: 'middle' }} />;
+    }
+    return wizardSortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: '#6366f1', verticalAlign: 'middle' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: '#6366f1', verticalAlign: 'middle' }} />;
   };
 
   const handleExecuteBulkWizard = async () => {
@@ -2997,6 +3018,63 @@ export default function PurchasingPage() {
                   );
                 }
 
+                // Sort filtered documents
+                const sortedDocs = [...filteredDocs].sort((a, b) => {
+                  if (!wizardSortField) return 0;
+                  let valA = '';
+                  let valB = '';
+
+                  if (wizardSortField === 'document_no') {
+                    valA = a.document_no || '';
+                    valB = b.document_no || '';
+                  } else if (wizardSortField === 'vendor_name') {
+                    valA = (a.vendor_name || '').toLowerCase();
+                    valB = (b.vendor_name || '').toLowerCase();
+                  } else if (wizardSortField === 'po_reference') {
+                    valA = (a.po_reference || '').toLowerCase();
+                    valB = (b.po_reference || '').toLowerCase();
+                  } else if (wizardSortField === 'project') {
+                    const overrideA = wizardRowOverrides[a.document_no]?.project_id;
+                    const projA = overrideA ? wizardAvailableProjects.find(p => String(p.id) === String(overrideA)) : null;
+                    valA = (projA?.name || a.detected_project_name || '').toLowerCase();
+
+                    const overrideB = wizardRowOverrides[b.document_no]?.project_id;
+                    const projB = overrideB ? wizardAvailableProjects.find(p => String(p.id) === String(overrideB)) : null;
+                    valB = (projB?.name || b.detected_project_name || '').toLowerCase();
+                  } else if (wizardSortField === 'order') {
+                    const overrideA = wizardRowOverrides[a.document_no]?.order_id;
+                    let titleA = a.suggested_order_title || '';
+                    if (overrideA) {
+                      for (const p of wizardAvailableProjects) {
+                        const o = p.orders?.find(ord => String(ord.id) === String(overrideA));
+                        if (o) { titleA = o.title || o.po_number || `Order #${o.id}`; break; }
+                      }
+                    }
+                    valA = titleA.toLowerCase();
+
+                    const overrideB = wizardRowOverrides[b.document_no]?.order_id;
+                    let titleB = b.suggested_order_title || '';
+                    if (overrideB) {
+                      for (const p of wizardAvailableProjects) {
+                        const o = p.orders?.find(ord => String(ord.id) === String(overrideB));
+                        if (o) { titleB = o.title || o.po_number || `Order #${o.id}`; break; }
+                      }
+                    }
+                    valB = titleB.toLowerCase();
+                  } else if (wizardSortField === 'eta') {
+                    valA = wizardRowOverrides[a.document_no]?.eta || a.default_eta || '';
+                    valB = wizardRowOverrides[b.document_no]?.eta || b.default_eta || '';
+                  } else if (wizardSortField === 'status') {
+                    const rank = { HIGH: 1, MEDIUM: 2, UNMATCHED: 3 };
+                    valA = rank[a.match_confidence] || 4;
+                    valB = rank[b.match_confidence] || 4;
+                  }
+
+                  if (valA < valB) return wizardSortDirection === 'asc' ? -1 : 1;
+                  if (valA > valB) return wizardSortDirection === 'asc' ? 1 : -1;
+                  return 0;
+                });
+
                 return (
                   <table className="table" style={{ width: '100%', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
@@ -3004,11 +3082,11 @@ export default function PurchasingPage() {
                         <th style={{ width: '40px', textAlign: 'center', padding: '10px 4px' }}>
                           <input
                             type="checkbox"
-                            checked={filteredDocs.length > 0 && filteredDocs.every(d => wizardSelectedDocNos.has(d.document_no))}
+                            checked={sortedDocs.length > 0 && sortedDocs.every(d => wizardSelectedDocNos.has(d.document_no))}
                             onChange={() => {
-                              const allSelected = filteredDocs.every(d => wizardSelectedDocNos.has(d.document_no));
+                              const allSelected = sortedDocs.every(d => wizardSelectedDocNos.has(d.document_no));
                               const next = new Set(wizardSelectedDocNos);
-                              filteredDocs.forEach(d => {
+                              sortedDocs.forEach(d => {
                                 if (allSelected) next.delete(d.document_no);
                                 else next.add(d.document_no);
                               });
@@ -3017,17 +3095,73 @@ export default function PurchasingPage() {
                             title="Select/Deselect All Filtered"
                           />
                         </th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>PO Document</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px' }}>Supplier</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>PO Reference (Palladium)</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, minWidth: '220px' }}>Destination Project</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px' }}>Destination Order</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '140px' }}>Delivery ETA</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, width: '130px' }}>Match Status</th>
+                        <th 
+                          onClick={() => handleWizardSort('document_no')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '130px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by PO Document #"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            PO Document {renderWizardSortIcon('document_no')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('vendor_name')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by Supplier"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            Supplier {renderWizardSortIcon('vendor_name')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('po_reference')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '220px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by PO Reference"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            PO Reference (Palladium) {renderWizardSortIcon('po_reference')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('project')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, minWidth: '220px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by Destination Project"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            Destination Project {renderWizardSortIcon('project')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('order')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by Destination Order"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            Destination Order {renderWizardSortIcon('order')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('eta')}
+                          style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '140px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by Delivery ETA"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            Delivery ETA {renderWizardSortIcon('eta')}
+                          </div>
+                        </th>
+                        <th 
+                          onClick={() => handleWizardSort('status')}
+                          style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, width: '130px', cursor: 'pointer', userSelect: 'none' }}
+                          title="Click to sort by Match Status"
+                        >
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
+                            Match Status {renderWizardSortIcon('status')}
+                          </div>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredDocs.map((d) => {
+                      {sortedDocs.map((d) => {
                         const isSelected = wizardSelectedDocNos.has(d.document_no);
                         const isExpanded = wizardExpandedDocNos.has(d.document_no);
                         const override = wizardRowOverrides[d.document_no] || {};
