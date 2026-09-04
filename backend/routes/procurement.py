@@ -376,6 +376,7 @@ def get_procurement_documents(
                     "vendor_name": r.vendor_name or "Unknown Supplier",
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                     "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
+                    "reference": r.reference or None,
                     "erp_status": r.status or "Open",
                     "customer_name": r.customer_name,
                     "total_lines": 0,
@@ -425,6 +426,7 @@ def get_procurement_documents(
                 "currency_code": r.currency_code or "ZAR",
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                 "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
+                "reference": r.reference or None,
                 "erp_status": r.status or "Open",
                 "customer_name": r.customer_name,
                 "allocated_qty": round(line_allocated, 2),
@@ -628,6 +630,7 @@ def get_document_details(
         vendor_name = "Unknown Supplier"
         transaction_date = None
         order_required_date = None
+        reference = None
         customer_name = None
         erp_status = "Open"
         total_value = 0.0
@@ -638,6 +641,7 @@ def get_document_details(
                 vendor_name = r.vendor_name or vendor_name
                 transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
                 order_required_date = r.order_required_date.isoformat() if r.order_required_date else order_required_date
+                reference = r.reference or reference
                 customer_name = r.customer_name or customer_name
                 erp_status = r.status or erp_status
                 total_value += float(r.total_value_excl or 0.0)
@@ -669,6 +673,7 @@ def get_document_details(
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "reference": r.reference or None,
                     "allocations": active_allocs
                 })
         else:
@@ -725,6 +730,7 @@ def get_document_details(
             "vendor_name": vendor_name,
             "transaction_date": transaction_date,
             "order_required_date": order_required_date,
+            "reference": reference,
             "customer_name": customer_name,
             "erp_status": erp_status,
             "total_lines": len(lines),
@@ -1212,6 +1218,212 @@ def batch_allocate_procurement_items(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, cancelled_alloc_ids: set, cancelled_docs: set):
+    """
+    Safely removes cancelled allocations from OrderItem purchase_history / receiving_history
+    and recalculates po_qty_ordered, po_ref, dates, and ETAs.
+    """
+    if not item:
+        return
+    # PO
+    cur_p = list(item.purchase_history or [])
+    new_p = [
+        h for h in cur_p
+        if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
+        and str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs
+    ]
+    item.purchase_history = new_p
+    item.po_qty_ordered = int(sum(float(h.get("qty") or 0) for h in new_p))
+    if new_p:
+        item.po_ref = "; ".join(sorted(set(str(h.get("ref")) for h in new_p if h.get("ref"))))
+        dates = [h.get("date") for h in new_p if h.get("date")]
+        item.po_date = max(dates) if dates else None
+        etas = [h.get("eta") for h in new_p if h.get("eta")]
+        item.po_eta = max(etas) if etas else None
+        item.eta = item.po_eta
+    else:
+        item.po_ref = None
+        item.po_date = None
+        item.po_eta = None
+        item.eta = None
+        item.po_qty_ordered = 0
+
+    # GRN
+    cur_r = list(item.receiving_history or [])
+    new_r = [
+        h for h in cur_r
+        if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
+        and str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs
+    ]
+    item.receiving_history = new_r
+    item.received_qty = int(sum(float(h.get("qty") or 0) for h in new_r))
+    if new_r:
+        dates = [h.get("date") for h in new_r if h.get("date")]
+        item.received_date = max(dates) if dates else None
+    else:
+        item.received_date = None
+        item.received_qty = 0
+
+
+def clean_string_tokens(s: Optional[str]) -> List[str]:
+    if not s:
+        return []
+    cleaned = re.sub(r'[^a-zA-Z0-9\s]', ' ', str(s)).lower()
+    stop_words = {"house", "project", "phase", "lighting", "interior", "exterior", "quote", "the", "and", "section", "lights", "general"}
+    return [w for w in cleaned.split() if len(w) >= 2 and w not in stop_words]
+
+
+def match_po_reference_to_project(reference: Optional[str], projects: List[Project]) -> Optional[Dict[str, Any]]:
+    if not reference or not projects:
+        return None
+    ref_clean = reference.strip().lower()
+    ref_norm = re.sub(r'[^a-z0-9]', '', ref_clean)
+    ref_tokens = set(clean_string_tokens(reference))
+
+    best_match = None
+    best_score = 0
+    match_reason = ""
+
+    for proj in projects:
+        p_name = (proj.name or "").strip().lower()
+        p_key = (proj.project_key or "").strip().lower()
+        p_name_norm = re.sub(r'[^a-z0-9]', '', p_name)
+        p_key_norm = re.sub(r'[^a-z0-9]', '', p_key)
+
+        score = 0
+        reason = ""
+
+        # Exact match
+        if p_name_norm and p_name_norm == ref_norm:
+            score = 100
+            reason = f"Exact project name match '{proj.name}'"
+        elif p_name_norm and len(p_name_norm) >= 4 and p_name_norm in ref_norm:
+            score = 95
+            reason = f"Project name '{proj.name}' in reference"
+        elif p_key_norm and len(p_key_norm) >= 4 and p_key_norm in ref_norm:
+            score = 90
+            reason = f"Project key '{proj.project_key}' in reference"
+        else:
+            p_tokens = set(clean_string_tokens(proj.name))
+            if p_tokens and p_tokens.issubset(ref_tokens):
+                score = 85
+                reason = f"Project tokens {p_tokens} match PO reference"
+            elif p_tokens and (p_tokens & ref_tokens):
+                common = p_tokens & ref_tokens
+                meaningful = [t for t in common if len(t) >= 4]
+                if len(meaningful) >= 1 or len(common) >= 2:
+                    score = 65 + len(meaningful) * 10
+                    reason = f"Keywords {common} match PO reference"
+
+        if score > best_score:
+            best_score = score
+            best_match = proj
+            match_reason = reason
+
+    if best_match and best_score >= 65:
+        return {
+            "project": best_match,
+            "confidence": "HIGH" if best_score >= 85 else "MEDIUM",
+            "score": best_score,
+            "reason": match_reason
+        }
+    return None
+
+
+@public_router.post("/batch-unallocate")
+@router.post("/batch-unallocate")
+def batch_unallocate_procurement_items(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Cancels multiple active procurement allocations in bulk by:
+    - allocation_ids: list of int allocation IDs
+    - document_no: string document number (cancels all active allocations for the document)
+    - skus: optional list of string SKUs to filter within the document_no
+    Recalculates and restores all affected OrderItem records accurately.
+    """
+    try:
+        allocation_ids = payload.get("allocation_ids") or []
+        document_no = payload.get("document_no")
+        skus = payload.get("skus") or []
+        allocation_type = payload.get("allocation_type")
+
+        query = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.status == "Active"
+        )
+        if allocation_type:
+            query = query.filter(ProcurementAllocation.allocation_type == str(allocation_type).strip().upper())
+
+        if allocation_ids:
+            clean_ids = [int(i) for i in allocation_ids if str(i).isdigit()]
+            if clean_ids:
+                query = query.filter(ProcurementAllocation.id.in_(clean_ids))
+            else:
+                raise HTTPException(status_code=400, detail="Invalid allocation_ids list.")
+        elif document_no:
+            query = query.filter(ProcurementAllocation.source_doc_no == str(document_no).strip())
+            if skus:
+                clean_skus = [str(s).strip().upper() for s in skus if s]
+                query = query.filter(func.upper(ProcurementAllocation.sku).in_(clean_skus))
+        else:
+            raise HTTPException(status_code=400, detail="Missing allocation_ids or document_no.")
+
+        allocs_to_cancel = query.all()
+        if not allocs_to_cancel:
+            return {"status": "success", "message": "No active allocations found to unallocate.", "count": 0}
+
+        cancelled_ids = set()
+        cancelled_docs = set()
+        affected_item_ids = set()
+        affected_skus = set()
+
+        for alloc in allocs_to_cancel:
+            alloc.status = "Cancelled"
+            cancelled_ids.add(alloc.id)
+            if alloc.source_doc_no:
+                cancelled_docs.add(str(alloc.source_doc_no).strip())
+            if alloc.order_item_id:
+                affected_item_ids.add(str(alloc.order_item_id))
+            if alloc.sku:
+                affected_skus.add(alloc.sku.strip().upper())
+
+        # Collect affected OrderItem records
+        affected_items = []
+        if affected_item_ids:
+            affected_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
+
+        if affected_skus:
+            cand_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.code.in_(list(affected_skus)),
+                    OrderItem.one_one_code.in_(list(affected_skus))
+                )
+            ).all()
+            for ci in cand_items:
+                if ci not in affected_items:
+                    affected_items.append(ci)
+
+        for it in affected_items:
+            revert_order_item_for_cancelled_allocations(db, it, cancelled_ids, cancelled_docs)
+
+        db.commit()
+        count = len(allocs_to_cancel)
+        logger.info(f"Bulk unallocated {count} procurement allocations.")
+        return {
+            "status": "success",
+            "message": f"Successfully unallocated {count} allocation(s).",
+            "count": count
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in batch procurement unallocation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @public_router.post("/unallocate")
 @router.post("/unallocate")
 def unallocate_procurement_item(
@@ -1219,86 +1431,323 @@ def unallocate_procurement_item(
     db: Session = Depends(get_db)
 ):
     """
-    Removes an allocation, releasing the quantity back to the unallocated pool.
-    Fully synchronizes OrderItem quantities, histories, po_ref, and dates for SalesTracker.
+    Cancels a single or batch allocation, releasing quantity back to unallocated pool.
+    """
+    allocation_ids = payload.get("allocation_ids")
+    document_no = payload.get("document_no")
+    allocation_id = payload.get("allocation_id")
+
+    if allocation_ids or (document_no and not allocation_id):
+        return batch_unallocate_procurement_items(payload, db)
+
+    if not allocation_id:
+        raise HTTPException(status_code=400, detail="Missing allocation_id.")
+
+    return batch_unallocate_procurement_items({"allocation_ids": [allocation_id]}, db)
+
+
+@public_router.get("/auto-match-preview")
+@router.get("/auto-match-preview")
+def get_auto_match_preview(db: Session = Depends(get_db)):
+    """
+    Pre-scans all unallocated and partially allocated Purchase Orders.
+    Matches PO references and line item SKUs against existing Projects and Orders.
+    Returns preview data with default ETAs from Palladium and confidence scores for user review.
     """
     try:
-        allocation_id = payload.get("allocation_id")
-        if not allocation_id:
-            raise HTTPException(status_code=400, detail="Missing allocation_id.")
+        # 1. Active PO allocations
+        active_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.status == "Active",
+            ProcurementAllocation.allocation_type == "PO"
+        ).all()
+        alloc_map = {}
+        for a in active_allocs:
+            key = (a.source_doc_no, a.sku)
+            alloc_map[key] = alloc_map.get(key, 0.0) + float(a.allocated_qty or 0.0)
 
-        alloc = db.query(ProcurementAllocation).filter(ProcurementAllocation.id == int(allocation_id)).first()
-        if not alloc:
-            raise HTTPException(status_code=404, detail="Allocation not found.")
+        # 2. All PO lines
+        po_rows = db.query(PalladiumPOLine).order_by(desc(PalladiumPOLine.transaction_date)).all()
+        doc_dict = {}
+        for r in po_rows:
+            doc_no = r.document_no
+            if not doc_no:
+                continue
+            if doc_no not in doc_dict:
+                doc_dict[doc_no] = {
+                    "document_no": doc_no,
+                    "vendor_name": r.vendor_name or "Unknown Supplier",
+                    "transaction_date": r.transaction_date.isoformat().split("T")[0] if r.transaction_date else None,
+                    "order_required_date": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
+                    "reference": r.reference or "",
+                    "total_lines": 0,
+                    "unallocated_lines_count": 0,
+                    "total_value": 0.0,
+                    "lines": []
+                }
 
-        # Revert order item if linked
-        order_item = None
-        if alloc.order_item_id:
-            order_item = db.query(OrderItem).filter(OrderItem.id == str(alloc.order_item_id)).first()
-        elif alloc.project_id:
-            # Fallback search by SKU in project
-            proj = db.query(Project).filter(Project.id == alloc.project_id).first()
-            if proj:
-                clean_sku = alloc.sku.strip().upper()
-                proj_items = db.query(OrderItem).filter(OrderItem.order_id.ilike(f"{proj.project_key}%")).all()
-                for it in proj_items:
-                    if (it.code and it.code.strip().upper() == clean_sku) or \
-                       (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
-                        order_item = it
-                        break
+            allocated = alloc_map.get((doc_no, r.item_code), 0.0)
+            target_qty = float(r.order_qty or 0.0)
+            rem_qty = max(0.0, target_qty - allocated)
 
-        if order_item:
-            if alloc.allocation_type == "PO":
-                # Remove matching records from purchase_history
-                cur_hist = list(order_item.purchase_history or [])
-                new_hist = [
-                    h for h in cur_hist 
-                    if str(h.get("id") or h.get("ref") or "") != str(alloc.source_doc_no)
-                ]
-                order_item.purchase_history = new_hist
-                new_qty = sum(float(h.get("qty") or 0) for h in new_hist)
-                order_item.po_qty_ordered = int(new_qty)
-                if new_hist:
-                    order_item.po_ref = "; ".join(set(str(h.get("ref")) for h in new_hist if h.get("ref")))
-                    dates = [h.get("date") for h in new_hist if h.get("date")]
-                    order_item.po_date = max(dates) if dates else None
-                    etas = [h.get("eta") for h in new_hist if h.get("eta")]
-                    order_item.po_eta = max(etas) if etas else None
-                    order_item.eta = order_item.po_eta
-                else:
-                    order_item.po_ref = None
-                    order_item.po_date = None
-                    order_item.po_eta = None
-                    order_item.eta = None
-                    order_item.po_qty_ordered = 0
-            elif alloc.allocation_type == "GRN":
-                # Remove matching records from receiving_history
-                cur_hist = list(order_item.receiving_history or [])
-                new_hist = [
-                    h for h in cur_hist 
-                    if str(h.get("id") or h.get("ref") or "") != str(alloc.source_doc_no)
-                ]
-                order_item.receiving_history = new_hist
-                new_qty = sum(float(h.get("qty") or 0) for h in new_hist)
-                order_item.received_qty = int(new_qty)
-                if new_hist:
-                    dates = [h.get("date") for h in new_hist if h.get("date")]
-                    order_item.received_date = max(dates) if dates else None
-                else:
-                    order_item.received_date = None
-                    order_item.received_qty = 0
+            doc_dict[doc_no]["total_lines"] += 1
+            doc_dict[doc_no]["total_value"] += float(r.total_value_excl or 0.0)
 
-        alloc.status = "Cancelled"
-        db.commit()
+            if rem_qty > 0:
+                doc_dict[doc_no]["unallocated_lines_count"] += 1
+                doc_dict[doc_no]["lines"].append({
+                    "line_id": r.id,
+                    "item_code": r.item_code,
+                    "item_description": r.item_description or "",
+                    "order_qty": target_qty,
+                    "unallocated_qty": round(rem_qty, 2),
+                    "unit_cost": float(r.unit_cost or 0.0),
+                    "total_value": round(rem_qty * float(r.unit_cost or 0.0), 2)
+                })
 
-        logger.info(f"Unallocated allocation #{allocation_id} ({alloc.source_doc_no} -> Project #{alloc.project_id}).")
+        # Only retain POs that have at least 1 unallocated line
+        unallocated_docs = [d for d in doc_dict.values() if d["unallocated_lines_count"] > 0]
+
+        # 3. Load all Projects & Orders
+        projects = db.query(Project).order_by(Project.name).all()
+        orders = db.query(Order).all()
+        orders_by_proj = {}
+        for o in orders:
+            if o.project_id not in orders_by_proj:
+                orders_by_proj[o.project_id] = []
+            orders_by_proj[o.project_id].append({
+                "id": o.id,
+                "title": o.quote_name or o.po_number or f"Order #{o.id}",
+                "po_number": o.po_number
+            })
+
+        available_projects = []
+        for p in projects:
+            available_projects.append({
+                "id": p.id,
+                "name": p.name,
+                "project_key": p.project_key,
+                "orders": orders_by_proj.get(p.id, [])
+            })
+
+        # 4. Perform auto-matching
+        preview_list = []
+        for d in unallocated_docs:
+            ref = d["reference"]
+            match = match_po_reference_to_project(ref, projects)
+
+            detected_proj_id = None
+            detected_proj_name = None
+            suggested_order_id = None
+            suggested_order_title = None
+            confidence = "UNMATCHED"
+            reason = "No matching project found in PO reference"
+
+            if match:
+                proj = match["project"]
+                detected_proj_id = proj.id
+                detected_proj_name = proj.name
+                confidence = match["confidence"]
+                reason = match["reason"]
+
+                proj_orders = orders_by_proj.get(proj.id, [])
+                if len(proj_orders) == 1:
+                    suggested_order_id = proj_orders[0]["id"]
+                    suggested_order_title = proj_orders[0]["title"]
+                elif len(proj_orders) > 1:
+                    ref_lower = ref.lower()
+                    for o in proj_orders:
+                        if o["po_number"] and o["po_number"].lower() in ref_lower:
+                            suggested_order_id = o["id"]
+                            suggested_order_title = o["title"]
+                            break
+                    if not suggested_order_id:
+                        suggested_order_id = proj_orders[0]["id"]
+                        suggested_order_title = proj_orders[0]["title"]
+
+            default_eta = d["order_required_date"] or d["transaction_date"] or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            preview_list.append({
+                "document_no": d["document_no"],
+                "vendor_name": d["vendor_name"],
+                "transaction_date": d["transaction_date"],
+                "order_required_date": d["order_required_date"],
+                "po_reference": d["reference"],
+                "total_lines": d["total_lines"],
+                "unallocated_lines_count": d["unallocated_lines_count"],
+                "total_value": round(d["total_value"], 2),
+                "detected_project_id": detected_proj_id,
+                "detected_project_name": detected_proj_name,
+                "suggested_order_id": suggested_order_id,
+                "suggested_order_title": suggested_order_title,
+                "default_eta": default_eta,
+                "match_confidence": confidence,
+                "match_reason": reason,
+                "lines": d["lines"]
+            })
+
+        confidence_order = {"HIGH": 0, "MEDIUM": 1, "UNMATCHED": 2}
+        preview_list.sort(key=lambda x: (confidence_order.get(x["match_confidence"], 3), x["document_no"]))
+
         return {
             "status": "success",
-            "message": f"Successfully unallocated {alloc.allocated_qty} units from {alloc.source_doc_no}."
+            "total_unallocated_pos": len(preview_list),
+            "high_confidence_count": sum(1 for p in preview_list if p["match_confidence"] == "HIGH"),
+            "medium_confidence_count": sum(1 for p in preview_list if p["match_confidence"] == "MEDIUM"),
+            "unmatched_count": sum(1 for p in preview_list if p["match_confidence"] == "UNMATCHED"),
+            "available_projects": available_projects,
+            "documents": preview_list
         }
     except Exception as e:
+        logger.error(f"Error generating auto-match preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/bulk-allocate-approved")
+@router.post("/bulk-allocate-approved")
+def bulk_allocate_approved(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Executes the user-approved bulk allocations from the Smart Wizard.
+    Takes user project selections, order selections, and ETA overrides.
+    Allocates each unallocated PO and updates affected OrderItems in Cloud SQL.
+    """
+    try:
+        approved_allocations = payload.get("approved_allocations") or []
+        allocated_by = payload.get("allocated_by_name") or "Staff"
+
+        if not approved_allocations:
+            raise HTTPException(status_code=400, detail="No allocations were approved for execution.")
+
+        total_pos = 0
+        total_lines = 0
+        total_units = 0.0
+
+        for item in approved_allocations:
+            doc_no = str(item.get("document_no") or "").strip()
+            project_id = item.get("project_id")
+            order_id = item.get("order_id")
+            eta = item.get("eta")
+            notes = item.get("notes") or "Smart Wizard Bulk PO Allocation"
+
+            if not doc_no or not project_id:
+                continue
+
+            proj = db.query(Project).filter(Project.id == int(project_id)).first()
+            if not proj:
+                continue
+
+            resolved_order_id = None
+            if order_id and str(order_id).isdigit():
+                resolved_order_id = int(order_id)
+            else:
+                p_orders = db.query(Order).filter(Order.project_id == proj.id).all()
+                if p_orders:
+                    resolved_order_id = p_orders[0].id
+
+            proj_items = db.query(OrderItem).filter(
+                or_(
+                    OrderItem.order_id.ilike(f"{proj.project_key}%"),
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == proj.id).all()])
+                )
+            ).all()
+
+            active_allocs = db.query(ProcurementAllocation).filter(
+                ProcurementAllocation.status == "Active",
+                ProcurementAllocation.source_doc_no == doc_no,
+                ProcurementAllocation.allocation_type == "PO"
+            ).all()
+            alloc_map = {}
+            for a in active_allocs:
+                alloc_map[a.sku] = alloc_map.get(a.sku, 0.0) + float(a.allocated_qty or 0.0)
+
+            po_lines = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == doc_no).all()
+            po_allocated_count = 0
+
+            for r in po_lines:
+                allocated = alloc_map.get(r.item_code, 0.0)
+                target_qty = float(r.order_qty or 0.0)
+                rem_qty = max(0.0, target_qty - allocated)
+
+                if rem_qty <= 0:
+                    continue
+
+                matched_item = find_best_item_match(proj_items, r.item_code)
+
+                alloc = ProcurementAllocation(
+                    allocation_type="PO",
+                    source_doc_no=doc_no,
+                    sku=r.item_code,
+                    project_id=proj.id,
+                    project_name=proj.name,
+                    order_id=resolved_order_id,
+                    order_item_id=str(matched_item.id) if matched_item else None,
+                    fitting_code=matched_item.code if matched_item else r.item_code,
+                    allocated_qty=rem_qty,
+                    unit_cost=float(r.unit_cost or 0.0),
+                    vendor_name=r.vendor_name,
+                    doc_date=str(r.transaction_date).split("T")[0] if r.transaction_date else None,
+                    eta=str(eta).split("T")[0] if eta else (str(r.order_required_date).split("T")[0] if r.order_required_date else None),
+                    allocated_by_name=allocated_by,
+                    allocated_at=datetime.now(timezone.utc),
+                    status="Active",
+                    notes=notes
+                )
+                db.add(alloc)
+
+                if matched_item:
+                    matched_item.po_ref = doc_no
+                    matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(rem_qty)
+                    matched_item.unit_cost = float(r.unit_cost or 0.0)
+                    if r.vendor_name:
+                        matched_item.po_supplier = r.vendor_name
+                    if r.transaction_date:
+                        matched_item.po_date = str(r.transaction_date).split("T")[0]
+                    else:
+                        matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    if eta:
+                        matched_item.po_eta = str(eta).split("T")[0]
+                        matched_item.eta = str(eta).split("T")[0]
+                    elif r.order_required_date:
+                        matched_item.po_eta = str(r.order_required_date).split("T")[0]
+                        matched_item.eta = str(r.order_required_date).split("T")[0]
+
+                    p_hist = list(matched_item.purchase_history or [])
+                    p_hist.append({
+                        "id": doc_no,
+                        "ref": doc_no,
+                        "qty": rem_qty,
+                        "cost": float(r.unit_cost or 0.0),
+                        "supplier": r.vendor_name,
+                        "date": matched_item.po_date,
+                        "eta": matched_item.po_eta,
+                        "by": allocated_by
+                    })
+                    matched_item.purchase_history = p_hist
+
+                total_lines += 1
+                total_units += rem_qty
+                po_allocated_count += 1
+
+            if po_allocated_count > 0:
+                total_pos += 1
+
+        db.commit()
+        logger.info(f"Bulk allocated {total_pos} POs ({total_lines} lines, {total_units} units).")
+        return {
+            "status": "success",
+            "message": f"Successfully allocated {total_pos} purchase orders ({total_lines} lines, {total_units:.0f} units).",
+            "total_pos": total_pos,
+            "total_lines": total_lines,
+            "total_units": total_units
+        }
+    except HTTPException:
         db.rollback()
-        logger.error(f"Error unallocating item #{payload.get('allocation_id')}: {e}", exc_info=True)
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in bulk_allocate_approved: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

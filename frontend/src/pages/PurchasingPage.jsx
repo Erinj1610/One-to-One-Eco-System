@@ -74,6 +74,19 @@ export default function PurchasingPage() {
   const [batchNotes, setBatchNotes] = useState('');
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
+  // Smart Bulk PO Allocation Wizard State
+  const [isBulkWizardOpen, setIsBulkWizardOpen] = useState(false);
+  const [isLoadingWizard, setIsLoadingWizard] = useState(false);
+  const [wizardData, setWizardData] = useState([]);
+  const [wizardAvailableProjects, setWizardAvailableProjects] = useState([]);
+  const [wizardFilterTab, setWizardFilterTab] = useState('ALL'); // 'ALL' | 'READY' | 'REVIEW'
+  const [wizardSearchQuery, setWizardSearchQuery] = useState('');
+  const [wizardSelectedDocNos, setWizardSelectedDocNos] = useState(new Set());
+  const [wizardRowOverrides, setWizardRowOverrides] = useState({});
+  const [wizardExpandedDocNos, setWizardExpandedDocNos] = useState(new Set());
+  const [isSubmittingWizard, setIsSubmittingWizard] = useState(false);
+  const [wizardSubmitProgress, setWizardSubmitProgress] = useState(null);
+
   // Issue Flagging State
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [issueTargetItem, setIssueTargetItem] = useState(null);
@@ -257,10 +270,19 @@ export default function PurchasingPage() {
     setSelectedLineIds(newSet);
   };
 
+  const handleToggleSelectAll = () => {
+    if (!selectedDocument || !selectedDocument.lines) return;
+    if (selectedLineIds.size === selectedDocument.lines.length) {
+      setSelectedLineIds(new Set());
+    } else {
+      setSelectedLineIds(new Set(selectedDocument.lines.map(l => l.id)));
+    }
+  };
+
   const handleSelectAllUnallocated = () => {
     if (!selectedDocument || !selectedDocument.lines) return;
     const unallocated = selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
-    if (selectedLineIds.size === unallocated.length) {
+    if (selectedLineIds.size >= unallocated.length && unallocated.length > 0) {
       setSelectedLineIds(new Set()); // Deselect all
     } else {
       const newSet = new Set(unallocated.map(l => l.id));
@@ -274,7 +296,8 @@ export default function PurchasingPage() {
   const handleOpenAllocModal = async (item) => {
     setAllocTargetItem(item);
     setAllocQty(Math.max(1, Math.min(item.unallocated_qty || 1, item.total_qty || 1)));
-    setAllocEta('');
+    const defaultEta = (item?.order_required_date || selectedDocument?.order_required_date || '').split('T')[0];
+    setAllocEta(defaultEta);
     setAllocNotes('');
     setSelectedCandidateKey(null);
     setManualProjectId('');
@@ -444,7 +467,8 @@ export default function PurchasingPage() {
 
     setBatchProjectId(bestProjId || '');
     setBatchOrderId(bestOrderId ? String(bestOrderId) : '');
-    setBatchEta('');
+    const defaultEta = (selectedDocument?.order_required_date || '').split('T')[0];
+    setBatchEta(defaultEta);
     setBatchNotes('');
     setBatchModalOpen(true);
   };
@@ -539,6 +563,255 @@ export default function PurchasingPage() {
     }
   };
 
+  // Unallocate Entire Line (All allocations for a specific line item)
+  const handleUnallocateLine = async (line, docNo) => {
+    const allocIds = (line.allocations || []).map(a => a.id).filter(Boolean);
+    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+      return;
+    }
+    try {
+      const payload = allocIds.length > 0
+        ? { allocation_ids: allocIds }
+        : { document_no: docNo, skus: [line.item_code] };
+
+      const res = await fetch(`${API_BASE}/api/procurement/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Item unallocated.'}`);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        }
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate line.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocation: ${e.message}`);
+    }
+  };
+
+  // Bulk Unallocate Multiple Selected Lines
+  const handleBulkUnallocateSelected = async () => {
+    if (!selectedDocument || selectedLineIds.size === 0) return;
+
+    const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id));
+    const allocIdsToCancel = [];
+    const skusToCancel = [];
+
+    selectedLines.forEach(l => {
+      if (l.allocations && l.allocations.length > 0) {
+        l.allocations.forEach(a => {
+          if (a.id) allocIdsToCancel.push(a.id);
+        });
+      } else if (l.allocated_qty > 0) {
+        skusToCancel.push(l.item_code);
+      }
+    });
+
+    if (allocIdsToCancel.length === 0 && skusToCancel.length === 0) {
+      alert("None of the selected items have active allocations to release.");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+      return;
+    }
+
+    try {
+      const payload = allocIdsToCancel.length > 0
+        ? { allocation_ids: allocIdsToCancel }
+        : { document_no: selectedDocument.document_no, skus: skusToCancel };
+
+      const res = await fetch(`${API_BASE}/api/procurement/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Selected items unallocated.'}`);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate items.'}`);
+      }
+    } catch (e) {
+      alert(`Error releasing allocations: ${e.message}`);
+    }
+  };
+
+  // Bulk Unallocate Entire Document
+  const handleUnallocateEntireDocument = async (docNo) => {
+    if (!docNo) return;
+    if (!window.confirm(`Are you sure you want to unallocate ALL items from ${docNo}? Every item in this document will return to unallocated.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/batch-unallocate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_no: docNo })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${data.message || 'Entire document unallocated.'}`);
+        setSelectedLineIds(new Set());
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.doc_type, docNo);
+        }
+      } else {
+        alert(`Unallocate notice: ${data.detail || 'Could not unallocate document.'}`);
+      }
+    } catch (e) {
+      alert(`Error in bulk unallocation: ${e.message}`);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // SMART BULK PO ALLOCATION WIZARD HANDLERS
+  // -------------------------------------------------------------
+  const handleOpenBulkWizard = async () => {
+    setIsBulkWizardOpen(true);
+    setIsLoadingWizard(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/auto-match-preview`);
+      if (res.ok) {
+        const data = await res.json();
+        const docs = data.documents || [];
+        setWizardData(docs);
+        setWizardAvailableProjects(data.available_projects || []);
+
+        // Pre-select HIGH & MEDIUM confidence matches
+        const initialSelected = new Set();
+        const initialOverrides = {};
+
+        docs.forEach(d => {
+          if (d.match_confidence === 'HIGH' || d.match_confidence === 'MEDIUM') {
+            initialSelected.add(d.document_no);
+          }
+          initialOverrides[d.document_no] = {
+            project_id: d.detected_project_id ? String(d.detected_project_id) : '',
+            order_id: d.suggested_order_id ? String(d.suggested_order_id) : '',
+            eta: d.default_eta || ''
+          };
+        });
+
+        setWizardSelectedDocNos(initialSelected);
+        setWizardRowOverrides(initialOverrides);
+      } else {
+        alert("Failed to load auto-match preview from server.");
+      }
+    } catch (e) {
+      alert(`Error loading bulk wizard: ${e.message}`);
+    } finally {
+      setIsLoadingWizard(false);
+    }
+  };
+
+  const handleWizardRowChange = (docNo, field, val) => {
+    setWizardRowOverrides(prev => {
+      const cur = prev[docNo] || {};
+      const updated = { ...cur, [field]: val };
+
+      // If project changed, auto-select first order if available
+      if (field === 'project_id') {
+        const proj = wizardAvailableProjects.find(p => String(p.id) === String(val));
+        if (proj && proj.orders && proj.orders.length > 0) {
+          updated.order_id = String(proj.orders[0].id);
+        } else {
+          updated.order_id = '';
+        }
+      }
+
+      return { ...prev, [docNo]: updated };
+    });
+  };
+
+  const handleToggleWizardSelect = (docNo) => {
+    setWizardSelectedDocNos(prev => {
+      const next = new Set(prev);
+      if (next.has(docNo)) next.delete(docNo);
+      else next.add(docNo);
+      return next;
+    });
+  };
+
+  const handleExecuteBulkWizard = async () => {
+    if (wizardSelectedDocNos.size === 0) {
+      alert("Please select at least one PO to allocate.");
+      return;
+    }
+
+    const selectedDocs = wizardData.filter(d => wizardSelectedDocNos.has(d.document_no));
+
+    // Check if any selected PO is missing a project
+    const missingProject = selectedDocs.find(d => {
+      const row = wizardRowOverrides[d.document_no] || {};
+      return !row.project_id && !d.detected_project_id;
+    });
+
+    if (missingProject) {
+      alert(`PO ${missingProject.document_no} does not have a destination Project assigned. Please select a project or uncheck it.`);
+      return;
+    }
+
+    if (!window.confirm(`Allocate ${selectedDocs.length} Purchase Orders to their selected projects and update ETAs?`)) {
+      return;
+    }
+
+    setIsSubmittingWizard(true);
+    setWizardSubmitProgress(`Allocating ${selectedDocs.length} purchase orders...`);
+
+    try {
+      const approvedPayload = selectedDocs.map(d => {
+        const override = wizardRowOverrides[d.document_no] || {};
+        return {
+          document_no: d.document_no,
+          project_id: override.project_id || d.detected_project_id,
+          order_id: override.order_id || d.suggested_order_id || null,
+          eta: override.eta || d.default_eta || null,
+          notes: "Smart Wizard Bulk PO Allocation"
+        };
+      });
+
+      const res = await fetch(`${API_BASE}/api/procurement/bulk-allocate-approved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approved_allocations: approvedPayload,
+          allocated_by_name: 'Staff'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Successfully allocated POs!'}`);
+        setIsBulkWizardOpen(false);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
+        if (selectedDocument) {
+          fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        }
+      } else {
+        alert(`Bulk allocation notice: ${data.detail || 'Failed to complete allocations.'}`);
+      }
+    } catch (e) {
+      alert(`Error executing bulk allocation: ${e.message}`);
+    } finally {
+      setIsSubmittingWizard(false);
+      setWizardSubmitProgress(null);
+    }
+  };
+
   const handleOpenIssueModal = (docOrLine) => {
     setIssueTargetItem(docOrLine);
     setIssueReason(docOrLine.issue_reason || 'Order Not Found');
@@ -616,6 +889,11 @@ export default function PurchasingPage() {
     return selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
   }, [selectedDocument]);
 
+  const allocatedLinesInDoc = useMemo(() => {
+    if (!selectedDocument || !selectedDocument.lines) return [];
+    return selectedDocument.lines.filter(l => (l.allocated_qty || 0) > 0);
+  }, [selectedDocument]);
+
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>
       
@@ -678,6 +956,30 @@ export default function PurchasingPage() {
               style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
             >
               <ArrowLeft size={14} /> Back to All Documents
+            </button>
+          )}
+
+          {!selectedDocument && (
+            <button
+              onClick={handleOpenBulkWizard}
+              className="btn btn-sm"
+              title="Auto-match and bulk allocate unallocated POs to projects with review"
+              style={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: '#fff',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                height: '32px',
+                fontWeight: 700,
+                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
+                padding: '0 12px',
+                borderRadius: '8px'
+              }}
+            >
+              <Sparkles size={14} /> Smart Bulk Allocate POs
             </button>
           )}
 
@@ -878,62 +1180,120 @@ export default function PurchasingPage() {
                     transition: 'width 0.3s ease'
                   }} />
                 </div>
+                {selectedDocument.allocated_lines_count > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <button
+                      onClick={() => handleUnallocateEntireDocument(selectedDocument.document_no)}
+                      className="btn btn-xs"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        padding: '3px 9px',
+                        fontSize: '10.5px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Release all allocations in this document back to unallocated pool"
+                    >
+                      <Trash2 size={11} /> Unallocate Entire Document
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* BATCH ALLOCATION ACTION BAR (When items are selected) */}
-          {selectedLineIds.size > 0 && (
-            <div style={{ 
-              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
-              border: '1.5px solid #3b82f6', 
-              borderRadius: '10px', 
-              padding: '12px 18px', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
-              color: '#fff'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
-                  {selectedLineIds.size} items selected
-                </span>
-                <span style={{ fontSize: '12.5px', color: '#cbd5e1' }}>
-                  Allocate all selected items to the same project order in one click:
-                </span>
-              </div>
+          {/* BATCH ALLOCATION & UNALLOCATION ACTION BAR (When items are selected) */}
+          {selectedLineIds.size > 0 && (() => {
+            const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.id));
+            const unallocCount = selectedLines.filter(l => (l.unallocated_qty || 0) > 0).length;
+            const allocCount = selectedLines.filter(l => (l.allocated_qty || 0) > 0).length;
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  onClick={() => setSelectedLineIds(new Set())}
-                  className="btn btn-xs btn-ghost"
-                  style={{ color: '#94a3b8', fontSize: '11.5px' }}
-                >
-                  Clear Selection
-                </button>
-                <button
-                  onClick={handleOpenBatchModal}
-                  className="btn btn-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    fontSize: '12px',
-                    padding: '6px 14px',
-                    borderRadius: '8px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
-                  }}
-                >
-                  <Sparkles size={14} /> Allocate Selected to Project Order
-                </button>
+            return (
+              <div style={{ 
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
+                border: '1.5px solid #3b82f6', 
+                borderRadius: '10px', 
+                padding: '12px 18px', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+                color: '#fff',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                    {selectedLineIds.size} items selected
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                    {unallocCount > 0 && allocCount > 0 
+                      ? `${unallocCount} unallocated, ${allocCount} allocated items`
+                      : (unallocCount > 0 ? `${unallocCount} unallocated item(s) ready to assign` : `${allocCount} allocated item(s) ready to release`)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setSelectedLineIds(new Set())}
+                    className="btn btn-xs btn-ghost"
+                    style={{ color: '#94a3b8', fontSize: '11.5px' }}
+                  >
+                    Clear Selection
+                  </button>
+
+                  {allocCount > 0 && (
+                    <button
+                      onClick={handleBulkUnallocateSelected}
+                      className="btn btn-sm"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        color: '#fca5a5',
+                        border: '1px solid rgba(239, 68, 68, 0.5)',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      title="Unallocate all active allocations for the selected items"
+                    >
+                      <Trash2 size={13} /> Bulk Unallocate Selected ({allocCount})
+                    </button>
+                  )}
+
+                  {unallocCount > 0 && (
+                    <button
+                      onClick={handleOpenBatchModal}
+                      className="btn btn-sm"
+                      style={{
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
+                      }}
+                    >
+                      <Sparkles size={14} /> Allocate Selected ({unallocCount})
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Document Line Items Table */}
           <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -965,10 +1325,9 @@ export default function PurchasingPage() {
                     <th style={{ width: '40px', textAlign: 'center' }}>
                       <input 
                         type="checkbox" 
-                        checked={unallocatedLinesInDoc.length > 0 && selectedLineIds.size === unallocatedLinesInDoc.length}
-                        onChange={handleSelectAllUnallocated}
-                        disabled={unallocatedLinesInDoc.length === 0}
-                        title="Select/Deselect All Unallocated Items"
+                        checked={(selectedDocument.lines || []).length > 0 && selectedLineIds.size === (selectedDocument.lines || []).length}
+                        onChange={handleToggleSelectAll}
+                        title="Select/Deselect All Items"
                       />
                     </th>
                     <th style={{ width: '30px' }}></th>
@@ -1000,7 +1359,6 @@ export default function PurchasingPage() {
                             <input 
                               type="checkbox" 
                               checked={isSelected}
-                              disabled={!isUnallocated}
                               onChange={() => handleToggleSelectLine(line.id)}
                             />
                           </td>
@@ -1074,9 +1432,12 @@ export default function PurchasingPage() {
                                 padding: '2px 8px', 
                                 borderRadius: '12px', 
                                 fontSize: '10px', 
-                                fontWeight: 700 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
                               }}>
-                                ⏳ Partial ({line.allocated_qty}/{line.total_qty})
+                                <Clock size={10} /> Partial ({line.allocated_qty}/{line.total_qty})
                               </span>
                             )}
                             {line.allocation_status === 'FULLY_ALLOCATED' && (
@@ -1099,35 +1460,62 @@ export default function PurchasingPage() {
 
                           {/* Action Button */}
                           <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {line.unallocated_qty > 0 ? (
-                              <button
-                                onClick={() => handleOpenAllocModal(line)}
-                                className="btn btn-xs"
-                                style={{
-                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                                  color: '#fff',
-                                  border: 'none',
-                                  fontWeight: 700,
-                                  fontSize: '11px',
-                                  padding: '5px 12px',
-                                  borderRadius: '6px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
-                                }}
-                              >
-                                <Sparkles size={11} /> Allocate
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => setExpandedLineId(isExpanded ? null : line.id)}
-                                className="btn btn-xs btn-ghost"
-                                style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
-                              >
-                                View ({line.allocations?.length || 0})
-                              </button>
-                            )}
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                              {line.unallocated_qty > 0 && (
+                                <button
+                                  onClick={() => handleOpenAllocModal(line)}
+                                  className="btn btn-xs"
+                                  style={{
+                                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '11px',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                  }}
+                                >
+                                  <Sparkles size={11} /> Allocate
+                                </button>
+                              )}
+
+                              {line.allocated_qty > 0 && (
+                                <button
+                                  onClick={() => handleUnallocateLine(line, selectedDocument.document_no)}
+                                  className="btn btn-xs"
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    padding: '4px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title="Unallocate this line item"
+                                >
+                                  <Trash2 size={11} /> Unallocate
+                                </button>
+                              )}
+
+                              {hasAllocations && (
+                                <button
+                                  onClick={() => setExpandedLineId(isExpanded ? null : line.id)}
+                                  className="btn btn-xs btn-ghost"
+                                  style={{ fontSize: '11px', color: 'var(--text-secondary)', padding: '4px 6px' }}
+                                  title="Toggle allocation details"
+                                >
+                                  {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
 
@@ -2378,6 +2766,550 @@ export default function PurchasingPage() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ============================================================ */}
+      {/* SMART BULK PO ALLOCATION WIZARD MODAL (OPTION A)              */}
+      {/* ============================================================ */}
+      {isBulkWizardOpen && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px'
+        }}>
+          <div className="card" style={{
+            width: '96vw',
+            maxWidth: '1280px',
+            height: '92vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 0,
+            borderRadius: '14px',
+            overflow: 'hidden',
+            background: 'var(--bg-primary, #ffffff)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 24px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg-secondary)'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <span style={{ 
+                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', 
+                    color: '#fff', 
+                    padding: '4px 10px', 
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}>
+                    <Sparkles size={14} /> Smart Wizard
+                  </span>
+                  Bulk Purchase Order Auto-Allocation
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Pre-matches POs to projects using Palladium references and sets default ETAs. Review, cross-check, or edit any project assignment and delivery ETA before committing.
+                </p>
+              </div>
+
+              <button 
+                className="btn btn-ghost" 
+                style={{ padding: '6px' }} 
+                onClick={() => !isSubmittingWizard && setIsBulkWizardOpen(false)}
+                disabled={isSubmittingWizard}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Filter & Toolbar */}
+            <div style={{
+              padding: '12px 24px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg-primary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              {/* Filter Tabs */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setWizardFilterTab('ALL')}
+                  className="btn btn-xs"
+                  style={{
+                    borderRadius: '20px',
+                    padding: '5px 14px',
+                    fontWeight: wizardFilterTab === 'ALL' ? 700 : 500,
+                    background: wizardFilterTab === 'ALL' ? 'var(--text-primary)' : 'var(--bg-secondary)',
+                    color: wizardFilterTab === 'ALL' ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                    border: '1px solid var(--border)'
+                  }}
+                >
+                  All Unallocated ({wizardData.length})
+                </button>
+
+                <button
+                  onClick={() => setWizardFilterTab('READY')}
+                  className="btn btn-xs"
+                  style={{
+                    borderRadius: '20px',
+                    padding: '5px 14px',
+                    fontWeight: wizardFilterTab === 'READY' ? 700 : 500,
+                    background: wizardFilterTab === 'READY' ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-secondary)',
+                    color: wizardFilterTab === 'READY' ? '#10b981' : 'var(--text-secondary)',
+                    border: wizardFilterTab === 'READY' ? '1px solid #10b981' : '1px solid var(--border)'
+                  }}
+                >
+                  Auto-Matched Ready ({wizardData.filter(d => d.match_confidence === 'HIGH' || d.match_confidence === 'MEDIUM').length})
+                </button>
+
+                <button
+                  onClick={() => setWizardFilterTab('REVIEW')}
+                  className="btn btn-xs"
+                  style={{
+                    borderRadius: '20px',
+                    padding: '5px 14px',
+                    fontWeight: wizardFilterTab === 'REVIEW' ? 700 : 500,
+                    background: wizardFilterTab === 'REVIEW' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                    color: wizardFilterTab === 'REVIEW' ? '#f59e0b' : 'var(--text-secondary)',
+                    border: wizardFilterTab === 'REVIEW' ? '1px solid #f59e0b' : '1px solid var(--border)'
+                  }}
+                >
+                  Needs Project Review ({wizardData.filter(d => d.match_confidence === 'UNMATCHED').length})
+                </button>
+              </div>
+
+              {/* Search & Bulk Selection Controls */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '260px' }}>
+                  <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-secondary)' }} />
+                  <input
+                    type="text"
+                    value={wizardSearchQuery}
+                    onChange={(e) => setWizardSearchQuery(e.target.value)}
+                    placeholder="Search PO #, supplier, ref..."
+                    className="input"
+                    style={{ paddingLeft: '30px', height: '32px', fontSize: '12px', width: '100%', borderRadius: '8px' }}
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    const filtered = wizardData.filter(d => {
+                      if (wizardFilterTab === 'READY' && d.match_confidence !== 'HIGH' && d.match_confidence !== 'MEDIUM') return false;
+                      if (wizardFilterTab === 'REVIEW' && d.match_confidence !== 'UNMATCHED') return false;
+                      if (wizardSearchQuery.trim()) {
+                        const q = wizardSearchQuery.toLowerCase();
+                        const docNo = (d.document_no || '').toLowerCase();
+                        const sup = (d.vendor_name || '').toLowerCase();
+                        const ref = (d.po_reference || '').toLowerCase();
+                        const proj = (d.detected_project_name || '').toLowerCase();
+                        if (!docNo.includes(q) && !sup.includes(q) && !ref.includes(q) && !proj.includes(q)) return false;
+                      }
+                      return true;
+                    });
+                    const next = new Set(wizardSelectedDocNos);
+                    filtered.forEach(d => next.add(d.document_no));
+                    setWizardSelectedDocNos(next);
+                  }}
+                  className="btn btn-xs"
+                  style={{ height: '32px', padding: '0 10px', fontSize: '11px', border: '1px solid var(--border)' }}
+                >
+                  Select All Filtered
+                </button>
+
+                <button
+                  onClick={() => {
+                    const filtered = wizardData.filter(d => {
+                      if (wizardFilterTab === 'READY' && d.match_confidence !== 'HIGH' && d.match_confidence !== 'MEDIUM') return false;
+                      if (wizardFilterTab === 'REVIEW' && d.match_confidence !== 'UNMATCHED') return false;
+                      if (wizardSearchQuery.trim()) {
+                        const q = wizardSearchQuery.toLowerCase();
+                        const docNo = (d.document_no || '').toLowerCase();
+                        const sup = (d.vendor_name || '').toLowerCase();
+                        const ref = (d.po_reference || '').toLowerCase();
+                        const proj = (d.detected_project_name || '').toLowerCase();
+                        if (!docNo.includes(q) && !sup.includes(q) && !ref.includes(q) && !proj.includes(q)) return false;
+                      }
+                      return true;
+                    });
+                    const next = new Set(wizardSelectedDocNos);
+                    filtered.forEach(d => next.delete(d.document_no));
+                    setWizardSelectedDocNos(next);
+                  }}
+                  className="btn btn-xs btn-ghost"
+                  style={{ height: '32px', padding: '0 8px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+
+            {/* Main Table Area */}
+            <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
+              {isLoadingWizard ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '12px' }}>
+                  <RefreshCw size={24} className="animate-spin" color="#6366f1" />
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Scanning unallocated purchase orders and matching to projects...</span>
+                </div>
+              ) : (() => {
+                const filteredDocs = wizardData.filter(d => {
+                  if (wizardFilterTab === 'READY' && d.match_confidence !== 'HIGH' && d.match_confidence !== 'MEDIUM') return false;
+                  if (wizardFilterTab === 'REVIEW' && d.match_confidence !== 'UNMATCHED') return false;
+                  if (wizardSearchQuery.trim()) {
+                    const q = wizardSearchQuery.toLowerCase();
+                    const docNo = (d.document_no || '').toLowerCase();
+                    const sup = (d.vendor_name || '').toLowerCase();
+                    const ref = (d.po_reference || '').toLowerCase();
+                    const proj = (d.detected_project_name || '').toLowerCase();
+                    if (!docNo.includes(q) && !sup.includes(q) && !ref.includes(q) && !proj.includes(q)) return false;
+                  }
+                  return true;
+                });
+
+                if (filteredDocs.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
+                      <CheckCircle2 size={32} color="#10b981" style={{ marginBottom: '10px' }} />
+                      <div style={{ fontSize: '14px', fontWeight: 600 }}>No purchase orders match this filter.</div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <table className="table" style={{ width: '100%', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center', padding: '10px 4px' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredDocs.length > 0 && filteredDocs.every(d => wizardSelectedDocNos.has(d.document_no))}
+                            onChange={() => {
+                              const allSelected = filteredDocs.every(d => wizardSelectedDocNos.has(d.document_no));
+                              const next = new Set(wizardSelectedDocNos);
+                              filteredDocs.forEach(d => {
+                                if (allSelected) next.delete(d.document_no);
+                                else next.add(d.document_no);
+                              });
+                              setWizardSelectedDocNos(next);
+                            }}
+                            title="Select/Deselect All Filtered"
+                          />
+                        </th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>PO Document</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px' }}>Supplier</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>PO Reference (Palladium)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, minWidth: '220px' }}>Destination Project</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '160px' }}>Destination Order</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, width: '140px' }}>Delivery ETA</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, width: '130px' }}>Match Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDocs.map((d) => {
+                        const isSelected = wizardSelectedDocNos.has(d.document_no);
+                        const isExpanded = wizardExpandedDocNos.has(d.document_no);
+                        const override = wizardRowOverrides[d.document_no] || {};
+                        const activeProjId = override.project_id !== undefined ? override.project_id : (d.detected_project_id ? String(d.detected_project_id) : '');
+                        const activeOrderId = override.order_id !== undefined ? override.order_id : (d.suggested_order_id ? String(d.suggested_order_id) : '');
+                        const activeEta = override.eta !== undefined ? override.eta : (d.default_eta || '');
+
+                        const selectedProj = wizardAvailableProjects.find(p => String(p.id) === String(activeProjId));
+                        const projectOrders = selectedProj?.orders || [];
+
+                        return (
+                          <React.Fragment key={d.document_no}>
+                            <tr style={{
+                              borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
+                              background: isSelected ? 'rgba(99, 102, 241, 0.05)' : (isExpanded ? 'rgba(99, 102, 241, 0.02)' : 'transparent'),
+                              transition: 'background 0.15s ease'
+                            }}>
+                              {/* Checkbox */}
+                              <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleWizardSelect(d.document_no)}
+                                />
+                              </td>
+
+                              {/* PO Document & Date */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <div style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                  {d.document_no}
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  {d.transaction_date || '—'}
+                                </div>
+                              </td>
+
+                              {/* Supplier & Value */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
+                                  {d.vendor_name}
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  R {d.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                                </div>
+                              </td>
+
+                              {/* PO Reference */}
+                              <td style={{ padding: '8px 12px' }}>
+                                {d.po_reference ? (
+                                  <div style={{
+                                    background: 'rgba(99, 102, 241, 0.08)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    borderRadius: '6px',
+                                    padding: '4px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    lineHeight: 1.3
+                                  }} title={d.po_reference}>
+                                    {d.po_reference}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', fontSize: '11px' }}>None</span>
+                                )}
+                              </td>
+
+                              {/* Destination Project Dropdown */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <select
+                                  value={activeProjId}
+                                  onChange={(e) => handleWizardRowChange(d.document_no, 'project_id', e.target.value)}
+                                  className="select"
+                                  style={{
+                                    width: '100%',
+                                    fontSize: '11.5px',
+                                    height: '32px',
+                                    borderRadius: '6px',
+                                    border: activeProjId ? (d.match_confidence === 'HIGH' ? '1px solid #10b981' : '1px solid #3b82f6') : '1.5px solid #f59e0b',
+                                    background: activeProjId ? 'transparent' : 'rgba(245, 158, 11, 0.08)',
+                                    fontWeight: activeProjId ? 600 : 400
+                                  }}
+                                >
+                                  <option value="">-- Select Destination Project --</option>
+                                  {wizardAvailableProjects.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name} {p.project_key ? `(${p.project_key})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+
+                              {/* Destination Order Dropdown */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <select
+                                  value={activeOrderId}
+                                  onChange={(e) => handleWizardRowChange(d.document_no, 'order_id', e.target.value)}
+                                  className="select"
+                                  disabled={!activeProjId || projectOrders.length === 0}
+                                  style={{
+                                    width: '100%',
+                                    fontSize: '11.5px',
+                                    height: '32px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)'
+                                  }}
+                                >
+                                  {projectOrders.length === 0 ? (
+                                    <option value="">{activeProjId ? 'Primary Project Order' : 'Select project first'}</option>
+                                  ) : (
+                                    projectOrders.map(o => (
+                                      <option key={o.id} value={o.id}>
+                                        {o.title || o.po_number || `Order #${o.id}`}
+                                      </option>
+                                    ))
+                                  )}
+                                </select>
+                              </td>
+
+                              {/* Delivery ETA Input */}
+                              <td style={{ padding: '8px 12px' }}>
+                                <input
+                                  type="date"
+                                  value={activeEta}
+                                  onChange={(e) => handleWizardRowChange(d.document_no, 'eta', e.target.value)}
+                                  className="input"
+                                  style={{
+                                    fontSize: '11.5px',
+                                    height: '32px',
+                                    borderRadius: '6px',
+                                    padding: '0 8px',
+                                    width: '135px',
+                                    border: '1px solid var(--border)'
+                                  }}
+                                  title="Delivery ETA (defaults to Palladium Date Required)"
+                                />
+                              </td>
+
+                              {/* Match Status & Items Toggle */}
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    padding: '2px 7px',
+                                    borderRadius: '10px',
+                                    background: d.match_confidence === 'HIGH' ? 'rgba(16, 185, 129, 0.15)' : (d.match_confidence === 'MEDIUM' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)'),
+                                    color: d.match_confidence === 'HIGH' ? '#10b981' : (d.match_confidence === 'MEDIUM' ? '#3b82f6' : '#f59e0b'),
+                                    border: `1px solid ${d.match_confidence === 'HIGH' ? 'rgba(16, 185, 129, 0.3)' : (d.match_confidence === 'MEDIUM' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {d.match_confidence === 'HIGH' ? '✓ Ready' : (d.match_confidence === 'MEDIUM' ? '⚡ Med' : '⚠ Review')}
+                                  </span>
+
+                                  <button
+                                    onClick={() => {
+                                      const next = new Set(wizardExpandedDocNos);
+                                      if (next.has(d.document_no)) next.delete(d.document_no);
+                                      else next.add(d.document_no);
+                                      setWizardExpandedDocNos(next);
+                                    }}
+                                    className="btn btn-ghost"
+                                    style={{ padding: '3px 5px', fontSize: '10.5px', color: 'var(--text-secondary)' }}
+                                    title="Toggle line items"
+                                  >
+                                    {d.lines?.length || 0} items {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Sub-row with Line Items Preview */}
+                            {isExpanded && (
+                              <tr style={{ background: 'rgba(99, 102, 241, 0.03)', borderBottom: '1px solid var(--border)' }}>
+                                <td colSpan={8} style={{ padding: '8px 20px 12px 48px' }}>
+                                  <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '8px 12px', border: '1px solid var(--border)' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                      Line Items in {d.document_no} ({d.lines?.length || 0} items, {d.unallocated_lines_count} unallocated):
+                                    </div>
+                                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                                      <thead>
+                                        <tr style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                                          <th style={{ padding: '4px 8px' }}>Item Code</th>
+                                          <th style={{ padding: '4px 8px' }}>Description</th>
+                                          <th style={{ padding: '4px 8px', textAlign: 'center' }}>Unallocated Qty</th>
+                                          <th style={{ padding: '4px 8px', textAlign: 'right' }}>Unit Cost</th>
+                                          <th style={{ padding: '4px 8px', textAlign: 'right' }}>Line Total</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(d.lines || []).map((l, lIdx) => (
+                                          <tr key={lIdx} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                                            <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{l.item_code}</td>
+                                            <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>{l.item_description}</td>
+                                            <td style={{ padding: '4px 8px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>R {l.unit_cost?.toFixed(2)}</td>
+                                            <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>R {l.total_value?.toFixed(2)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '14px 24px',
+              borderTop: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ 
+                  background: 'var(--text-primary)', 
+                  color: 'var(--bg-primary)', 
+                  fontWeight: 800, 
+                  padding: '4px 10px', 
+                  borderRadius: '12px', 
+                  fontSize: '12px' 
+                }}>
+                  {wizardSelectedDocNos.size} POs selected
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {isSubmittingWizard ? wizardSubmitProgress : 'Cross-check detected projects and ETAs above, then approve to allocate.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  onClick={() => setIsBulkWizardOpen(false)}
+                  disabled={isSubmittingWizard}
+                  className="btn btn-sm btn-ghost"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={handleExecuteBulkWizard}
+                  disabled={isSubmittingWizard || wizardSelectedDocNos.size === 0}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    padding: '7px 18px',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+                    cursor: (isSubmittingWizard || wizardSelectedDocNos.size === 0) ? 'not-allowed' : 'pointer',
+                    opacity: (isSubmittingWizard || wizardSelectedDocNos.size === 0) ? 0.6 : 1
+                  }}
+                >
+                  {isSubmittingWizard ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Allocating...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={15} /> Approve & Bulk Allocate ({wizardSelectedDocNos.size} POs)
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>,
         document.body

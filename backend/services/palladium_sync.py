@@ -359,6 +359,11 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
         )
         p_cursor = p_conn.cursor(as_dict=True)
 
+        # 1. Fetch references from PO header table instantly (0.05s)
+        p_cursor.execute("SELECT strOrdPDocID, strReference FROM tblOrderDocP")
+        ref_map = {str(r.get("strOrdPDocID") or "").strip(): str(r.get("strReference") or "").strip() for r in p_cursor.fetchall()}
+
+        # 2. Fetch PO line records from biPurchaseOrders view (0.1s)
         p_cursor.execute("""
             SELECT 
                 [Document #] AS document_no,
@@ -413,6 +418,7 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
                 exchange_rate=float(r.get("exchange_rate") or 1.0),
                 transaction_date=r.get("transaction_date"),
                 order_required_date=r.get("order_required_date"),
+                reference=ref_map.get(doc_no) or None,
                 status=str(r.get("status") or "Open").strip(),
                 customer_name=str(r.get("customer_name") or "").strip() or None,
                 copied_from_document=str(r.get("copied_from_document") or "").strip() or None,
