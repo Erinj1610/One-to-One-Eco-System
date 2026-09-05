@@ -106,6 +106,12 @@ export default function TakeoffSpecEngine({
   // Specification Section Sub-Tab ('fixtures' | 'leds' | 'tracks')
   const [specSubTab, setSpecSubTab] = useState('fixtures');
 
+  // Summary & Cross-Tabulation Matrix Sub-Tab ('fixtures' | 'leds' | 'tracks' | 'all')
+  const [summarySubTab, setSummarySubTab] = useState('fixtures');
+  const [matrixSearch, setMatrixSearch] = useState('');
+  const [matrixFloorFilter, setMatrixFloorFilter] = useState('All');
+  const [hideEmptyRooms, setHideEmptyRooms] = useState(false);
+
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [catalogTargetTag, setCatalogTargetTag] = useState(null);
@@ -205,7 +211,7 @@ export default function TakeoffSpecEngine({
       let inferredType = item.itemType || 'fixture';
       if (inferredType === 'fixture') {
         const u = item.tag.toUpperCase();
-        if (u.startsWith('L-') || u.startsWith('LED') || item.unit === 'm' || item.totalMeters > 0) {
+        if (u.startsWith('L-') || u.startsWith('LED') || u.startsWith('LF_') || u.startsWith('LF-') || u.startsWith('LIN') || item.unit === 'm' || item.totalMeters > 0) {
           inferredType = 'linear_led';
         } else if (u.startsWith('TRK') || u.startsWith('TRACK')) {
           inferredType = 'track_system';
@@ -1578,35 +1584,137 @@ export default function TakeoffSpecEngine({
     }
   };
 
-  // Export Matrix to CSV
-  const handleExportMatrixCSV = () => {
-    if (matrixData.length === 0 || uniqueTags.length === 0) return;
-    const headers = ['Floor', 'Room / Area', ...uniqueTags.map(ut => ut.tag), 'Total'];
-    const csvRows = [headers.join(',')];
-
-    matrixData.forEach(row => {
-      let rSum = 0;
-      const cells = [
-        `"${row.floor}"`,
-        `"${row.area}"`,
-        ...uniqueTags.map(ut => {
-          const q = row.tags[ut.tag] || 0;
-          rSum += q;
-          return q;
-        }),
-        rSum
-      ];
-      csvRows.push(cells.join(','));
+  // Cross-tabulation Matrix (Areas vs Tags)
+  const matrixData = useMemo(() => {
+    const areasMap = new Map();
+    countUpRows.forEach(r => {
+      const areaKey = `${r.floor || 'Ground'} — ${r.area || 'Unassigned'}`;
+      if (!areasMap.has(areaKey)) {
+        areasMap.set(areaKey, { floor: r.floor || 'Ground', area: r.area || 'Unassigned', tags: {} });
+      }
+      const node = areasMap.get(areaKey);
+      const t = (r.tag || '').toUpperCase();
+      const val = Number(r.lengthMeters) || Number(r.qty) || 0;
+      node.tags[t] = Math.round(((node.tags[t] || 0) + val) * 100) / 100;
     });
+    return Array.from(areasMap.values());
+  }, [countUpRows]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvRows.join('\n'));
-    const link = document.createElement('a');
-    link.setAttribute('href', csvContent);
-    link.setAttribute('download', `Takeoff_Matrix_${orderId || 'Export'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  // Category-specific stats for Summary Sub-Tabs (Fixtures, LEDs, Tracks, All)
+  const categoryStats = useMemo(() => {
+    const calcCategory = (tagList, type) => {
+      const tagSet = new Set(tagList.map(ut => ut.tag.toUpperCase()));
+      let totalQtyOrMeters = 0;
+      let cost = 0;
+      let retail = 0;
+      const matchingAreas = new Set();
+
+      countUpRows.forEach(row => {
+        const tag = (row.tag || '').trim().toUpperCase();
+        if (!tagSet.has(tag)) return;
+
+        const spec = specifications[tag];
+        const qty = Number(row.qty) || 0;
+        const itemType = spec?.itemType || row.itemType || (type === 'leds' ? 'linear_led' : type === 'tracks' ? 'track_system' : 'fixture');
+        const areaKey = `${row.floor || 'Ground'} — ${row.area || 'Unassigned'}`;
+        matchingAreas.add(areaKey);
+
+        if (spec && itemType === 'linear_led') {
+          const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+          const profMeters = spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen;
+          const stripMeters = spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen;
+          const drvQty = spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1;
+
+          const profCost = Number(spec.ledConfig?.profileCost !== undefined ? spec.ledConfig.profileCost : (spec.ledConfig?.profileProduct?.cost_price || 0));
+          const profRet = Number(spec.ledConfig?.profileRetail !== undefined ? spec.ledConfig.profileRetail : (spec.ledConfig?.profileProduct?.retail_price || 0));
+          const stripCost = Number(spec.ledConfig?.stripCost !== undefined ? spec.ledConfig.stripCost : (spec.ledConfig?.stripProduct?.cost_price || 0));
+          const stripRet = Number(spec.ledConfig?.stripRetail !== undefined ? spec.ledConfig.stripRetail : (spec.ledConfig?.stripProduct?.retail_price || 0));
+          const drvCost = Number(spec.ledConfig?.driverCost !== undefined ? spec.ledConfig.driverCost : (spec.ledConfig?.driverProduct?.cost_price || 0));
+          const drvRet = Number(spec.ledConfig?.driverRetail !== undefined ? spec.ledConfig.driverRetail : (spec.ledConfig?.driverProduct?.retail_price || 0));
+
+          cost += (profMeters * profCost) + (stripMeters * stripCost) + (drvQty * drvCost);
+          retail += (profMeters * profRet) + (stripMeters * stripRet) + (drvQty * drvRet);
+          totalQtyOrMeters += rowLen;
+        } else if (spec && itemType === 'track_system') {
+          const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+          const railMeters = spec.trackConfig?.railMeters !== undefined ? Number(spec.trackConfig.railMeters) : rowLen;
+          const drvQty = spec.trackConfig?.driverQty !== undefined ? Number(spec.trackConfig.driverQty) : 1;
+
+          const railCost = Number(spec.trackConfig?.railCost !== undefined ? spec.trackConfig.railCost : (spec.trackConfig?.railProduct?.cost_price || 0));
+          const railRet = Number(spec.trackConfig?.railRetail !== undefined ? spec.trackConfig.railRetail : (spec.trackConfig?.railProduct?.retail_price || 0));
+          const drvCost = Number(spec.trackConfig?.driverCost !== undefined ? spec.trackConfig.driverCost : (spec.trackConfig?.driverProduct?.cost_price || 0));
+          const drvRet = Number(spec.trackConfig?.driverRetail !== undefined ? spec.trackConfig.driverRetail : (spec.trackConfig?.driverProduct?.retail_price || 0));
+
+          let spotsCost = 0;
+          let spotsRet = 0;
+          if (Array.isArray(spec.trackConfig?.spots)) {
+            spec.trackConfig.spots.forEach(sp => {
+              spotsCost += (Number(sp.qty || 1) * Number(sp.cost_price || 0));
+              spotsRet += (Number(sp.qty || 1) * Number(sp.retail_price || 0));
+            });
+          }
+
+          cost += (railMeters * railCost) + spotsCost + (drvQty * drvCost);
+          retail += (railMeters * railRet) + spotsRet + (drvQty * drvRet);
+          totalQtyOrMeters += rowLen;
+        } else if (spec && spec.product) {
+          const c = spec.customCost !== undefined ? Number(spec.customCost) : Number(spec.product.cost_price || 0);
+          const r = spec.customRetail !== undefined ? Number(spec.customRetail) : Number(spec.product.retail_price || 0);
+          cost += (qty * c);
+          retail += (qty * r);
+          totalQtyOrMeters += qty;
+        } else {
+          totalQtyOrMeters += (type === 'fixtures' ? qty : (Number(row.lengthMeters) || (row.unit === 'm' ? qty : qty)));
+        }
+
+        if (spec && Array.isArray(spec.accessories)) {
+          spec.accessories.forEach(acc => {
+            const accUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+            const mult = itemType === 'fixture' ? qty : 1;
+            const accQty = mult * accUnits;
+            const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+            const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+            cost += (accQty * acCost);
+            retail += (accQty * acRet);
+          });
+        }
+      });
+
+      const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+      return {
+        totalQtyOrMeters: Math.round(totalQtyOrMeters * 100) / 100,
+        areasCount: matchingAreas.size,
+        tagsCount: tagList.length,
+        cost,
+        retail,
+        margin
+      };
+    };
+
+    return {
+      fixtures: calcCategory(pointFixtureTags, 'fixtures'),
+      leds: calcCategory(linearLedTags, 'leds'),
+      tracks: calcCategory(trackSystemTags, 'tracks'),
+      all: {
+        totalQtyOrMeters: stats.totalQty,
+        areasCount: matrixData.length,
+        tagsCount: uniqueTags.length,
+        cost: stats.estimatedCost,
+        retail: stats.estimatedRetail,
+        margin: stats.estimatedMargin
+      }
+    };
+  }, [pointFixtureTags, linearLedTags, trackSystemTags, uniqueTags, countUpRows, specifications, stats, matrixData]);
+
+  // Active matrix tags based on summarySubTab
+  const activeMatrixTags = useMemo(() => {
+    if (summarySubTab === 'fixtures') return pointFixtureTags;
+    if (summarySubTab === 'leds') return linearLedTags;
+    if (summarySubTab === 'tracks') return trackSystemTags;
+    return uniqueTags;
+  }, [summarySubTab, pointFixtureTags, linearLedTags, trackSystemTags, uniqueTags]);
 
   // Filtered Count-Up rows
   const filteredCountUpRows = useMemo(() => {
@@ -1624,20 +1732,74 @@ export default function TakeoffSpecEngine({
     });
   }, [countUpRows, floorFilter, countUpSearch]);
 
-  // Cross-tabulation Matrix (Areas vs Tags)
-  const matrixData = useMemo(() => {
-    const areasMap = new Map();
-    countUpRows.forEach(r => {
-      const areaKey = `${r.floor || 'Ground'} — ${r.area || 'Unassigned'}`;
-      if (!areasMap.has(areaKey)) {
-        areasMap.set(areaKey, { floor: r.floor || 'Ground', area: r.area || 'Unassigned', tags: {} });
+  // Filtered Matrix rows for active filters, search, and hide empty rooms
+  const filteredMatrixData = useMemo(() => {
+    return matrixData.filter(row => {
+      if (matrixFloorFilter !== 'All' && row.floor !== matrixFloorFilter) return false;
+      if (matrixSearch.trim()) {
+        const q = matrixSearch.toLowerCase();
+        const matchesArea = (row.area || '').toLowerCase().includes(q);
+        const matchesFloor = (row.floor || '').toLowerCase().includes(q);
+        if (!matchesArea && !matchesFloor) return false;
       }
-      const node = areasMap.get(areaKey);
-      const t = (r.tag || '').toUpperCase();
-      node.tags[t] = (node.tags[t] || 0) + (Number(r.qty) || 0);
+      if (hideEmptyRooms) {
+        let rSum = 0;
+        activeMatrixTags.forEach(ut => {
+          rSum += (row.tags[ut.tag] || 0);
+        });
+        if (rSum <= 0) return false;
+      }
+      return true;
     });
-    return Array.from(areasMap.values());
-  }, [countUpRows]);
+  }, [matrixData, matrixFloorFilter, matrixSearch, hideEmptyRooms, activeMatrixTags]);
+
+  // Export Matrix to CSV (Category-aware)
+  const handleExportMatrixCSV = (targetSubTab = summarySubTab) => {
+    let exportTags = activeMatrixTags;
+    let categoryName = 'All_Tags';
+    let unitLabel = 'Total';
+
+    if (targetSubTab === 'fixtures') {
+      exportTags = pointFixtureTags;
+      categoryName = 'Point_Fixtures';
+      unitLabel = 'Total (pcs)';
+    } else if (targetSubTab === 'leds') {
+      exportTags = linearLedTags;
+      categoryName = 'Linear_LED';
+      unitLabel = 'Total (m)';
+    } else if (targetSubTab === 'tracks') {
+      exportTags = trackSystemTags;
+      categoryName = 'Track_Systems';
+      unitLabel = 'Total (m)';
+    }
+
+    if (matrixData.length === 0 || exportTags.length === 0) return;
+    const headers = ['Floor', 'Room / Area', ...exportTags.map(ut => ut.tag), unitLabel];
+    const csvRows = [headers.join(',')];
+
+    filteredMatrixData.forEach(row => {
+      let rSum = 0;
+      const cells = [
+        `"${row.floor}"`,
+        `"${row.area}"`,
+        ...exportTags.map(ut => {
+          const q = row.tags[ut.tag] || 0;
+          rSum += q;
+          return q > 0 ? q : 0;
+        }),
+        Math.round(rSum * 100) / 100
+      ];
+      csvRows.push(cells.join(','));
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvRows.join('\n'));
+    const link = document.createElement('a');
+    link.setAttribute('href', csvContent);
+    link.setAttribute('download', `Takeoff_Matrix_${categoryName}_${orderId || 'Export'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -4260,77 +4422,214 @@ export default function TakeoffSpecEngine({
       {activeTab === 'summary' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
-          {/* FINANCIAL PREVIEW CARDS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures Counted</span>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-                {stats.totalQty}
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Across {matrixData.length} areas</span>
+          {/* TAB 3 SUB-TABS: POINT FIXTURES / LINEAR LED / TRACK SYSTEMS / ALL */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            flexWrap: 'wrap', 
+            gap: '10px',
+            borderBottom: '1px solid var(--border)', 
+            paddingBottom: '10px' 
+          }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                className={`btn btn-sm ${summarySubTab === 'fixtures' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSummarySubTab('fixtures')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: summarySubTab === 'fixtures' ? 700 : 500 }}
+              >
+                💡 Point Fixtures ({pointFixtureTags.length})
+              </button>
+              <button
+                className={`btn btn-sm ${summarySubTab === 'leds' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSummarySubTab('leds')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: summarySubTab === 'leds' ? 700 : 500 }}
+              >
+                〰️ Linear LED ({linearLedTags.length})
+              </button>
+              <button
+                className={`btn btn-sm ${summarySubTab === 'tracks' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSummarySubTab('tracks')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: summarySubTab === 'tracks' ? 700 : 500 }}
+              >
+                🛤️ Track Systems ({trackSystemTags.length})
+              </button>
+              <button
+                className={`btn btn-sm ${summarySubTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSummarySubTab('all')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: summarySubTab === 'all' ? 700 : 500 }}
+              >
+                📋 All Plan Tags ({uniqueTags.length})
+              </button>
             </div>
 
-            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Cost Total (EX VAT)</span>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-                R {Math.round(stats.estimatedCost).toLocaleString()}
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Fixtures + Accessories</span>
-            </div>
-
-            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Retail Total (EX VAT)</span>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-info)', marginTop: '2px' }}>
-                R {Math.round(stats.estimatedRetail).toLocaleString()}
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Before volume discount</span>
-            </div>
-
-            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: `1px solid ${stats.estimatedMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)'}` }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Estimated Margin</span>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: stats.estimatedMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', marginTop: '2px' }}>
-                {stats.estimatedMargin}%
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Baseline target &gt;= 39%</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                className="btn btn-secondary btn-xs"
+                onClick={() => handleExportMatrixCSV(summarySubTab)}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}
+                title={`Export ${summarySubTab === 'fixtures' ? 'Point Fixtures' : summarySubTab === 'leds' ? 'Linear LED' : summarySubTab === 'tracks' ? 'Track Systems' : 'All Tags'} Matrix to CSV`}
+              >
+                <Download size={12} /> Export {summarySubTab === 'fixtures' ? 'Fixtures' : summarySubTab === 'leds' ? 'Linear LED' : summarySubTab === 'tracks' ? 'Track' : 'Matrix'} CSV
+              </button>
             </div>
           </div>
 
+          {/* FINANCIAL PREVIEW CARDS */}
+          {(() => {
+            const curStats = categoryStats[summarySubTab] || categoryStats.all;
+            const isFixtures = summarySubTab === 'fixtures';
+            const isLeds = summarySubTab === 'leds';
+            const isTracks = summarySubTab === 'tracks';
+
+            const qtyLabel = isFixtures ? 'Total Fixtures Counted' : isLeds ? 'Total Linear LED Run' : isTracks ? 'Total Track Run' : 'Total Items & Runs';
+            const qtyVal = isFixtures ? `${curStats.totalQtyOrMeters} pcs` : isLeds ? `${curStats.totalQtyOrMeters} m` : isTracks ? `${curStats.totalQtyOrMeters} m` : curStats.totalQtyOrMeters;
+            const subtitle = `${curStats.tagsCount} active tags across ${curStats.areasCount} areas`;
+
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>{qtyLabel}</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                    {qtyVal}
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{subtitle}</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Cost (EX VAT)</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                    R {Math.round(curStats.cost).toLocaleString()}
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                    {isFixtures ? 'Fittings + Accessories' : isLeds ? 'Profiles, Tape, Drivers, Acc' : isTracks ? 'Rails, Spots, Drivers, Acc' : 'All Components & Hardware'}
+                  </span>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Retail Total (EX VAT)</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-info)', marginTop: '2px' }}>
+                    R {Math.round(curStats.retail).toLocaleString()}
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Before volume discount</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: `1px solid ${curStats.margin < 39 ? 'var(--text-danger)' : 'var(--text-success)'}` }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Estimated Margin</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: curStats.margin < 39 ? 'var(--text-danger)' : 'var(--text-success)', marginTop: '2px' }}>
+                    {curStats.margin}%
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Baseline target &gt;= 39%</span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* MATRIX TOOLBAR */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Cross-Tabulation Matrix (Rooms vs Plan Tags)
-            </span>
-            <button 
-              className="btn btn-secondary btn-xs"
-              onClick={handleExportMatrixCSV}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              <Download size={12} /> Export Matrix CSV
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {summarySubTab === 'fixtures' && '💡 Point Fixtures Matrix (Rooms vs Fixture Tags)'}
+                {summarySubTab === 'leds' && '〰️ Linear LED Matrix (Rooms vs Run Lengths in Meters)'}
+                {summarySubTab === 'tracks' && '🛤️ Track Systems Matrix (Rooms vs Track Rail Meters)'}
+                {summarySubTab === 'all' && '📋 Master Cross-Tabulation Matrix (All Plan Tags)'}
+              </span>
+              <span className="badge b-info" style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 700 }}>
+                {activeMatrixTags.length} {summarySubTab === 'fixtures' ? 'Fixtures' : summarySubTab === 'leds' ? 'LEDs' : summarySubTab === 'tracks' ? 'Tracks' : 'Tags'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Search Area */}
+              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '3px 8px', width: '180px' }}>
+                <Search size={13} style={{ color: 'var(--text-secondary)', marginRight: '6px' }} />
+                <input 
+                  type="text" 
+                  placeholder="Filter rooms / areas..." 
+                  value={matrixSearch}
+                  onChange={e => setMatrixSearch(e.target.value)}
+                  style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', fontSize: '11.5px', color: 'var(--text-primary)' }}
+                />
+              </div>
+
+              {/* Floor Filter */}
+              {uniqueFloors.length > 1 && (
+                <select 
+                  className="select select-xs"
+                  value={matrixFloorFilter}
+                  onChange={e => setMatrixFloorFilter(e.target.value)}
+                  style={{ fontSize: '11.5px', padding: '2px 6px' }}
+                >
+                  <option value="All">All Floors</option>
+                  {uniqueFloors.map(fl => (
+                    <option key={fl} value={fl}>{fl}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Hide Empty Rooms Toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
+                <input 
+                  type="checkbox" 
+                  checked={hideEmptyRooms} 
+                  onChange={e => setHideEmptyRooms(e.target.checked)} 
+                  style={{ cursor: 'pointer' }}
+                />
+                Hide empty rooms
+              </label>
+            </div>
           </div>
 
           <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflowX: 'auto', background: 'var(--bg-primary)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                  <th style={{ padding: '8px 12px' }}>Floor & Room / Area</th>
-                  {uniqueTags.map(ut => (
-                    <th key={ut.tag} style={{ padding: '8px 12px', textAlign: 'center', width: '85px' }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-info)' }}>{ut.tag}</span>
-                    </th>
-                  ))}
-                  <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Room Total</th>
+                  <th style={{ padding: '10px 12px', minWidth: '180px' }}>Floor & Room / Area</th>
+                  {activeMatrixTags.map(ut => {
+                    const isFixture = (specifications[ut.tag]?.itemType || ut.itemType) === 'fixture';
+                    const isLed = (specifications[ut.tag]?.itemType || ut.itemType) === 'linear_led';
+                    const tagColor = isFixture ? 'var(--text-info)' : isLed ? '#8b5cf6' : '#f59e0b';
+                    return (
+                      <th key={ut.tag} style={{ padding: '8px 10px', textAlign: 'center', minWidth: '80px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: tagColor, fontSize: '12px' }}>
+                            {ut.tag}
+                          </span>
+                          <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600 }}>
+                            {isFixture ? 'pcs' : 'm'}
+                          </span>
+                        </div>
+                      </th>
+                    );
+                  })}
+                  <th style={{ padding: '10px 12px', textAlign: 'right', minWidth: '95px' }}>
+                    {summarySubTab === 'fixtures' ? 'Room Total (pcs)' : summarySubTab === 'leds' ? 'Room Total (m)' : summarySubTab === 'tracks' ? 'Room Total (m)' : 'Room Total'}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {matrixData.length === 0 ? (
+                {filteredMatrixData.length === 0 ? (
                   <tr>
-                    <td colSpan={uniqueTags.length + 2} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No count-up rows available to generate matrix.
+                    <td colSpan={activeMatrixTags.length + 2} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      {activeMatrixTags.length === 0 ? (
+                        <div>
+                          <div style={{ fontSize: '24px', marginBottom: '6px' }}>
+                            {summarySubTab === 'fixtures' ? '💡' : summarySubTab === 'leds' ? '〰️' : summarySubTab === 'tracks' ? '🛤️' : '📋'}
+                          </div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                            No {summarySubTab === 'fixtures' ? 'Point Fixtures' : summarySubTab === 'leds' ? 'Linear LED Runs' : summarySubTab === 'tracks' ? 'Track Systems' : 'Plan Tags'} in this Project
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
+                            Switch sub-tabs above or configure tags in Tab 2.
+                          </div>
+                        </div>
+                      ) : (
+                        'No matching rooms or areas found with current filters.'
+                      )}
                     </td>
                   </tr>
                 ) : (
-                  matrixData.map((row, idx) => {
+                  filteredMatrixData.map((row, idx) => {
                     let rowSum = 0;
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -4338,38 +4637,59 @@ export default function TakeoffSpecEngine({
                           <span style={{ color: 'var(--text-secondary)', fontSize: '11px', marginRight: '6px' }}>[{row.floor}]</span>
                           {row.area}
                         </td>
-                        {uniqueTags.map(ut => {
+                        {activeMatrixTags.map(ut => {
                           const q = row.tags[ut.tag] || 0;
                           rowSum += q;
+                          const isFixture = (specifications[ut.tag]?.itemType || ut.itemType) === 'fixture';
+                          const isLed = (specifications[ut.tag]?.itemType || ut.itemType) === 'linear_led';
+                          const displayVal = q > 0 ? (isFixture ? Math.round(q) : `${Math.round(q * 100) / 100}m`) : null;
                           return (
-                            <td key={ut.tag} style={{ padding: '8px 12px', textAlign: 'center' }}>
-                              {q > 0 ? (
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{q}</span>
+                            <td key={ut.tag} style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              {displayVal ? (
+                                <span style={{ 
+                                  fontWeight: 700, 
+                                  color: isFixture ? 'var(--text-primary)' : isLed ? '#7c3aed' : '#d97706' 
+                                }}>
+                                  {displayVal}
+                                </span>
                               ) : (
                                 <span style={{ color: 'var(--border)' }}>—</span>
                               )}
                             </td>
                           );
                         })}
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-info)' }}>
-                          {rowSum}
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: summarySubTab === 'fixtures' ? 'var(--text-info)' : summarySubTab === 'leds' ? '#7c3aed' : summarySubTab === 'tracks' ? '#d97706' : 'var(--text-info)' }}>
+                          {summarySubTab === 'fixtures' ? Math.round(rowSum) : `${Math.round(rowSum * 100) / 100}${summarySubTab === 'all' ? '' : 'm'}`}
                         </td>
                       </tr>
                     );
                   })
                 )}
               </tbody>
-              {matrixData.length > 0 && (
+              {filteredMatrixData.length > 0 && activeMatrixTags.length > 0 && (
                 <tfoot>
                   <tr style={{ background: 'var(--bg-secondary)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                     <td style={{ padding: '10px 12px' }}>Total by Tag</td>
-                    {uniqueTags.map(ut => (
-                      <td key={ut.tag} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-info)' }}>
-                        {ut.totalQty}
-                      </td>
-                    ))}
+                    {activeMatrixTags.map(ut => {
+                      const isFixture = (specifications[ut.tag]?.itemType || ut.itemType) === 'fixture';
+                      const isLed = (specifications[ut.tag]?.itemType || ut.itemType) === 'linear_led';
+                      const tagTotal = isFixture 
+                        ? Math.round(ut.totalQty) 
+                        : `${Math.round((ut.totalMeters || ut.totalQty) * 100) / 100}m`;
+                      return (
+                        <td key={ut.tag} style={{ padding: '10px 10px', textAlign: 'center', color: isFixture ? 'var(--text-info)' : isLed ? '#7c3aed' : '#d97706' }}>
+                          {tagTotal}
+                        </td>
+                      );
+                    })}
                     <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text-success)', fontSize: '13px' }}>
-                      {stats.totalQty}
+                      {summarySubTab === 'fixtures' 
+                        ? `${categoryStats.fixtures.totalQtyOrMeters} pcs`
+                        : summarySubTab === 'leds'
+                        ? `${categoryStats.leds.totalQtyOrMeters} m`
+                        : summarySubTab === 'tracks'
+                        ? `${categoryStats.tracks.totalQtyOrMeters} m`
+                        : stats.totalQty}
                     </td>
                   </tr>
                 </tfoot>
