@@ -14,6 +14,20 @@ namespace OneToOne.CadParser
 {
     public class Program
     {
+        private static readonly HashSet<string> RoomKeywords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "ROOM", "AREA", "ZONE", "SPACE", "DINING", "SEATING", "KITCHEN", "PREP", "COUNTER",
+            "SERVERY", "STATION", "FREEZER", "COLD", "CHILLER", "WASH", "SCULLERY", "ENTRANCE",
+            "ENTRY", "FOYER", "LOBBY", "PASSAGE", "CORRIDOR", "HALL", "OFFICE", "STORE",
+            "STOREROOM", "STAFF", "CREW", "TOILET", "TOILETS", "WC", "RESTROOM", "BATHROOM",
+            "MALL", "BAR", "SHAFT", "DUCT", "PLANT", "ELECTRICAL", "SERVER", "PATIO", "BALCONY",
+            "TERRACE", "PORCH", "GARAGE", "BEDROOM", "LIVING", "LOUNGE", "SUITE", "CLOSET",
+            "PANTRY", "LAUNDRY", "ATTIC", "BASEMENT", "CELLAR", "STAIR", "STAIRWAY", "STAIRCASE",
+            "VOID", "REFUSE", "BIN", "DELIVERY", "RECEIVING", "DISPATCH", "YARD", "DECK",
+            "MEZZANINE", "CANOPY", "AISLE", "BOOTHS", "MALE", "FEMALE", "CUSTOMER", "GENTS",
+            "LADIES", "DISABLED", "CLOAKS", "LOCKER", "SECURITY", "INTERNAL", "EXTERNAL"
+        };
+
         public static int Main(string[] args)
         {
             if (args.Length < 2)
@@ -400,7 +414,7 @@ namespace OneToOne.CadParser
             foreach (var poly in ledPolylines)
             {
                 double totalLen = CalculatePolylineLength(poly);
-                if (totalLen < 150.0) continue;
+                if (totalLen < 500.0) continue;
 
                 double lenMeters = Math.Round(totalLen / 1000.0, 2);
 
@@ -427,14 +441,15 @@ namespace OneToOne.CadParser
                 }
 
                 string tag = "";
-                var nearestTag = tagTexts.Where(t => t.IsOnLightingLayer || t.Layer.ToUpper().Contains("LED"))
+                var nearestTag = tagTexts
+                    .Where(t => IsLinearLedTag(t.Val))
                     .OrderBy(t => Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)))
                     .FirstOrDefault();
 
                 if (nearestTag != null)
                 {
                     double dist = Math.Sqrt(Math.Pow(nearestTag.Pt.X - midX, 2) + Math.Pow(nearestTag.Pt.Y - midY, 2));
-                    if (dist < 1500.0)
+                    if (dist < 2500.0)
                     {
                         tag = nearestTag.Val;
                     }
@@ -442,7 +457,7 @@ namespace OneToOne.CadParser
 
                 if (string.IsNullOrWhiteSpace(tag))
                 {
-                    tag = "LED";
+                    tag = "LED Strip";
                 }
 
                 rawLedRuns.Add(new ParsedItem
@@ -601,22 +616,51 @@ namespace OneToOne.CadParser
                 }
             }
 
-            // 2. Gather Room Labels across all text layers
-            var roomTexts = doc.Entities.Where(e => e is MText || e is TextEntity)
-                .Where(e => {
-                    string l = (e.Layer?.Name ?? "").ToUpperInvariant();
-                    return l.Contains("AREA") || l.Contains("LABEL") || l.Contains("ROOM") || l.Contains("SPACE") || l.Contains("ZONE") || l.Contains("NAME");
+            // 2. Determine lighting layer preference & filter
+            bool hasDedicatedLumLayers = doc.Entities.Any(e => (e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("E-LUM-"));
+
+            // 3. Find primary lighting fixtures to determine floor plan bounding envelope
+            var candidateInserts = doc.Entities.OfType<Insert>()
+                .Where(i => !IsNonLightingBlock(i.Block?.Name ?? "", i.Layer?.Name ?? ""))
+                .Where(i =>
+                {
+                    string l = (i.Layer?.Name ?? "").ToUpperInvariant();
+                    if (!string.IsNullOrWhiteSpace(lightingLayer) && lightingLayer != "*")
+                    {
+                        return string.Equals(i.Layer?.Name, lightingLayer, StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (hasDedicatedLumLayers)
+                    {
+                        return l.StartsWith("E-LUM-");
+                    }
+                    return l.StartsWith("E-LUM") || l.Contains("LIGHT") || l.Contains("LTG") || l.Contains("FIXTURE") || l.Contains("ELECT");
                 })
+                .ToList();
+
+            double minX = 0, maxX = 0, minY = 0, maxY = 0;
+            if (candidateInserts.Any())
+            {
+                minX = candidateInserts.Min(i => i.InsertPoint.X) - 15000.0;
+                maxX = candidateInserts.Max(i => i.InsertPoint.X) + 15000.0;
+                minY = candidateInserts.Min(i => i.InsertPoint.Y) - 15000.0;
+                maxY = candidateInserts.Max(i => i.InsertPoint.Y) + 15000.0;
+            }
+
+            // 4. Gather Room Labels across all text layers within envelope
+            var rawRoomTexts = doc.Entities.Where(e => e is MText || e is TextEntity)
                 .Select(e => new TextLabel
                 {
                     Layer = e.Layer?.Name ?? "",
                     Val = CleanCadText((e is MText mt) ? mt.Value : ((TextEntity)e).Value),
                     Pt = (e is MText mt2) ? mt2.InsertPoint : ((TextEntity)e).InsertPoint
                 })
-                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsValidRoomLabel(t.Val))
+                .Where(t => candidateInserts.Count == 0 || (t.Pt.X >= minX && t.Pt.X <= maxX && t.Pt.Y >= minY && t.Pt.Y <= maxY))
+                .Where(t => IsRoomTextCandidate(t.Val, t.Layer))
                 .ToList();
 
-            // 3. Gather closed room boundary polylines if present (hybrid support)
+            var roomTexts = MergeStackedRoomTexts(rawRoomTexts);
+
+            // 5. Gather closed room boundary polylines if present (hybrid support)
             var roomBoundaries = new List<RoomBoundary>();
             var closedPolys = doc.Entities.OfType<LwPolyline>().Where(p => p.IsClosed && p.Vertices.Count >= 3).ToList();
             foreach (var poly in closedPolys)
@@ -641,7 +685,7 @@ namespace OneToOne.CadParser
                 }
             }
 
-            // 4. Gather Candidate Texts for Plan Code Tags
+            // 6. Gather candidate tag texts (for downlights & spot plan codes)
             var tagTexts = doc.Entities
                 .Where(e => (e is MText || e is TextEntity))
                 .Where(e => {
@@ -659,50 +703,17 @@ namespace OneToOne.CadParser
                 .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsValidTag(t.Val))
                 .ToList();
 
-            // 5. Gather Driver/Controller blocks (LC, DRIVER, FEED)
-            var driverInserts = doc.Entities.OfType<Insert>()
-                .Where(i =>
-                {
-                    string bName = (i.Block?.Name ?? "").ToUpperInvariant();
-                    string lName = (i.Layer?.Name ?? "").ToUpperInvariant();
-                    return bName.Contains("LC") || bName.Contains("DRIVER") || bName.Contains("CTRL") || bName.Contains("FEED") ||
-                           lName.Contains("DRIVER") || lName.Contains("LC");
-                })
-                .ToList();
-
-            // 6. SMART SYMBOL FINGERPRINTING & FIXTURE DETECTION
-            bool hasDedicatedLightingLayers = doc.Entities.Any(e => {
-                string l = (e.Layer?.Name ?? "").ToUpperInvariant();
-                return l.StartsWith("E-LUM") || l.Contains("LIGHT") || l.Contains("LTG") || l.Contains("FIXTURE");
-            });
-
-            var insertQuery = doc.Entities.OfType<Insert>()
-                .Where(i => !IsNonLightingBlock(i.Block?.Name ?? "", i.Layer?.Name ?? ""))
-                .AsEnumerable();
-
-            if (!string.IsNullOrWhiteSpace(lightingLayer) && lightingLayer != "*")
-            {
-                insertQuery = insertQuery.Where(i => string.Equals(i.Layer?.Name, lightingLayer, StringComparison.OrdinalIgnoreCase));
-            }
-            else if (hasDedicatedLightingLayers)
-            {
-                insertQuery = insertQuery.Where(i => {
-                    string l = (i.Layer?.Name ?? "").ToUpperInvariant();
-                    return l.StartsWith("E-LUM") || l.Contains("LIGHT") || l.Contains("LTG") || l.Contains("FIXTURE") || l.Contains("ELECT");
-                });
-            }
-
-            var allInserts = insertQuery.ToList();
-
+            // 7. Parse Point Fixtures
             var fixtureItems = new List<ParsedItem>();
-
-            foreach (var ins in allInserts)
+            foreach (var ins in candidateInserts)
             {
                 string bName = ins.Block?.Name ?? "";
                 string lName = ins.Layer?.Name ?? "";
                 var pt = ins.InsertPoint;
 
-                // Priority 1: Check block attributes
+                if (candidateInserts.Count > 10 && (pt.X < minX || pt.X > maxX || pt.Y < minY || pt.Y > maxY))
+                    continue;
+
                 string tag = "";
                 if (ins.Attributes != null && ins.Attributes.Any())
                 {
@@ -719,28 +730,48 @@ namespace OneToOne.CadParser
                     }
                 }
 
-                // Priority 2: Check nearby lighting tag text (within 2000mm)
                 if (string.IsNullOrWhiteSpace(tag))
                 {
+                    string bClean = CleanBlockName(bName);
+                    string prefix = bClean.Length >= 1 ? bClean.Substring(0, 1) : "";
+
                     var candidateTexts = tagTexts
+                        .Where(t => !IsLinearLedTag(t.Val))
                         .Where(t => t.Layer.ToUpper().Contains("LUM") || t.Layer.ToUpper().Contains("LIGHT") || string.Equals(t.Layer, lName, StringComparison.OrdinalIgnoreCase))
                         .ToList();
-                    if (!candidateTexts.Any()) candidateTexts = tagTexts;
+                    if (!candidateTexts.Any()) candidateTexts = tagTexts.Where(t => !IsLinearLedTag(t.Val)).ToList();
 
-                    double minTextDist = double.MaxValue;
-                    foreach (var t in candidateTexts)
+                    var matchingTexts = candidateTexts
+                        .Where(t => string.Equals(t.Val, bClean, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(prefix) && t.Val.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                        .ToList();
+
+                    if (matchingTexts.Any())
                     {
-                        double dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2));
-                        if (dist < minTextDist)
+                        double minTextDist = double.MaxValue;
+                        string bestText = "";
+                        foreach (var t in matchingTexts)
                         {
-                            minTextDist = dist;
-                            tag = t.Val;
+                            double dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2));
+                            if (dist < minTextDist)
+                            {
+                                minTextDist = dist;
+                                bestText = t.Val;
+                            }
+                        }
+
+                        if (minTextDist <= 1800.0 && !string.IsNullOrWhiteSpace(bestText))
+                        {
+                            tag = bestText;
+                        }
+                        else
+                        {
+                            tag = bClean;
                         }
                     }
-
-                    if (minTextDist > 2000.0)
+                    else
                     {
-                        tag = CleanBlockName(bName);
+                        tag = bClean;
                     }
                 }
 
@@ -750,8 +781,6 @@ namespace OneToOne.CadParser
                 }
 
                 tag = tag.Trim().ToUpperInvariant();
-
-                // Resolve Room using Wall-Aware Voronoi Raycasting
                 string finalRoom = ResolveRoomNameV2(pt, roomBoundaries, roomTexts, wallSegments);
 
                 fixtureItems.Add(new ParsedItem
@@ -784,11 +813,16 @@ namespace OneToOne.CadParser
                 })
                 .ToList();
 
-            // 7. SMART LINEAR LED EXTRACTION
+            // 8. Parse Linear LED Polylines
             var ledPolylines = doc.Entities.OfType<LwPolyline>()
                 .Where(p =>
                 {
                     string l = (p.Layer?.Name ?? "").ToUpperInvariant();
+                    if (!string.IsNullOrWhiteSpace(lightingLayer) && lightingLayer != "*")
+                    {
+                        return string.Equals(p.Layer?.Name, lightingLayer, StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (hasDedicatedLumLayers && !l.StartsWith("E-LUM-")) return false;
                     if (l.StartsWith("A-") || l.StartsWith("S-") || l.StartsWith("M-") || l.StartsWith("P-"))
                     {
                         if (!l.Contains("LED") && !l.Contains("LUM") && !l.Contains("LIGHT")) return false;
@@ -801,49 +835,32 @@ namespace OneToOne.CadParser
             foreach (var poly in ledPolylines)
             {
                 double totalLen = CalculatePolylineLength(poly);
-                if (totalLen < 150.0) continue;
-
-                double lenMeters = Math.Round(totalLen / 1000.0, 2);
+                if (totalLen < 500.0) continue;
 
                 double midX = poly.Vertices.Average(v => v.Location.X);
                 double midY = poly.Vertices.Average(v => v.Location.Y);
-                var midPt = new XYZ(midX, midY, 0);
+                if (candidateInserts.Count > 10 && (midX < minX || midX > maxX || midY < minY || midY > maxY))
+                    continue;
 
+                double lenMeters = Math.Round(totalLen / 1000.0, 2);
+                var midPt = new XYZ(midX, midY, 0);
                 string roomName = ResolveRoomNameV2(midPt, roomBoundaries, roomTexts, wallSegments);
 
-                var startPt = new XYZ(poly.Vertices.First().Location.X, poly.Vertices.First().Location.Y, 0);
-                var endPt = new XYZ(poly.Vertices.Last().Location.X, poly.Vertices.Last().Location.Y, 0);
-
-                string driverInfo = "";
-                var nearbyDriver = driverInserts.FirstOrDefault(d =>
-                {
-                    double d1 = Math.Sqrt(Math.Pow(d.InsertPoint.X - startPt.X, 2) + Math.Pow(d.InsertPoint.Y - startPt.Y, 2));
-                    double d2 = Math.Sqrt(Math.Pow(d.InsertPoint.X - endPt.X, 2) + Math.Pow(d.InsertPoint.Y - endPt.Y, 2));
-                    return d1 < 300.0 || d2 < 300.0;
-                });
-
-                if (nearbyDriver != null)
-                {
-                    driverInfo = nearbyDriver.Block?.Name ?? "LC";
-                }
-
                 string tag = "";
-                var nearestTag = tagTexts.Where(t => t.Layer.ToUpper().Contains("LED") || t.Layer.ToUpper().Contains("LUM"))
-                    .OrderBy(t => Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)))
-                    .FirstOrDefault();
+                var linearCandidates = tagTexts
+                    .Where(t => IsLinearLedTag(t.Val))
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
+                    .Where(t => t.Dist < 2500.0)
+                    .OrderBy(t => t.Dist)
+                    .ToList();
 
-                if (nearestTag != null)
+                if (linearCandidates.Any())
                 {
-                    double dist = Math.Sqrt(Math.Pow(nearestTag.Pt.X - midX, 2) + Math.Pow(nearestTag.Pt.Y - midY, 2));
-                    if (dist < 1500.0)
-                    {
-                        tag = nearestTag.Val;
-                    }
+                    tag = linearCandidates.First().Val;
                 }
-
-                if (string.IsNullOrWhiteSpace(tag))
+                else
                 {
-                    tag = "LED";
+                    tag = "LED Strip";
                 }
 
                 rawLedRuns.Add(new ParsedItem
@@ -855,8 +872,7 @@ namespace OneToOne.CadParser
                     Qty = lenMeters,
                     Unit = "m",
                     LengthMeters = lenMeters,
-                    Driver = driverInfo,
-                    Notes = $"Length: {lenMeters:F2}m" + (!string.IsNullOrWhiteSpace(driverInfo) ? $" | Driver: {driverInfo} at terminus" : "")
+                    Notes = $"Length: {lenMeters:F2}m"
                 });
             }
 
@@ -869,18 +885,23 @@ namespace OneToOne.CadParser
                     {
                         item.RunIndex = runIdx;
                         string prefix = g.Count() > 1 ? $"LED Run {runIdx}" : "LED Run 1";
-                        item.Notes = $"{prefix} ({item.LengthMeters:F2}m) — Extrusion & Strip" + (!string.IsNullOrWhiteSpace(item.Driver) ? $" | Driver: {item.Driver} at terminus" : "");
+                        item.Notes = $"{prefix} ({item.LengthMeters:F2}m) — Extrusion & Strip";
                         runIdx++;
                         return item;
                     });
                 })
                 .ToList();
 
-            // 8. SMART TRACK SYSTEM EXTRACTION
+            // 9. Parse Track Systems
             var trackPolylines = doc.Entities.OfType<LwPolyline>()
                 .Where(p =>
                 {
                     string l = (p.Layer?.Name ?? "").ToUpperInvariant();
+                    if (!string.IsNullOrWhiteSpace(lightingLayer) && lightingLayer != "*")
+                    {
+                        return string.Equals(p.Layer?.Name, lightingLayer, StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (hasDedicatedLumLayers && !l.StartsWith("E-LUM-")) return false;
                     return l.Contains("TRK") || l.Contains("TRACK");
                 })
                 .ToList();
@@ -891,14 +912,16 @@ namespace OneToOne.CadParser
             foreach (var poly in trackPolylines)
             {
                 double totalLen = CalculatePolylineLength(poly);
-                if (totalLen < 200.0) continue;
+                if (totalLen < 500.0) continue;
 
                 double trackLenM = Math.Round(totalLen / 1000.0, 2);
 
                 double midX = poly.Vertices.Average(v => v.Location.X);
                 double midY = poly.Vertices.Average(v => v.Location.Y);
-                var midPt = new XYZ(midX, midY, 0);
+                if (candidateInserts.Count > 10 && (midX < minX || midX > maxX || midY < minY || midY > maxY))
+                    continue;
 
+                var midPt = new XYZ(midX, midY, 0);
                 string roomName = ResolveRoomNameV2(midPt, roomBoundaries, roomTexts, wallSegments);
 
                 int modularSections = (int)Math.Ceiling(trackLenM / 2.0);
@@ -985,7 +1008,7 @@ namespace OneToOne.CadParser
             string b = blockName.ToUpperInvariant();
             string l = layerName.ToUpperInvariant();
 
-            if (b == "LC" || b.Contains("DRIVER") || b.Contains("FEED")) return true;
+            if (b == "LC" || b == "LJ" || b.StartsWith("BEAM") || b.Contains("DRIVER") || b.Contains("FEED")) return true;
 
             // Structural, architectural, plumbing, landscape, Casework, furniture layers
             if (l.StartsWith("S-") || l.StartsWith("A-") || l.StartsWith("M-") || l.StartsWith("P-") || 
@@ -1218,6 +1241,106 @@ namespace OneToOne.CadParser
             if (u.Contains("LEGEND") || u.Contains("NOTES") || u.Contains("NOTE") || u.Contains("GENERAL") || u.Contains("ARRANGEMENT")) return false;
             if (u.Contains("@") || u.Contains("=") || u.Contains("1:") || u.Contains("MM") || u.Contains("SPEC")) return false;
             return val.Length >= 2 && val.Length <= 45;
+        }
+
+        private static bool IsLinearLedTag(string val)
+        {
+            if (string.IsNullOrWhiteSpace(val)) return false;
+            string u = val.ToUpperInvariant().Trim();
+
+            // Point fixture tags that must NEVER be assigned to linear LED runs
+            if (u == "A1" || u == "A2" || u == "A3" || u == "B1" || u == "B2" || u == "DP" || u == "WV" || u == "A" || u == "B" || u == "C" || u == "D")
+                return false;
+
+            if (u.StartsWith("L-") || u.StartsWith("LF_") || u.StartsWith("LF-") || u.StartsWith("LJ") || u.StartsWith("LC_"))
+                return true;
+            if (u.Contains("LED") || u.Contains("STRIP") || u.Contains("COVE") || u.Contains("NEON") || u.Contains("PROFILE") || u.Contains("TAPE") || u.Contains("FLEX"))
+                return true;
+
+            return false;
+        }
+
+        private static bool IsRoomTextCandidate(string val, string layer)
+        {
+            if (string.IsNullOrWhiteSpace(val) || val.Length < 2 || val.Length > 50) return false;
+            string u = val.ToUpperInvariant();
+            string l = layer.ToUpperInvariant();
+
+            if (u.Contains("SCALE") || u.Contains("REV") || u.Contains("DATE") || u.Contains("PROJECT") ||
+                u.Contains("DRAWING") || u.Contains("SHEET") || u.Contains("DWG") || u.Contains("ARCHITECT") ||
+                u.Contains("LEGEND") || u.Contains("NOTES") || u.Contains("NOTE") || u.Contains("GENERAL") ||
+                u.Contains("ARRANGEMENT") || u.Contains("1:") || u.Contains("MM") || u.Contains("SPEC") ||
+                u.Contains("%%") || u.Contains("DETAIL") || u.Contains("SECTION") || u.Contains("ELEVATION") ||
+                u.Contains("H-COLUMN") || u.Contains("BEAM") || u.Contains("CONDUIT") || u.Contains("SUPPLY") ||
+                u.Contains("EXTRACT") || u.Contains("FLOW") || u.Contains("RETURN") || u.Contains("DRAIN") ||
+                u.Contains("BY DESIGNER"))
+                return false;
+
+            if (l.Contains("ROOM") || l.Contains("ZONE") || l.Contains("SPACE") || (l.Contains("AREA") && !l.Contains("PEN")))
+                return true;
+
+            var words = Regex.Split(u, @"[\s\-_/,\.]+");
+            return words.Any(w => RoomKeywords.Contains(w));
+        }
+
+        private static List<TextLabel> MergeStackedRoomTexts(List<TextLabel> items)
+        {
+            var result = new List<TextLabel>();
+            var used = new HashSet<TextLabel>();
+            var sorted = items.OrderByDescending(i => i.Pt.Y).ToList();
+
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                var top = sorted[i];
+                if (used.Contains(top)) continue;
+
+                var bottom = sorted
+                    .Where(b => !used.Contains(b) && b != top)
+                    .Where(b => Math.Abs(b.Pt.X - top.Pt.X) <= 1500.0)
+                    .Where(b => (top.Pt.Y - b.Pt.Y) >= 50.0 && (top.Pt.Y - b.Pt.Y) <= 1000.0)
+                    .OrderBy(b => top.Pt.Y - b.Pt.Y)
+                    .FirstOrDefault();
+
+                if (bottom != null)
+                {
+                    used.Add(top);
+                    used.Add(bottom);
+                    string cleanTop = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
+                    string cleanBottom = Regex.Replace(bottom.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
+                    string combined;
+                    if (string.Equals(cleanTop, cleanBottom, StringComparison.OrdinalIgnoreCase))
+                    {
+                        combined = cleanTop;
+                    }
+                    else if (cleanTop.Contains(cleanBottom, StringComparison.OrdinalIgnoreCase))
+                    {
+                        combined = cleanTop;
+                    }
+                    else if (cleanBottom.Contains(cleanTop, StringComparison.OrdinalIgnoreCase))
+                    {
+                        combined = cleanBottom;
+                    }
+                    else
+                    {
+                        combined = $"{cleanTop} {cleanBottom}".Trim();
+                    }
+
+                    result.Add(new TextLabel
+                    {
+                        Layer = top.Layer,
+                        Val = combined,
+                        Pt = new XYZ((top.Pt.X + bottom.Pt.X) / 2.0, (top.Pt.Y + bottom.Pt.Y) / 2.0, top.Pt.Z)
+                    });
+                }
+                else
+                {
+                    used.Add(top);
+                    string clean = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
+                    result.Add(new TextLabel { Layer = top.Layer, Val = clean, Pt = top.Pt });
+                }
+            }
+
+            return result;
         }
 
         private static double CalculateArea(IList<LwPolyline.Vertex> vertices)
