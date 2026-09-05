@@ -29,14 +29,29 @@ export default function MobileOrderDetailDrawer({ order, onClose }) {
   const displayProject = projectFullName || project_name || 'Project';
   const displayStatus = orderStatus || status || 'Pending';
 
-  const orderItems = (activeOrderItems && activeOrderItems.length > 0) ? activeOrderItems : items;
+  const orderItems = Array.isArray(activeOrderItems) && activeOrderItems.length > 0
+    ? activeOrderItems
+    : Array.isArray(items)
+    ? items
+    : Array.isArray(order.itemsList)
+    ? order.itemsList
+    : [];
 
   // Calculate financials
-  const totalCost = orderItems.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitCost || i.unit_cost) || 0)), 0);
-  const totalRetail = orderItems.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitRetail || i.unit_retail) || 0)), 0);
-  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-  const valueInclVat = discountedRetail * 1.15;
-  const paidVal = Number(orderPaidAmount || paid_amount || 0);
+  const totalCost = orderItems.length > 0
+    ? orderItems.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitCost || i.unit_cost || i.cost) || 0)), 0)
+    : Number(order.costValue || order.cost || 0);
+
+  const totalRetail = orderItems.length > 0
+    ? orderItems.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitRetail || i.unit_retail || i.price) || 0)), 0)
+    : Number(order.value || order.total || 0);
+
+  const discountedRetail = Number(order.value || 0) > 0 && orderItems.length === 0
+    ? Number(order.value)
+    : Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+
+  const valueInclVat = order.valueInclVat || (discountedRetail * 1.15);
+  const paidVal = Number(orderPaidAmount || paid_amount || order.paid || 0);
   const outstanding = Math.max(0, valueInclVat - paidVal);
   const marginPct = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
 

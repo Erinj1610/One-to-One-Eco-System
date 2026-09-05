@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useResizableTable } from '../../components/common/ResizableTable';
 import DesignFeeBuilder from './DesignFeeBuilder';
 import TicketLoggerPage from '../TicketLoggerPage';
+import MobileProjectDetailView from '../../components/mobile/MobileProjectDetailView';
 import { API_BASE } from '../../api_config';
 import { 
   Lightbulb, ArrowLeft, RefreshCw, Upload, CheckCircle, Clock, Lock, 
@@ -69,6 +70,13 @@ export default function ProjectManagement() {
   const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers, alertSettings } = useStore();
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   const uniqueContacts = useMemo(() => {
     const seen = new Set();
@@ -978,6 +986,14 @@ export default function ProjectManagement() {
 
   // Context-specific sidebar philosophy details
   const sidebarAdvice = PHI_ADVISORIES[activeTab] || PHI_ADVISORIES.overview;
+
+  if (isMobile) {
+    return (
+      <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+        <MobileProjectDetailView project={p} onBack={() => navigate('/projects')} />
+      </div>
+    );
+  }
 
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>

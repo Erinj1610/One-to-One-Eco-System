@@ -340,8 +340,15 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea {
 
 .detail-header { background: var(--bg-primary); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 24px; }
 
+/* RESPONSIVE DISPLAY UTILITIES */
+.mobile-only { display: none !important; }
+.desktop-only { display: block !important; }
+
 /* ─── MOBILE STANDALONE APP SHELL (< 768px) ────────────────────────── */
 @media (max-width: 768px) {
+  .mobile-only { display: block !important; }
+  .desktop-only { display: none !important; }
+
   html, body {
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
