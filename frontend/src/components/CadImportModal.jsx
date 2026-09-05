@@ -780,36 +780,36 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                         </div>
                       </div>
 
-                      {/* Layer 3: 0-FITTINGS */}
+                      {/* Layer 3: 0-FITTINGS or 0-FITTINGS-* */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#facc15' }}>
-                          <code>0-FITTINGS</code>
+                          <code>0-FITTINGS-*</code>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Blocks + Plan Code Text</span>
                         </div>
                         <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          All point fixtures (downlights, pendants, wall lights). Place plan code as plain text (e.g. <code>A1</code>, <code>LF_03</code>) near the symbol.
+                          All point fixtures. Use prefixes like <code>0-FITTINGS-DOWNLIGHT</code>, <code>0-FITTINGS-DECORATIVE</code>, or <code>0-FITTINGS-EMERGENCY</code> to independently freeze them per paperspace viewport!
                         </div>
                       </div>
 
-                      {/* Layer 4: 0-LEDS */}
+                      {/* Layer 4: 0-LEDS or 0-LEDS-* */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#fb923c' }}>
-                          <code>0-LEDS</code>
+                          <code>0-LEDS-*</code>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Tag Text</span>
                         </div>
                         <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Linear LED coves, under-cabinet and joinery runs (measured in meters). Place tag text (e.g. <code>L-C_01</code>) along the polyline.
+                          Linear LED coves, under-cabinet & joinery runs (in meters). Sub-layers like <code>0-LEDS-COVE</code> or <code>0-LEDS-JOINERY</code> are fully supported for paperspaces.
                         </div>
                       </div>
 
-                      {/* Layer 5: 0-TRACKS */}
+                      {/* Layer 5: 0-TRACKS or 0-TRACKS-* */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#c084fc' }}>
-                          <code>0-TRACKS</code>
+                          <code>0-TRACKS-*</code>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Spot Blocks</span>
                         </div>
                         <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Track system rails (measured in meters). Place the spotlight blocks directly along the track polyline to automatically attach them to the track.
+                          Track rails (in meters). Place spotlight blocks directly along the track polyline. Supports <code>0-TRACKS-MAIN</code>, <code>0-TRACKS-STAGE</code>, etc.
                         </div>
                       </div>
                     </div>
@@ -820,13 +820,13 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                       gap: '8px',
                       padding: '8px 12px', 
                       borderRadius: '6px', 
-                      background: 'rgba(59, 130, 246, 0.08)',
-                      border: '1px dashed rgba(59, 130, 246, 0.3)',
+                      background: 'rgba(34, 197, 94, 0.08)',
+                      border: '1px solid rgba(34, 197, 94, 0.25)',
                       fontSize: '11px',
-                      color: '#93c5fd'
+                      color: '#86efac'
                     }}>
-                      <Info size={14} style={{ flexShrink: 0 }} />
-                      <span><em>Drawing from an external architect? If standard layers are absent, you will be prompted before parsing, with the option to proceed using Smart Heuristic estimation or format your drawing.</em></span>
+                      <CheckCircle2 size={14} style={{ flexShrink: 0, color: '#4ade80' }} />
+                      <span><strong>Paperspace Viewport Freeze (`VP Freeze`):</strong> Drafters do not need to put all fittings on a single layer. Any layer beginning with <code>0-FITTINGS-</code>, <code>0-LEDS-</code>, or <code>0-TRACKS-</code> is recognized while allowing independent sheet visibility!</span>
                     </div>
                   </div>
                 )}
