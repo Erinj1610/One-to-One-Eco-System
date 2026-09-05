@@ -78,7 +78,7 @@ namespace OneToOne.CadParser
                     Console.WriteLine(JsonSerializer.Serialize(new
                     {
                         success = false,
-                        error = $"Unknown command: {command}. Expected 'inspect' or 'parse'."
+                        error = $"Unknown command: {command}"
                     }));
                     return 1;
                 }
@@ -97,46 +97,29 @@ namespace OneToOne.CadParser
 
         private static int InspectDrawing(CadDocument doc)
         {
+            var layers = doc.Layers.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var layerGroups = doc.Entities
                 .GroupBy(e => e.Layer?.Name ?? "0")
                 .Select(g =>
                 {
-                    int inserts = g.OfType<Insert>().Count();
-                    var polys = g.OfType<LwPolyline>().ToList();
-                    int closedPolys = polys.Count(p => p.IsClosed && p.Vertices.Count >= 3);
-                    int texts = g.Count(e => e is MText || e is TextEntity);
-                    int lines = g.OfType<Line>().Count();
-
                     string name = g.Key;
-                    string nameUpper = name.ToUpperInvariant();
+                    int inserts = g.OfType<Insert>().Count();
+                    int closedPolys = g.OfType<LwPolyline>().Count(p => p.IsClosed);
+                    int totalPolys = g.OfType<LwPolyline>().Count();
+                    int texts = g.Count(e => e is MText || e is TextEntity);
 
-                    bool isLighting = inserts > 0 && (
-                        nameUpper.Contains("LIGHT") ||
-                        nameUpper.Contains("LUM") ||
-                        nameUpper.Contains("FIXT") ||
-                        nameUpper.Contains("1 TO 1") ||
-                        nameUpper.Contains("1TO1") ||
-                        nameUpper.Contains("E-") ||
-                        nameUpper.Contains("LAMP")
-                    );
-
-                    bool isBoundary = closedPolys > 0 && (
-                        nameUpper.Contains("COUNT") ||
-                        nameUpper.Contains("AREA") ||
-                        nameUpper.Contains("ROOM") ||
-                        nameUpper.Contains("ZONE") ||
-                        nameUpper.Contains("LAYOUT") ||
-                        nameUpper.Contains("WALL")
-                    );
+                    string lower = name.ToLowerInvariant();
+                    bool isLighting = lower.Contains("light") || lower.Contains("lum") || lower.Contains("lamp") || lower.Contains("p-block") || lower.Contains("elec");
+                    bool isBoundary = lower.Contains("area") || lower.Contains("bound") || lower.Contains("room") || lower.Contains("space") || lower.Contains("layout") || lower.Contains("count");
 
                     return new LayerInfo
                     {
                         Name = name,
                         Inserts = inserts,
                         ClosedPolylines = closedPolys,
-                        TotalPolylines = polys.Count,
+                        TotalPolylines = totalPolys,
                         Texts = texts,
-                        Lines = lines,
                         IsLightingCandidate = isLighting,
                         IsBoundaryCandidate = isBoundary
                     };
@@ -146,7 +129,7 @@ namespace OneToOne.CadParser
 
             // Find best lighting candidate (prefer lighting keywords, then max inserts)
             string? suggestedLighting = layerGroups
-                .Where(l => l.IsLightingCandidate)
+                .Where(l => l.IsLightingCandidate && l.Inserts > 0)
                 .OrderByDescending(l => l.Inserts)
                 .FirstOrDefault()?.Name
                 ?? layerGroups.Where(l => l.Inserts > 0).OrderByDescending(l => l.Inserts).FirstOrDefault()?.Name;
@@ -227,10 +210,31 @@ namespace OneToOne.CadParser
                 return 1;
             }
 
-            // 2. Gather candidate texts for tags
-            // Include texts on lighting layer and also nearby general texts
+            // 2. Gather Room Labels (A-AREA-IDEN, A-LABEL-*, *ROOM*, *AREA*, etc.)
+            var roomTexts = doc.Entities.Where(e => e is MText || e is TextEntity)
+                .Where(e => {
+                    string l = (e.Layer?.Name ?? "").ToUpperInvariant();
+                    return l.Contains("AREA") || l.Contains("LABEL") || l.Contains("ROOM") || l.Contains("SPACE") || l.Contains("ZONE");
+                })
+                .Select(e => new
+                {
+                    Layer = e.Layer?.Name ?? "",
+                    Val = CleanCadText((e is MText mt) ? mt.Value : ((TextEntity)e).Value),
+                    Pt = (e is MText mt2) ? mt2.InsertPoint : ((TextEntity)e).InsertPoint
+                })
+                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsValidRoomLabel(t.Val))
+                .ToList();
+
+            // 3. Gather candidate texts for Plan Code Tags
+            // Explicitly EXCLUDE room label layers, furniture layers, dim layers, and wall layers
             var tagTexts = doc.Entities
                 .Where(e => (e is MText || e is TextEntity))
+                .Where(e => {
+                    string l = (e.Layer?.Name ?? "").ToUpperInvariant();
+                    if (l.Contains("AREA") || l.Contains("LABEL") || l.Contains("ROOM") || l.Contains("DIM") || l.Contains("WALL") || l.Contains("FURNITURE"))
+                        return false;
+                    return l.StartsWith("E-LUM") || l.Contains("LIGHT") || l.Contains("P-BLOCK") || (!string.IsNullOrWhiteSpace(lightingLayer) && l == lightingLayer.ToUpperInvariant());
+                })
                 .Select(e => new
                 {
                     Layer = e.Layer?.Name ?? "",
@@ -238,10 +242,10 @@ namespace OneToOne.CadParser
                     Val = CleanCadText((e is MText mt2) ? mt2.Value : ((TextEntity)e).Value),
                     IsOnLightingLayer = !string.IsNullOrWhiteSpace(lightingLayer) && string.Equals(e.Layer?.Name, lightingLayer, StringComparison.OrdinalIgnoreCase)
                 })
-                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsTagCandidate(t.Val))
+                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsValidTag(t.Val))
                 .ToList();
 
-            // 3. Gather closed polylines for room/count boundaries
+            // 4. Gather closed polylines for room/count boundaries
             var polyQuery = doc.Entities.OfType<LwPolyline>()
                 .Where(p => p.IsClosed && p.Vertices.Count >= 3)
                 .AsEnumerable();
@@ -253,85 +257,37 @@ namespace OneToOne.CadParser
 
             var closedPolys = polyQuery.ToList();
 
-            // 4. Gather all texts for room naming and floor identification
-            var allTexts = doc.Entities
-                .Where(e => e is MText || e is TextEntity)
-                .Select(e => new
-                {
-                    Layer = e.Layer?.Name ?? "",
-                    Pt = (e is MText mt) ? mt.InsertPoint : ((TextEntity)e).InsertPoint,
-                    Val = CleanCadText((e is MText mt2) ? mt2.Value : ((TextEntity)e).Value)
-                })
-                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && t.Val.Length < 60)
-                .ToList();
-
-            // 5. Precompute room boundaries
+            // 5. Precompute room boundaries with names
             var roomBoundaries = new List<RoomBoundary>();
             foreach (var poly in closedPolys)
             {
                 double area = CalculateArea(poly.Vertices);
-                if (area < 10.0) continue; // Skip degenerate polylines
+                if (area < 10.0 || area > 500000000.0) continue; // Skip degenerate specks or giant drawing sheet borders
 
-                var textsInside = allTexts.Where(t => IsPointInPolyline(t.Pt, poly)).ToList();
-
-                string roomFloor = defaultFloor;
+                // Check if any room text is inside
+                var insideTexts = roomTexts.Where(r => IsPointInPolyline(r.Pt, poly)).ToList();
                 string roomName = "";
-                bool floorFound = false;
-
-                foreach (var t in textsInside)
+                if (insideTexts.Any())
                 {
-                    string u = t.Val.ToUpperInvariant();
-                    if (!floorFound)
-                    {
-                        if (u.Contains("BASEMENT") || u.Contains("LOWER GROUND") || u.Contains("LGF"))
-                        {
-                            roomFloor = "Basement";
-                            floorFound = true;
-                        }
-                        else if (u.Contains("FIRST FLOOR") || u.Contains("1ST FLOOR") || u.Contains("LEVEL 1") || u.Contains("FF"))
-                        {
-                            roomFloor = "First Floor";
-                            floorFound = true;
-                        }
-                        else if (u.Contains("SECOND FLOOR") || u.Contains("2ND FLOOR") || u.Contains("LEVEL 2"))
-                        {
-                            roomFloor = "Second Floor";
-                            floorFound = true;
-                        }
-                        else if (u.Contains("GROUND FLOOR") || u.Contains("LEVEL 0") || u.Contains("GF"))
-                        {
-                            roomFloor = "Ground Floor";
-                            floorFound = true;
-                        }
-                        else if (u.Contains("ROOF"))
-                        {
-                            roomFloor = "Roof";
-                            floorFound = true;
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(roomName) && IsValidRoomName(t.Val))
-                    {
-                        roomName = t.Val;
-                    }
+                    roomName = insideTexts.First().Val;
                 }
-
-                if (string.IsNullOrWhiteSpace(roomName))
+                else if (!string.IsNullOrWhiteSpace(poly.Layer?.Name) && 
+                         !poly.Layer.Name.Equals("0", StringComparison.OrdinalIgnoreCase) && 
+                         !poly.Layer.Name.Contains("CountArea", StringComparison.OrdinalIgnoreCase))
                 {
-                    // If no explicit room label inside, use floor name or layer name
-                    roomName = roomFloor != defaultFloor ? $"{roomFloor} Area" : (poly.Layer?.Name ?? "Area");
+                    roomName = poly.Layer.Name;
                 }
 
                 roomBoundaries.Add(new RoomBoundary
                 {
                     Polyline = poly,
                     Area = area,
-                    Floor = roomFloor,
+                    Floor = defaultFloor,
                     RoomName = roomName
                 });
             }
 
-            // 6. Match each insert to nearest tag and enclosing room
+            // 6. Match each insert to nearest plan code tag and enclosing room
             var rawItems = new List<CountItem>();
 
             foreach (var ins in lightingInserts)
@@ -355,7 +311,7 @@ namespace OneToOne.CadParser
                     }
                 }
 
-                // Priority 2: Nearest text on lighting layer (within 3000 units), fallback to all candidate texts
+                // Priority 2: Nearest text on lighting layer
                 if (string.IsNullOrWhiteSpace(tag))
                 {
                     var candidateTexts = tagTexts.Where(t => t.IsOnLightingLayer).ToList();
@@ -371,6 +327,12 @@ namespace OneToOne.CadParser
                             tag = t.Val;
                         }
                     }
+
+                    // If closest tag text is too far away (> 3000 units), fallback to block definition name
+                    if (minTextDist > 3000.0)
+                    {
+                        tag = ins.Block?.Name ?? "UNKNOWN";
+                    }
                 }
 
                 // Priority 3: Block definition name
@@ -379,32 +341,44 @@ namespace OneToOne.CadParser
                     tag = ins.Block?.Name ?? "UNKNOWN";
                 }
 
-                // Normalize tag (e.g. capitalize, strip whitespace)
-                tag = tag.Trim();
+                tag = tag.Trim().ToUpperInvariant();
 
-                // Find smallest enclosing room boundary
-                RoomBoundary? bestBoundary = null;
-                double minArea = double.MaxValue;
+                // Determine Room Name:
+                // Method A: Smallest enclosing polygon with a named room
+                string finalRoom = "";
+                var enclosing = roomBoundaries
+                    .Where(rb => !string.IsNullOrWhiteSpace(rb.RoomName) && IsPointInPolyline(pt, rb.Polyline))
+                    .OrderBy(rb => rb.Area)
+                    .ToList();
 
-                foreach (var rb in roomBoundaries)
+                if (enclosing.Any())
                 {
-                    if (IsPointInPolyline(pt, rb.Polyline))
+                    finalRoom = enclosing.First().RoomName;
+                }
+                else if (roomTexts.Any())
+                {
+                    // Method B: Nearest room label
+                    double minRoomDist = double.MaxValue;
+                    foreach (var r in roomTexts)
                     {
-                        if (rb.Area < minArea)
+                        double dist = Math.Sqrt(Math.Pow(pt.X - r.Pt.X, 2) + Math.Pow(pt.Y - r.Pt.Y, 2));
+                        if (dist < minRoomDist)
                         {
-                            minArea = rb.Area;
-                            bestBoundary = rb;
+                            minRoomDist = dist;
+                            finalRoom = r.Val;
                         }
                     }
                 }
 
-                string finalFloor = bestBoundary?.Floor ?? defaultFloor;
-                string finalArea = bestBoundary?.RoomName ?? "Landscape / External";
+                if (string.IsNullOrWhiteSpace(finalRoom))
+                {
+                    finalRoom = "General Area";
+                }
 
                 rawItems.Add(new CountItem
                 {
-                    Floor = finalFloor,
-                    Area = finalArea,
+                    Floor = defaultFloor,
+                    Area = finalRoom,
                     Tag = tag
                 });
             }
@@ -443,33 +417,42 @@ namespace OneToOne.CadParser
         private static string CleanCadText(string val)
         {
             if (string.IsNullOrEmpty(val)) return "";
-            // Remove formatting braces { ... }
-            val = Regex.Replace(val, @"\{[^\}]*\}", "").Trim();
-            // Remove MText control codes like \f...; or \P or \S...^...;
-            val = Regex.Replace(val, @"\\[A-Za-z0-9]+;?", "").Trim();
-            // Replace newlines and tabs with spaces
-            val = Regex.Replace(val, @"[\r\n\t]+", " ").Trim();
-            return val;
+            string s = val;
+            // 1. Replace paragraph breaks (\P) with spaces
+            s = Regex.Replace(s, @"\\P", " ", RegexOptions.IgnoreCase);
+            // 2. Remove AutoCAD formatting codes like \f...;, \C...;, \H...;, \pxqc;, \pxt2;, etc.
+            s = Regex.Replace(s, @"\\[A-Za-z0-9\.\,\:\=\|\-\+\*\#\$\@\^\~\s]+;?", "");
+            // 3. Remove stacking fractions like \S...^...;
+            s = Regex.Replace(s, @"\\S[^\;]*\;", "");
+            // 4. Strip curly braces { and } while keeping the inner text!
+            s = s.Replace("{", "").Replace("}", "");
+            // 5. Replace newlines, tabs, and multiple spaces with a single space
+            s = Regex.Replace(s, @"[\r\n\t]+", " ");
+            s = Regex.Replace(s, @"\s+", " ").Trim();
+            return s;
         }
 
-        private static bool IsTagCandidate(string val)
+        private static bool IsValidTag(string val)
         {
             if (string.IsNullOrWhiteSpace(val)) return false;
-            if (val.Length > 25) return false;
             string u = val.ToUpperInvariant();
-            if (u.Contains("DETAIL") || u.Contains("DWG") || u.Contains("SCALE") || u.Contains("REV") || u.Contains("DATE")) return false;
+            // Reject drawing metadata, dates, or titles
+            if (u.Contains("PLAN") || u.Contains("DATE") || u.Contains("SCALE") || u.Contains("REV") || u.Contains("DETAIL") || u.Contains("ART WALL")) return false;
+            if (u.Contains("DINING") || u.Contains("PASSAGE") || u.Contains("CELLAR") || u.Contains("KITCHEN") || u.Contains("EXTERIOR")) return false;
             if (u.Contains("@") || u.Contains("=") || u.Contains("GRADIENT") || u.Contains("RAMP") || u.Contains("MM")) return false;
-            return true;
+            return val.Length >= 1 && val.Length <= 15;
         }
 
-        private static bool IsValidRoomName(string val)
+        private static bool IsValidRoomLabel(string val)
         {
             if (string.IsNullOrWhiteSpace(val)) return false;
             string u = val.ToUpperInvariant();
-            if (u.Contains("DETAIL") || u.Contains("DWG") || u.Contains("SCALE") || u.Contains("REVISION") || u.Contains("LEGEND")) return false;
-            if (u.StartsWith("Y1") || u.StartsWith("BL") || u.StartsWith("FTX") || u.StartsWith("G1") || u.StartsWith("G2")) return false;
-            if (u.Contains("@") || u.Contains("=") || u.Contains("TOC") || u.Contains("1:") || u.Contains("RAMP")) return false;
-            return val.Length > 2 && val.Length <= 40;
+            // Exclude drawing title blocks, dates, scales, notes, revision blocks
+            if (u.Contains("PLAN") || u.Contains("DRAWING") || u.Contains("DATE") || u.Contains("SCALE") || u.Contains("REV") || u.Contains("DETAIL")) return false;
+            if (u.Contains("2024") || u.Contains("2025") || u.Contains("2026") || u.Contains("PROJECT") || u.Contains("ARCHITECT") || u.Contains("COPYRIGHT") || u.Contains("DWG")) return false;
+            if (u.Contains("LEGEND") || u.Contains("NOTES") || u.Contains("GENERAL") || u.Contains("ARRANGEMENT")) return false;
+            if (u.Contains("@") || u.Contains("=") || u.Contains("1:") || u.Contains("MM")) return false;
+            return val.Length >= 2 && val.Length <= 45;
         }
 
         private static double CalculateArea(IList<LwPolyline.Vertex> vertices)
@@ -518,9 +501,6 @@ namespace OneToOne.CadParser
 
             [JsonPropertyName("texts")]
             public int Texts { get; set; }
-
-            [JsonPropertyName("lines")]
-            public int Lines { get; set; }
 
             [JsonPropertyName("isLightingCandidate")]
             public bool IsLightingCandidate { get; set; }

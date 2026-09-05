@@ -82,15 +82,42 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
 
       const data = await res.json();
       setInspectData(data);
-      setLightingLayer(data.suggestedLightingLayer || '');
-      setBoundaryLayer(data.suggestedBoundaryLayer || '*');
-      if (data.availableFloors && data.availableFloors.length > 0) {
-        setDefaultFloor(data.availableFloors[0]);
+      const lightLayer = data.suggestedLightingLayer || '';
+      const boundLayer = data.suggestedBoundaryLayer || '*';
+      const floorName = (data.availableFloors && data.availableFloors.length > 0) ? data.availableFloors[0] : 'Ground Floor';
+
+      setLightingLayer(lightLayer);
+      setBoundaryLayer(boundLayer);
+      setDefaultFloor(floorName);
+
+      if (lightLayer) {
+        // Automatically calculate counts and jump straight to Preview!
+        const parseFormData = new FormData();
+        parseFormData.append('file', selectedFile);
+        parseFormData.append('lighting_layer', lightLayer);
+        parseFormData.append('boundary_layer', boundLayer);
+        parseFormData.append('default_floor', floorName);
+
+        const parseRes = await fetch(API_BASE + '/api/cad/parse', {
+          method: 'POST',
+          body: parseFormData,
+        });
+
+        if (!parseRes.ok) {
+          const errJson = await parseRes.json().catch(() => ({}));
+          throw new Error(errJson.detail || 'Failed to calculate CAD counts.');
+        }
+
+        const parseJson = await parseRes.json();
+        setParseResult(parseJson);
+        setStep(3); // Straight to preview!
+      } else {
+        // Only stop at Step 2 if no candidate layer could be auto-detected
+        setStep(2);
       }
-      setStep(2);
     } catch (err) {
       console.error('CAD inspect error:', err);
-      setError(err.message || 'Error inspecting DWG file.');
+      setError(err.message || 'Error processing DWG file.');
     } finally {
       setInspecting(false);
     }
