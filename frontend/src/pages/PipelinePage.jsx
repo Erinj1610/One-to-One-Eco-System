@@ -860,7 +860,7 @@ export default function PipelinePage({ clientFilter = null, isEmbedded = false }
 
       {/* SECTION 1 & 2: Advanced KPI Cards — hidden when embedded in CRM */}
       {!isEmbedded && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '10px', marginBottom: '18px' }}>
         
         {/* KPI 1: Active Enquiries */}
         <div className="stat" style={{ borderLeft: '3.5px solid var(--text-info)', background: 'var(--bg-primary)', border: '0.5px solid var(--border)' }}>
@@ -983,7 +983,7 @@ export default function PipelinePage({ clientFilter = null, isEmbedded = false }
           <div className="card-body" style={{ padding: '16px', display: 'flex', gap: '20px', flexDirection: 'column' }}>
             
             {/* Target durations limit settings (Section 2) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px' }}>
               
               <div style={{ background: 'white', padding: '10px 14px', borderRadius: '6px', border: '0.5px solid var(--border)' }}>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 600 }}>Enquiry Column Max Days</label>
@@ -1434,7 +1434,7 @@ export default function PipelinePage({ clientFilter = null, isEmbedded = false }
             </div>
 
             {/* A. Mandatory Top-Level Fields Banner */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: 'var(--border)', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: '1px', background: 'var(--border)', borderBottom: '1px solid var(--border)' }}>
               
               {/* Dynamic Score Grade */}
               <div style={{ background: 'var(--bg-primary)', padding: '10px 14px', textAlign: 'center' }}>

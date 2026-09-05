@@ -2302,8 +2302,8 @@ export default function ProjectManagement() {
                   <span><strong>Statement Overview:</strong> Consolidated summary showing sub-contract items, payments made, and outstanding supplier pipelines.</span>
                 </div>
 
-                {/* Grid Financial Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
+                {/* Grid Financial Cards (FLUID PROPORTIONAL) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px', marginBottom: '24px' }}>
                   <div className="stat-card" style={{ padding: '12px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Orders Pipeline</span>
                     <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-info)', marginTop: '4px' }}>

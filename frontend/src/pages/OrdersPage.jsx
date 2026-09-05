@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
+import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
+import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -339,6 +341,13 @@ export default function OrdersPage() {
     refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Bulk Selection States
   const [selectedPoNumbers, setSelectedPoNumbers] = useState(new Set());
@@ -438,9 +447,7 @@ export default function OrdersPage() {
   const [orderEta, setOrderEta] = useState('');
   const [orderPaidAmount, setOrderPaidAmount] = useState(0);
   const [orderPayments, setOrderPayments] = useState([]);
-
-
-
+  const [takeoffData, setTakeoffData] = useState({ countUpRows: [], specifications: {} });
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
   
   // Link/Unlink modal state
@@ -1435,6 +1442,17 @@ export default function OrdersPage() {
     }
     setOrderPayments(parsedPayments);
 
+    const rawTakeoff = order.takeoffData || order.takeoff_data;
+    let parsedTakeoff = { countUpRows: [], specifications: {} };
+    if (rawTakeoff) {
+      if (typeof rawTakeoff === 'string') {
+        try { parsedTakeoff = JSON.parse(rawTakeoff); } catch (_) {}
+      } else if (typeof rawTakeoff === 'object') {
+        parsedTakeoff = rawTakeoff;
+      }
+    }
+    setTakeoffData(parsedTakeoff);
+
     const orderIdToFetch = order.id || order.poNumber || order.po_number;
     if (orderIdToFetch) {
       fetch(`${API_BASE}/api/payments/order/${encodeURIComponent(orderIdToFetch)}`)
@@ -2065,7 +2083,9 @@ export default function OrdersPage() {
       fileSource,
       projectClass,
       quotationSentDate,
-      division
+      division,
+      takeoffData: takeoffData,
+      takeoff_data: takeoffData
     };
 
     // 1. Direct Cloud SQL order update
@@ -2194,6 +2214,47 @@ export default function OrdersPage() {
     } finally {
       setIsSyncingVault(false);
     }
+  };
+
+  // Dedicated saver for Takeoff & Specification data
+  const handleSaveTakeoffData = async (newTakeoffData) => {
+    setTakeoffData(newTakeoffData);
+    if (!selectedOrderId) return;
+    try {
+      await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ takeoffData: newTakeoffData, takeoff_data: newTakeoffData })
+      });
+      // Also update projects store
+      setProjects(prev => {
+        const next = { ...prev };
+        for (const pKey of Object.keys(next)) {
+          if (next[pKey]?.orders) {
+            next[pKey].orders = next[pKey].orders.map(o => {
+              if (String(o.id) === String(selectedOrderId) || String(o.poNumber) === String(selectedOrderId)) {
+                return { ...o, takeoffData: newTakeoffData, takeoff_data: newTakeoffData };
+              }
+              return o;
+            });
+          }
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error("Error saving takeoff data:", err);
+    }
+  };
+
+  // Compiler callback: receives generated items from Takeoff engine and populates into activeOrderItems
+  const handleGenerateBOQFromTakeoff = (generatedItems, mode = 'append') => {
+    if (mode === 'replace') {
+      setActiveOrderItems(generatedItems);
+    } else {
+      setActiveOrderItems(prev => [...prev, ...generatedItems]);
+    }
+    setWorkspaceSubTab('boq');
+    alert(`✨ Generated ${generatedItems.length} items from Takeoff into the BOQ Spreadsheet!\nClick 'Save & Update' when you are ready to commit changes to database.`);
   };
 
   // Create a brand-new Purchase Order / Quotation
@@ -2360,6 +2421,9 @@ export default function OrdersPage() {
 
       {/* HEADER BANNER */}
       {selectedOrderId === null ? (
+        isMobile ? (
+          <MobileOrdersViewer orders={allOrders} onRefresh={refreshProjects} />
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
           <div style={{ minWidth: 0 }}>
           <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
@@ -2438,8 +2502,8 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+          {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (FLUID PROPORTIONAL) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '12px', marginBottom: '20px' }}>
             {/* Card 1 */}
             <div 
               className="stat-card hover-scale"
@@ -2812,201 +2876,208 @@ export default function OrdersPage() {
             onToggle={() => setIsSidebarCollapsed(prev => !prev)}
           />
         </div>
+        )
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */
-        <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-          <div className="card-body" style={{ padding: '24px' }}>
+        <div className="card" style={{ border: '1.5px solid var(--border)', width: '100%', minWidth: 0 }}>
+          <div className="card-body" style={{ padding: 'clamp(14px, 1.4vw, 24px)' }}>
             
-            {/* WORKSPACE TOP NAV HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            {/* WORKSPACE TOP NAV HEADER: 2-TIER FLUID PROPORTIONAL FLOW */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '16px', width: '100%' }}>
+              
+              {/* TIER 1: ORDER TITLE & NAV (LEFT) + ACTIONS (RIGHT) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                    <button 
+                      className="btn btn-ghost btn-sm" 
+                      style={{ padding: '3px 8px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      onClick={() => {
+                        if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
+                      }}
+                    >
+                      <ArrowLeft size={12} /> Back to Ledger
+                    </button>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(59,130,246,0.12)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                      Order & BOQ Workspace Engine
+                    </span>
+                  </div>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'clamp(17px, 1.5vw, 22px)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{quoteName}</span> — <span style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{selectedOrderId}</span>
+                  </h2>
+                </div>
+
+                {/* ACTION BUTTONS */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {saveSuccessMsg && (
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#10b981',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      {saveSuccessMsg}
+                    </div>
+                  )}
+
                   <button 
                     className="btn btn-ghost btn-sm" 
-                    style={{ padding: '4px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
                     onClick={() => {
-                      if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
+                      if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
                     }}
+                    disabled={isSavingOrder || isSyncingVault}
                   >
-                    <ArrowLeft size={12} /> Back to Ledger
+                    Close
                   </button>
-                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(59,130,246,0.15)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    Order & BOQ Workspace Engine
-                  </span>
+                  
+                  <button 
+                    className="btn btn-secondary btn-sm" 
+                    onClick={() => handleSaveOrderSpreadsheet(false)}
+                    disabled={isSavingOrder || isSyncingVault}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                    title="Instantly save all edits, line items, and pricing to database without Google Drive sync"
+                  >
+                    <Save size={14} /> {isSavingOrder ? 'Saving...' : 'Save & Update'}
+                  </button>
+
+                  <button 
+                    className="btn btn-primary btn-sm" 
+                    onClick={() => handleSaveOrderSpreadsheet(true)}
+                    disabled={isSavingOrder || isSyncingVault}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                    title="Save order to database and generate Quotation, Invoice, BOQ & Schedule on Google Drive"
+                  >
+                    <FileText size={14} /> {isSyncingVault ? '⏳ Generating Docs...' : 'Save & Document'}
+                  </button>
                 </div>
-                <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {quoteName} — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
-                </h2>
               </div>
 
-              {/* Vitals Grid and Actions Container */}
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                {(() => {
-                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                  const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-                  const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
-                  const netRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
-                  const discountedRetail = Math.max(0, netRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                  const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                  
-                  // Calculate dynamic status and percentages
-                  let totalQtyForProc = 0;
-                  let totalProcQty = 0;
-                  let totalQtyForInv = 0;
-                  let totalInvQty = 0;
-                  let totalQtyForDel = 0;
-                  let totalDelQty = 0;
+              {/* TIER 2: FINANCIAL VITALS GRID (FULL 100% WIDTH, PERCENTAGE PROPORTIONS, NO HARDCODED MIN-WIDTH) */}
+              {(() => {
+                const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+                const netRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
+                const discountedRetail = Math.max(0, netRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
+                
+                // Calculate dynamic status and percentages
+                let totalQtyForProc = 0;
+                let totalProcQty = 0;
+                let totalQtyForInv = 0;
+                let totalInvQty = 0;
+                let totalQtyForDel = 0;
+                let totalDelQty = 0;
 
-                  activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
-                    const q = Number(item.qty) || 0;
-                    const isService = (item.itemType || item.item_type) === 'Service';
-                    const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+                activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+                  const q = Number(item.qty) || 0;
+                  const isService = (item.itemType || item.item_type) === 'Service';
+                  const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
-                    if (isService) {
-                      totalQtyForInv += q;
-                      totalInvQty += Number(invoiced) || 0;
-                      return;
-                    }
-
-                    totalQtyForProc += q;
+                  if (isService) {
                     totalQtyForInv += q;
-                    totalQtyForDel += q;
-
-                    const received = item.receivedQty !== undefined ? item.receivedQty : 0;
-                    const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
-                    const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
-
-                    totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
                     totalInvQty += Number(invoiced) || 0;
-                    totalDelQty += Number(delivered) || 0;
-                  });
-
-                  const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-                  const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-                  const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
-
-                  const valueInclVat = discountedRetail * 1.15;
-                  let paymentStatus = 'Unpaid';
-                  if (orderPaidAmount > 0) {
-                    if (orderPaidAmount >= valueInclVat - 1) {
-                      paymentStatus = 'Fully Paid';
-                    } else {
-                      paymentStatus = 'Partially Paid';
-                    }
+                    return;
                   }
 
-                  let computedStatus = orderStatus || 'Pending';
-                  if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
-                    const isFullyPaid = paymentStatus === 'Fully Paid';
-                    if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
-                      computedStatus = 'Pending';
-                    } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
-                      computedStatus = 'Complete';
-                    } else {
-                      computedStatus = 'Ongoing';
-                    }
+                  totalQtyForProc += q;
+                  totalQtyForInv += q;
+                  totalQtyForDel += q;
+
+                  const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+                  const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+                  const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+                  totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+                  totalInvQty += Number(invoiced) || 0;
+                  totalDelQty += Number(delivered) || 0;
+                });
+
+                const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+                const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+                const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+                const valueInclVat = discountedRetail * 1.15;
+                let paymentStatus = 'Unpaid';
+                if (orderPaidAmount > 0) {
+                  if (orderPaidAmount >= valueInclVat - 1) {
+                    paymentStatus = 'Fully Paid';
+                  } else {
+                    paymentStatus = 'Partially Paid';
                   }
+                }
 
-                  let progressPct = 0;
-                  if (computedStatus === 'Complete') {
-                    progressPct = 100;
-                  } else if (computedStatus === 'Ongoing') {
-                    progressPct = 50;
+                let computedStatus = orderStatus || 'Pending';
+                if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
+                  const isFullyPaid = paymentStatus === 'Fully Paid';
+                  if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
+                    computedStatus = 'Pending';
+                  } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+                    computedStatus = 'Complete';
+                  } else {
+                    computedStatus = 'Ongoing';
                   }
+                }
 
-                  const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
+                const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
 
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr', gap: '12px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '700px' }}>
-                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
-                        <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                return (
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', 
+                    gap: '8px', 
+                    background: 'rgba(255,255,255,0.7)', 
+                    padding: '8px 12px', 
+                    borderRadius: 'var(--radius-md)', 
+                    border: '1px solid var(--border)', 
+                    width: '100%' 
+                  }}>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
+                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                    </div>
+                    <div style={{ borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                        <span>Proc:</span> <span style={{ color: 'var(--text-primary)' }}>{procPct}%</span>
                       </div>
-                      <div style={{ borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
-                          <span>Proc:</span> <span style={{ color: 'var(--text-primary)' }}>{procPct}%</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
-                          <span>Inv:</span> <span style={{ color: 'var(--text-primary)' }}>{invPct}%</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
-                          <span>Del:</span> <span style={{ color: 'var(--text-primary)' }}>{delPct}%</span>
-                        </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                        <span>Inv:</span> <span style={{ color: 'var(--text-primary)' }}>{invPct}%</span>
                       </div>
-                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
-                        {totalCreditedRetail > 0 && (
-                          <span style={{ fontSize: '8.5px', color: 'var(--text-danger)', fontWeight: 600 }}>
-                            Credited: -R {Math.round(totalCreditedRetail * 1.15).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
-                      </div>
-                      <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
-                      </div>
-                      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                        <span>Del:</span> <span style={{ color: 'var(--text-primary)' }}>{delPct}%</span>
                       </div>
                     </div>
-                  );
-                })()}
-
-
-                {saveSuccessMsg && (
-                  <div style={{
-                    fontSize: '12px',
-                    color: '#10b981',
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
-                    {saveSuccessMsg}
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                      {totalCreditedRetail > 0 && (
+                        <span style={{ fontSize: '8px', color: 'var(--text-danger)', fontWeight: 600 }}>
+                          Credited: -R {Math.round(totalCreditedRetail * 1.15).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                    </div>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                    </div>
+                    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                    </div>
                   </div>
-                )}
-
-                <button 
-                  className="btn btn-ghost btn-sm" 
-                  onClick={() => {
-                    if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
-                  }}
-                  disabled={isSavingOrder || isSyncingVault}
-                >
-                  Close
-                </button>
-                
-                <button 
-                  className="btn btn-secondary btn-sm" 
-                  onClick={() => handleSaveOrderSpreadsheet(false)}
-                  disabled={isSavingOrder || isSyncingVault}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
-                  title="Instantly save all edits, line items, and pricing to database without Google Drive sync"
-                >
-                  <Save size={14} /> {isSavingOrder ? 'Saving...' : 'Save & Update'}
-                </button>
-
-                <button 
-                  className="btn btn-primary btn-sm" 
-                  onClick={() => handleSaveOrderSpreadsheet(true)}
-                  disabled={isSavingOrder || isSyncingVault}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
-                  title="Save order to database and generate Quotation, Invoice, BOQ & Schedule on Google Drive"
-                >
-                  <FileText size={14} /> {isSyncingVault ? '⏳ Generating Docs...' : 'Save & Document'}
-                </button>
-              </div>
+                );
+              })()}
             </div>
 
 
@@ -3055,58 +3126,77 @@ export default function OrdersPage() {
               }
             `}</style>
 
-            {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '20px', gap: '4px', overflowX: 'auto' }}>
+            {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL (FLUID PROPORTIONAL) */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '16px', gap: 'clamp(2px, 0.4vw, 6px)', overflowX: 'auto', scrollbarWidth: 'thin', width: '100%' }}>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'takeoff' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={() => setWorkspaceSubTab('takeoff')}
+              >
+                <Sparkles size={13} /> ⚡ Takeoff & Spec
+              </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('boq')}
               >
-                <FileSpreadsheet size={14} /> 📊 BOQ Spreadsheet
+                <FileSpreadsheet size={13} /> 📊 BOQ Spreadsheet
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'doc_gen' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('doc_gen')}
               >
-                <FileText size={14} /> 📄 Document Generator & Exporter
+                <FileText size={13} /> 📄 Docs & Generator
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'payments' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('payments')}
               >
-                <DollarSign size={14} /> 💳 Payments
+                <DollarSign size={13} /> 💳 Payments
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'purchasing' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('purchasing')}
               >
-                <ClipboardList size={14} /> 📋 Purchasing & Receiving
+                <ClipboardList size={13} /> 📋 Purchasing
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('invoices')}
               >
-                <FileText size={14} /> 💵 Invoicing
+                <FileText size={13} /> 💵 Invoicing
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'logistics' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('logistics')}
               >
-                <Truck size={14} /> 📦 Delivery Logistics
+                <Truck size={13} /> 📦 Logistics
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'credits' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', whiteSpace: 'nowrap' }}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('credits')}
               >
-                <DollarSign size={14} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
+                <DollarSign size={13} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
               </button>
             </div>
+
+            {/* SUB-TAB 0: TAKEOFF & SPECIFICATION ENGINE */}
+            {workspaceSubTab === 'takeoff' && (
+              <TakeoffSpecEngine
+                orderId={selectedOrderId}
+                projectKey={selectedProjectKey}
+                orderSupplier={orderSupplier}
+                initialTakeoffData={takeoffData}
+                onSaveTakeoffData={handleSaveTakeoffData}
+                onGenerateBOQ={handleGenerateBOQFromTakeoff}
+              />
+            )}
 
             {workspaceSubTab === 'boq' && (
               
@@ -3118,13 +3208,23 @@ export default function OrdersPage() {
                     <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)' }}>
                       📋 Project Registration Form & Metadata Vitals
                     </h3>
-                    <button 
-                      className="btn btn-ghost btn-xs" 
-                      onClick={() => setShowRegForm(!showRegForm)}
-                      style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                    >
-                      {showRegForm ? 'Collapse Form ✕' : 'Expand Form ➔'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button 
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => setWorkspaceSubTab('takeoff')}
+                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Open Takeoff & Spec Engine to count fixtures and generate items"
+                      >
+                        <Sparkles size={11} /> ⚡ Populate from Takeoff & Spec
+                      </button>
+                      <button 
+                        className="btn btn-ghost btn-xs" 
+                        onClick={() => setShowRegForm(!showRegForm)}
+                        style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      >
+                        {showRegForm ? 'Collapse Form ✕' : 'Expand Form ➔'}
+                      </button>
+                    </div>
                   </div>
                   
                   {showRegForm && (

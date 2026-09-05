@@ -26,6 +26,7 @@ from routes.palladium import router as palladium_router, public_router as pallad
 from routes.procurement import router as procurement_router, public_router as procurement_public_router
 from routes.invoicing import router as invoicing_router, public_router as invoicing_public_router
 from routes.payments import router as payments_router, public_router as payments_public_router
+from routes.cad import router as cad_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -99,6 +100,7 @@ app.include_router(invoicing_router, prefix="/api", tags=["invoicing"])
 app.include_router(invoicing_public_router, prefix="/api", tags=["invoicing"])
 app.include_router(payments_router, prefix="/api", tags=["payments"])
 app.include_router(payments_public_router, prefix="/api", tags=["payments"])
+app.include_router(cad_router)
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -185,6 +187,26 @@ def init_db():
                             print("Database migration: dropped redundant 'order_metadata' column.")
                 except Exception as alter_err:
                     print(f"Database migration quote_name (info/critical): {alter_err}")
+                
+                # Migrate orders table to ensure takeoff_data exists
+                try:
+                    order_cols = [c['name'] for c in inspector.get_columns('orders')]
+                    if 'takeoff_data' not in order_cols:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS takeoff_data JSON;"))
+                        conn.commit()
+                        print("Database migration: ensured 'takeoff_data' column exists on 'orders' table.")
+                except Exception as td_err:
+                    print(f"takeoff_data migration notice: {td_err}")
+
+                # Migrate palladium_po_lines table to ensure reference exists
+                try:
+                    po_cols = [c['name'] for c in inspector.get_columns('palladium_po_lines')]
+                    if 'reference' not in po_cols:
+                        conn.execute(text("ALTER TABLE palladium_po_lines ADD COLUMN IF NOT EXISTS reference VARCHAR;"))
+                        conn.commit()
+                        print("Database migration: ensured 'reference' column exists on 'palladium_po_lines' table.")
+                except Exception as po_err:
+                    print(f"reference migration notice: {po_err}")
                 
                 # Migrate template_configs table to ensure docx_binary exists
                 try:

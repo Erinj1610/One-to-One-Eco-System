@@ -168,6 +168,8 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
     if "purchaseOrders" in order_data: order.purchase_orders = order_data.get("purchaseOrders")
     if "goodsReceivedNotes" in order_data: order.goods_received_notes = order_data.get("goodsReceivedNotes")
     if "clientInvoices" in order_data: order.client_invoices = order_data.get("clientInvoices")
+    if "takeoffData" in order_data or "takeoff_data" in order_data:
+        order.takeoff_data = order_data.get("takeoffData") if "takeoffData" in order_data else order_data.get("takeoff_data")
     if "orderDate" in order_data: order.order_date = order_data.get("orderDate")
     if "quotationSentDate" in order_data: order.quotation_sent_date = order_data.get("quotationSentDate")
     if "pfDate" in order_data: order.pf_date = order_data.get("pfDate")

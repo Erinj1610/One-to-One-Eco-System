@@ -25,3 +25,10 @@ dist/
 Thumbs.db
 
 .vercel
+
+# .NET / CAD Parser build outputs
+backend/bin/
+**/bin/
+**/obj/
+*.user
+*.suo

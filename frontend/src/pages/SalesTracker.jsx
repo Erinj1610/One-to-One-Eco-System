@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
+import MobileSalesViewer from '../components/mobile/MobileSalesViewer';
 
 
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -207,10 +208,16 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices } = useStore();
+  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
-
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleNavigateToDoc = (page, docId, projectKey) => {
     navigate(page, { state: { openDocId: docId, projectKey } });
@@ -3071,6 +3078,9 @@ export default function SalesTracker() {
 
       {/* HEADER BANNER */}
       {selectedOrderId === null ? (
+        isMobile ? (
+          <MobileSalesViewer orders={sortedOrders} kpis={kpis} onRefresh={refreshProjects} />
+        ) : (
         <>
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3535,177 +3545,181 @@ export default function SalesTracker() {
             </div>
           </div>
         </>
-
+        )
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */
-        <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-          <div className="card-body" style={{ padding: '24px' }}>
+        <div className="card" style={{ border: '1.5px solid var(--border)', width: '100%', minWidth: 0 }}>
+          <div className="card-body" style={{ padding: 'clamp(14px, 1.4vw, 24px)' }}>
             
-            {/* WORKSPACE TOP NAV HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '20px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            {/* WORKSPACE TOP NAV HEADER: 2-TIER FLUID PROPORTIONAL FLOW */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '16px', width: '100%' }}>
+              
+              {/* TIER 1: ORDER TITLE & NAV (LEFT) + ACTIONS (RIGHT) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                    <button 
+                      className="btn btn-ghost btn-sm" 
+                      style={{ padding: '3px 8px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      onClick={() => {
+                        if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
+                      }}
+                    >
+                      <ArrowLeft size={12} /> Back to Ledger
+                    </button>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(59,130,246,0.12)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                      Sales Tracker Workspace Engine
+                    </span>
+                  </div>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'clamp(17px, 1.5vw, 22px)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{quoteName}</span> — <span style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{selectedOrderId}</span>
+                  </h2>
+                </div>
+
+                {/* ACTION BUTTONS */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button 
                     className="btn btn-ghost btn-sm" 
-                    style={{ padding: '4px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
                     onClick={() => {
-                      if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
+                      if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
                     }}
                   >
-                    <ArrowLeft size={12} /> Back to Ledger
+                    Cancel
                   </button>
-                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(59,130,246,0.15)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    Sales Tracker Workspace Engine
-                  </span>
-                </div>
-                <h2 style={{ margin: '4px 0 0 0', fontSize: '22px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {quoteName} — <span style={{ color: 'var(--text-info)' }}>{selectedOrderId}</span>
-                </h2>
-              </div>
-              
-              {/* Vitals Grid and Actions Container */}
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                {(() => {
-                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-                  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                  const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
                   
-                  // Calculate dynamic status and percentages
-                  let totalQtyForProc = 0;
-                  let totalProcQty = 0;
-                  let totalQtyForInv = 0;
-                  let totalInvQty = 0;
-                  let totalQtyForDel = 0;
-                  let totalDelQty = 0;
-
-                  activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
-                    const q = Number(item.qty) || 0;
-                    const isService = (item.itemType || item.item_type) === 'Service';
-                    const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
-
-                    if (isService) {
-                      totalQtyForInv += q;
-                      totalInvQty += Number(invoiced) || 0;
-                      return;
-                    }
-
-                    totalQtyForProc += q;
-                    totalQtyForInv += q;
-                    totalQtyForDel += q;
-
-                    const received = item.receivedQty !== undefined ? item.receivedQty : 0;
-                    const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
-                    const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
-
-                    totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
-                    totalInvQty += Number(invoiced) || 0;
-                    totalDelQty += Number(delivered) || 0;
-                  });
-
-                  const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-                  const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-                  const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
-
-                  const valueInclVat = discountedRetail * 1.15;
-                  let paymentStatus = 'Unpaid';
-                  if (orderPaidAmount > 0) {
-                    if (orderPaidAmount >= valueInclVat - 1) {
-                      paymentStatus = 'Fully Paid';
-                    } else {
-                      paymentStatus = 'Partially Paid';
-                    }
-                  }
-
-                  let computedStatus = orderStatus || 'Pending';
-                  if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
-                    const isFullyPaid = paymentStatus === 'Fully Paid';
-                    if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
-                      computedStatus = 'Pending';
-                    } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
-                      computedStatus = 'Complete';
-                    } else {
-                      computedStatus = 'Ongoing';
-                    }
-                  }
-
-                  let progressPct = 0;
-                  if (computedStatus === 'Complete') {
-                    progressPct = 100;
-                  } else if (computedStatus === 'Ongoing') {
-                    progressPct = 50;
-                  }
-
-                  const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
-
-                  return (
-                    <>
-                      <div style={{ display: 'grid', gridTemplateColumns: totalCreditVal > 0 ? '1.1fr 1.4fr 1.1fr 1.1fr 1.1fr 1.1fr 0.9fr' : '1.2fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr', gap: '10px', background: 'rgba(255,255,255,0.6)', padding: '10px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', minWidth: '700px' }}>
-                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
-                          <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
-                        </div>
-                        <div style={{ borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
-                            <span>Proc:</span> <span style={{ color: 'var(--text-primary)' }}>{procPct}%</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
-                            <span>Inv:</span> <span style={{ color: 'var(--text-primary)' }}>{invPct}%</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
-                            <span>Del:</span> <span style={{ color: 'var(--text-primary)' }}>{delPct}%</span>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
-                        </div>
-                        {totalCreditVal > 0 && (
-                          <div 
-                            style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '4px', padding: '4px' }}
-                            onClick={() => setSalesTrackerCreditsOpen(true)}
-                            title="Click to view Credited Items & Returns"
-                          >
-                            <span style={{ fontSize: '9px', color: 'var(--text-danger)', textTransform: 'uppercase', display: 'block', fontWeight: 700, letterSpacing: '0.5px' }}>Credits 🔴</span>
-                            <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', marginTop: '2px' }}>-R {Math.round(totalCreditVal).toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
-                        </div>
-                        <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
-                        </div>
-                        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-
-
-                <button 
-                  className="btn btn-ghost btn-sm" 
-                  onClick={() => {
-                    if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
-                  }}
-                >
-                  Cancel
-                </button>
-                
-                <button 
-                  className="btn btn-primary btn-sm" 
-                  onClick={handleSaveOrderSpreadsheet}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <Save size={14} /> Save & Sync Sales Record
-                </button>
+                  <button 
+                    className="btn btn-primary btn-sm" 
+                    onClick={handleSaveOrderSpreadsheet}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Save size={14} /> Save & Sync Sales Record
+                  </button>
+                </div>
               </div>
+
+              {/* TIER 2: FINANCIAL VITALS GRID (FULL 100% WIDTH, PERCENTAGE PROPORTIONS, NO HARDCODED MIN-WIDTH) */}
+              {(() => {
+                const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+                const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
+                
+                // Calculate dynamic status and percentages
+                let totalQtyForProc = 0;
+                let totalProcQty = 0;
+                let totalQtyForInv = 0;
+                let totalInvQty = 0;
+                let totalQtyForDel = 0;
+                let totalDelQty = 0;
+
+                activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+                  const q = Number(item.qty) || 0;
+                  const isService = (item.itemType || item.item_type) === 'Service';
+                  const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
+
+                  if (isService) {
+                    totalQtyForInv += q;
+                    totalInvQty += Number(invoiced) || 0;
+                    return;
+                  }
+
+                  totalQtyForProc += q;
+                  totalQtyForInv += q;
+                  totalQtyForDel += q;
+
+                  const received = item.receivedQty !== undefined ? item.receivedQty : 0;
+                  const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
+                  const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+
+                  totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+                  totalInvQty += Number(invoiced) || 0;
+                  totalDelQty += Number(delivered) || 0;
+                });
+
+                const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+                const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+                const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+                const valueInclVat = discountedRetail * 1.15;
+                let paymentStatus = 'Unpaid';
+                if (orderPaidAmount > 0) {
+                  if (orderPaidAmount >= valueInclVat - 1) {
+                    paymentStatus = 'Fully Paid';
+                  } else {
+                    paymentStatus = 'Partially Paid';
+                  }
+                }
+
+                let computedStatus = orderStatus || 'Pending';
+                if (computedStatus !== 'Draft' && computedStatus !== 'Cancelled') {
+                  const isFullyPaid = paymentStatus === 'Fully Paid';
+                  if (orderPaidAmount === 0 && procPct === 0 && delPct === 0) {
+                    computedStatus = 'Pending';
+                  } else if (procPct === 100 && invPct === 100 && delPct === 100 && isFullyPaid) {
+                    computedStatus = 'Complete';
+                  } else {
+                    computedStatus = 'Ongoing';
+                  }
+                }
+
+                const balanceOutstanding = Math.max(0, valueInclVat - Number(orderPaidAmount));
+
+                return (
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', 
+                    gap: '8px', 
+                    background: 'rgba(255,255,255,0.7)', 
+                    padding: '8px 12px', 
+                    borderRadius: 'var(--radius-md)', 
+                    border: '1px solid var(--border)', 
+                    width: '100%' 
+                  }}>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
+                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                    </div>
+                    <div style={{ borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                        <span>Proc:</span> <span style={{ color: 'var(--text-primary)' }}>{procPct}%</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                        <span>Inv:</span> <span style={{ color: 'var(--text-primary)' }}>{invPct}%</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                        <span>Del:</span> <span style={{ color: 'var(--text-primary)' }}>{delPct}%</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                    </div>
+                    {totalCreditVal > 0 && (
+                      <div 
+                        style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '4px', padding: '2px 4px' }}
+                        onClick={() => setSalesTrackerCreditsOpen(true)}
+                        title="Click to view Credited Items & Returns"
+                      >
+                        <span style={{ fontSize: '9px', color: 'var(--text-danger)', textTransform: 'uppercase', display: 'block', fontWeight: 700, letterSpacing: '0.5px' }}>Credits 🔴</span>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', marginTop: '2px' }}>-R {Math.round(totalCreditVal).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                    </div>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                    </div>
+                    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
 
