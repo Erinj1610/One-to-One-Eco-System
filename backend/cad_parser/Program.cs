@@ -20,12 +20,20 @@ namespace OneToOne.CadParser
             "SERVERY", "STATION", "FREEZER", "COLD", "CHILLER", "WASH", "SCULLERY", "ENTRANCE",
             "ENTRY", "FOYER", "LOBBY", "PASSAGE", "CORRIDOR", "HALL", "OFFICE", "STORE",
             "STOREROOM", "STAFF", "CREW", "TOILET", "TOILETS", "WC", "RESTROOM", "BATHROOM",
-            "MALL", "BAR", "SHAFT", "DUCT", "PLANT", "ELECTRICAL", "SERVER", "PATIO", "BALCONY",
+            "MALL", "BAR", "PLANT", "ELECTRICAL", "SERVER", "PATIO", "BALCONY",
             "TERRACE", "PORCH", "GARAGE", "BEDROOM", "LIVING", "LOUNGE", "SUITE", "CLOSET",
             "PANTRY", "LAUNDRY", "ATTIC", "BASEMENT", "CELLAR", "STAIR", "STAIRWAY", "STAIRCASE",
-            "VOID", "REFUSE", "BIN", "DELIVERY", "RECEIVING", "DISPATCH", "YARD", "DECK",
+            "VOID", "DELIVERY", "RECEIVING", "DISPATCH", "YARD", "DECK",
             "MEZZANINE", "CANOPY", "AISLE", "BOOTHS", "MALE", "FEMALE", "CUSTOMER", "GENTS",
-            "LADIES", "DISABLED", "CLOAKS", "LOCKER", "SECURITY", "INTERNAL", "EXTERNAL"
+            "LADIES", "DISABLED", "CLOAKS", "LOCKER", "SECURITY", "INTERNAL", "EXTERNAL",
+            "ORDER", "OVEN", "VEG", "POT", "COLDRINK", "STORAGE", "UP", "UNISEX"
+        };
+
+        private static readonly HashSet<string> NonRoomExcludes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "DUCT", "SHAFT", "SERVICE SHAFT", "BIN", "MIRROR", "COLUMN", "CONDUIT", "SLAB", "SHOPFRONT", "SHOPFRONTS",
+            "FHR", "DB", "KDS", "DETAIL", "MANUAL", "EL", "RD", "PF", "LC", "DRIVER", "FEED", "CIRCUIT",
+            "H-COLUMN", "FRAME", "FRAMES", "CAMEL", "CONFIRMED"
         };
 
         public static int Main(string[] args)
@@ -342,23 +350,41 @@ namespace OneToOne.CadParser
 
                 if (string.IsNullOrWhiteSpace(tag))
                 {
-                    var candidateTexts = tagTexts.Where(t => t.IsOnLightingLayer).ToList();
-                    if (!candidateTexts.Any()) candidateTexts = tagTexts;
+                    string bClean = CleanBlockName(ins.Block?.Name ?? "");
+                    string prefix = bClean.Length >= 1 ? bClean.Substring(0, 1) : "";
 
-                    double minTextDist = double.MaxValue;
-                    foreach (var t in candidateTexts)
+                    var candidateTexts = tagTexts
+                        .Where(t => !IsLinearLedTag(t.Val) && t.Val != "RD" && t.Val != "PF" && t.Val != "EL" && t.Val != "LC")
+                        .Where(t => t.IsOnLightingLayer)
+                        .ToList();
+                    if (!candidateTexts.Any())
                     {
-                        double dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2));
-                        if (dist < minTextDist)
-                        {
-                            minTextDist = dist;
-                            tag = t.Val;
-                        }
+                        candidateTexts = tagTexts
+                            .Where(t => !IsLinearLedTag(t.Val) && t.Val != "RD" && t.Val != "PF" && t.Val != "EL" && t.Val != "LC")
+                            .ToList();
                     }
 
-                    if (minTextDist > 2500.0)
+                    var nearbyCandidates = candidateTexts
+                        .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2)) })
+                        .Where(t => t.Dist <= 1500.0)
+                        .OrderBy(t => t.Dist)
+                        .ToList();
+
+                    var prefixMatch = nearbyCandidates.FirstOrDefault(t =>
+                        string.Equals(t.Val, bClean, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(prefix) && t.Val.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+
+                    if (prefixMatch != null)
                     {
-                        tag = ins.Block?.Name ?? "UNKNOWN";
+                        tag = prefixMatch.Val;
+                    }
+                    else if (nearbyCandidates.Any() && nearbyCandidates.First().Dist <= 1200.0)
+                    {
+                        tag = nearbyCandidates.First().Val;
+                    }
+                    else
+                    {
+                        tag = bClean;
                     }
                 }
 
@@ -736,38 +762,35 @@ namespace OneToOne.CadParser
                     string prefix = bClean.Length >= 1 ? bClean.Substring(0, 1) : "";
 
                     var candidateTexts = tagTexts
-                        .Where(t => !IsLinearLedTag(t.Val))
+                        .Where(t => !IsLinearLedTag(t.Val) && t.Val != "RD" && t.Val != "PF" && t.Val != "EL" && t.Val != "LC")
                         .Where(t => t.Layer.ToUpper().Contains("LUM") || t.Layer.ToUpper().Contains("LIGHT") || string.Equals(t.Layer, lName, StringComparison.OrdinalIgnoreCase))
                         .ToList();
-                    if (!candidateTexts.Any()) candidateTexts = tagTexts.Where(t => !IsLinearLedTag(t.Val)).ToList();
+                    if (!candidateTexts.Any())
+                    {
+                        candidateTexts = tagTexts
+                            .Where(t => !IsLinearLedTag(t.Val) && t.Val != "RD" && t.Val != "PF" && t.Val != "EL" && t.Val != "LC")
+                            .ToList();
+                    }
 
-                    var matchingTexts = candidateTexts
-                        .Where(t => string.Equals(t.Val, bClean, StringComparison.OrdinalIgnoreCase) ||
-                                    (!string.IsNullOrEmpty(prefix) && t.Val.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                    var nearbyCandidates = candidateTexts
+                        .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2)) })
+                        .Where(t => t.Dist <= 1500.0)
+                        .OrderBy(t => t.Dist)
                         .ToList();
 
-                    if (matchingTexts.Any())
-                    {
-                        double minTextDist = double.MaxValue;
-                        string bestText = "";
-                        foreach (var t in matchingTexts)
-                        {
-                            double dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2));
-                            if (dist < minTextDist)
-                            {
-                                minTextDist = dist;
-                                bestText = t.Val;
-                            }
-                        }
+                    // 1. Prefer text matching block prefix (e.g. Block A -> A1, A2; Block P -> P1, P2)
+                    var prefixMatch = nearbyCandidates.FirstOrDefault(t =>
+                        string.Equals(t.Val, bClean, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(prefix) && t.Val.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
 
-                        if (minTextDist <= 1800.0 && !string.IsNullOrWhiteSpace(bestText))
-                        {
-                            tag = bestText;
-                        }
-                        else
-                        {
-                            tag = bClean;
-                        }
+                    if (prefixMatch != null)
+                    {
+                        tag = prefixMatch.Val;
+                    }
+                    else if (nearbyCandidates.Any() && nearbyCandidates.First().Dist <= 1200.0)
+                    {
+                        // 2. If no prefix match, but an authentic plan code text is adjacent to the symbol (e.g. Block B1 -> A3; Block DP -> LF_03; Block WV -> LF_06)
+                        tag = nearbyCandidates.First().Val;
                     }
                     else
                     {
@@ -850,7 +873,7 @@ namespace OneToOne.CadParser
                 var linearCandidates = tagTexts
                     .Where(t => IsLinearLedTag(t.Val))
                     .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
-                    .Where(t => t.Dist < 2500.0)
+                    .Where(t => t.Dist <= 3500.0)
                     .OrderBy(t => t.Dist)
                     .ToList();
 
@@ -1249,10 +1272,12 @@ namespace OneToOne.CadParser
             string u = val.ToUpperInvariant().Trim();
 
             // Point fixture tags that must NEVER be assigned to linear LED runs
-            if (u == "A1" || u == "A2" || u == "A3" || u == "B1" || u == "B2" || u == "DP" || u == "WV" || u == "A" || u == "B" || u == "C" || u == "D")
+            if (Regex.IsMatch(u, @"^LF[_\-0-9]")) return false; // Light Fitting: LF_01, LF_02, LF_03, etc.
+            if (Regex.IsMatch(u, @"^[A-Z][0-9]{1,2}$")) return false; // A1, A2, A3, B1, P1, etc.
+            if (u == "DP" || u == "WV" || u == "A" || u == "B" || u == "C" || u == "D")
                 return false;
 
-            if (u.StartsWith("L-") || u.StartsWith("LF_") || u.StartsWith("LF-") || u.StartsWith("LJ") || u.StartsWith("LC_"))
+            if (u.StartsWith("L-") || u.StartsWith("LED-") || u.StartsWith("STRIP-") || u.StartsWith("LC_"))
                 return true;
             if (u.Contains("LED") || u.Contains("STRIP") || u.Contains("COVE") || u.Contains("NEON") || u.Contains("PROFILE") || u.Contains("TAPE") || u.Contains("FLEX"))
                 return true;
@@ -1262,24 +1287,29 @@ namespace OneToOne.CadParser
 
         private static bool IsRoomTextCandidate(string val, string layer)
         {
-            if (string.IsNullOrWhiteSpace(val) || val.Length < 2 || val.Length > 50) return false;
-            string u = val.ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(val) || val.Length < 2 || val.Length > 60) return false;
+            string u = val.ToUpperInvariant().Trim();
             string l = layer.ToUpperInvariant();
+
+            // Ignore electrical, luminaire, dimension, and hatch layers
+            if (l.Contains("LUM") || l.Contains("LIGHT") || l.Contains("LTG") || l.Contains("CIRC") || l.Contains("DIM") || l.Contains("HATCH"))
+                return false;
+
+            if (Regex.IsMatch(u, @"^[0-9\.,\s\:\-]+$")) return false;
+
+            var words = Regex.Split(u, @"[\s\-_/,\.]+").Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
+            if (words.Any(w => NonRoomExcludes.Contains(w))) return false;
 
             if (u.Contains("SCALE") || u.Contains("REV") || u.Contains("DATE") || u.Contains("PROJECT") ||
                 u.Contains("DRAWING") || u.Contains("SHEET") || u.Contains("DWG") || u.Contains("ARCHITECT") ||
                 u.Contains("LEGEND") || u.Contains("NOTES") || u.Contains("NOTE") || u.Contains("GENERAL") ||
                 u.Contains("ARRANGEMENT") || u.Contains("1:") || u.Contains("MM") || u.Contains("SPEC") ||
-                u.Contains("%%") || u.Contains("DETAIL") || u.Contains("SECTION") || u.Contains("ELEVATION") ||
-                u.Contains("H-COLUMN") || u.Contains("BEAM") || u.Contains("CONDUIT") || u.Contains("SUPPLY") ||
-                u.Contains("EXTRACT") || u.Contains("FLOW") || u.Contains("RETURN") || u.Contains("DRAIN") ||
-                u.Contains("BY DESIGNER"))
+                u.Contains("%%") || u.Contains("DETAIL") || u.Contains("SECTION") || u.Contains("ELEVATION"))
                 return false;
 
-            if (l.Contains("ROOM") || l.Contains("ZONE") || l.Contains("SPACE") || (l.Contains("AREA") && !l.Contains("PEN")))
+            if (l.Contains("ROOM") || l.Contains("ZONE") || l.Contains("SPACE") || l.Contains("A-LABEL") || l.Contains("SEATING") || (l.Contains("AREA") && !l.Contains("PEN")))
                 return true;
 
-            var words = Regex.Split(u, @"[\s\-_/,\.]+");
             return words.Any(w => RoomKeywords.Contains(w));
         }
 
@@ -1296,8 +1326,8 @@ namespace OneToOne.CadParser
 
                 var bottom = sorted
                     .Where(b => !used.Contains(b) && b != top)
-                    .Where(b => Math.Abs(b.Pt.X - top.Pt.X) <= 1500.0)
-                    .Where(b => (top.Pt.Y - b.Pt.Y) >= 50.0 && (top.Pt.Y - b.Pt.Y) <= 1000.0)
+                    .Where(b => Math.Abs(b.Pt.X - top.Pt.X) <= 1200.0)
+                    .Where(b => (top.Pt.Y - b.Pt.Y) >= 80.0 && (top.Pt.Y - b.Pt.Y) <= 450.0)
                     .OrderBy(b => top.Pt.Y - b.Pt.Y)
                     .FirstOrDefault();
 
@@ -1305,8 +1335,8 @@ namespace OneToOne.CadParser
                 {
                     used.Add(top);
                     used.Add(bottom);
-                    string cleanTop = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
-                    string cleanBottom = Regex.Replace(bottom.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
+                    string cleanTop = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim().TrimEnd('/');
+                    string cleanBottom = Regex.Replace(bottom.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim().TrimEnd('/');
                     string combined;
                     if (string.Equals(cleanTop, cleanBottom, StringComparison.OrdinalIgnoreCase))
                     {
@@ -1325,6 +1355,8 @@ namespace OneToOne.CadParser
                         combined = $"{cleanTop} {cleanBottom}".Trim();
                     }
 
+                    if (combined.Equals("OFFICE STORE", StringComparison.OrdinalIgnoreCase)) combined = "OFFICE / STORE";
+
                     result.Add(new TextLabel
                     {
                         Layer = top.Layer,
@@ -1335,7 +1367,8 @@ namespace OneToOne.CadParser
                 else
                 {
                     used.Add(top);
-                    string clean = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim();
+                    string clean = Regex.Replace(top.Val, @"\s*BY DESIGNER.*$", "", RegexOptions.IgnoreCase).Trim().TrimEnd('/');
+                    if (clean.Equals("DISABLED", StringComparison.OrdinalIgnoreCase)) clean = "DISABLED TOILET";
                     result.Add(new TextLabel { Layer = top.Layer, Val = clean, Pt = top.Pt });
                 }
             }
