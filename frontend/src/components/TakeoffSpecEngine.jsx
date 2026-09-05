@@ -315,23 +315,28 @@ export default function TakeoffSpecEngine({
 
       if (spec && itemType === 'linear_led') {
         const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
-        const profCost = Number(spec.ledConfig?.profileCost || 0);
-        const profRet = Number(spec.ledConfig?.profileRetail || 0);
-        const stripCost = Number(spec.ledConfig?.stripCost || 0);
-        const stripRet = Number(spec.ledConfig?.stripRetail || 0);
-        const drvCost = Number(spec.ledConfig?.driverCost || 0);
-        const drvRet = Number(spec.ledConfig?.driverRetail || 0);
+        const profMeters = spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen;
+        const stripMeters = spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen;
+        const drvQty = spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1;
 
-        estimatedCost += (rowLen * (profCost + stripCost)) + drvCost + 25;
-        estimatedRetail += (rowLen * (profRet + stripRet)) + drvRet + 65;
+        const profCost = Number(spec.ledConfig?.profileCost !== undefined ? spec.ledConfig.profileCost : (spec.ledConfig?.profileProduct?.cost_price || 0));
+        const profRet = Number(spec.ledConfig?.profileRetail !== undefined ? spec.ledConfig.profileRetail : (spec.ledConfig?.profileProduct?.retail_price || 0));
+        const stripCost = Number(spec.ledConfig?.stripCost !== undefined ? spec.ledConfig.stripCost : (spec.ledConfig?.stripProduct?.cost_price || 0));
+        const stripRet = Number(spec.ledConfig?.stripRetail !== undefined ? spec.ledConfig.stripRetail : (spec.ledConfig?.stripProduct?.retail_price || 0));
+        const drvCost = Number(spec.ledConfig?.driverCost !== undefined ? spec.ledConfig.driverCost : (spec.ledConfig?.driverProduct?.cost_price || 0));
+        const drvRet = Number(spec.ledConfig?.driverRetail !== undefined ? spec.ledConfig.driverRetail : (spec.ledConfig?.driverProduct?.retail_price || 0));
+
+        estimatedCost += (profMeters * profCost) + (stripMeters * stripCost) + (drvQty * drvCost);
+        estimatedRetail += (profMeters * profRet) + (stripMeters * stripRet) + (drvQty * drvRet);
       } else if (spec && itemType === 'track_system') {
-        const stockLen = Number(spec.trackConfig?.stockLength) || 3;
-        const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 1) * stockLen);
-        const rails = Math.max(1, Math.ceil(rowLen / stockLen));
-        const railCost = Number(spec.trackConfig?.railCost || 0);
-        const railRet = Number(spec.trackConfig?.railRetail || 0);
-        const drvCost = Number(spec.trackConfig?.driverCost || 0);
-        const drvRet = Number(spec.trackConfig?.driverRetail || 0);
+        const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+        const railMeters = spec.trackConfig?.railMeters !== undefined ? Number(spec.trackConfig.railMeters) : rowLen;
+        const drvQty = spec.trackConfig?.driverQty !== undefined ? Number(spec.trackConfig.driverQty) : 1;
+
+        const railCost = Number(spec.trackConfig?.railCost !== undefined ? spec.trackConfig.railCost : (spec.trackConfig?.railProduct?.cost_price || 0));
+        const railRet = Number(spec.trackConfig?.railRetail !== undefined ? spec.trackConfig.railRetail : (spec.trackConfig?.railProduct?.retail_price || 0));
+        const drvCost = Number(spec.trackConfig?.driverCost !== undefined ? spec.trackConfig.driverCost : (spec.trackConfig?.driverProduct?.cost_price || 0));
+        const drvRet = Number(spec.trackConfig?.driverRetail !== undefined ? spec.trackConfig.driverRetail : (spec.trackConfig?.driverProduct?.retail_price || 0));
 
         let spotsCost = 0;
         let spotsRet = 0;
@@ -342,27 +347,28 @@ export default function TakeoffSpecEngine({
           });
         }
 
-        estimatedCost += (rails * railCost) + spotsCost + drvCost + 140;
-        estimatedRetail += (rails * railRet) + spotsRet + drvRet + 280;
+        estimatedCost += (railMeters * railCost) + spotsCost + (drvQty * drvCost);
+        estimatedRetail += (railMeters * railRet) + spotsRet + (drvQty * drvRet);
       } else if (spec && spec.product) {
         const c = spec.customCost !== undefined ? Number(spec.customCost) : Number(spec.product.cost_price || 0);
         const r = spec.customRetail !== undefined ? Number(spec.customRetail) : Number(spec.product.retail_price || 0);
         estimatedCost += (qty * c);
         estimatedRetail += (qty * r);
+      }
 
-        // Accessories
-        if (Array.isArray(spec.accessories)) {
-          spec.accessories.forEach(acc => {
-            const accUnits = acc.qtyPerFitting !== undefined 
-              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
-            const accQty = qty * accUnits;
-            const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
-            const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
-            estimatedCost += (accQty * acCost);
-            estimatedRetail += (accQty * acRet);
-          });
-        }
+      // Dynamic accessories across all item types (fixtures, linear leds, tracks)
+      if (spec && Array.isArray(spec.accessories)) {
+        spec.accessories.forEach(acc => {
+          const accUnits = acc.qtyPerFitting !== undefined 
+            ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+            : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+          const mult = itemType === 'fixture' ? qty : 1;
+          const accQty = mult * accUnits;
+          const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+          const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+          estimatedCost += (accQty * acCost);
+          estimatedRetail += (accQty * acRet);
+        });
       }
     });
 
@@ -560,6 +566,8 @@ export default function TakeoffSpecEngine({
           const accData = await accRes.json();
           if (Array.isArray(accData)) {
             fetchedAccessories = accData.map(a => ({
+              ...a,
+              product: a,
               id: a.accessory_product_id || a.id,
               sku: a.sku,
               name: a.name,
@@ -611,7 +619,9 @@ export default function TakeoffSpecEngine({
       }));
     } else if (catalogTargetMode === 'accessory') {
       const newAcc = {
+        ...product,
         id: product.id,
+        product: product,
         sku: product.sku || product.one_to_one_code || product.name,
         name: product.client_description || product.name,
         category: product.category || 'Accessory',
@@ -785,6 +795,101 @@ export default function TakeoffSpecEngine({
 
     setCatalogModalOpen(false);
     setInspectedProduct(null);
+  };
+
+  const handleInspectItem = async (item, tag = null) => {
+    if (!item) return;
+    setInspectedForTag(tag);
+    const targetProduct = item.product || item;
+    setInspectedProduct(targetProduct);
+
+    if (targetProduct.id && typeof targetProduct.id === 'number') {
+      try {
+        const res = await fetch(`${API_BASE}/api/products/${targetProduct.id}`);
+        if (res.ok) {
+          const fullProd = await res.json();
+          if (fullProd && (fullProd.id || fullProd.sku)) {
+            setInspectedProduct(prev => (prev && prev.id === targetProduct.id ? { ...prev, ...fullProd } : prev));
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch full product details for inspector:', err);
+      }
+    }
+  };
+
+  const handleClearLedComponent = (tag, componentKey) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const ledCfg = { ...(cur.ledConfig || {}) };
+      if (componentKey === 'profile') {
+        delete ledCfg.profileProduct;
+        delete ledCfg.profileSku;
+        delete ledCfg.profileName;
+        delete ledCfg.profileCost;
+        delete ledCfg.profileTrade;
+        delete ledCfg.profileRetail;
+        delete ledCfg.profileMeters;
+      } else if (componentKey === 'strip') {
+        delete ledCfg.stripProduct;
+        delete ledCfg.stripSku;
+        delete ledCfg.stripName;
+        delete ledCfg.stripCost;
+        delete ledCfg.stripTrade;
+        delete ledCfg.stripRetail;
+        delete ledCfg.stripMeters;
+        delete ledCfg.stripWattsPerMeter;
+      } else if (componentKey === 'driver') {
+        delete ledCfg.driverProduct;
+        delete ledCfg.driverSku;
+        delete ledCfg.driverName;
+        delete ledCfg.driverCost;
+        delete ledCfg.driverTrade;
+        delete ledCfg.driverRetail;
+        delete ledCfg.driverQty;
+        delete ledCfg.driverWattage;
+      }
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          ledConfig: ledCfg
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleClearTrackComponent = (tag, componentKey) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const trackCfg = { ...(cur.trackConfig || {}) };
+      if (componentKey === 'rail') {
+        delete trackCfg.railProduct;
+        delete trackCfg.railSku;
+        delete trackCfg.railName;
+        delete trackCfg.railCost;
+        delete trackCfg.railTrade;
+        delete trackCfg.railRetail;
+        delete trackCfg.railMeters;
+      } else if (componentKey === 'driver') {
+        delete trackCfg.driverProduct;
+        delete trackCfg.driverSku;
+        delete trackCfg.driverName;
+        delete trackCfg.driverCost;
+        delete trackCfg.driverTrade;
+        delete trackCfg.driverRetail;
+        delete trackCfg.driverQty;
+      }
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          trackConfig: trackCfg
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
   };
 
   const handleUpdateTagType = (tag, newType) => {
@@ -1081,21 +1186,22 @@ export default function TakeoffSpecEngine({
         // -----------------------------------------------------------
         const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
         const cleanLen = Math.round(len * 100) / 100;
-        const stockLength = Number(spec?.ledConfig?.stockLength) || 3;
-        const cutBars = Math.max(1, Math.ceil(cleanLen / stockLength));
         const ledCfg = spec?.ledConfig || {};
+        const profMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
+        const stripMeters = ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen;
+        const drvQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
 
         // 1. Aluminium Profile / Extrusion
         const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
         const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
         generatedItems.push({
           id: 'I-' + Date.now() + '-' + rowIdx + '-prof-' + Math.random().toString(36).substr(2, 4),
-          qty: cleanLen,
+          qty: profMeters,
           type: tag,
           itemType: 'Hardware',
           oneOneCode: ledCfg.profileProduct?.one_to_one_code || '',
           code: ledCfg.profileSku || 'LED-PROFILE',
-          description: `${ledCfg.profileName || 'Aluminium LED Profile'} (${ledCfg.mounting || 'Surface'} - ${ledCfg.diffuser || 'Opal'} Diffuser) — ${cleanLen}m run [${cutBars}x ${stockLength}m bars]${row.notes ? ' — ' + row.notes : ''}`,
+          description: `${ledCfg.profileName || 'Aluminium LED Profile'} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: '—',
@@ -1115,15 +1221,15 @@ export default function TakeoffSpecEngine({
         const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
         generatedItems.push({
           id: 'I-' + Date.now() + '-' + rowIdx + '-strip-' + Math.random().toString(36).substr(2, 4),
-          qty: cleanLen,
+          qty: stripMeters,
           type: tag,
           itemType: 'Hardware',
           oneOneCode: ledCfg.stripProduct?.one_to_one_code || '',
           code: ledCfg.stripSku || 'LED-STRIP-24V',
-          description: `${ledCfg.stripName || 'LED Strip Tape'} (${ledCfg.cct || '3000K'}, ${ledCfg.stripWattsPerMeter || 14.4}W/m, ${ledCfg.ipRating || 'IP20'}) — ${cleanLen}m`,
+          description: `${ledCfg.stripName || 'LED Strip Tape'} — ${stripMeters}m`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
-          dimming: ledCfg.dimming || 'Phase Cut',
+          dimming: ledCfg.stripProduct?.dimming_protocol || 'Phase Cut / 24V',
           brand: ledCfg.stripProduct?.brand || '',
           supplier: ledCfg.stripProduct?.supplier || orderSupplier || 'Molecule Dist.',
           unitCost: stripCost,
@@ -1138,19 +1244,17 @@ export default function TakeoffSpecEngine({
         // 3. LED Driver / Power Supply
         const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
         const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
-        const totalLoadWatts = Math.round(cleanLen * (ledCfg.stripWattsPerMeter || 14.4));
-        const recDriverWattage = ledCfg.driverWattage || (Math.ceil((totalLoadWatts * 1.2) / 50) * 50);
         generatedItems.push({
           id: 'I-' + Date.now() + '-' + rowIdx + '-drv-' + Math.random().toString(36).substr(2, 4),
-          qty: 1,
+          qty: drvQty,
           type: tag,
           itemType: 'Hardware',
           oneOneCode: ledCfg.driverProduct?.one_to_one_code || '',
           code: ledCfg.driverSku || 'LED-DRIVER-24V',
-          description: `${ledCfg.driverName || '24V Constant Voltage Driver'} (${ledCfg.dimming || 'Phase Cut'}, ${recDriverWattage}W for ${totalLoadWatts}W load)`,
+          description: `${ledCfg.driverName || '24V Constant Voltage Driver'}`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
-          dimming: ledCfg.dimming || 'Phase Cut',
+          dimming: ledCfg.driverProduct?.dimming_protocol || 'Phase Cut',
           brand: ledCfg.driverProduct?.brand || '',
           supplier: ledCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
           unitCost: driverCost,
@@ -1162,50 +1266,81 @@ export default function TakeoffSpecEngine({
           image_url: ledCfg.driverProduct?.image_url || ''
         });
 
-        // 4. End Caps & Mounting Hardware Kit
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
-          qty: 1,
-          type: tag,
-          itemType: 'Hardware',
-          oneOneCode: '',
-          code: 'LED-ENDCAPS-KIT',
-          description: `Profile End Caps (Pair) & Mounting Clips for ${tag}`,
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: '—',
-          brand: '',
-          supplier: orderSupplier || 'Molecule Dist.',
-          unitCost: 25,
-          unitTrade: 50,
-          unitRetail: 65,
-          selection: 'Accessory',
-          stockStatus: 'Stock',
-          eta: '2 weeks'
-        });
+        // 4. Dynamic Accessories / End Caps
+        if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
+          spec.accessories.forEach((acc, accIdx) => {
+            const accUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+            generatedItems.push({
+              id: 'I-' + Date.now() + '-' + rowIdx + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
+              qty: accUnits,
+              type: tag,
+              itemType: 'Hardware',
+              oneOneCode: acc.one_to_one_code || '',
+              code: acc.sku || 'LED-ACC',
+              description: acc.name || acc.client_description || 'Linear LED Accessory',
+              floor: row.floor || 'Ground',
+              area: row.area || 'General Area',
+              dimming: '—',
+              brand: acc.brand || '',
+              supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
+              unitCost: accCost,
+              unitTrade: accRetail * 0.8,
+              unitRetail: accRetail,
+              selection: 'Accessory',
+              stockStatus: 'Stock',
+              eta: '2 weeks',
+              image_url: acc.image_url || ''
+            });
+          });
+        } else {
+          // Fallback kit
+          generatedItems.push({
+            id: 'I-' + Date.now() + '-' + rowIdx + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
+            qty: 1,
+            type: tag,
+            itemType: 'Hardware',
+            oneOneCode: '',
+            code: 'LED-ENDCAPS-KIT',
+            description: `Profile End Caps (Pair) & Mounting Clips for ${tag}`,
+            floor: row.floor || 'Ground',
+            area: row.area || 'General Area',
+            dimming: '—',
+            brand: '',
+            supplier: orderSupplier || 'Molecule Dist.',
+            unitCost: 25,
+            unitTrade: 50,
+            unitRetail: 65,
+            selection: 'Accessory',
+            stockStatus: 'Stock',
+            eta: '2 weeks'
+          });
+        }
 
       } else if (itemType === 'track_system') {
         // -----------------------------------------------------------
         // EXPAND TRACK SYSTEM INTO RAILS + SPOTS + FEEDS + DRIVER
         // -----------------------------------------------------------
         const trackCfg = spec?.trackConfig || {};
-        const stockLength = Number(trackCfg.stockLength) || 3;
-        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 1) * stockLength);
+        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
         const cleanLen = Math.round(len * 100) / 100;
-        const railsCount = Math.max(1, Math.ceil(cleanLen / stockLength));
-        const joinersCount = Math.max(0, railsCount - 1);
+        const railMeters = trackCfg.railMeters !== undefined ? Number(trackCfg.railMeters) : cleanLen;
+        const drvQty = trackCfg.driverQty !== undefined ? Number(trackCfg.driverQty) : 1;
 
         // 1. Track Rails
         const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
         const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
         generatedItems.push({
           id: 'I-' + Date.now() + '-' + rowIdx + '-rail-' + Math.random().toString(36).substr(2, 4),
-          qty: railsCount,
+          qty: railMeters,
           type: tag,
           itemType: 'Hardware',
           oneOneCode: trackCfg.railProduct?.one_to_one_code || '',
           code: trackCfg.railSku || 'TRACK-RAIL',
-          description: `${trackCfg.railName || 'Track Profile Rail'} (${trackCfg.systemType || '48V Magnetic'}, ${trackCfg.mounting || 'Surface'}, Finish: ${trackCfg.finish || 'Black'}) — ${stockLength}m Rail (${cleanLen}m total)${row.notes ? ' — ' + row.notes : ''}`,
+          description: `${trackCfg.railName || 'Track Profile Rail'} — ${railMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: '—',
@@ -1220,31 +1355,7 @@ export default function TakeoffSpecEngine({
           image_url: trackCfg.railProduct?.image_url || ''
         });
 
-        // 2. Track Hardware Kit (Live End + Dead End + Joiners)
-        const kitCost = 140 + (joinersCount * 45);
-        const kitRetail = 280 + (joinersCount * 95);
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-tr-kit-' + Math.random().toString(36).substr(2, 4),
-          qty: 1,
-          type: tag,
-          itemType: 'Hardware',
-          oneOneCode: '',
-          code: 'TRACK-HARDWARE-KIT',
-          description: `Track Hardware Kit (1x Live End Power Feed + 1x Dead End Cap${joinersCount > 0 ? ` + ${joinersCount}x Straight Joiners` : ''})`,
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: '—',
-          brand: '',
-          supplier: orderSupplier || 'Molecule Dist.',
-          unitCost: kitCost,
-          unitTrade: kitRetail * 0.8,
-          unitRetail: kitRetail,
-          selection: 'Accessory',
-          stockStatus: 'Stock',
-          eta: '3 weeks'
-        });
-
-        // 3. Track-Mounted Spotlights / Luminaires
+        // 2. Track-Mounted Spotlights / Luminaires
         if (Array.isArray(trackCfg.spots) && trackCfg.spots.length > 0) {
           trackCfg.spots.forEach((spot, spIdx) => {
             const spQty = Math.max(1, Number(spot.qty) || 1);
@@ -1257,7 +1368,7 @@ export default function TakeoffSpecEngine({
               itemType: 'Hardware',
               oneOneCode: spot.product?.one_to_one_code || '',
               code: spot.sku || 'TRACK-SPOT',
-              description: `${spot.name} (${spot.beamAngle || '24°'}, ${spot.cct || '3000K'}, ${spot.wattage || 12}W) — Track Luminaire`,
+              description: `${spot.name} — Track Luminaire`,
               floor: row.floor || 'Ground',
               area: row.area || 'General Area',
               dimming: spot.product?.dimming_protocol || 'DALI / 48V Dim',
@@ -1274,13 +1385,13 @@ export default function TakeoffSpecEngine({
           });
         }
 
-        // 4. Track Driver / Power Box
-        if (trackCfg.driverName || (trackCfg.systemType || '').includes('48V')) {
+        // 3. Track Driver / Power Box
+        if (trackCfg.driverProduct || trackCfg.driverName) {
           const drvCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
           const drvRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
           generatedItems.push({
             id: 'I-' + Date.now() + '-' + rowIdx + '-tr-drv-' + Math.random().toString(36).substr(2, 4),
-            qty: 1,
+            qty: drvQty,
             type: tag,
             itemType: 'Hardware',
             oneOneCode: trackCfg.driverProduct?.one_to_one_code || '',
@@ -1298,6 +1409,60 @@ export default function TakeoffSpecEngine({
             stockStatus: 'Stock',
             eta: '3 weeks',
             image_url: trackCfg.driverProduct?.image_url || ''
+          });
+        }
+
+        // 4. Dynamic Accessories / Track Hardware Kit
+        if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
+          spec.accessories.forEach((acc, accIdx) => {
+            const accUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+            generatedItems.push({
+              id: 'I-' + Date.now() + '-' + rowIdx + '-tr-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
+              qty: accUnits,
+              type: tag,
+              itemType: 'Hardware',
+              oneOneCode: acc.one_to_one_code || '',
+              code: acc.sku || 'TRACK-ACC',
+              description: acc.name || acc.client_description || 'Track Accessory',
+              floor: row.floor || 'Ground',
+              area: row.area || 'General Area',
+              dimming: '—',
+              brand: acc.brand || '',
+              supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
+              unitCost: accCost,
+              unitTrade: accRetail * 0.8,
+              unitRetail: accRetail,
+              selection: 'Accessory',
+              stockStatus: 'Stock',
+              eta: '3 weeks',
+              image_url: acc.image_url || ''
+            });
+          });
+        } else {
+          // Fallback kit
+          generatedItems.push({
+            id: 'I-' + Date.now() + '-' + rowIdx + '-tr-kit-' + Math.random().toString(36).substr(2, 4),
+            qty: 1,
+            type: tag,
+            itemType: 'Hardware',
+            oneOneCode: '',
+            code: 'TRACK-HARDWARE-KIT',
+            description: `Track Hardware Kit (1x Live End Power Feed + 1x Dead End Cap for ${tag})`,
+            floor: row.floor || 'Ground',
+            area: row.area || 'General Area',
+            dimming: '—',
+            brand: '',
+            supplier: orderSupplier || 'Molecule Dist.',
+            unitCost: 140,
+            unitTrade: 280,
+            unitRetail: 350,
+            selection: 'Accessory',
+            stockStatus: 'Stock',
+            eta: '3 weeks'
           });
         }
 
@@ -1893,10 +2058,7 @@ export default function TakeoffSpecEngine({
                               </span>
                               <button 
                                 className="btn btn-ghost btn-xs"
-                                onClick={() => {
-                                  setInspectedProduct(spec.product);
-                                  setInspectedForTag(tag);
-                                }}
+                                onClick={() => handleInspectItem(spec.product, tag)}
                                 title="View full fitting specification sheet"
                                 style={{ padding: '2px 4px', color: 'var(--text-info)' }}
                               >
@@ -2179,10 +2341,7 @@ export default function TakeoffSpecEngine({
                                       flexShrink: 0,
                                       cursor: 'pointer'
                                     }}
-                                    onClick={() => {
-                                      setInspectedProduct(product);
-                                      setInspectedForTag(tag);
-                                    }}
+                                    onClick={() => handleInspectItem(product, tag)}
                                     title="Click to view photo and specs"
                                   >
                                     {product.image_url ? (
@@ -2228,10 +2387,7 @@ export default function TakeoffSpecEngine({
                                     </button>
                                     <button 
                                       className="btn btn-ghost btn-xs"
-                                      onClick={() => {
-                                        setInspectedProduct(product);
-                                        setInspectedForTag(tag);
-                                      }}
+                                      onClick={() => handleInspectItem(product, tag)}
                                       style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
                                     >
                                       <Eye size={11} /> Specs
@@ -2449,14 +2605,24 @@ export default function TakeoffSpecEngine({
                                                 {acc.name || acc.client_description}
                                               </span>
                                             </div>
-                                            <button 
-                                              className="btn btn-ghost btn-xs" 
-                                              onClick={() => handleRemoveAccessory(tag, accIdx)}
-                                              style={{ color: 'var(--text-danger)', padding: '2px' }}
-                                              title="Remove accessory"
-                                            >
-                                              <Trash2 size={12} />
-                                            </button>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <button 
+                                                className="btn btn-ghost btn-xs" 
+                                                onClick={() => handleInspectItem(acc, tag)}
+                                                style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px' }}
+                                                title="View accessory specifications"
+                                              >
+                                                <Eye size={11} /> Specs
+                                              </button>
+                                              <button 
+                                                className="btn btn-ghost btn-xs" 
+                                                onClick={() => handleRemoveAccessory(tag, accIdx)}
+                                                style={{ color: 'var(--text-danger)', padding: '2px' }}
+                                                title="Remove accessory"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </div>
                                           </div>
 
                                           {/* ACCESSORY RATIO & PRICING BAR */}
@@ -2578,25 +2744,35 @@ export default function TakeoffSpecEngine({
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
                       const ledCfg = spec?.ledConfig || {};
+                      const accessories = spec?.accessories || [];
                       const meters = tagInfo.totalMeters || tagInfo.totalQty || 3;
                       const cleanLen = Math.round(meters * 100) / 100;
-                      const stockLen = Number(ledCfg.stockLength) || 3;
-                      const cutBars = Math.max(1, Math.ceil(cleanLen / stockLen));
-                      const wattsPerM = Number(ledCfg.stripWattsPerMeter) || 14.4;
-                      const totalWatts = Math.round(cleanLen * wattsPerM);
-                      const recDriverW = ledCfg.driverWattage || (Math.ceil((totalWatts * 1.2) / 50) * 50) || 100;
 
-                      const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
-                      const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
+                      const profileMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
+                      const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : Number(ledCfg.profileProduct?.cost_price || 0);
+                      const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : Number(ledCfg.profileProduct?.retail_price || 0);
 
-                      const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
-                      const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
+                      const stripMeters = ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen;
+                      const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : Number(ledCfg.stripProduct?.cost_price || 0);
+                      const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : Number(ledCfg.stripProduct?.retail_price || 0);
 
-                      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
-                      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
+                      const driverQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
+                      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : Number(ledCfg.driverProduct?.cost_price || 0);
+                      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : Number(ledCfg.driverProduct?.retail_price || 0);
 
-                      const totalRunCost = Math.round((cleanLen * (profileCost + stripCost)) + driverCost + 25);
-                      const totalRunRetail = Math.round((cleanLen * (profileRetail + stripRetail)) + driverRetail + 65);
+                      // Accessories totals
+                      let accsCost = 0;
+                      let accsRetail = 0;
+                      accessories.forEach(acc => {
+                        const units = acc.qtyPerFitting !== undefined ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) : 1;
+                        const c = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+                        const r = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+                        accsCost += (units * c);
+                        accsRetail += (units * r);
+                      });
+
+                      const totalRunCost = Math.round((profileMeters * profileCost) + (stripMeters * stripCost) + (driverQty * driverCost) + accsCost);
+                      const totalRunRetail = Math.round((profileMeters * profileRetail) + (stripMeters * stripRetail) + (driverQty * driverRetail) + accsRetail);
                       const marginPct = totalRunRetail > 0 ? Math.round(((totalRunRetail - totalRunCost) / totalRunRetail) * 100) : 0;
 
                       return (
@@ -2669,278 +2845,614 @@ export default function TakeoffSpecEngine({
                           {/* BUILDER CONTENT */}
                           <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             
-                            {/* SPECIFICATION PARAMETERS */}
+                            {/* COMPONENT 1: PROFILE / EXTRUSION */}
                             <div style={{ 
                               background: 'var(--bg-secondary)', 
                               border: '1px solid var(--border)', 
                               borderRadius: '8px', 
-                              padding: '10px 12px',
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(3, 1fr)',
-                              gap: '8px'
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
                             }}>
-                              <div>
-                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Profile Cuts
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={ledCfg.stockLength || '3'}
-                                  onChange={e => handleUpdateLedConfig(tag, 'stockLength', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="3">3m Stock Bars</option>
-                                  <option value="2">2m Stock Bars</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Mounting
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={ledCfg.mounting || 'Surface'}
-                                  onChange={e => handleUpdateLedConfig(tag, 'mounting', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="Surface">Surface Mounted</option>
-                                  <option value="Recessed">Recessed (Trimmed)</option>
-                                  <option value="Trimless">Trimless Plaster-in</option>
-                                  <option value="Pendant">Suspended / Pendant</option>
-                                  <option value="Corner 45°">Corner 45°</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Diffuser Lens
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={ledCfg.diffuser || 'Opal'}
-                                  onChange={e => handleUpdateLedConfig(tag, 'diffuser', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="Opal">Opal / Frosted</option>
-                                  <option value="Black">Black / Smoked</option>
-                                  <option value="Micro-Prismatic">Micro-Prismatic</option>
-                                  <option value="Clear">Clear</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* INFO BADGE */}
-                            <div style={{ fontSize: '11px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.08)', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Info size={13} />
-                              <span>Requires <strong>{cutBars}x {stockLen}m bars</strong> ({cutBars * stockLen}m total stock) &bull; Auto-includes <strong>{Math.max(2, (tagInfo.runs.length || 1) * 2)} end caps</strong> & mounting clips</span>
-                            </div>
-
-                            {/* COMPONENT 1: PROFILE / EXTRUSION */}
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                                   1. Aluminium Profile Extrusion
                                 </span>
-                                <button 
-                                  className="btn btn-secondary btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'led_profile', 'Linear')}
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  {ledCfg.profileProduct ? 'Change Profile' : '+ Select Profile'}
-                                </button>
+                                {!ledCfg.profileProduct && (
+                                  <button 
+                                    className="btn btn-primary btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'led_profile', 'Linear')}
+                                    style={{ fontSize: '11px' }}
+                                  >
+                                    + Select Profile
+                                  </button>
+                                )}
                               </div>
 
                               {ledCfg.profileProduct ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {ledCfg.profileProduct.image_url ? (
-                                      <img src={ledCfg.profileProduct.image_url.startsWith('http') ? ledCfg.profileProduct.image_url : `${API_BASE}${ledCfg.profileProduct.image_url}`} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                    ) : (
-                                      <span style={{ fontSize: '14px' }}>📐</span>
-                                    )}
+                                <>
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div 
+                                      style={{ 
+                                        width: '56px', 
+                                        height: '56px', 
+                                        borderRadius: '6px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        overflow: 'hidden', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => handleInspectItem(ledCfg.profileProduct, tag)}
+                                      title="Click to view full specs"
+                                    >
+                                      {ledCfg.profileProduct.image_url ? (
+                                        <img 
+                                          src={ledCfg.profileProduct.image_url.startsWith('http') ? ledCfg.profileProduct.image_url : `${API_BASE}${ledCfg.profileProduct.image_url}`} 
+                                          alt="profile" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>📐</span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                                          {ledCfg.profileSku || ledCfg.profileProduct.sku || ledCfg.profileProduct.one_to_one_code}
+                                        </span>
+                                        {ledCfg.profileProduct.brand && (
+                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                            {ledCfg.profileProduct.brand}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {ledCfg.profileName || ledCfg.profileProduct.client_description || ledCfg.profileProduct.name}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                        {ledCfg.profileProduct.cutout && <span>Cutout: {ledCfg.profileProduct.cutout}</span>}
+                                        {ledCfg.profileProduct.color && <span>Finish: {ledCfg.profileProduct.color}</span>}
+                                        <span>📏 Extrusion</span>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <button 
+                                        className="btn btn-secondary btn-xs"
+                                        onClick={() => openCatalogPicker(tag, 'led_profile', 'Linear')}
+                                        style={{ fontSize: '11px' }}
+                                      >
+                                        Change
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleInspectItem(ledCfg.profileProduct, tag)}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Eye size={11} /> Specs
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleClearLedComponent(tag, 'profile')}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        title="Clear profile"
+                                      >
+                                        <Trash2 size={11} /> Clear
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                      {ledCfg.profileSku}
+
+                                  {/* EDITABLE PROFILE METERS & PRICING BAR */}
+                                  <div style={{ 
+                                    borderTop: '1px solid var(--border)', 
+                                    paddingTop: '8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Run Meters:</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.1" 
+                                          value={profileMeters} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'profileMeters', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '60px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>m</span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={profileCost} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'profileCost', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={profileRetail} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'profileRetail', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                        />
+                                      </div>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {ledCfg.profileName}
+
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(profileMeters * profileRetail).toLocaleString()}</span>
                                     </div>
                                   </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                      R {profileRetail}/m
-                                    </div>
-                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                      Total: R {(cleanLen * profileRetail).toLocaleString()}
-                                    </div>
-                                  </div>
-                                </div>
+                                </>
                               ) : (
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
-                                  No extrusion selected yet. Click "+ Select Profile" to choose from catalog.
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
+                                  No extrusion selected yet. Click "+ Select Profile" to choose from master catalog.
                                 </div>
                               )}
                             </div>
 
                             {/* COMPONENT 2: LED STRIP TAPE */}
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  2. LED Strip Tape ({totalWatts}W Load)
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  2. LED Strip Tape
                                 </span>
-                                <button 
-                                  className="btn btn-secondary btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'led_strip', 'LEDStrip')}
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  {ledCfg.stripProduct ? 'Change Strip' : '+ Select LED Strip'}
-                                </button>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                                <div>
-                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>CCT</label>
-                                  <select 
-                                    className="select select-xs" 
-                                    value={ledCfg.cct || '3000K'} 
-                                    onChange={e => handleUpdateLedConfig(tag, 'cct', e.target.value)}
-                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                {!ledCfg.stripProduct && (
+                                  <button 
+                                    className="btn btn-primary btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'led_strip', 'LEDStrip')}
+                                    style={{ fontSize: '11px' }}
                                   >
-                                    <option value="2700K">2700K Extra Warm</option>
-                                    <option value="3000K">3000K Warm White</option>
-                                    <option value="4000K">4000K Neutral White</option>
-                                    <option value="Tunable White">Tunable White</option>
-                                    <option value="RGBW">RGBW Color</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>IP Rating</label>
-                                  <select 
-                                    className="select select-xs" 
-                                    value={ledCfg.ipRating || 'IP20'} 
-                                    onChange={e => handleUpdateLedConfig(tag, 'ipRating', e.target.value)}
-                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                  >
-                                    <option value="IP20">IP20 (Indoor)</option>
-                                    <option value="IP65">IP65 (Silicone)</option>
-                                    <option value="IP67">IP67 (Outdoor)</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Watts / m</label>
-                                  <input 
-                                    type="number" 
-                                    step="0.1" 
-                                    value={wattsPerM} 
-                                    onChange={e => handleUpdateLedConfig(tag, 'stripWattsPerMeter', parseFloat(e.target.value) || 0)}
-                                    style={{ width: '100%', height: '24px', padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                                  />
-                                </div>
+                                    + Select Strip
+                                  </button>
+                                )}
                               </div>
 
                               {ledCfg.stripProduct ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {ledCfg.stripProduct.image_url ? (
-                                      <img src={ledCfg.stripProduct.image_url.startsWith('http') ? ledCfg.stripProduct.image_url : `${API_BASE}${ledCfg.stripProduct.image_url}`} alt="strip" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                    ) : (
-                                      <span style={{ fontSize: '14px' }}>〰️</span>
-                                    )}
+                                <>
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div 
+                                      style={{ 
+                                        width: '56px', 
+                                        height: '56px', 
+                                        borderRadius: '6px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        overflow: 'hidden', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => handleInspectItem(ledCfg.stripProduct, tag)}
+                                      title="Click to view full specs"
+                                    >
+                                      {ledCfg.stripProduct.image_url ? (
+                                        <img 
+                                          src={ledCfg.stripProduct.image_url.startsWith('http') ? ledCfg.stripProduct.image_url : `${API_BASE}${ledCfg.stripProduct.image_url}`} 
+                                          alt="strip" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>〰️</span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                                          {ledCfg.stripSku || ledCfg.stripProduct.sku || ledCfg.stripProduct.one_to_one_code}
+                                        </span>
+                                        {ledCfg.stripProduct.brand && (
+                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                            {ledCfg.stripProduct.brand}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {ledCfg.stripName || ledCfg.stripProduct.client_description || ledCfg.stripProduct.name}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                        {(ledCfg.stripProduct.wattage || ledCfg.stripWattsPerMeter) && <span>⚡ {ledCfg.stripProduct.wattage || ledCfg.stripWattsPerMeter}W/m</span>}
+                                        {(ledCfg.stripProduct.color_temperature || ledCfg.stripProduct.kelvin) && <span>🌡️ {ledCfg.stripProduct.color_temperature || ledCfg.stripProduct.kelvin}</span>}
+                                        {ledCfg.stripProduct.ip_rating && <span>💧 IP{ledCfg.stripProduct.ip_rating}</span>}
+                                        {ledCfg.stripProduct.cri && <span>CRI {ledCfg.stripProduct.cri}</span>}
+                                        <span>🔌 24V DC</span>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <button 
+                                        className="btn btn-secondary btn-xs"
+                                        onClick={() => openCatalogPicker(tag, 'led_strip', 'LEDStrip')}
+                                        style={{ fontSize: '11px' }}
+                                      >
+                                        Change
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleInspectItem(ledCfg.stripProduct, tag)}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Eye size={11} /> Specs
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleClearLedComponent(tag, 'strip')}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        title="Clear strip"
+                                      >
+                                        <Trash2 size={11} /> Clear
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                      {ledCfg.stripSku}
+
+                                  {/* EDITABLE STRIP METERS & PRICING BAR */}
+                                  <div style={{ 
+                                    borderTop: '1px solid var(--border)', 
+                                    paddingTop: '8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Strip Meters:</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.1" 
+                                          value={stripMeters} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'stripMeters', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '60px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>m</span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={stripCost} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'stripCost', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={stripRetail} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'stripRetail', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                        />
+                                      </div>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {ledCfg.stripName}
+
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(stripMeters * stripRetail).toLocaleString()}</span>
                                     </div>
                                   </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                      R {stripRetail}/m
-                                    </div>
-                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                      Total: R {(cleanLen * stripRetail).toLocaleString()}
-                                    </div>
-                                  </div>
-                                </div>
+                                </>
                               ) : (
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
-                                  No LED strip selected yet. Click "+ Select LED Strip" to choose from catalog.
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
+                                  No LED strip selected yet. Click "+ Select Strip" to choose from master catalog.
                                 </div>
                               )}
                             </div>
 
                             {/* COMPONENT 3: 24V DRIVER */}
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  3. 24V Driver (Rec: ~{recDriverW}W)
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  3. 24V Constant Voltage Driver
                                 </span>
-                                <button 
-                                  className="btn btn-secondary btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  {ledCfg.driverProduct ? 'Change Driver' : '+ Select Driver'}
-                                </button>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                                <div>
-                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Dimming Protocol</label>
-                                  <select 
-                                    className="select select-xs" 
-                                    value={ledCfg.dimming || 'Phase Cut'} 
-                                    onChange={e => handleUpdateLedConfig(tag, 'dimming', e.target.value)}
-                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                {!ledCfg.driverProduct && (
+                                  <button 
+                                    className="btn btn-primary btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
+                                    style={{ fontSize: '11px' }}
                                   >
-                                    <option value="Phase Cut">Phase Cut (Triac Dimming)</option>
-                                    <option value="DALI-2">DALI-2 / Push-Dim</option>
-                                    <option value="0-10V">0-10V Dimming</option>
-                                    <option value="Non-Dim">Non-Dimmable</option>
-                                    <option value="Casambi">Casambi Bluetooth</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Driver Watts</label>
-                                  <input 
-                                    type="number" 
-                                    value={recDriverW} 
-                                    onChange={e => handleUpdateLedConfig(tag, 'driverWattage', parseInt(e.target.value, 10) || 100)}
-                                    style={{ width: '100%', height: '24px', padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                                  />
-                                </div>
+                                    + Select Driver
+                                  </button>
+                                )}
                               </div>
 
                               {ledCfg.driverProduct ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {ledCfg.driverProduct.image_url ? (
-                                      <img src={ledCfg.driverProduct.image_url.startsWith('http') ? ledCfg.driverProduct.image_url : `${API_BASE}${ledCfg.driverProduct.image_url}`} alt="driver" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                    ) : (
-                                      <span style={{ fontSize: '14px' }}>⚡</span>
-                                    )}
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                      {ledCfg.driverSku}
+                                <>
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div 
+                                      style={{ 
+                                        width: '56px', 
+                                        height: '56px', 
+                                        borderRadius: '6px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        overflow: 'hidden', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => handleInspectItem(ledCfg.driverProduct, tag)}
+                                      title="Click to view full specs"
+                                    >
+                                      {ledCfg.driverProduct.image_url ? (
+                                        <img 
+                                          src={ledCfg.driverProduct.image_url.startsWith('http') ? ledCfg.driverProduct.image_url : `${API_BASE}${ledCfg.driverProduct.image_url}`} 
+                                          alt="driver" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>⚡</span>
+                                      )}
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {ledCfg.driverName}
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                                          {ledCfg.driverSku || ledCfg.driverProduct.sku || ledCfg.driverProduct.one_to_one_code}
+                                        </span>
+                                        {ledCfg.driverProduct.brand && (
+                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                            {ledCfg.driverProduct.brand}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {ledCfg.driverName || ledCfg.driverProduct.client_description || ledCfg.driverProduct.name}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                        {(ledCfg.driverProduct.wattage || ledCfg.driverWattage) && <span>⚡ {ledCfg.driverProduct.wattage || ledCfg.driverWattage}W</span>}
+                                        <span>🔌 24V DC</span>
+                                        {(ledCfg.driverProduct.dimming_protocol || ledCfg.driverProduct.dimmable) && (
+                                          <span>🎛️ {ledCfg.driverProduct.dimming_protocol || (ledCfg.driverProduct.dimmable === 'Yes' ? 'Dimmable' : 'Non-Dim')}</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <button 
+                                        className="btn btn-secondary btn-xs"
+                                        onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
+                                        style={{ fontSize: '11px' }}
+                                      >
+                                        Change
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleInspectItem(ledCfg.driverProduct, tag)}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Eye size={11} /> Specs
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleClearLedComponent(tag, 'driver')}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        title="Clear driver"
+                                      >
+                                        <Trash2 size={11} /> Clear
+                                      </button>
                                     </div>
                                   </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                      R {driverRetail}
+
+                                  {/* EDITABLE DRIVER QTY & PRICING BAR */}
+                                  <div style={{ 
+                                    borderTop: '1px solid var(--border)', 
+                                    paddingTop: '8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Driver Qty:</span>
+                                        <input 
+                                          type="number" 
+                                          min="1" 
+                                          value={driverQty} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'driverQty', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                          style={{ width: '45px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={driverCost} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'driverCost', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={driverRetail} 
+                                          onChange={e => handleUpdateLedConfig(tag, 'driverRetail', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(driverQty * driverRetail).toLocaleString()}</span>
                                     </div>
                                   </div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
+                                  No driver selected yet. Click "+ Select Driver" to choose from master catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* DYNAMIC ACCESSORIES SECTION */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  Dynamic Accessories & Hardware ({accessories.length})
+                                </span>
+                                <button 
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                  style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  <Plus size={12} /> Add Accessory
+                                </button>
+                              </div>
+
+                              {accessories.length === 0 ? (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                                  No linked accessories. Click "+ Add Accessory" to include end caps, joiners, suspension kits, or mounting clips.
                                 </div>
                               ) : (
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
-                                  No driver selected yet. Click "+ Select Driver" to choose from catalog.
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {accessories.map((acc, accIdx) => {
+                                    const accUnits = acc.qtyPerFitting !== undefined 
+                                      ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+                                      : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+                                    const accCost = acc.customCost !== undefined ? acc.customCost : (acc.cost_price || 0);
+                                    const accRetail = acc.customRetail !== undefined ? acc.customRetail : (acc.retail_price || 0);
+
+                                    return (
+                                      <div 
+                                        key={acc.id || accIdx}
+                                        style={{ 
+                                          background: 'var(--bg-secondary)', 
+                                          border: '1px solid var(--border)', 
+                                          borderRadius: '6px', 
+                                          padding: '8px 10px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '6px'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                              {acc.sku || acc.one_to_one_code || 'ACC'}
+                                            </span>
+                                            <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {acc.name || acc.client_description}
+                                            </span>
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <button 
+                                              className="btn btn-ghost btn-xs" 
+                                              onClick={() => handleInspectItem(acc, tag)}
+                                              style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px' }}
+                                              title="View accessory specifications"
+                                            >
+                                              <Eye size={11} /> Specs
+                                            </button>
+                                            <button 
+                                              className="btn btn-ghost btn-xs" 
+                                              onClick={() => handleRemoveAccessory(tag, accIdx)}
+                                              style={{ color: 'var(--text-danger)', padding: '2px' }}
+                                              title="Remove accessory"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* ACCESSORY UNITS & PRICING BAR */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '11px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Units per Run:</span>
+                                            <input 
+                                              type="number"
+                                              min="1"
+                                              value={accUnits}
+                                              onChange={e => handleUpdateAccessoryQtyPerFitting(tag, accIdx, e.target.value)}
+                                              style={{ width: '42px', height: '22px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600 }}
+                                            />
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ color: 'var(--text-secondary)' }}>Cost:</span>
+                                              <span style={{ color: 'var(--text-tertiary)' }}>R</span>
+                                              <input 
+                                                type="number"
+                                                step="0.01"
+                                                value={accCost}
+                                                onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
+                                                style={{ width: '55px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'center', fontSize: '11px', color: 'var(--text-primary)' }}
+                                              />
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ color: 'var(--text-secondary)' }}>Retail:</span>
+                                              <span style={{ color: 'var(--text-success)' }}>R</span>
+                                              <input 
+                                                type="number"
+                                                step="0.01"
+                                                value={accRetail}
+                                                onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
+                                                style={{ width: '60px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--text-success)', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-success)' }}
+                                              />
+                                            </div>
+
+                                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                              Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(accUnits * accRetail).toLocaleString()}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -2959,7 +3471,7 @@ export default function TakeoffSpecEngine({
                                 Est. Assembly Cost: <strong style={{ color: 'var(--text-primary)' }}>R {totalRunCost.toLocaleString()}</strong>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--text-success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                <span style={{ fontSize: '10px', background: marginPct >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: marginPct >= 30 ? 'var(--text-success)' : 'var(--text-warning)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
                                   {marginPct}% Margin
                                 </span>
                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-success)' }}>
@@ -2994,35 +3506,39 @@ export default function TakeoffSpecEngine({
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
                       const trackCfg = spec?.trackConfig || {};
+                      const accessories = spec?.accessories || [];
+                      const spots = trackCfg.spots || [];
                       const meters = tagInfo.totalMeters || tagInfo.totalQty || 3;
                       const cleanLen = Math.round(meters * 100) / 100;
-                      const stockLength = Number(trackCfg.stockLength) || 3;
-                      const railsCount = Math.max(1, Math.ceil(cleanLen / stockLength));
-                      const joinersCount = Math.max(0, railsCount - 1);
-                      const spots = trackCfg.spots || [];
 
-                      const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
-                      const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
+                      const railMeters = trackCfg.railMeters !== undefined ? Number(trackCfg.railMeters) : cleanLen;
+                      const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : Number(trackCfg.railProduct?.cost_price || 0);
+                      const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : Number(trackCfg.railProduct?.retail_price || 0);
 
-                      const kitCost = 140 + (joinersCount * 45);
-                      const kitRetail = 280 + (joinersCount * 95);
+                      const driverQty = trackCfg.driverQty !== undefined ? Number(trackCfg.driverQty) : 1;
+                      const driverCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : Number(trackCfg.driverProduct?.cost_price || 0);
+                      const driverRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : Number(trackCfg.driverProduct?.retail_price || 0);
 
                       let spotsCost = 0;
                       let spotsRetail = 0;
-                      let totalSpotsWatts = 0;
                       spots.forEach(sp => {
                         const q = Number(sp.qty || 1);
                         spotsCost += (q * Number(sp.cost_price || 0));
                         spotsRetail += (q * Number(sp.retail_price || 0));
-                        totalSpotsWatts += (q * Number(sp.wattage || 12));
                       });
 
-                      const recTrackDriverW = Math.ceil((totalSpotsWatts * 1.2) / 50) * 50 || 100;
-                      const driverCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
-                      const driverRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
+                      let accsCost = 0;
+                      let accsRetail = 0;
+                      accessories.forEach(acc => {
+                        const units = acc.qtyPerFitting !== undefined ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) : 1;
+                        const c = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+                        const r = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+                        accsCost += (units * c);
+                        accsRetail += (units * r);
+                      });
 
-                      const totalTrackCost = Math.round((railsCount * railCost) + kitCost + spotsCost + (trackCfg.systemType === '230V Mains 3-Phase' ? 0 : driverCost));
-                      const totalTrackRetail = Math.round((railsCount * railRetail) + kitRetail + spotsRetail + (trackCfg.systemType === '230V Mains 3-Phase' ? 0 : driverRetail));
+                      const totalTrackCost = Math.round((railMeters * railCost) + spotsCost + (driverQty * driverCost) + accsCost);
+                      const totalTrackRetail = Math.round((railMeters * railRetail) + spotsRetail + (driverQty * driverRetail) + accsRetail);
                       const marginPct = totalTrackRetail > 0 ? Math.round(((totalTrackRetail - totalTrackCost) / totalTrackRetail) * 100) : 0;
 
                       return (
@@ -3095,147 +3611,188 @@ export default function TakeoffSpecEngine({
                           {/* BUILDER CONTENT */}
                           <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             
-                            {/* SYSTEM ARCHITECTURE SETTINGS */}
+                            {/* COMPONENT 1: TRACK RAILS */}
                             <div style={{ 
                               background: 'var(--bg-secondary)', 
                               border: '1px solid var(--border)', 
                               borderRadius: '8px', 
-                              padding: '10px 12px',
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(4, 1fr)',
-                              gap: '8px'
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
                             }}>
-                              <div>
-                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Architecture
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={trackCfg.systemType || '48V Low-Voltage Magnetic'}
-                                  onChange={e => handleUpdateTrackConfig(tag, 'systemType', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="48V Low-Voltage Magnetic">48V Magnetic</option>
-                                  <option value="230V Mains 3-Phase">230V Mains 3P</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Mounting
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={trackCfg.mounting || 'Surface Mounted'}
-                                  onChange={e => handleUpdateTrackConfig(tag, 'mounting', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="Surface Mounted">Surface Mount</option>
-                                  <option value="Recessed Trimless">Recessed Trimless</option>
-                                  <option value="Recessed Trimmed">Recessed Trimmed</option>
-                                  <option value="Suspended">Suspended / Pendant</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Finish
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={trackCfg.finish || 'Matte Black'}
-                                  onChange={e => handleUpdateTrackConfig(tag, 'finish', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="Matte Black">Matte Black</option>
-                                  <option value="Matte White">Matte White</option>
-                                  <option value="Anodized Bronze">Anodized Bronze</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
-                                  Stock Length
-                                </label>
-                                <select 
-                                  className="select select-xs"
-                                  value={trackCfg.stockLength || '3'}
-                                  onChange={e => handleUpdateTrackConfig(tag, 'stockLength', e.target.value)}
-                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
-                                >
-                                  <option value="3">3m Rails</option>
-                                  <option value="2">2m Rails</option>
-                                  <option value="1">1m Rails</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* TRACK HARDWARE BREAKDOWN BADGE */}
-                            <div style={{ fontSize: '11px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.08)', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Info size={13} />
-                              <span>Auto-assembled: <strong>{railsCount}x {stockLength}m Rails</strong> &bull; <strong>{joinersCount}x Joiners</strong> &bull; <strong>1x Live End Feed</strong> &bull; <strong>1x Dead End Cap</strong></span>
-                            </div>
-
-                            {/* COMPONENT 1: TRACK RAILS */}
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  1. Track Rail Profile
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  1. Track Profile Rail
                                 </span>
-                                <button 
-                                  className="btn btn-secondary btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'track_rail', 'Track')}
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  {trackCfg.railProduct ? 'Change Rail' : '+ Select Rail'}
-                                </button>
+                                {!trackCfg.railProduct && (
+                                  <button 
+                                    className="btn btn-primary btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'track_rail', 'Track')}
+                                    style={{ fontSize: '11px' }}
+                                  >
+                                    + Select Rail
+                                  </button>
+                                )}
                               </div>
 
                               {trackCfg.railProduct ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {trackCfg.railProduct.image_url ? (
-                                      <img src={trackCfg.railProduct.image_url.startsWith('http') ? trackCfg.railProduct.image_url : `${API_BASE}${trackCfg.railProduct.image_url}`} alt="rail" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                    ) : (
-                                      <span style={{ fontSize: '14px' }}>🛤️</span>
-                                    )}
+                                <>
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div 
+                                      style={{ 
+                                        width: '56px', 
+                                        height: '56px', 
+                                        borderRadius: '6px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        overflow: 'hidden', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => handleInspectItem(trackCfg.railProduct, tag)}
+                                      title="Click to view full specs"
+                                    >
+                                      {trackCfg.railProduct.image_url ? (
+                                        <img 
+                                          src={trackCfg.railProduct.image_url.startsWith('http') ? trackCfg.railProduct.image_url : `${API_BASE}${trackCfg.railProduct.image_url}`} 
+                                          alt="rail" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>🛤️</span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                                          {trackCfg.railSku || trackCfg.railProduct.sku || trackCfg.railProduct.one_to_one_code}
+                                        </span>
+                                        {trackCfg.railProduct.brand && (
+                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                            {trackCfg.railProduct.brand}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {trackCfg.railName || trackCfg.railProduct.client_description || trackCfg.railProduct.name}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                        {trackCfg.railProduct.color && <span>Finish: {trackCfg.railProduct.color}</span>}
+                                        <span>📏 Track Rail</span>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <button 
+                                        className="btn btn-secondary btn-xs"
+                                        onClick={() => openCatalogPicker(tag, 'track_rail', 'Track')}
+                                        style={{ fontSize: '11px' }}
+                                      >
+                                        Change
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleInspectItem(trackCfg.railProduct, tag)}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Eye size={11} /> Specs
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleClearTrackComponent(tag, 'rail')}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        title="Clear rail"
+                                      >
+                                        <Trash2 size={11} /> Clear
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                      {trackCfg.railSku}
+
+                                  {/* EDITABLE RAIL METERS & PRICING BAR */}
+                                  <div style={{ 
+                                    borderTop: '1px solid var(--border)', 
+                                    paddingTop: '8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Track Meters:</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.1" 
+                                          value={railMeters} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'railMeters', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '60px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>m</span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={railCost} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'railCost', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail/m:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={railRetail} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'railRetail', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                        />
+                                      </div>
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {trackCfg.railName}
+
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(railMeters * railRetail).toLocaleString()}</span>
                                     </div>
                                   </div>
-                                  <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                      R {railRetail}/rail
-                                    </div>
-                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                      Total: R {(railsCount * railRetail).toLocaleString()}
-                                    </div>
-                                  </div>
-                                </div>
+                                </>
                               ) : (
-                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
-                                  No track profile selected yet. Click "+ Select Rail" to choose from catalog.
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
+                                  No track profile selected yet. Click "+ Select Rail" to choose from master catalog.
                                 </div>
                               )}
                             </div>
 
                             {/* COMPONENT 2: TRACK SPOTLIGHTS & LUMINAIRES */}
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  2. Mounted Spotlights & Heads ({spots.length} Models &bull; {totalSpotsWatts}W Load)
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  2. Mounted Spotlights & Track Heads ({spots.length})
                                 </span>
                                 <button 
                                   className="btn btn-secondary btn-xs"
                                   onClick={() => openCatalogPicker(tag, 'track_spot', 'Spotlight')}
                                   style={{ fontSize: '11px' }}
                                 >
-                                  + Add Spotlight / Track Head
+                                  + Add Spotlight
                                 </button>
                               </div>
 
@@ -3244,89 +3801,134 @@ export default function TakeoffSpecEngine({
                                   No spotlights mounted to this track yet. Click "+ Add Spotlight" to attach luminaires.
                                 </div>
                               ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   {spots.map(sp => (
                                     <div 
                                       key={sp.id}
                                       style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        justifyContent: 'space-between', 
-                                        gap: '8px', 
                                         background: 'var(--bg-primary)', 
                                         border: '1px solid var(--border)', 
                                         borderRadius: '6px', 
-                                        padding: '6px 10px' 
+                                        padding: '10px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px'
                                       }}
                                     >
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                                        <div style={{ width: '32px', height: '32px', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                          {sp.image_url ? (
-                                            <img src={sp.image_url.startsWith('http') ? sp.image_url : `${API_BASE}${sp.image_url}`} alt="spot" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                          ) : (
-                                            <span style={{ fontSize: '12px' }}>💡</span>
-                                          )}
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                          <div 
+                                            style={{ 
+                                              width: '44px', 
+                                              height: '44px', 
+                                              borderRadius: '4px', 
+                                              background: 'var(--bg-secondary)', 
+                                              border: '1px solid var(--border)', 
+                                              overflow: 'hidden', 
+                                              display: 'flex', 
+                                              alignItems: 'center', 
+                                              justifyContent: 'center', 
+                                              flexShrink: 0,
+                                              cursor: 'pointer'
+                                            }}
+                                            onClick={() => handleInspectItem(sp.product || sp, tag)}
+                                            title="Click to view full specs"
+                                          >
+                                            {sp.image_url || sp.product?.image_url ? (
+                                              <img 
+                                                src={(sp.image_url || sp.product?.image_url).startsWith('http') ? (sp.image_url || sp.product?.image_url) : `${API_BASE}${sp.image_url || sp.product?.image_url}`} 
+                                                alt="spot" 
+                                                style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                              />
+                                            ) : (
+                                              <span style={{ fontSize: '14px' }}>💡</span>
+                                            )}
+                                          </div>
+                                          <div style={{ minWidth: 0, flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                                {sp.sku || sp.product?.sku}
+                                              </span>
+                                              {sp.product?.brand && (
+                                                <span style={{ fontSize: '10px', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                                  {sp.product.brand}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div style={{ fontSize: '11.5px', color: 'var(--text-primary)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {sp.name || sp.product?.client_description || sp.product?.name}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', flexWrap: 'wrap' }}>
+                                              {(sp.product?.wattage || sp.wattage) && <span>⚡ {sp.product?.wattage || sp.wattage}W</span>}
+                                              {(sp.product?.color_temperature || sp.cct) && <span>🌡️ {sp.product?.color_temperature || sp.cct}</span>}
+                                              {(sp.product?.beam_angle || sp.beamAngle) && <span>📐 {sp.product?.beam_angle || sp.beamAngle}</span>}
+                                              {sp.product?.cri && <span>CRI {sp.product?.cri}</span>}
+                                            </div>
+                                          </div>
                                         </div>
-                                        <div style={{ minWidth: 0 }}>
-                                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                            {sp.sku}
-                                          </div>
-                                          <div style={{ fontSize: '10.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {sp.name}
-                                          </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <button 
+                                            className="btn btn-ghost btn-xs" 
+                                            onClick={() => handleInspectItem(sp.product || sp, tag)}
+                                            style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px' }}
+                                            title="View spotlight specifications"
+                                          >
+                                            <Eye size={11} /> Specs
+                                          </button>
+                                          <button 
+                                            className="btn btn-ghost btn-xs" 
+                                            onClick={() => handleRemoveTrackSpot(tag, sp.id)}
+                                            style={{ padding: '2px', color: 'var(--text-danger)' }}
+                                            title="Remove spotlight"
+                                          >
+                                            <Trash2 size={12} />
+                                          </button>
                                         </div>
                                       </div>
 
-                                      {/* BEAM / CCT / QTY */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <select 
-                                          className="select select-xs" 
-                                          value={sp.beamAngle || '24°'} 
-                                          onChange={e => handleUpdateTrackSpot(tag, sp.id, 'beamAngle', e.target.value)}
-                                          style={{ fontSize: '10px', height: '22px', padding: '1px 4px' }}
-                                        >
-                                          <option value="15°">15°</option>
-                                          <option value="24°">24°</option>
-                                          <option value="36°">36°</option>
-                                          <option value="50°">50°</option>
-                                        </select>
-
-                                        <select 
-                                          className="select select-xs" 
-                                          value={sp.cct || '3000K'} 
-                                          onChange={e => handleUpdateTrackSpot(tag, sp.id, 'cct', e.target.value)}
-                                          style={{ fontSize: '10px', height: '22px', padding: '1px 4px' }}
-                                        >
-                                          <option value="2700K">2700K</option>
-                                          <option value="3000K">3000K</option>
-                                          <option value="4000K">4000K</option>
-                                        </select>
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                          <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Qty:</span>
+                                      {/* SPOT QTY & PRICING BAR */}
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '11px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>Qty:</span>
                                           <input 
                                             type="number" 
                                             min="1" 
                                             value={sp.qty || 1} 
-                                            onChange={e => handleUpdateTrackSpot(tag, sp.id, 'qty', parseInt(e.target.value, 10) || 1)}
-                                            style={{ width: '38px', height: '22px', padding: '1px 3px', fontSize: '10.5px', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                                            onChange={e => handleUpdateTrackSpot(tag, sp.id, 'qty', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                            style={{ width: '42px', height: '22px', padding: '1px 3px', fontSize: '11px', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontWeight: 600 }}
                                           />
                                         </div>
 
-                                        <div style={{ textAlign: 'right', minWidth: '70px' }}>
-                                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                            R {((sp.qty || 1) * (sp.retail_price || 0)).toLocaleString()}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Cost:</span>
+                                            <span style={{ color: 'var(--text-tertiary)' }}>R</span>
+                                            <input 
+                                              type="number" 
+                                              step="0.01" 
+                                              value={sp.cost_price || 0} 
+                                              onChange={e => handleUpdateTrackSpot(tag, sp.id, 'cost_price', parseFloat(e.target.value) || 0)}
+                                              style={{ width: '55px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'center', fontSize: '11px', color: 'var(--text-primary)' }}
+                                            />
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Retail:</span>
+                                            <span style={{ color: 'var(--text-success)' }}>R</span>
+                                            <input 
+                                              type="number" 
+                                              step="0.01" 
+                                              value={sp.retail_price || 0} 
+                                              onChange={e => handleUpdateTrackSpot(tag, sp.id, 'retail_price', parseFloat(e.target.value) || 0)}
+                                              style={{ width: '60px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--text-success)', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-success)' }}
+                                            />
+                                          </div>
+
+                                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round((sp.qty || 1) * (sp.retail_price || 0)).toLocaleString()}</span>
                                           </div>
                                         </div>
-
-                                        <button 
-                                          className="btn btn-ghost btn-xs" 
-                                          onClick={() => handleRemoveTrackSpot(tag, sp.id)}
-                                          style={{ padding: '2px', color: 'var(--text-danger)' }}
-                                          title="Remove spotlight"
-                                        >
-                                          <Trash2 size={12} />
-                                        </button>
                                       </div>
                                     </div>
                                   ))}
@@ -3334,52 +3936,287 @@ export default function TakeoffSpecEngine({
                               )}
                             </div>
 
-                            {/* COMPONENT 3: 48V DRIVER */}
-                            {(trackCfg.systemType || '48V Low-Voltage Magnetic').includes('48V') && (
-                              <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    3. 48V DC Power Supply (Rec: ~{recTrackDriverW}W)
-                                  </span>
+                            {/* COMPONENT 3: TRACK POWER SUPPLY / DRIVER */}
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '10px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  3. Track Power Supply / Driver
+                                </span>
+                                {!trackCfg.driverProduct && (
                                   <button 
-                                    className="btn btn-secondary btn-xs"
+                                    className="btn btn-primary btn-xs"
                                     onClick={() => openCatalogPicker(tag, 'track_driver', 'Accessory')}
                                     style={{ fontSize: '11px' }}
                                   >
-                                    {trackCfg.driverProduct ? 'Change Driver' : '+ Select Driver'}
+                                    + Select Driver
                                   </button>
-                                </div>
-
-                                {trackCfg.driverProduct ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      {trackCfg.driverProduct.image_url ? (
-                                        <img src={trackCfg.driverProduct.image_url.startsWith('http') ? trackCfg.driverProduct.image_url : `${API_BASE}${trackCfg.driverProduct.image_url}`} alt="driver" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                      ) : (
-                                        <span style={{ fontSize: '14px' }}>⚡</span>
-                                      )}
-                                    </div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
-                                        {trackCfg.driverSku}
-                                      </div>
-                                      <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {trackCfg.driverName}
-                                      </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                      <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
-                                        R {driverRetail}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
-                                    No 48V driver selected yet. Click "+ Select Driver" to choose from catalog.
-                                  </div>
                                 )}
                               </div>
-                            )}
+
+                              {trackCfg.driverProduct ? (
+                                <>
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div 
+                                      style={{ 
+                                        width: '56px', 
+                                        height: '56px', 
+                                        borderRadius: '6px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        overflow: 'hidden', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        cursor: 'pointer'
+                                      }}
+                                      onClick={() => handleInspectItem(trackCfg.driverProduct, tag)}
+                                      title="Click to view full specs"
+                                    >
+                                      {trackCfg.driverProduct.image_url ? (
+                                        <img 
+                                          src={trackCfg.driverProduct.image_url.startsWith('http') ? trackCfg.driverProduct.image_url : `${API_BASE}${trackCfg.driverProduct.image_url}`} 
+                                          alt="driver" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>⚡</span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                                          {trackCfg.driverSku || trackCfg.driverProduct.sku || trackCfg.driverProduct.one_to_one_code}
+                                        </span>
+                                        {trackCfg.driverProduct.brand && (
+                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                            {trackCfg.driverProduct.brand}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {trackCfg.driverName || trackCfg.driverProduct.client_description || trackCfg.driverProduct.name}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                        {(trackCfg.driverProduct.wattage || trackCfg.driverWattage) && <span>⚡ {trackCfg.driverProduct.wattage || trackCfg.driverWattage}W</span>}
+                                        <span>🔌 48V DC</span>
+                                        {trackCfg.driverProduct.dimming_protocol && <span>🎛️ {trackCfg.driverProduct.dimming_protocol}</span>}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <button 
+                                        className="btn btn-secondary btn-xs"
+                                        onClick={() => openCatalogPicker(tag, 'track_driver', 'Accessory')}
+                                        style={{ fontSize: '11px' }}
+                                      >
+                                        Change
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleInspectItem(trackCfg.driverProduct, tag)}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      >
+                                        <Eye size={11} /> Specs
+                                      </button>
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleClearTrackComponent(tag, 'driver')}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        title="Clear driver"
+                                      >
+                                        <Trash2 size={11} /> Clear
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* EDITABLE DRIVER QTY & PRICING BAR */}
+                                  <div style={{ 
+                                    borderTop: '1px solid var(--border)', 
+                                    paddingTop: '8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Driver Qty:</span>
+                                        <input 
+                                          type="number" 
+                                          min="1" 
+                                          value={driverQty} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'driverQty', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                          style={{ width: '45px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={driverCost} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'driverCost', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          value={driverRetail} 
+                                          onChange={e => handleUpdateTrackConfig(tag, 'driverRetail', parseFloat(e.target.value) || 0)}
+                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(driverQty * driverRetail).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
+                                  No driver selected yet. Click "+ Select Driver" to choose from master catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* DYNAMIC ACCESSORIES SECTION */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  Dynamic Accessories & Hardware ({accessories.length})
+                                </span>
+                                <button 
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                  style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  <Plus size={12} /> Add Accessory
+                                </button>
+                              </div>
+
+                              {accessories.length === 0 ? (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                                  No linked accessories. Click "+ Add Accessory" to include joiners, live feeds, dead ends, or suspension kits.
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {accessories.map((acc, accIdx) => {
+                                    const accUnits = acc.qtyPerFitting !== undefined 
+                                      ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+                                      : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+                                    const accCost = acc.customCost !== undefined ? acc.customCost : (acc.cost_price || 0);
+                                    const accRetail = acc.customRetail !== undefined ? acc.customRetail : (acc.retail_price || 0);
+
+                                    return (
+                                      <div 
+                                        key={acc.id || accIdx}
+                                        style={{ 
+                                          background: 'var(--bg-secondary)', 
+                                          border: '1px solid var(--border)', 
+                                          borderRadius: '6px', 
+                                          padding: '8px 10px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '6px'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                              {acc.sku || acc.one_to_one_code || 'ACC'}
+                                            </span>
+                                            <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {acc.name || acc.client_description}
+                                            </span>
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <button 
+                                              className="btn btn-ghost btn-xs" 
+                                              onClick={() => handleInspectItem(acc, tag)}
+                                              style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px' }}
+                                              title="View accessory specifications"
+                                            >
+                                              <Eye size={11} /> Specs
+                                            </button>
+                                            <button 
+                                              className="btn btn-ghost btn-xs" 
+                                              onClick={() => handleRemoveAccessory(tag, accIdx)}
+                                              style={{ color: 'var(--text-danger)', padding: '2px' }}
+                                              title="Remove accessory"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* ACCESSORY UNITS & PRICING BAR */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '11px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Units per System:</span>
+                                            <input 
+                                              type="number"
+                                              min="1"
+                                              value={accUnits}
+                                              onChange={e => handleUpdateAccessoryQtyPerFitting(tag, accIdx, e.target.value)}
+                                              style={{ width: '42px', height: '22px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600 }}
+                                            />
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ color: 'var(--text-secondary)' }}>Cost:</span>
+                                              <span style={{ color: 'var(--text-tertiary)' }}>R</span>
+                                              <input 
+                                                type="number"
+                                                step="0.01"
+                                                value={accCost}
+                                                onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
+                                                style={{ width: '55px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', textAlign: 'center', fontSize: '11px', color: 'var(--text-primary)' }}
+                                              />
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ color: 'var(--text-secondary)' }}>Retail:</span>
+                                              <span style={{ color: 'var(--text-success)' }}>R</span>
+                                              <input 
+                                                type="number"
+                                                step="0.01"
+                                                value={accRetail}
+                                                onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
+                                                style={{ width: '60px', height: '22px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--text-success)', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-success)' }}
+                                              />
+                                            </div>
+
+                                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                              Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(accUnits * accRetail).toLocaleString()}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
 
                             {/* FINANCIALS SUMMARY FOOTER */}
                             <div style={{ 
@@ -3395,7 +4232,7 @@ export default function TakeoffSpecEngine({
                                 Est. Track System Cost: <strong style={{ color: 'var(--text-primary)' }}>R {totalTrackCost.toLocaleString()}</strong>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--text-success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                <span style={{ fontSize: '10px', background: marginPct >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: marginPct >= 30 ? 'var(--text-success)' : 'var(--text-warning)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
                                   {marginPct}% Margin
                                 </span>
                                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-success)' }}>
@@ -3981,13 +4818,13 @@ export default function TakeoffSpecEngine({
 
             <div className="card-foot" style={{ padding: '12px 20px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setInspectedProduct(null)}>Close</button>
-              {inspectedForTag && (
+              {inspectedForTag && catalogModalOpen && (
                 <button 
                   className="btn btn-primary btn-sm" 
                   onClick={() => handleSelectCatalogItem(inspectedProduct, inspectedForTag)}
                   style={{ fontWeight: 700 }}
                 >
-                  ✓ Select Fitting for Tag {inspectedForTag}
+                  ✓ Select {catalogTargetMode === 'accessory' ? 'Accessory' : catalogTargetMode?.startsWith('led_') || catalogTargetMode?.startsWith('track_') ? 'Item' : 'Fitting'} for Tag {inspectedForTag}
                 </button>
               )}
             </div>
