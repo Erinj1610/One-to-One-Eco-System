@@ -87,6 +87,7 @@ async def inspect_cad_file(file: UploadFile = File(...)):
 @router.post("/parse")
 async def parse_cad_file(
     file: UploadFile = File(...),
+    engine: Optional[str] = Form("2.0"),
     lighting_layer: Optional[str] = Form(None),
     boundary_layer: Optional[str] = Form(None),
     default_floor: Optional[str] = Form("Ground Floor")
@@ -103,6 +104,8 @@ async def parse_cad_file(
     try:
         cmd_prefix = get_cad_parser_command()
         cmd = cmd_prefix + ["parse", tmp_path]
+        if engine:
+            cmd.extend(["--engine", engine])
         if lighting_layer:
             cmd.extend(["--lighting-layer", lighting_layer])
         if boundary_layer:

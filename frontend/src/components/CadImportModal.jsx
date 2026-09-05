@@ -12,7 +12,8 @@ import {
   Search, 
   ChevronRight,
   Sliders,
-  Check
+  Check,
+  Zap
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
 
@@ -20,6 +21,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   const [step, setStep] = useState(1); // 1: Upload, 2: Layer Settings, 3: Preview
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [engineVersion, setEngineVersion] = useState('2.0'); // '2.0' (Smart) or '1.0' (Classic)
 
   // Inspection states
   const [inspecting, setInspecting] = useState(false);
@@ -53,6 +55,40 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   const handleClose = () => {
     handleReset();
     onClose();
+  };
+
+  const runParseWithEngine = async (engineToUse, targetFile = file, lightLayer = lightingLayer, boundLayer = boundaryLayer, floorName = defaultFloor) => {
+    if (!targetFile) return;
+    setParsing(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', targetFile);
+    formData.append('engine', engineToUse);
+    if (lightLayer) formData.append('lighting_layer', lightLayer);
+    if (boundLayer) formData.append('boundary_layer', boundLayer);
+    if (floorName) formData.append('default_floor', floorName);
+
+    try {
+      const res = await fetch(API_BASE + '/api/cad/parse', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || 'Failed to calculate CAD counts.');
+      }
+
+      const result = await res.json();
+      setParseResult(result);
+      setStep(3);
+    } catch (err) {
+      console.error('CAD parse error:', err);
+      setError(err.message || 'Error processing CAD drawing.');
+    } finally {
+      setParsing(false);
+    }
   };
 
   const handleFileSelect = async (selectedFile) => {
@@ -90,31 +126,8 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
       setBoundaryLayer(boundLayer);
       setDefaultFloor(floorName);
 
-      if (lightLayer) {
-        // Automatically calculate counts and jump straight to Preview!
-        const parseFormData = new FormData();
-        parseFormData.append('file', selectedFile);
-        parseFormData.append('lighting_layer', lightLayer);
-        parseFormData.append('boundary_layer', boundLayer);
-        parseFormData.append('default_floor', floorName);
-
-        const parseRes = await fetch(API_BASE + '/api/cad/parse', {
-          method: 'POST',
-          body: parseFormData,
-        });
-
-        if (!parseRes.ok) {
-          const errJson = await parseRes.json().catch(() => ({}));
-          throw new Error(errJson.detail || 'Failed to calculate CAD counts.');
-        }
-
-        const parseJson = await parseRes.json();
-        setParseResult(parseJson);
-        setStep(3); // Straight to preview!
-      } else {
-        // Only stop at Step 2 if no candidate layer could be auto-detected
-        setStep(2);
-      }
+      // Immediately run parse using selected engine
+      await runParseWithEngine(engineVersion, selectedFile, lightLayer, boundLayer, floorName);
     } catch (err) {
       console.error('CAD inspect error:', err);
       setError(err.message || 'Error processing DWG file.');
@@ -123,37 +136,8 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
     }
   };
 
-  const handleRunParse = async () => {
-    if (!file) return;
-    setParsing(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    if (lightingLayer) formData.append('lighting_layer', lightingLayer);
-    if (boundaryLayer) formData.append('boundary_layer', boundaryLayer);
-    if (defaultFloor) formData.append('default_floor', defaultFloor);
-
-    try {
-      const res = await fetch(API_BASE + '/api/cad/parse', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.detail || 'Failed to parse and count fittings.');
-      }
-
-      const result = await res.json();
-      setParseResult(result);
-      setStep(3);
-    } catch (err) {
-      console.error('CAD parse error:', err);
-      setError(err.message || 'Error processing CAD drawing.');
-    } finally {
-      setParsing(false);
-    }
+  const handleRunParse = () => {
+    runParseWithEngine(engineVersion, file, lightingLayer, boundaryLayer, defaultFloor);
   };
 
   const handleConfirm = (mode) => {
@@ -375,6 +359,66 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
           {/* STEP 1: UPLOAD DRAG-AND-DROP */}
           {step === 1 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* ENGINE MODE SELECTOR */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  CAD Ingestion Engine
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '12px'
+                }}>
+                  <div 
+                    onClick={() => setEngineVersion('2.0')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      border: engineVersion === '2.0' ? '2px solid #3b82f6' : '1px solid var(--border, #2e3545)',
+                      background: engineVersion === '2.0' ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-secondary, #1e222d)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: engineVersion === '2.0' ? '#60a5fa' : 'var(--text-primary, #ffffff)' }}>
+                        <Zap size={15} style={{ color: '#3b82f6' }} />
+                        <span>Engine 2.0</span>
+                        <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#3b82f6', color: '#ffffff', fontWeight: 700 }}>RECOMMENDED</span>
+                      </div>
+                      {engineVersion === '2.0' && <CheckCircle2 size={16} color="#3b82f6" />}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', marginTop: '5px', lineHeight: '1.4' }}>
+                      <strong>Smart & Zero Prep:</strong> Visual shape fingerprinting & wall-aware obstacle raycasting. No manual polylines needed!
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => setEngineVersion('1.0')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      cursor: 'pointer',
+                      border: engineVersion === '1.0' ? '2px solid #3b82f6' : '1px solid var(--border, #2e3545)',
+                      background: engineVersion === '1.0' ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-secondary, #1e222d)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: engineVersion === '1.0' ? '#60a5fa' : 'var(--text-primary, #ffffff)' }}>
+                        <Layers size={15} style={{ color: '#94a3b8' }} />
+                        <span>Engine 1.0</span>
+                        <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-primary, #151821)', color: 'var(--text-secondary, #94a3b8)', border: '1px solid var(--border, #2e3545)' }}>CLASSIC</span>
+                      </div>
+                      {engineVersion === '1.0' && <CheckCircle2 size={16} color="#3b82f6" />}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', marginTop: '5px', lineHeight: '1.4' }}>
+                      <strong>Layer-Based:</strong> Requires CAD prep with standard layers (<code>E-LUM-SP</code>) and closed boundary polylines.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div 
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -496,6 +540,71 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 </div>
                 <div style={{ fontWeight: 600, color: '#3b82f6' }}>
                   {inspectData.totalEntities?.toLocaleString()} entities scanned
+                </div>
+              </div>
+
+              {/* Engine Mode Toggle in Step 2 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg-primary, #151821)',
+                border: '1px solid var(--border, #2e3545)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    background: engineVersion === '2.0' ? '#3b82f6' : '#64748b',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {engineVersion === '2.0' ? <Zap size={12} /> : <Layers size={12} />}
+                    Engine {engineVersion} Active
+                  </span>
+                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary, #94a3b8)' }}>
+                    {engineVersion === '2.0' ? 'Smart shape recognition & wall obstacle raycasting' : 'Classic AutoCAD layer & closed boundary polyline mapping'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEngineVersion('2.0')}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      background: engineVersion === '2.0' ? '#3b82f6' : 'var(--bg-secondary, #1e222d)',
+                      color: engineVersion === '2.0' ? '#fff' : 'var(--text-secondary, #94a3b8)',
+                      border: '1px solid var(--border, #2e3545)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ 2.0 (Smart)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEngineVersion('1.0')}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      background: engineVersion === '1.0' ? '#3b82f6' : 'var(--bg-secondary, #1e222d)',
+                      color: engineVersion === '1.0' ? '#fff' : 'var(--text-secondary, #94a3b8)',
+                      border: '1px solid var(--border, #2e3545)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚙️ 1.0 (Classic)
+                  </button>
                 </div>
               </div>
 
@@ -640,6 +749,67 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
           {/* STEP 3: PREVIEW & CONFIRM */}
           {step === 3 && parseResult && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* ENGINE STATUS & COMPARISON BANNER */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: (parseResult.engine === '2.0' || engineVersion === '2.0') ? 'rgba(59, 130, 246, 0.08)' : 'rgba(100, 116, 139, 0.08)',
+                border: (parseResult.engine === '2.0' || engineVersion === '2.0') ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid var(--border, #2e3545)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    background: (parseResult.engine === '2.0' || engineVersion === '2.0') ? '#3b82f6' : '#64748b',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {(parseResult.engine === '2.0' || engineVersion === '2.0') ? <Zap size={12} /> : <Layers size={12} />}
+                    Engine {parseResult.engine || engineVersion}
+                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)' }}>
+                    {(parseResult.engine === '2.0' || engineVersion === '2.0')
+                      ? 'Smart shape fingerprinting & wall-aware obstacle raycasting'
+                      : 'Classic AutoCAD layer filtering & closed boundary polylines'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)' }}>Compare:</span>
+                  <button
+                    type="button"
+                    disabled={parsing}
+                    onClick={() => {
+                      const next = (parseResult.engine === '2.0' || engineVersion === '2.0') ? '1.0' : '2.0';
+                      setEngineVersion(next);
+                      runParseWithEngine(next);
+                    }}
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      color: '#3b82f6',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '4px',
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    {parsing ? <RefreshCw size={12} className="animate-spin" /> : null}
+                    Switch to {(parseResult.engine === '2.0' || engineVersion === '2.0') ? 'Engine 1.0 (Classic)' : 'Engine 2.0 (Smart)'}
+                  </button>
+                </div>
+              </div>
+
               {/* STATS METRIC TILES */}
               <div style={{ display: 'grid', gridTemplateColumns: (parseResult.summary?.totalLedRuns > 0 || parseResult.summary?.totalTrackRuns > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '10px' }}>
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', textAlign: 'center' }}>
