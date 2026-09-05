@@ -14,6 +14,13 @@ export default function DocsPage() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Convert projects object/array for selector
   const projectList = useMemo(() => {
@@ -220,22 +227,29 @@ export default function DocsPage() {
   };
 
   return (
-    <div className="animation-fade-in" style={{ padding: '20px' }}>
+    <div className="animation-fade-in" style={{ padding: isMobile ? '0' : '20px' }}>
       
       {/* Page Header and Project Dropdown Selector */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: isMobile ? 'stretch' : 'center', 
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: '12px',
+        marginBottom: '16px' 
+      }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-primary)', fontWeight: 700 }}>Google Drive {getModuleName('docs', 'Documents')} Portal</h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+          <h2 style={{ margin: 0, fontSize: isMobile ? '17px' : '20px', color: 'var(--text-primary)', fontWeight: 700 }}>Google Drive {getModuleName('docs', 'Documents')} Portal</h2>
+          <p style={{ margin: '4px 0 0 0', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
             Strictly read-only folder structure mirroring database layout. Files stay on Drive.
           </p>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Active Project:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>Project:</span>
           <select 
             className="form-control" 
-            style={{ width: '220px', padding: '8px', borderRadius: 'var(--radius-md)' }}
+            style={{ width: isMobile ? '100%' : '220px', padding: '8px', borderRadius: 'var(--radius-md)', fontSize: '12.5px' }}
             value={selectedProjectId} 
             onChange={(e) => setSelectedProjectId(e.target.value)}
           >
@@ -249,10 +263,22 @@ export default function DocsPage() {
       {/* Shared Documents layout Card container */}
       <div className="card" style={{ border: '1.5px solid var(--border)', background: 'var(--bg-primary)', overflow: 'visible' }}>
         <div className="card-body" style={{ padding: '0px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px', minHeight: '480px', padding: '20px' }}>
+          <div style={{ 
+            display: isMobile ? 'flex' : 'grid', 
+            flexDirection: isMobile ? 'column' : 'row',
+            gridTemplateColumns: isMobile ? 'none' : '260px 1fr', 
+            gap: isMobile ? '14px' : '20px', 
+            minHeight: isMobile ? 'auto' : '480px', 
+            padding: isMobile ? '14px' : '20px' 
+          }}>
             
             {/* Left Panel: Folders Tree */}
-            <div style={{ borderRight: '1px solid var(--border)', paddingRight: '15px' }}>
+            <div style={{ 
+              borderRight: isMobile ? 'none' : '1px solid var(--border)', 
+              borderBottom: isMobile ? '1px solid var(--border)' : 'none',
+              paddingRight: isMobile ? '0' : '15px',
+              paddingBottom: isMobile ? '14px' : '0'
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.5px' }}>
                 <Folder size={12} />
                 <span>Project Folders</span>

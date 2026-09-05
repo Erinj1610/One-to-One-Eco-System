@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
+import MobilePaymentsViewer from '../components/mobile/MobilePaymentsViewer';
 import { 
   CreditCard, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
   ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
@@ -13,6 +14,13 @@ export default function PaymentsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { projects, getModuleName, refreshProjects } = useStore();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Toast notifications
   const [toastMessage, setToastMessage] = useState(null);
@@ -414,6 +422,14 @@ export default function PaymentsPage() {
       (a.notes && a.notes.toLowerCase().includes(q))
     );
   }, [allocations, searchQuery]);
+
+  if (isMobile) {
+    return (
+      <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+        <MobilePaymentsViewer payments={payments} summary={paymentsSummary} />
+      </div>
+    );
+  }
 
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>

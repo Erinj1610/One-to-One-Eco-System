@@ -100,8 +100,8 @@ export default function MobileBottomBar() {
               </button>
             </div>
 
-            {/* GRID OF MODULE LINKS */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '18px' }}>
+            {/* CLEAN FULL-WIDTH LIST OF MODULE LINKS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
               {moreItems.map(item => {
                 const Icon = item.icon;
                 const isCurrent = location.pathname.startsWith(item.path);
@@ -113,19 +113,20 @@ export default function MobileBottomBar() {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 12px',
+                      gap: '12px',
+                      padding: '12px 14px',
                       borderRadius: '12px',
                       background: isCurrent ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-secondary)',
                       border: isCurrent ? '1.5px solid var(--text-info)' : '1px solid var(--border)',
                       cursor: 'pointer',
-                      textAlign: 'left'
+                      textAlign: 'left',
+                      width: '100%'
                     }}
                   >
                     <div style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '10px',
                       background: `${item.color}15`,
                       color: item.color,
                       display: 'flex',
@@ -133,16 +134,17 @@ export default function MobileBottomBar() {
                       justifyContent: 'center',
                       flexShrink: 0
                     }}>
-                      <Icon size={16} />
+                      <Icon size={18} />
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {item.label}
                       </div>
-                      <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
                         {item.desc}
                       </div>
                     </div>
+                    <ChevronRight size={16} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
                   </button>
                 );
               })}

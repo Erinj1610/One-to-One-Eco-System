@@ -7,6 +7,7 @@ import {
   RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import MobileProductsViewer from '../components/mobile/MobileProductsViewer';
 
 // Actual product list parsed from the user's architectural lighting database
 const initialProducts = [
@@ -513,6 +514,13 @@ const StockTrendChart = ({ chartPoints = [], currentStock = 0 }) => {
 
 export default function ProductsPage() {
   const { getModuleName } = useStore();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Product list state
   const [products, setProducts] = useState([]);
@@ -1739,6 +1747,14 @@ export default function ProductsPage() {
     if (s.includes('discontinued') || s.includes('archived')) return 'b-secondary';
     return 'b-default';
   };
+
+  if (isMobile) {
+    return (
+      <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+        <MobileProductsViewer items={products} />
+      </div>
+    );
+  }
 
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1600px', margin: '0 auto', padding: '0 4px' }}>
