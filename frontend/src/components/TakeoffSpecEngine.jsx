@@ -114,6 +114,7 @@ export default function TakeoffSpecEngine({
   // Copy Spec to another tag modal
   const [copySourceTag, setCopySourceTag] = useState(null);
   const [copyTargetTag, setCopyTargetTag] = useState('');
+  const [showCustomCopyInput, setShowCustomCopyInput] = useState(false);
 
   // Generate BOQ Modal State
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -186,6 +187,12 @@ export default function TakeoffSpecEngine({
     countUpRows.forEach(r => { if (r.floor && r.floor.trim()) s.add(r.floor.trim()); });
     return Array.from(s);
   }, [countUpRows]);
+
+  // Target plan tags available for specification copying
+  const availableTargetTags = useMemo(() => {
+    if (!copySourceTag) return [];
+    return uniqueTags.filter(ut => ut.tag !== copySourceTag);
+  }, [uniqueTags, copySourceTag]);
 
   // Dynamic suggestions for Count-Up: user-typed entries automatically appear in lower rows alongside standard presets
   const dynamicFloorSuggestions = useMemo(() => {
@@ -1453,7 +1460,8 @@ export default function TakeoffSpecEngine({
                               className="btn btn-ghost btn-xs"
                               onClick={() => {
                                 setCopySourceTag(tag);
-                                setCopyTargetTag('');
+                                  setCopyTargetTag('');
+                                  setShowCustomCopyInput(false);
                               }}
                               title="Copy this fixture and accessories to another tag"
                               style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
@@ -1588,7 +1596,7 @@ export default function TakeoffSpecEngine({
                               </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
                               {/* COST */}
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
@@ -1614,42 +1622,7 @@ export default function TakeoffSpecEngine({
                                       border: 'none', 
                                       outline: 'none', 
                                       fontWeight: 600, 
-                                      fontSize: '12px', 
-                                      color: 'var(--text-primary)',
-                                      padding: 0
-                                    }}
-                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
-                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* TRADE */}
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
-                                  Trade Price
-                                </span>
-                                <div style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'baseline', 
-                                  gap: '3px', 
-                                  borderBottom: '1.5px solid var(--border)', 
-                                  paddingBottom: '2px',
-                                  transition: 'border-color 0.15s'
-                                }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>R</span>
-                                  <input 
-                                    type="number"
-                                    step="0.01"
-                                    value={tradePrice}
-                                    onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
-                                    style={{ 
-                                      width: '100%', 
-                                      background: 'transparent', 
-                                      border: 'none', 
-                                      outline: 'none', 
-                                      fontWeight: 600, 
-                                      fontSize: '12px', 
+                                      fontSize: '13px', 
                                       color: 'var(--text-primary)',
                                       padding: 0
                                     }}
@@ -1684,7 +1657,7 @@ export default function TakeoffSpecEngine({
                                       border: 'none', 
                                       outline: 'none', 
                                       fontWeight: 700, 
-                                      fontSize: '12px', 
+                                      fontSize: '13px', 
                                       color: 'var(--text-success)',
                                       padding: 0
                                     }}
@@ -1826,7 +1799,7 @@ export default function TakeoffSpecEngine({
                                       </div>
 
                                       {/* EDITABLE ACC PRICES */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
                                         {/* ACC COST */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
@@ -1844,11 +1817,12 @@ export default function TakeoffSpecEngine({
                                               value={accCost}
                                               onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
                                               style={{ 
-                                                width: '58px', 
+                                                minWidth: '85px',
+                                                width: '95px', 
                                                 background: 'transparent', 
                                                 border: 'none', 
                                                 outline: 'none', 
-                                                fontSize: '11.5px', 
+                                                fontSize: '12px', 
                                                 fontWeight: 600, 
                                                 color: 'var(--text-primary)',
                                                 padding: '0 2px'
@@ -1876,11 +1850,12 @@ export default function TakeoffSpecEngine({
                                               value={accRetail}
                                               onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
                                               style={{ 
-                                                width: '58px', 
+                                                minWidth: '85px',
+                                                width: '95px', 
                                                 background: 'transparent', 
                                                 border: 'none', 
                                                 outline: 'none', 
-                                                fontSize: '11.5px', 
+                                                fontSize: '12px', 
                                                 fontWeight: 700, 
                                                 color: 'var(--text-success)',
                                                 padding: '0 2px'
@@ -2534,17 +2509,67 @@ export default function TakeoffSpecEngine({
             </div>
 
             <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Enter the target plan tag to copy this fitting, pricing, and all attached accessories to:
+              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Select the target plan code on this order to duplicate this fitting, pricing, and all attached accessories to:
               </label>
-              <input 
-                type="text" 
-                placeholder="e.g. DL2, DL3"
-                value={copyTargetTag}
-                onChange={e => setCopyTargetTag(e.target.value.toUpperCase())}
-                style={{ textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700, fontSize: '13px' }}
-                className="input input-sm"
-              />
+
+              {!showCustomCopyInput ? (
+                <div>
+                  {availableTargetTags.length > 0 ? (
+                    <select 
+                      className="select select-sm"
+                      value={copyTargetTag}
+                      onChange={e => setCopyTargetTag(e.target.value)}
+                      style={{ width: '100%', fontWeight: 600, fontSize: '12.5px', background: 'var(--bg-primary)' }}
+                    >
+                      <option value="">-- Select a Plan Code on this Order --</option>
+                      {availableTargetTags.map(ut => {
+                        const isConfigured = Boolean(specifications[ut.tag]?.product);
+                        return (
+                          <option key={ut.tag} value={ut.tag}>
+                            {ut.tag} ({ut.totalQty} {ut.totalQty === 1 ? 'fixture' : 'fixtures'}) {isConfigured ? '— Already Specified (will overwrite)' : '— Pending Spec'}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '10px 12px', background: 'var(--bg-primary)', borderRadius: '6px' }}>
+                      No other plan codes found on this order. Add additional plan codes in the Count-Up tab first.
+                    </div>
+                  )}
+                  <div style={{ marginTop: '8px', textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => setShowCustomCopyInput(true)}
+                      style={{ fontSize: '11px', color: 'var(--text-info)', padding: '2px 6px' }}
+                    >
+                      + Or enter a custom plan code
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. DL2, DL3"
+                    value={copyTargetTag}
+                    onChange={e => setCopyTargetTag(e.target.value.toUpperCase())}
+                    style={{ width: '100%', textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700, fontSize: '13px' }}
+                    className="input input-sm"
+                  />
+                  <div style={{ marginTop: '8px', textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => setShowCustomCopyInput(false)}
+                      style={{ fontSize: '11px', color: 'var(--text-info)', padding: '2px 6px' }}
+                    >
+                      ← Back to order plan codes dropdown
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
