@@ -11,9 +11,12 @@ import {
   ArrowRight, 
   Search, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Sliders,
   Check,
-  Zap
+  Zap,
+  Info
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
 
@@ -22,6 +25,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [engineVersion, setEngineVersion] = useState('2.0'); // '2.0' (Smart) or '1.0' (Classic)
+  const [showCadGuide, setShowCadGuide] = useState(true);
 
   // Inspection states
   const [inspecting, setInspecting] = useState(false);
@@ -497,6 +501,120 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 }}>
                   📁 Browse Computer
                 </div>
+              </div>
+
+              {/* CAD PREPARATION SPECIFICATION GUIDE (FOR 100% ACCURACY) */}
+              <div style={{
+                borderRadius: '10px',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+                background: 'rgba(59, 130, 246, 0.04)',
+                overflow: 'hidden'
+              }}>
+                <div 
+                  onClick={() => setShowCadGuide(!showCadGuide)}
+                  style={{
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    background: 'rgba(59, 130, 246, 0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={16} color="#3b82f6" />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#60a5fa' }}>
+                      AutoCAD Drawing Setup Guide (For 100% Accuracy)
+                    </span>
+                    <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '4px', background: '#3b82f6', color: '#fff', fontWeight: 700 }}>
+                      STANDARD
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary, #94a3b8)' }}>
+                    <span>{showCadGuide ? 'Hide Instructions' : 'View Instructions'}</span>
+                    {showCadGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                </div>
+
+                {showCadGuide && (
+                  <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '11.5px', lineHeight: '1.5' }}>
+                    <div style={{ color: 'var(--text-secondary, #94a3b8)' }}>
+                      To achieve <strong>100% mathematical precision</strong> with zero guesswork, set up your CAD drawing using these dedicated layers. When present, the parser reads <em>only</em> these layers and ignores all background drafting noise:
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+                      {/* Layer 1: 0-FLOORS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#38bdf8' }}>
+                          <code>0-FLOORS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Closed Polylines + Text</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                          Closed polyline enclosing each floor envelope (e.g. Ground Floor, First Floor). Place text inside naming the floor.
+                        </div>
+                      </div>
+
+                      {/* Layer 2: 0-ROOMS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#4ade80' }}>
+                          <code>0-ROOMS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Closed Polylines + Text</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                          Closed polylines around rooms with room name text inside. <em>Tip: In AutoCAD type <code>BPOLY</code> and click inside each room for 1-click boundaries!</em>
+                        </div>
+                      </div>
+
+                      {/* Layer 3: 0-FITTINGS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#facc15' }}>
+                          <code>0-FITTINGS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Blocks + Plan Code Text</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                          All point fixtures (downlights, pendants, wall lights). Place plan code as plain text (e.g. <code>A1</code>, <code>LF_03</code>) near the symbol.
+                        </div>
+                      </div>
+
+                      {/* Layer 4: 0-LEDS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#fb923c' }}>
+                          <code>0-LEDS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Tag Text</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                          Linear LED coves, under-cabinet and joinery runs (measured in meters). Place tag text (e.g. <code>L-C_01</code>) along the polyline.
+                        </div>
+                      </div>
+
+                      {/* Layer 5: 0-TRACKS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#c084fc' }}>
+                          <code>0-TRACKS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Spot Blocks</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                          Track system rails (measured in meters). Place the spotlight blocks directly along the track polyline to automatically attach them to the track.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      padding: '8px 12px', 
+                      borderRadius: '6px', 
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px dashed rgba(59, 130, 246, 0.3)',
+                      fontSize: '11px',
+                      color: '#93c5fd'
+                    }}>
+                      <Info size={14} style={{ flexShrink: 0 }} />
+                      <span><em>Drawing from an external architect? Don't worry—Engine 2.0 will automatically fall back to Smart Heuristic mode if standard layers are absent.</em></span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {inspecting && (
