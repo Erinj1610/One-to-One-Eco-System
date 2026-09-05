@@ -528,8 +528,8 @@ export default function ProjectList() {
           </div>
         </div>
 
-        {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (FLUID PROPORTIONAL) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '12px', marginBottom: '20px' }}>
           
           <div 
             className={`stat-card clickable hover-scale ${activeKpiFilter === 'total' ? 'active-filter' : ''}`}

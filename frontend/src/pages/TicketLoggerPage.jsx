@@ -1109,7 +1109,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
       {/* ─── 2. KANBAN BOARD VIEW ────────────────────────────────────── */}
       {viewMode === 'kanban' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '14px', alignItems: 'start' }}>
           {STATUS_COLUMNS.map(col => {
             const columnTickets = filteredTickets.filter(t => {
               if (col.id === 'Resolved') return t.status === 'Resolved' || t.status === 'Closed';
@@ -1765,7 +1765,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                 {/* Meta Attributes Panel */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',
                   gap: '14px',
                   padding: '18px',
                   background: 'var(--bg-primary)',

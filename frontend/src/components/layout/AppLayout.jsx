@@ -9,7 +9,9 @@ export default function AppLayout() {
   const location = useLocation();
   const { moduleConfig } = useStore();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar_collapsed') === 'true';
+    const saved = localStorage.getItem('sidebar_collapsed');
+    if (saved !== null) return saved === 'true';
+    return typeof window !== 'undefined' && window.innerWidth < 1280;
   });
 
   const toggleCollapse = () => {
@@ -19,6 +21,16 @@ export default function AppLayout() {
       return newVal;
     });
   };
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsSidebarCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const pathToModuleId = {
     '/dashboard': 'dashboard',

@@ -752,8 +752,8 @@ export default function CrmPage() {
           </div>
         </div>
 
-        {/* Clickable Intelligent KPI Funnel Cards - MATCHING PIPELINE HEIGHT AND STRUCTURE */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        {/* Clickable Intelligent KPI Funnel Cards (FLUID PROPORTIONAL) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px', marginBottom: '20px' }}>
           
           <div 
             className={`clickable hover-scale ${activeKpiFilter === 'total' ? 'active-filter' : ''}`} 

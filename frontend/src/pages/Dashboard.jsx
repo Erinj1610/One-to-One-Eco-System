@@ -190,7 +190,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{ padding: '0 16px 16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '12px' }}>
                 {Object.entries(leads).slice(0, 4).map(([stage, items]) => {
                   const val = items.reduce((s, i) => s + i.value, 0);
                   return (

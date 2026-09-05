@@ -1195,7 +1195,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
               )}
 
               {/* STATS METRIC TILES */}
-              <div style={{ display: 'grid', gridTemplateColumns: (parseResult.summary?.totalLedRuns > 0 || parseResult.summary?.totalTrackRuns > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '10px' }}>
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', textAlign: 'center' }}>
                   <div style={{ fontSize: '20px', fontWeight: 800, color: '#3b82f6' }}>
                     {parseResult.summary?.totalFittings || 0}

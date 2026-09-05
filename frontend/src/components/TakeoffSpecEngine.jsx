@@ -295,7 +295,8 @@ export default function TakeoffSpecEngine({
   // Derived: Stats
   const stats = useMemo(() => {
     const totalRows = countUpRows.length;
-    const totalQty = countUpRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const rawTotalQty = countUpRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const totalQty = Math.round(rawTotalQty * 100) / 100;
     const configuredTags = uniqueTags.filter(ut => {
       const spec = specifications[ut.tag];
       if (!spec) return false;
@@ -1811,22 +1812,23 @@ export default function TakeoffSpecEngine({
         background: 'var(--bg-secondary)', 
         border: '1px solid var(--border)', 
         borderRadius: '10px', 
-        padding: '16px 20px',
+        padding: 'clamp(10px, 1.2vw, 16px) clamp(12px, 1.5vw, 20px)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '16px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+        gap: 'clamp(10px, 1vw, 16px)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        width: '100%'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
             <span style={{ 
               background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', 
               color: '#fff', 
-              padding: '3px 8px', 
+              padding: '2px 8px', 
               borderRadius: '4px', 
-              fontSize: '10.5px', 
+              fontSize: '10px', 
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
@@ -1835,7 +1837,7 @@ export default function TakeoffSpecEngine({
             }}>
               <Sparkles size={12} /> UPSTREAM ACCELERATOR
             </span>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: 0, fontSize: 'clamp(15px, 1.3vw, 18px)', fontWeight: 700, color: 'var(--text-primary)' }}>
               Takeoff & Specification Engine
             </h2>
             {hasUnsavedChanges && (
@@ -1844,17 +1846,17 @@ export default function TakeoffSpecEngine({
               </span>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
+          <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
             Enter fixture counts by room, assign master catalog items with editable pricing, pair dynamic accessories, and compile into your BOQ spreadsheet.
           </p>
         </div>
 
         {/* METRICS & QUICK ACTIONS */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center', minWidth: '80px' }}>
-              <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures</div>
-              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-info)' }}>{stats.totalQty}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '5px 10px', textAlign: 'center', minWidth: '75px' }}>
+              <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-info)' }}>{typeof stats.totalQty === 'number' ? Number(stats.totalQty.toFixed(2)) : stats.totalQty}</div>
             </div>
             <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center', minWidth: '90px' }}>
               <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Plan Tags</div>
@@ -2376,7 +2378,7 @@ export default function TakeoffSpecEngine({
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))', gap: '16px' }}>
                     {pointFixtureTags.map(tagInfo => {
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
@@ -2901,7 +2903,7 @@ export default function TakeoffSpecEngine({
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap: '16px' }}>
                     {linearLedTags.map(tagInfo => {
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
@@ -3663,7 +3665,7 @@ export default function TakeoffSpecEngine({
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(520px, 1fr))', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap: '16px' }}>
                     {trackSystemTags.map(tagInfo => {
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
@@ -4487,7 +4489,7 @@ export default function TakeoffSpecEngine({
             const subtitle = `${curStats.tagsCount} active tags across ${curStats.areasCount} areas`;
 
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px' }}>
                 <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>{qtyLabel}</span>
                   <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
@@ -4689,7 +4691,7 @@ export default function TakeoffSpecEngine({
                         ? `${categoryStats.leds.totalQtyOrMeters} m`
                         : summarySubTab === 'tracks'
                         ? `${categoryStats.tracks.totalQtyOrMeters} m`
-                        : stats.totalQty}
+                        : typeof stats.totalQty === 'number' ? Number(stats.totalQty.toFixed(2)) : stats.totalQty}
                     </td>
                   </tr>
                 </tfoot>
