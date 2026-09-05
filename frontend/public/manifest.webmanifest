@@ -1,0 +1,18 @@
+{
+  "name": "One to One Eco System",
+  "short_name": "One to One",
+  "description": "One to One Architectural & Engineering Order Management Portal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

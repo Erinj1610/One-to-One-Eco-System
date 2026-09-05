@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import MobileHeader from '../mobile/MobileHeader';
+import MobileBottomBar from '../mobile/MobileBottomBar';
 import PulseSurveyModal from '../common/PulseSurveyModal';
 import { useStore } from '../../context/StoreContext';
 
 export default function AppLayout() {
   const location = useLocation();
   const { moduleConfig } = useStore();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebar_collapsed');
     if (saved !== null) return saved === 'true';
@@ -24,6 +27,8 @@ export default function AppLayout() {
 
   useEffect(() => {
     const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
       if (window.innerWidth < 1024) {
         setIsSidebarCollapsed(true);
       }
@@ -79,14 +84,15 @@ export default function AppLayout() {
   }, [location.pathname, currentTitle, logActivity]);
 
   return (
-    <div className={`portal ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <Sidebar isCollapsed={isSidebarCollapsed} toggleCollapse={toggleCollapse} />
+    <div className={`portal ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobile ? 'is-mobile-shell' : ''}`}>
+      {!isMobile && <Sidebar isCollapsed={isSidebarCollapsed} toggleCollapse={toggleCollapse} />}
       <div className="main">
-        <Topbar title={currentTitle} />
+        {isMobile ? <MobileHeader /> : <Topbar title={currentTitle} />}
         <div className="content">
           <Outlet />
         </div>
       </div>
+      {isMobile && <MobileBottomBar />}
       <PulseSurveyModal />
     </div>
   );

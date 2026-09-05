@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useResizableTable } from '../components/common/ResizableTable';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
+import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -340,6 +341,13 @@ export default function OrdersPage() {
     refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Bulk Selection States
   const [selectedPoNumbers, setSelectedPoNumbers] = useState(new Set());
@@ -2413,6 +2421,9 @@ export default function OrdersPage() {
 
       {/* HEADER BANNER */}
       {selectedOrderId === null ? (
+        isMobile ? (
+          <MobileOrdersViewer orders={allOrders} onRefresh={refreshProjects} />
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
           <div style={{ minWidth: 0 }}>
           <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
@@ -2865,6 +2876,7 @@ export default function OrdersPage() {
             onToggle={() => setIsSidebarCollapsed(prev => !prev)}
           />
         </div>
+        )
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */

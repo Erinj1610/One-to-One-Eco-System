@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
+import MobileSalesViewer from '../components/mobile/MobileSalesViewer';
 
 
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -207,10 +208,16 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices } = useStore();
+  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
-
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleNavigateToDoc = (page, docId, projectKey) => {
     navigate(page, { state: { openDocId: docId, projectKey } });
@@ -3071,6 +3078,9 @@ export default function SalesTracker() {
 
       {/* HEADER BANNER */}
       {selectedOrderId === null ? (
+        isMobile ? (
+          <MobileSalesViewer orders={sortedOrders} kpis={kpis} onRefresh={refreshProjects} />
+        ) : (
         <>
           <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3535,7 +3545,7 @@ export default function SalesTracker() {
             </div>
           </div>
         </>
-
+        )
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */
