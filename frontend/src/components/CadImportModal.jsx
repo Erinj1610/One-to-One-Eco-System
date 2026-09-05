@@ -162,7 +162,14 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
       floor: item.floor || 'Ground Floor',
       area: item.area || 'Landscape',
       tag: (item.tag || '').trim().toUpperCase(),
-      qty: Number(item.qty) || 1,
+      qty: Math.max(0.01, parseFloat(item.qty) || 1),
+      unit: item.unit || (item.itemType === 'linear_led' ? 'm' : 'pcs'),
+      itemType: item.itemType || 'fixture',
+      lengthMeters: Number(item.lengthMeters) || 0,
+      runIndex: Number(item.runIndex) || 0,
+      notes: item.notes || '',
+      driver: item.driver || '',
+      accessories: item.accessories || []
     }));
 
     onImportData(formatted, mode);
@@ -634,29 +641,42 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
           {step === 3 && parseResult && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {/* STATS METRIC TILES */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: (parseResult.summary?.totalLedRuns > 0 || parseResult.summary?.totalTrackRuns > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '10px' }}>
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '22px', fontWeight: 800, color: '#3b82f6' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#3b82f6' }}>
                     {parseResult.summary?.totalFittings || 0}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 600, marginTop: '2px' }}>
-                    Total Fittings Counted
+                    Fittings Counted
                   </div>
                 </div>
+
+                {(parseResult.summary?.totalLedRuns > 0 || parseResult.summary?.totalTrackRuns > 0) && (
+                  <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', textAlign: 'center' }}>
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#f59e0b' }}>
+                      {parseResult.summary?.totalLedMeters ? `${parseResult.summary.totalLedMeters}m` : `${parseResult.summary?.totalTrackMeters || 0}m`}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 600, marginTop: '2px' }}>
+                      {parseResult.summary?.totalLedRuns || 0} LED Runs
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.25)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '22px', fontWeight: 800, color: '#c084fc' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#c084fc' }}>
                     {parseResult.summary?.uniqueTags || 0}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 600, marginTop: '2px' }}>
-                    Unique Plan Codes (Tags)
+                    Plan Codes (Tags)
                   </div>
                 </div>
+
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '22px', fontWeight: 800, color: '#34d399' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#34d399' }}>
                     {parseResult.summary?.totalRooms || 0}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 600, marginTop: '2px' }}>
-                    Rooms / Areas Detected
+                    Rooms / Areas
                   </div>
                 </div>
               </div>
@@ -693,7 +713,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
 
               {/* PREVIEW TABLE */}
               <div style={{
-                maxHeight: '260px',
+                maxHeight: '280px',
                 overflowY: 'auto',
                 border: '1px solid var(--border, #2e3545)',
                 borderRadius: '8px',
@@ -704,8 +724,9 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                     <tr>
                       <th style={{ padding: '8px 12px' }}>Floor Level</th>
                       <th style={{ padding: '8px 12px' }}>Room / Area</th>
-                      <th style={{ padding: '8px 12px' }}>Plan Code (Tag)</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right' }}>Quantity</th>
+                      <th style={{ padding: '8px 12px' }}>Plan Code</th>
+                      <th style={{ padding: '8px 12px' }}>Type & Details</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right' }}>Measurement / Qty</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -716,7 +737,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary, #1e222d)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
-                        <td style={{ padding: '7px 12px', color: 'var(--text-secondary, #94a3b8)' }}>{item.floor}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--text-secondary, #94a3b8)', fontSize: '11.5px' }}>{item.floor}</td>
                         <td style={{ padding: '7px 12px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>{item.area}</td>
                         <td style={{ padding: '7px 12px' }}>
                           <span style={{
@@ -725,21 +746,46 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                             fontFamily: 'monospace',
                             fontWeight: 700,
                             fontSize: '11.5px',
-                            background: 'rgba(59, 130, 246, 0.15)',
-                            color: '#60a5fa',
-                            border: '1px solid rgba(59, 130, 246, 0.3)'
+                            background: item.itemType === 'linear_led' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                            color: item.itemType === 'linear_led' ? '#f59e0b' : '#60a5fa',
+                            border: item.itemType === 'linear_led' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
                           }}>
                             {item.tag}
                           </span>
                         </td>
+                        <td style={{ padding: '7px 12px' }}>
+                          {item.itemType === 'linear_led' ? (
+                            <div>
+                              <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '1px 5px', borderRadius: '3px', textTransform: 'uppercase' }}>
+                                Linear LED
+                              </span>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', marginTop: '2px' }}>
+                                {item.notes}
+                              </div>
+                            </div>
+                          ) : item.itemType === 'track_system' ? (
+                            <div>
+                              <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '1px 5px', borderRadius: '3px', textTransform: 'uppercase' }}>
+                                Track System
+                              </span>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)', marginTop: '2px' }}>
+                                {item.notes}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)' }}>
+                              Standard Luminaire
+                            </span>
+                          )}
+                        </td>
                         <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary, #ffffff)' }}>
-                          {item.qty}
+                          {item.qty} <span style={{ fontSize: '11px', fontWeight: 'normal', color: 'var(--text-tertiary, #64748b)' }}>{item.unit || 'pcs'}</span>
                         </td>
                       </tr>
                     ))}
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary, #94a3b8)' }}>
+                        <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary, #94a3b8)' }}>
                           No matching items found.
                         </td>
                       </tr>

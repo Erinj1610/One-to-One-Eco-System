@@ -334,7 +334,10 @@ export default function TakeoffSpecEngine({
       if (r.id !== id) return r;
       let formattedVal = value;
       if (field === 'tag') formattedVal = (value || '').toUpperCase();
-      if (field === 'qty') formattedVal = Math.max(1, parseInt(value, 10) || 1);
+      if (field === 'qty') {
+        const parsed = parseFloat(value);
+        formattedVal = isNaN(parsed) ? 1 : Math.max(0.01, parsed);
+      }
       return { ...r, [field]: formattedVal };
     }));
   };
@@ -425,8 +428,12 @@ export default function TakeoffSpecEngine({
       tag: (item.tag || '').trim().toUpperCase(),
       floor: (item.floor || 'Ground').trim(),
       area: (item.area || 'Landscape').trim(),
-      qty: Math.max(1, Number(item.qty) || 1),
-      notes: ''
+      qty: Math.max(0.01, parseFloat(item.qty) || 1),
+      unit: item.unit || (item.itemType === 'linear_led' || item.itemType === 'track_system' ? 'm' : 'pcs'),
+      itemType: item.itemType || 'fixture',
+      lengthMeters: Number(item.lengthMeters) || 0,
+      runIndex: Number(item.runIndex) || 0,
+      notes: item.notes || ''
     }));
 
     if (mode === 'replace') {
@@ -1116,7 +1123,7 @@ export default function TakeoffSpecEngine({
                   <th style={{ padding: '8px 10px', width: '130px' }}>Plan Tag / Code</th>
                   <th style={{ padding: '8px 10px', width: '140px' }}>Floor Level</th>
                   <th style={{ padding: '8px 10px', width: '220px' }}>Room / Area</th>
-                  <th style={{ padding: '8px 10px', width: '90px', textAlign: 'center' }}>Quantity</th>
+                  <th style={{ padding: '8px 10px', width: '105px', textAlign: 'center' }}>Qty / Length</th>
                   <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
                   <th style={{ padding: '8px 10px', width: '180px' }}>Catalog Mapping</th>
                   <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
@@ -1234,29 +1241,35 @@ export default function TakeoffSpecEngine({
 
                         {/* QUANTITY INPUT */}
                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <input 
-                            type="number" 
-                            min="1"
-                            data-row-index={index}
-                            data-field="qty"
-                            value={row.qty} 
-                            onChange={e => handleUpdateRow(row.id, 'qty', e.target.value)}
-                            onKeyDown={e => handleKeyDown(e, index, 'qty')}
-                            style={{ 
-                              width: '100%', 
-                              fontWeight: 700, 
-                              textAlign: 'center',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              borderRadius: '4px',
-                              padding: '4px 6px',
-                              outline: 'none',
-                              fontSize: '12.5px',
-                              color: 'var(--text-primary)'
-                            }}
-                            onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
-                            onBlur={e => e.target.style.border = '1px solid transparent'}
-                          />
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                            <input 
+                              type="number" 
+                              min="0.01"
+                              step={row.unit === 'm' ? "0.01" : "1"}
+                              data-row-index={index}
+                              data-field="qty"
+                              value={row.qty} 
+                              onChange={e => handleUpdateRow(row.id, 'qty', e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, index, 'qty')}
+                              style={{ 
+                                width: row.unit === 'm' ? '65px' : '100%', 
+                                fontWeight: 700, 
+                                textAlign: 'center',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                outline: 'none',
+                                fontSize: '12.5px',
+                                color: 'var(--text-primary)'
+                              }}
+                              onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                              onBlur={e => e.target.style.border = '1px solid transparent'}
+                            />
+                            {row.unit === 'm' && (
+                              <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>m</span>
+                            )}
+                          </div>
                         </td>
 
                         {/* NOTES INPUT */}
