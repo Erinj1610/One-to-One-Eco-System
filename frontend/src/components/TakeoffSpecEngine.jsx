@@ -103,10 +103,14 @@ export default function TakeoffSpecEngine({
   // CAD Drawing Ingestion Modal
   const [showCadModal, setShowCadModal] = useState(false);
 
+  // Specification Section Sub-Tab ('fixtures' | 'leds' | 'tracks')
+  const [specSubTab, setSpecSubTab] = useState('fixtures');
+
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [catalogTargetTag, setCatalogTargetTag] = useState(null);
-  const [catalogTargetMode, setCatalogTargetMode] = useState('product'); // 'product' | 'accessory'
+  const [catalogTargetMode, setCatalogTargetMode] = useState('product'); // 'product' | 'accessory' | 'led_profile' | 'led_strip' | 'led_driver' | 'track_rail' | 'track_spot' | 'track_driver'
+  const [catalogTargetSubId, setCatalogTargetSubId] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('All');
   const [catalogResults, setCatalogResults] = useState([]);
@@ -171,20 +175,63 @@ export default function TakeoffSpecEngine({
       const t = (row.tag || '').trim().toUpperCase();
       if (t) {
         if (!tagsMap.has(t)) {
-          tagsMap.set(t, { tag: t, totalQty: 0, areas: new Set(), floors: new Set() });
+          tagsMap.set(t, { 
+            tag: t, 
+            totalQty: 0, 
+            totalMeters: 0, 
+            unit: row.unit || 'pcs', 
+            itemType: row.itemType || 'fixture',
+            areas: new Set(), 
+            floors: new Set(),
+            runs: []
+          });
         }
         const info = tagsMap.get(t);
-        info.totalQty += Number(row.qty) || 0;
+        const q = Math.max(0, Number(row.qty) || 0);
+        info.totalQty += q;
+        const m = Number(row.lengthMeters) || (row.unit === 'm' ? q : 0);
+        info.totalMeters += m;
+        if (row.itemType && row.itemType !== 'fixture') {
+          info.itemType = row.itemType;
+        }
+        if (row.unit === 'm') info.unit = 'm';
         if (row.area) info.areas.add(row.area.trim());
         if (row.floor) info.floors.add(row.floor.trim());
+        info.runs.push(row);
       }
     });
-    return Array.from(tagsMap.values()).map(item => ({
-      ...item,
-      areasCount: item.areas.size,
-      floorsCount: item.floors.size
-    }));
+
+    return Array.from(tagsMap.values()).map(item => {
+      let inferredType = item.itemType || 'fixture';
+      if (inferredType === 'fixture') {
+        const u = item.tag.toUpperCase();
+        if (u.startsWith('L-') || u.startsWith('LED') || item.unit === 'm' || item.totalMeters > 0) {
+          inferredType = 'linear_led';
+        } else if (u.startsWith('TRK') || u.startsWith('TRACK')) {
+          inferredType = 'track_system';
+        }
+      }
+      return {
+        ...item,
+        itemType: inferredType,
+        totalMeters: Math.round(item.totalMeters * 100) / 100,
+        areasCount: item.areas.size,
+        floorsCount: item.floors.size
+      };
+    });
   }, [countUpRows]);
+
+  const pointFixtureTags = useMemo(() => {
+    return uniqueTags.filter(ut => (specifications[ut.tag]?.itemType || ut.itemType) === 'fixture');
+  }, [uniqueTags, specifications]);
+
+  const linearLedTags = useMemo(() => {
+    return uniqueTags.filter(ut => (specifications[ut.tag]?.itemType || ut.itemType) === 'linear_led');
+  }, [uniqueTags, specifications]);
+
+  const trackSystemTags = useMemo(() => {
+    return uniqueTags.filter(ut => (specifications[ut.tag]?.itemType || ut.itemType) === 'track_system');
+  }, [uniqueTags, specifications]);
 
   // Derived: Unique floors
   const uniqueFloors = useMemo(() => {
@@ -243,7 +290,18 @@ export default function TakeoffSpecEngine({
   const stats = useMemo(() => {
     const totalRows = countUpRows.length;
     const totalQty = countUpRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
-    const configuredTags = uniqueTags.filter(ut => specifications[ut.tag]?.product).length;
+    const configuredTags = uniqueTags.filter(ut => {
+      const spec = specifications[ut.tag];
+      if (!spec) return false;
+      const itemType = spec.itemType || ut.itemType || 'fixture';
+      if (itemType === 'linear_led') {
+        return Boolean(spec.ledConfig?.profileProduct || spec.ledConfig?.stripProduct);
+      }
+      if (itemType === 'track_system') {
+        return Boolean(spec.trackConfig?.railProduct || (spec.trackConfig?.spots && spec.trackConfig.spots.length > 0));
+      }
+      return Boolean(spec.product);
+    }).length;
     
     // Financial estimates
     let estimatedCost = 0;
@@ -253,7 +311,40 @@ export default function TakeoffSpecEngine({
       const tag = (row.tag || '').trim().toUpperCase();
       const spec = specifications[tag];
       const qty = Number(row.qty) || 0;
-      if (spec && spec.product) {
+      const itemType = spec?.itemType || row.itemType || 'fixture';
+
+      if (spec && itemType === 'linear_led') {
+        const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+        const profCost = Number(spec.ledConfig?.profileCost || 0);
+        const profRet = Number(spec.ledConfig?.profileRetail || 0);
+        const stripCost = Number(spec.ledConfig?.stripCost || 0);
+        const stripRet = Number(spec.ledConfig?.stripRetail || 0);
+        const drvCost = Number(spec.ledConfig?.driverCost || 0);
+        const drvRet = Number(spec.ledConfig?.driverRetail || 0);
+
+        estimatedCost += (rowLen * (profCost + stripCost)) + drvCost + 25;
+        estimatedRetail += (rowLen * (profRet + stripRet)) + drvRet + 65;
+      } else if (spec && itemType === 'track_system') {
+        const stockLen = Number(spec.trackConfig?.stockLength) || 3;
+        const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 1) * stockLen);
+        const rails = Math.max(1, Math.ceil(rowLen / stockLen));
+        const railCost = Number(spec.trackConfig?.railCost || 0);
+        const railRet = Number(spec.trackConfig?.railRetail || 0);
+        const drvCost = Number(spec.trackConfig?.driverCost || 0);
+        const drvRet = Number(spec.trackConfig?.driverRetail || 0);
+
+        let spotsCost = 0;
+        let spotsRet = 0;
+        if (Array.isArray(spec.trackConfig?.spots)) {
+          spec.trackConfig.spots.forEach(sp => {
+            spotsCost += (Number(sp.qty || 1) * Number(sp.cost_price || 0));
+            spotsRet += (Number(sp.qty || 1) * Number(sp.retail_price || 0));
+          });
+        }
+
+        estimatedCost += (rails * railCost) + spotsCost + drvCost + 140;
+        estimatedRetail += (rails * railRet) + spotsRet + drvRet + 280;
+      } else if (spec && spec.product) {
         const c = spec.customCost !== undefined ? Number(spec.customCost) : Number(spec.product.cost_price || 0);
         const r = spec.customRetail !== undefined ? Number(spec.customRetail) : Number(spec.product.retail_price || 0);
         estimatedCost += (qty * c);
@@ -447,11 +538,12 @@ export default function TakeoffSpecEngine({
   // -------------------------------------------------------------
   // Specification Mapping & Dynamic Accessories
   // -------------------------------------------------------------
-  const openCatalogPicker = (tag, mode = 'product') => {
+  const openCatalogPicker = (tag, mode = 'product', defaultCategory = 'All', subId = null) => {
     setCatalogTargetTag(tag);
     setCatalogTargetMode(mode);
+    setCatalogTargetSubId(subId);
     setCatalogSearch('');
-    setCatalogCategory('All');
+    setCatalogCategory(defaultCategory);
     setCatalogModalOpen(true);
   };
 
@@ -548,10 +640,256 @@ export default function TakeoffSpecEngine({
           }
         };
       });
+    } else if (catalogTargetMode === 'led_profile') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const ledConfig = current.ledConfig || {};
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'linear_led',
+            ledConfig: {
+              ...ledConfig,
+              profileProduct: product,
+              profileName: product.client_description || product.name,
+              profileSku: product.sku || product.one_to_one_code,
+              profileCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+              profileTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+              profileRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+            }
+          }
+        };
+      });
+    } else if (catalogTargetMode === 'led_strip') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const ledConfig = current.ledConfig || {};
+        const w = parseFloat(product.wattage) || ledConfig.stripWattsPerMeter || 14.4;
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'linear_led',
+            ledConfig: {
+              ...ledConfig,
+              stripProduct: product,
+              stripName: product.client_description || product.name,
+              stripSku: product.sku || product.one_to_one_code,
+              stripWattsPerMeter: w,
+              stripCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+              stripTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+              stripRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+            }
+          }
+        };
+      });
+    } else if (catalogTargetMode === 'led_driver') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const ledConfig = current.ledConfig || {};
+        const w = parseFloat(product.wattage) || ledConfig.driverWattage || 150;
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'linear_led',
+            ledConfig: {
+              ...ledConfig,
+              driverProduct: product,
+              driverName: product.client_description || product.name,
+              driverSku: product.sku || product.one_to_one_code,
+              driverWattage: w,
+              driverCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+              driverTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+              driverRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+            }
+          }
+        };
+      });
+    } else if (catalogTargetMode === 'track_rail') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const trackConfig = current.trackConfig || {};
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'track_system',
+            trackConfig: {
+              ...trackConfig,
+              railProduct: product,
+              railName: product.client_description || product.name,
+              railSku: product.sku || product.one_to_one_code,
+              railCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+              railTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+              railRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+            }
+          }
+        };
+      });
+    } else if (catalogTargetMode === 'track_spot') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const trackConfig = current.trackConfig || {};
+        const currentSpots = trackConfig.spots || [];
+        const newSpot = {
+          id: 'spot-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          productId: product.id,
+          product: product,
+          name: product.client_description || product.name,
+          sku: product.sku || product.one_to_one_code,
+          qty: 1,
+          beamAngle: product.beam_angle || '24°',
+          cct: product.color_temperature || product.cct || '3000K',
+          wattage: parseFloat(product.wattage) || 12,
+          cost_price: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+          trade_price: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+          retail_price: product.retail_price !== undefined ? Number(product.retail_price) : 0,
+          image_url: product.image_url || ''
+        };
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'track_system',
+            trackConfig: {
+              ...trackConfig,
+              spots: [...currentSpots, newSpot]
+            }
+          }
+        };
+      });
+    } else if (catalogTargetMode === 'track_driver') {
+      setSpecifications(prev => {
+        const current = prev[activeTag] || {};
+        const trackConfig = current.trackConfig || {};
+        return {
+          ...prev,
+          [activeTag]: {
+            ...current,
+            itemType: 'track_system',
+            trackConfig: {
+              ...trackConfig,
+              driverProduct: product,
+              driverName: product.client_description || product.name,
+              driverSku: product.sku || product.one_to_one_code,
+              driverCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+              driverTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+              driverRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+            }
+          }
+        };
+      });
     }
 
     setCatalogModalOpen(false);
     setInspectedProduct(null);
+  };
+
+  const handleUpdateTagType = (tag, newType) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: newType
+        }
+      };
+    });
+    setCountUpRows(prev => prev.map(r => {
+      if ((r.tag || '').trim().toUpperCase() === tag) {
+        return {
+          ...r,
+          itemType: newType,
+          unit: newType === 'fixture' ? 'pcs' : 'm'
+        };
+      }
+      return r;
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateLedConfig = (tag, field, value) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const ledConfig = cur.ledConfig || {};
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: 'linear_led',
+          ledConfig: {
+            ...ledConfig,
+            [field]: value
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateTrackConfig = (tag, field, value) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const trackConfig = cur.trackConfig || {};
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: 'track_system',
+          trackConfig: {
+            ...trackConfig,
+            [field]: value
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateTrackSpot = (tag, spotId, field, value) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const trackConfig = cur.trackConfig || {};
+      const spots = (trackConfig.spots || []).map(s => {
+        if (s.id === spotId) {
+          return { ...s, [field]: value };
+        }
+        return s;
+      });
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          trackConfig: {
+            ...trackConfig,
+            spots
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleRemoveTrackSpot = (tag, spotId) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const trackConfig = cur.trackConfig || {};
+      const spots = (trackConfig.spots || []).filter(s => s.id !== spotId);
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          trackConfig: {
+            ...trackConfig,
+            spots
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
   };
 
   const handleUpdateSpecPrice = (tag, field, val) => {
@@ -733,12 +1071,241 @@ export default function TakeoffSpecEngine({
       }
 
       const spec = specifications[tag];
+      const itemType = spec?.itemType || row.itemType || 'fixture';
       const product = spec ? spec.product : null;
       const qty = Math.max(1, Number(row.qty) || 1);
 
-      const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
-      
-      if (product) {
+      if (itemType === 'linear_led') {
+        // -----------------------------------------------------------
+        // EXPAND LINEAR LED RUN INTO ITEMIZED HARDWARE
+        // -----------------------------------------------------------
+        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+        const cleanLen = Math.round(len * 100) / 100;
+        const stockLength = Number(spec?.ledConfig?.stockLength) || 3;
+        const cutBars = Math.max(1, Math.ceil(cleanLen / stockLength));
+        const ledCfg = spec?.ledConfig || {};
+
+        // 1. Aluminium Profile / Extrusion
+        const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
+        const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-prof-' + Math.random().toString(36).substr(2, 4),
+          qty: cleanLen,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: ledCfg.profileProduct?.one_to_one_code || '',
+          code: ledCfg.profileSku || 'LED-PROFILE',
+          description: `${ledCfg.profileName || 'Aluminium LED Profile'} (${ledCfg.mounting || 'Surface'} - ${ledCfg.diffuser || 'Opal'} Diffuser) — ${cleanLen}m run [${cutBars}x ${stockLength}m bars]${row.notes ? ' — ' + row.notes : ''}`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: '—',
+          brand: ledCfg.profileProduct?.brand || '',
+          supplier: ledCfg.profileProduct?.supplier || orderSupplier || 'Molecule Dist.',
+          unitCost: profileCost,
+          unitTrade: profileRetail * 0.8,
+          unitRetail: profileRetail,
+          selection: 'Profile',
+          stockStatus: 'Stock',
+          eta: '2 weeks',
+          image_url: ledCfg.profileProduct?.image_url || ''
+        });
+
+        // 2. LED Strip Tape
+        const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
+        const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-strip-' + Math.random().toString(36).substr(2, 4),
+          qty: cleanLen,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: ledCfg.stripProduct?.one_to_one_code || '',
+          code: ledCfg.stripSku || 'LED-STRIP-24V',
+          description: `${ledCfg.stripName || 'LED Strip Tape'} (${ledCfg.cct || '3000K'}, ${ledCfg.stripWattsPerMeter || 14.4}W/m, ${ledCfg.ipRating || 'IP20'}) — ${cleanLen}m`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: ledCfg.dimming || 'Phase Cut',
+          brand: ledCfg.stripProduct?.brand || '',
+          supplier: ledCfg.stripProduct?.supplier || orderSupplier || 'Molecule Dist.',
+          unitCost: stripCost,
+          unitTrade: stripRetail * 0.8,
+          unitRetail: stripRetail,
+          selection: 'Strip',
+          stockStatus: 'Stock',
+          eta: '2 weeks',
+          image_url: ledCfg.stripProduct?.image_url || ''
+        });
+
+        // 3. LED Driver / Power Supply
+        const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
+        const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
+        const totalLoadWatts = Math.round(cleanLen * (ledCfg.stripWattsPerMeter || 14.4));
+        const recDriverWattage = ledCfg.driverWattage || (Math.ceil((totalLoadWatts * 1.2) / 50) * 50);
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-drv-' + Math.random().toString(36).substr(2, 4),
+          qty: 1,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: ledCfg.driverProduct?.one_to_one_code || '',
+          code: ledCfg.driverSku || 'LED-DRIVER-24V',
+          description: `${ledCfg.driverName || '24V Constant Voltage Driver'} (${ledCfg.dimming || 'Phase Cut'}, ${recDriverWattage}W for ${totalLoadWatts}W load)`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: ledCfg.dimming || 'Phase Cut',
+          brand: ledCfg.driverProduct?.brand || '',
+          supplier: ledCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
+          unitCost: driverCost,
+          unitTrade: driverRetail * 0.8,
+          unitRetail: driverRetail,
+          selection: 'Driver',
+          stockStatus: 'Stock',
+          eta: '2 weeks',
+          image_url: ledCfg.driverProduct?.image_url || ''
+        });
+
+        // 4. End Caps & Mounting Hardware Kit
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
+          qty: 1,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: '',
+          code: 'LED-ENDCAPS-KIT',
+          description: `Profile End Caps (Pair) & Mounting Clips for ${tag}`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: '—',
+          brand: '',
+          supplier: orderSupplier || 'Molecule Dist.',
+          unitCost: 25,
+          unitTrade: 50,
+          unitRetail: 65,
+          selection: 'Accessory',
+          stockStatus: 'Stock',
+          eta: '2 weeks'
+        });
+
+      } else if (itemType === 'track_system') {
+        // -----------------------------------------------------------
+        // EXPAND TRACK SYSTEM INTO RAILS + SPOTS + FEEDS + DRIVER
+        // -----------------------------------------------------------
+        const trackCfg = spec?.trackConfig || {};
+        const stockLength = Number(trackCfg.stockLength) || 3;
+        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 1) * stockLength);
+        const cleanLen = Math.round(len * 100) / 100;
+        const railsCount = Math.max(1, Math.ceil(cleanLen / stockLength));
+        const joinersCount = Math.max(0, railsCount - 1);
+
+        // 1. Track Rails
+        const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
+        const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-rail-' + Math.random().toString(36).substr(2, 4),
+          qty: railsCount,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: trackCfg.railProduct?.one_to_one_code || '',
+          code: trackCfg.railSku || 'TRACK-RAIL',
+          description: `${trackCfg.railName || 'Track Profile Rail'} (${trackCfg.systemType || '48V Magnetic'}, ${trackCfg.mounting || 'Surface'}, Finish: ${trackCfg.finish || 'Black'}) — ${stockLength}m Rail (${cleanLen}m total)${row.notes ? ' — ' + row.notes : ''}`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: '—',
+          brand: trackCfg.railProduct?.brand || '',
+          supplier: trackCfg.railProduct?.supplier || orderSupplier || 'Molecule Dist.',
+          unitCost: railCost,
+          unitTrade: railRetail * 0.8,
+          unitRetail: railRetail,
+          selection: 'Track Rail',
+          stockStatus: 'Stock',
+          eta: '3 weeks',
+          image_url: trackCfg.railProduct?.image_url || ''
+        });
+
+        // 2. Track Hardware Kit (Live End + Dead End + Joiners)
+        const kitCost = 140 + (joinersCount * 45);
+        const kitRetail = 280 + (joinersCount * 95);
+        generatedItems.push({
+          id: 'I-' + Date.now() + '-' + rowIdx + '-tr-kit-' + Math.random().toString(36).substr(2, 4),
+          qty: 1,
+          type: tag,
+          itemType: 'Hardware',
+          oneOneCode: '',
+          code: 'TRACK-HARDWARE-KIT',
+          description: `Track Hardware Kit (1x Live End Power Feed + 1x Dead End Cap${joinersCount > 0 ? ` + ${joinersCount}x Straight Joiners` : ''})`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: '—',
+          brand: '',
+          supplier: orderSupplier || 'Molecule Dist.',
+          unitCost: kitCost,
+          unitTrade: kitRetail * 0.8,
+          unitRetail: kitRetail,
+          selection: 'Accessory',
+          stockStatus: 'Stock',
+          eta: '3 weeks'
+        });
+
+        // 3. Track-Mounted Spotlights / Luminaires
+        if (Array.isArray(trackCfg.spots) && trackCfg.spots.length > 0) {
+          trackCfg.spots.forEach((spot, spIdx) => {
+            const spQty = Math.max(1, Number(spot.qty) || 1);
+            const spCost = Number(spot.cost_price) || 0;
+            const spRetail = Number(spot.retail_price) || 0;
+            generatedItems.push({
+              id: 'I-' + Date.now() + '-' + rowIdx + '-spot-' + spIdx + '-' + Math.random().toString(36).substr(2, 4),
+              qty: spQty,
+              type: tag,
+              itemType: 'Hardware',
+              oneOneCode: spot.product?.one_to_one_code || '',
+              code: spot.sku || 'TRACK-SPOT',
+              description: `${spot.name} (${spot.beamAngle || '24°'}, ${spot.cct || '3000K'}, ${spot.wattage || 12}W) — Track Luminaire`,
+              floor: row.floor || 'Ground',
+              area: row.area || 'General Area',
+              dimming: spot.product?.dimming_protocol || 'DALI / 48V Dim',
+              brand: spot.product?.brand || '',
+              supplier: spot.product?.supplier || orderSupplier || 'Molecule Dist.',
+              unitCost: spCost,
+              unitTrade: spRetail * 0.8,
+              unitRetail: spRetail,
+              selection: 'Track Luminaire',
+              stockStatus: 'Stock',
+              eta: '3 weeks',
+              image_url: spot.image_url || ''
+            });
+          });
+        }
+
+        // 4. Track Driver / Power Box
+        if (trackCfg.driverName || (trackCfg.systemType || '').includes('48V')) {
+          const drvCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
+          const drvRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
+          generatedItems.push({
+            id: 'I-' + Date.now() + '-' + rowIdx + '-tr-drv-' + Math.random().toString(36).substr(2, 4),
+            qty: 1,
+            type: tag,
+            itemType: 'Hardware',
+            oneOneCode: trackCfg.driverProduct?.one_to_one_code || '',
+            code: trackCfg.driverSku || 'TRACK-DRIVER-48V',
+            description: `${trackCfg.driverName || '48V DC Low-Voltage Track Power Supply Box'}`,
+            floor: row.floor || 'Ground',
+            area: row.area || 'General Area',
+            dimming: '48V DALI / Dim',
+            brand: trackCfg.driverProduct?.brand || '',
+            supplier: trackCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
+            unitCost: drvCost,
+            unitTrade: drvRetail * 0.8,
+            unitRetail: drvRetail,
+            selection: 'Driver',
+            stockStatus: 'Stock',
+            eta: '3 weeks',
+            image_url: trackCfg.driverProduct?.image_url || ''
+          });
+        }
+
+      } else if (product) {
+        // -----------------------------------------------------------
+        // STANDARD POINT FIXTURE
+        // -----------------------------------------------------------
+        const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
         const costPrice = spec.customCost !== undefined ? Number(spec.customCost) : (product.cost_price || 0);
         const tradePrice = spec.customTrade !== undefined ? Number(spec.customTrade) : (product.trade_price || 0);
         const retailPrice = spec.customRetail !== undefined ? Number(spec.customRetail) : (product.retail_price || 0);
@@ -810,6 +1377,7 @@ export default function TakeoffSpecEngine({
         }
       } else {
         // Fallback placeholder row for unassigned tag
+        const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
         generatedItems.push({
           id: fixtureId,
           qty,
@@ -1440,492 +2008,1410 @@ export default function TakeoffSpecEngine({
               No Plan Tags found yet. Head over to <strong>1. Room-by-Room Count-Up</strong> to enter fixture tags first.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '16px' }}>
-              {uniqueTags.map(tagInfo => {
-                const tag = tagInfo.tag;
-                const spec = specifications[tag];
-                const product = spec ? spec.product : null;
-                const accessories = (spec && spec.accessories) || [];
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* SUB-TAB NAVIGATOR (Point Fixtures | Linear LED Builder | Track Systems Builder) */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '8px', 
+                borderBottom: '1px solid var(--border)', 
+                paddingBottom: '10px' 
+              }}>
+                <button
+                  className={`btn btn-sm ${specSubTab === 'fixtures' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSpecSubTab('fixtures')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: specSubTab === 'fixtures' ? 700 : 500 }}
+                >
+                  💡 Point Fixtures ({pointFixtureTags.length})
+                </button>
+                <button
+                  className={`btn btn-sm ${specSubTab === 'leds' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSpecSubTab('leds')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: specSubTab === 'leds' ? 700 : 500 }}
+                >
+                  〰️ Linear LED Builder ({linearLedTags.length})
+                </button>
+                <button
+                  className={`btn btn-sm ${specSubTab === 'tracks' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setSpecSubTab('tracks')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: specSubTab === 'tracks' ? 700 : 500 }}
+                >
+                  🛤️ Track Systems Builder ({trackSystemTags.length})
+                </button>
+              </div>
 
-                const costPrice = spec?.customCost !== undefined ? spec.customCost : (product?.cost_price || 0);
-                const tradePrice = spec?.customTrade !== undefined ? spec.customTrade : (product?.trade_price || 0);
-                const retailPrice = spec?.customRetail !== undefined ? spec.customRetail : (product?.retail_price || 0);
-                
-                const marginPct = retailPrice > 0 
-                  ? Math.round(((retailPrice - costPrice) / retailPrice) * 100)
-                  : 0;
-
-                return (
-                  <div 
-                    key={tag} 
-                    style={{ 
-                      background: 'var(--bg-primary)', 
-                      border: product ? '1px solid var(--border)' : '1.5px dashed var(--border-warning, #f59e0b)', 
-                      borderRadius: '10px', 
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-                    }}
-                  >
-                    {/* TAG CARD HEADER */}
-                    <div style={{ 
-                      background: 'var(--bg-secondary)', 
-                      borderBottom: '1px solid var(--border)', 
-                      padding: '10px 14px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ 
-                          background: 'var(--bg-info)', 
-                          color: '#fff', 
-                          fontFamily: 'monospace', 
-                          fontWeight: 800, 
-                          fontSize: '13px', 
-                          padding: '3px 8px', 
-                          borderRadius: '4px' 
-                        }}>
-                          {tag}
-                        </span>
-                        <div>
-                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            {tagInfo.totalQty} total fixtures
-                          </div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                            Across {tagInfo.areasCount} room(s) & {tagInfo.floorsCount} floor(s)
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {product && (
-                          <>
-                            <button
-                              className="btn btn-ghost btn-xs"
-                              onClick={() => {
-                                setCopySourceTag(tag);
-                                  setCopyTargetTag('');
-                                  setShowCustomCopyInput(false);
-                              }}
-                              title="Copy this fixture and accessories to another tag"
-                              style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                            >
-                              <Copy size={11} /> Copy to...
-                            </button>
-                            <button 
-                              className="btn btn-ghost btn-xs" 
-                              onClick={() => handleRemoveProductFromSpec(tag)}
-                              style={{ color: 'var(--text-danger)', fontSize: '11px' }}
-                              title="Remove mapped product"
-                            >
-                              Clear
-                            </button>
-                          </>
-                        )}
-                      </div>
+              {/* -------------------------------------------------------- */}
+              {/* SUB-TAB 1: POINT FIXTURES */}
+              {/* -------------------------------------------------------- */}
+              {specSubTab === 'fixtures' && (
+                pointFixtureTags.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '26px', marginBottom: '8px' }}>💡</div>
+                    <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>No Point Fixtures Found</div>
+                    <div style={{ fontSize: '12px', marginTop: '6px', color: 'var(--text-secondary)' }}>
+                      All detected plan tags are currently classified under Linear LED or Track Systems.
                     </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '16px' }}>
+                    {pointFixtureTags.map(tagInfo => {
+                      const tag = tagInfo.tag;
+                      const spec = specifications[tag];
+                      const product = spec ? spec.product : null;
+                      const accessories = (spec && spec.accessories) || [];
 
-                    {/* PRODUCT DETAILS & EDITABLE PRICING */}
-                    <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {product ? (
-                        <div style={{ 
-                          background: 'var(--bg-secondary)', 
-                          border: '1px solid var(--border)', 
-                          borderRadius: '8px', 
-                          padding: '12px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '10px'
-                        }}>
-                          {/* PRODUCT INFO HEADER WITH THUMBNAIL */}
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                            <div 
-                              style={{ 
-                                width: '64px', 
-                                height: '64px', 
-                                borderRadius: '6px', 
-                                background: 'var(--bg-primary)', 
-                                border: '1px solid var(--border)', 
-                                overflow: 'hidden',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => {
-                                setInspectedProduct(product);
-                                setInspectedForTag(tag);
-                              }}
-                              title="Click to view full specifications and photo"
-                            >
-                              {product.image_url ? (
-                                <img 
-                                  src={product.image_url.startsWith('http') ? product.image_url : `${API_BASE}${product.image_url}`} 
-                                  alt={product.name} 
-                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                                />
-                              ) : (
-                                <span style={{ fontSize: '18px', opacity: 0.5 }}>📷</span>
-                              )}
+                      const costPrice = spec?.customCost !== undefined ? spec.customCost : (product?.cost_price || 0);
+                      const tradePrice = spec?.customTrade !== undefined ? spec.customTrade : (product?.trade_price || 0);
+                      const retailPrice = spec?.customRetail !== undefined ? spec.customRetail : (product?.retail_price || 0);
+                      
+                      const marginPct = retailPrice > 0 
+                        ? Math.round(((retailPrice - costPrice) / retailPrice) * 100)
+                        : 0;
+
+                      return (
+                        <div 
+                          key={tag} 
+                          style={{ 
+                            background: 'var(--bg-primary)', 
+                            border: product ? '1px solid var(--border)' : '1.5px dashed var(--border-warning, #f59e0b)', 
+                            borderRadius: '10px', 
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                          }}
+                        >
+                          {/* TAG CARD HEADER */}
+                          <div style={{ 
+                            background: 'var(--bg-secondary)', 
+                            borderBottom: '1px solid var(--border)', 
+                            padding: '10px 14px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ 
+                                background: 'var(--bg-info)', 
+                                color: '#fff', 
+                                fontFamily: 'monospace', 
+                                fontWeight: 800, 
+                                fontSize: '13px', 
+                                padding: '3px 8px', 
+                                borderRadius: '4px' 
+                              }}>
+                                {tag}
+                              </span>
+                              <div>
+                                <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {tagInfo.totalQty} total fixtures
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  Across {tagInfo.areasCount} room(s) & {tagInfo.floorsCount} floor(s)
+                                </div>
+                              </div>
                             </div>
 
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div>
-                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
-                                    {product.brand || 'Catalog'} • {product.category || 'Hardware'}
-                                  </div>
-                                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                                    {product.sku || product.one_to_one_code}
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <select
+                                value="fixture"
+                                onChange={(e) => handleUpdateTagType(tag, e.target.value)}
+                                className="select select-xs"
+                                style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', height: '24px', background: 'var(--bg-primary)' }}
+                                title="Reclassify fixture type"
+                              >
+                                <option value="fixture">💡 Point Fixture</option>
+                                <option value="linear_led">〰️ Linear LED</option>
+                                <option value="track_system">🛤️ Track System</option>
+                              </select>
+
+                              {product && (
+                                <>
+                                  <button
+                                    className="btn btn-ghost btn-xs"
+                                    onClick={() => {
+                                      setCopySourceTag(tag);
+                                      setCopyTargetTag('');
+                                      setShowCustomCopyInput(false);
+                                    }}
+                                    title="Copy this fixture and accessories to another tag"
+                                    style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                  >
+                                    <Copy size={11} /> Copy
+                                  </button>
                                   <button 
-                                    className="btn btn-secondary btn-xs"
+                                    className="btn btn-ghost btn-xs" 
+                                    onClick={() => handleRemoveProductFromSpec(tag)}
+                                    style={{ color: 'var(--text-danger)', fontSize: '11px' }}
+                                    title="Remove mapped product"
+                                  >
+                                    Clear
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* PRODUCT DETAILS & EDITABLE PRICING */}
+                          <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {product ? (
+                              <div style={{ 
+                                background: 'var(--bg-secondary)', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '8px', 
+                                padding: '12px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px'
+                              }}>
+                                {/* PRODUCT INFO HEADER WITH THUMBNAIL */}
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                  <div 
+                                    style={{ 
+                                      width: '64px', 
+                                      height: '64px', 
+                                      borderRadius: '6px', 
+                                      background: 'var(--bg-primary)', 
+                                      border: '1px solid var(--border)', 
+                                      overflow: 'hidden', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      justifyContent: 'center', 
+                                      flexShrink: 0,
+                                      cursor: 'pointer'
+                                    }}
                                     onClick={() => {
                                       setInspectedProduct(product);
                                       setInspectedForTag(tag);
                                     }}
-                                    style={{ fontSize: '10.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    title="Open comprehensive Fitting Specification Sheet"
+                                    title="Click to view photo and specs"
                                   >
-                                    <Eye size={11} /> View Specs
-                                  </button>
-                                  <button 
-                                    className="btn btn-ghost btn-xs"
-                                    onClick={() => openCatalogPicker(tag, 'product')}
-                                    style={{ fontSize: '10.5px' }}
-                                  >
-                                    Change
-                                  </button>
+                                    {product.image_url ? (
+                                      <img 
+                                        src={product.image_url.startsWith('http') ? product.image_url : `${API_BASE}${product.image_url}`} 
+                                        alt={product.name} 
+                                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                      />
+                                    ) : (
+                                      <span style={{ fontSize: '20px', opacity: 0.5 }}>💡</span>
+                                    )}
+                                  </div>
+
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '13px' }}>
+                                        {product.sku || product.one_to_one_code}
+                                      </span>
+                                      {product.brand && (
+                                        <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                          {product.brand}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {product.client_description || product.name}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
+                                      {product.wattage && <span>⚡ {product.wattage}W</span>}
+                                      {product.color_temperature && <span>🌡️ {product.color_temperature}</span>}
+                                      {product.beam_angle && <span>📐 {product.beam_angle}</span>}
+                                      {product.ip_rating && <span>💧 IP{product.ip_rating}</span>}
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <button 
+                                      className="btn btn-secondary btn-xs"
+                                      onClick={() => openCatalogPicker(tag, 'product', 'All')}
+                                      style={{ fontSize: '11px' }}
+                                    >
+                                      Change
+                                    </button>
+                                    <button 
+                                      className="btn btn-ghost btn-xs"
+                                      onClick={() => {
+                                        setInspectedProduct(product);
+                                        setInspectedForTag(tag);
+                                      }}
+                                      style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                    >
+                                      <Eye size={11} /> Specs
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* EDITABLE PRICING BAR */}
+                                <div style={{ 
+                                  borderTop: '1px solid var(--border)', 
+                                  paddingTop: '8px', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '8px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    {/* COST PRICE */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'baseline', 
+                                        borderBottom: '1.5px solid var(--border)', 
+                                        paddingBottom: '1px',
+                                        transition: 'border-color 0.15s'
+                                      }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number"
+                                          step="0.01"
+                                          value={costPrice}
+                                          onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
+                                          style={{ 
+                                            minWidth: '70px', 
+                                            width: '85px', 
+                                            background: 'transparent', 
+                                            border: 'none', 
+                                            outline: 'none', 
+                                            fontSize: '12.5px', 
+                                            fontWeight: 600, 
+                                            color: 'var(--text-primary)',
+                                            padding: '0 2px'
+                                          }}
+                                          onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                          onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* TRADE PRICE */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Trade:</span>
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'baseline', 
+                                        borderBottom: '1.5px solid var(--border)', 
+                                        paddingBottom: '1px',
+                                        transition: 'border-color 0.15s'
+                                      }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <input 
+                                          type="number"
+                                          step="0.01"
+                                          value={tradePrice}
+                                          onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
+                                          style={{ 
+                                            minWidth: '70px', 
+                                            width: '85px', 
+                                            background: 'transparent', 
+                                            border: 'none', 
+                                            outline: 'none', 
+                                            fontSize: '12.5px', 
+                                            fontWeight: 600, 
+                                            color: 'var(--text-primary)',
+                                            padding: '0 2px'
+                                          }}
+                                          onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                          onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* RETAIL PRICE */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'baseline', 
+                                        borderBottom: '1.5px solid var(--border)', 
+                                        paddingBottom: '1px',
+                                        transition: 'border-color 0.15s'
+                                      }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <input 
+                                          type="number"
+                                          step="0.01"
+                                          value={retailPrice}
+                                          onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
+                                          style={{ 
+                                            minWidth: '75px', 
+                                            width: '90px', 
+                                            background: 'transparent', 
+                                            border: 'none', 
+                                            outline: 'none', 
+                                            fontSize: '13px', 
+                                            fontWeight: 700, 
+                                            color: 'var(--text-success)',
+                                            padding: '0 2px'
+                                          }}
+                                          onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
+                                          onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ 
+                                      fontSize: '10.5px', 
+                                      fontWeight: 700, 
+                                      padding: '2px 6px', 
+                                      borderRadius: '4px',
+                                      background: marginPct >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                      color: marginPct >= 30 ? 'var(--text-success)' : 'var(--text-warning)'
+                                    }}>
+                                      {marginPct}% Margin
+                                    </span>
+                                    <button 
+                                      className="btn btn-ghost btn-xs" 
+                                      onClick={() => handleResetSpecPrices(tag)}
+                                      title="Reset prices back to master catalog defaults"
+                                      style={{ padding: '2px 4px', fontSize: '10px' }}
+                                    >
+                                      <RotateCcw size={11} />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {product.client_description || product.name}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* EDITABLE PRICING SECTION - CLEAN NON-BLOCK ARCHITECTURAL STYLE */}
-                          <div style={{ 
-                            background: 'var(--bg-secondary)', 
-                            border: '1px solid var(--border)', 
-                            borderRadius: '6px', 
-                            padding: '8px 12px'
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Project Pricing (Editable)
-                              </span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ 
-                                  fontSize: '11px', 
-                                  fontWeight: 700, 
-                                  color: marginPct < 39 ? 'var(--text-danger)' : 'var(--text-success)',
-                                  background: marginPct < 39 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                                  padding: '1px 6px',
-                                  borderRadius: '4px'
-                                }}>
-                                  Margin: {marginPct}%
-                                </span>
-                                <button
-                                  className="btn btn-ghost btn-xs"
-                                  onClick={() => handleResetSpecPrices(tag)}
-                                  title="Reset to default catalog pricing"
-                                  style={{ padding: '1px 6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                            ) : (
+                              <div style={{ 
+                                padding: '24px 16px', 
+                                textAlign: 'center', 
+                                background: 'var(--bg-secondary)', 
+                                borderRadius: '8px', 
+                                border: '1px dashed var(--border)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  No product mapped for plan tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{tag}</strong>
+                                </div>
+                                <button 
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => openCatalogPicker(tag, 'product', 'All')}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
                                 >
-                                  <RotateCcw size={10} /> Reset
+                                  <Search size={13} /> Select Fitting from Master Catalog
                                 </button>
                               </div>
-                            </div>
+                            )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
-                              {/* COST */}
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
-                                  Cost Price
-                                </span>
-                                <div style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'baseline', 
-                                  gap: '3px', 
-                                  borderBottom: '1.5px solid var(--border)', 
-                                  paddingBottom: '2px',
-                                  transition: 'border-color 0.15s'
-                                }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>R</span>
-                                  <input 
-                                    type="number"
-                                    step="0.01"
-                                    value={costPrice}
-                                    onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
-                                    style={{ 
-                                      width: '100%', 
-                                      background: 'transparent', 
-                                      border: 'none', 
-                                      outline: 'none', 
-                                      fontWeight: 600, 
-                                      fontSize: '13px', 
-                                      color: 'var(--text-primary)',
-                                      padding: 0
-                                    }}
-                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
-                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* RETAIL */}
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
-                                  Retail Price
-                                </span>
-                                <div style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'baseline', 
-                                  gap: '3px', 
-                                  borderBottom: '1.5px solid var(--border)', 
-                                  paddingBottom: '2px',
-                                  transition: 'border-color 0.15s'
-                                }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-success)', fontWeight: 600 }}>R</span>
-                                  <input 
-                                    type="number"
-                                    step="0.01"
-                                    value={retailPrice}
-                                    onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
-                                    style={{ 
-                                      width: '100%', 
-                                      background: 'transparent', 
-                                      border: 'none', 
-                                      outline: 'none', 
-                                      fontWeight: 700, 
-                                      fontSize: '13px', 
-                                      color: 'var(--text-success)',
-                                      padding: 0
-                                    }}
-                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
-                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* TECHNICAL HIGHLIGHTS */}
-                          {(product.driver_spec || product.cutout || product.system_power > 0 || product.kelvin) && (
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '2px' }}>
-                              {product.driver_spec && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>⚡ Driver: <strong>{product.driver_spec}</strong></span>}
-                              {product.cutout && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>⭕ Cutout: <strong>{product.cutout}</strong></span>}
-                              {product.system_power > 0 && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>💡 {product.system_power}W</span>}
-                              {product.kelvin && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>🌡️ {product.kelvin}</span>}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ 
-                          padding: '28px', 
-                          textAlign: 'center', 
-                          border: '1px dashed var(--border)', 
-                          borderRadius: '8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '10px'
-                        }}>
-                          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                            No master fitting assigned to tag <strong>{tag}</strong>.
-                          </div>
-                          <button 
-                            className="btn btn-primary btn-sm"
-                            onClick={() => openCatalogPicker(tag, 'product')}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-                          >
-                            <Search size={14} /> Browse Catalog & Assign Fitting
-                          </button>
-                        </div>
-                      )}
-
-                      {/* DYNAMIC ACCESSORIES SECTION */}
-                      {product && (
-                        <div style={{ marginTop: '4px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Layers size={13} style={{ color: 'var(--text-info)' }} /> Dynamic Accessories ({accessories.length})
-                            </span>
-                            <button 
-                              className="btn btn-ghost btn-xs"
-                              onClick={() => openCatalogPicker(tag, 'accessory')}
-                              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 600 }}
-                            >
-                              <Plus size={11} /> Add Accessory
-                            </button>
-                          </div>
-
-                          {accessories.length === 0 ? (
-                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 0' }}>
-                              No accessories attached. Click "+ Add Accessory" to pair a driver, plaster frame, or lens.
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {accessories.map((acc, accIdx) => {
-                                const accCost = acc.customCost !== undefined ? acc.customCost : (acc.cost_price || 0);
-                                const accRetail = acc.customRetail !== undefined ? acc.customRetail : (acc.retail_price || 0);
-
-                                return (
-                                  <div 
-                                    key={acc.id + '-' + accIdx}
-                                    style={{ 
-                                      background: 'var(--bg-secondary)', 
-                                      border: '1px solid var(--border)', 
-                                      borderRadius: '6px', 
-                                      padding: '8px 10px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '6px',
-                                      fontSize: '11.5px'
-                                    }}
+                            {/* DYNAMIC ACCESSORIES SECTION */}
+                            {product && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Dynamic Accessories & Drivers ({accessories.length})
+                                  </span>
+                                  <button 
+                                    className="btn btn-ghost btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                    style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
                                   >
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                                        {acc.sku || acc.name}
-                                      </div>
-                                      <button 
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => handleRemoveAccessory(tag, accIdx)}
-                                        style={{ padding: '2px 4px', color: 'var(--text-danger)' }}
-                                        title="Remove accessory"
-                                      >
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </div>
+                                    <Plus size={12} /> Add Accessory
+                                  </button>
+                                </div>
 
-                                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                      {acc.name}
-                                    </div>
-
-                                    {/* QTY PER FITTING & PRICING ROW - CLEAN ARCHITECTURAL NON-BLOCK STYLE */}
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginTop: '4px', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
-                                      {/* QTY PER FITTING (STEPS STRICTLY BY 1) */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Qty per fitting:</span>
-                                        <div style={{ 
-                                          display: 'inline-flex', 
-                                          alignItems: 'center', 
-                                          borderBottom: '1.5px solid var(--border)', 
-                                          paddingBottom: '1px',
-                                          transition: 'border-color 0.15s'
-                                        }}>
-                                          <input 
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            value={acc.qtyPerFitting !== undefined ? acc.qtyPerFitting : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1)}
-                                            onChange={e => handleUpdateAccessoryQtyPerFitting(tag, accIdx, e.target.value)}
-                                            style={{ 
-                                              width: '38px', 
-                                              background: 'transparent', 
-                                              border: 'none', 
-                                              outline: 'none', 
-                                              fontSize: '12px', 
-                                              fontWeight: 700, 
-                                              textAlign: 'center',
-                                              color: 'var(--text-primary)',
-                                              padding: 0
-                                            }}
-                                            onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
-                                            onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                            title="Units of this accessory per fixture (steps by 1)"
-                                          />
-                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: '2px' }}>×</span>
-                                        </div>
-                                      </div>
-
-                                      {/* EDITABLE ACC PRICES */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
-                                        {/* ACC COST */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
-                                          <div style={{ 
-                                            display: 'inline-flex', 
-                                            alignItems: 'baseline', 
-                                            borderBottom: '1.5px solid var(--border)', 
-                                            paddingBottom: '1px',
-                                            transition: 'border-color 0.15s'
-                                          }}>
-                                            <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>R</span>
-                                            <input 
-                                              type="number"
-                                              step="0.01"
-                                              value={accCost}
-                                              onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
-                                              style={{ 
-                                                minWidth: '85px',
-                                                width: '95px', 
-                                                background: 'transparent', 
-                                                border: 'none', 
-                                                outline: 'none', 
-                                                fontSize: '12px', 
-                                                fontWeight: 600, 
-                                                color: 'var(--text-primary)',
-                                                padding: '0 2px'
-                                              }}
-                                              onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
-                                              onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* ACC RETAIL */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
-                                          <div style={{ 
-                                            display: 'inline-flex', 
-                                            alignItems: 'baseline', 
-                                            borderBottom: '1.5px solid var(--border)', 
-                                            paddingBottom: '1px',
-                                            transition: 'border-color 0.15s'
-                                          }}>
-                                            <span style={{ fontSize: '10.5px', color: 'var(--text-success)' }}>R</span>
-                                            <input 
-                                              type="number"
-                                              step="0.01"
-                                              value={accRetail}
-                                              onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
-                                              style={{ 
-                                                minWidth: '85px',
-                                                width: '95px', 
-                                                background: 'transparent', 
-                                                border: 'none', 
-                                                outline: 'none', 
-                                                fontSize: '12px', 
-                                                fontWeight: 700, 
-                                                color: 'var(--text-success)',
-                                                padding: '0 2px'
-                                              }}
-                                              onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
-                                              onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
-                                            />
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-
+                                {accessories.length === 0 ? (
+                                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                                    No linked accessories. Click "+ Add Accessory" to include remote drivers, honeycombs, or mounts.
                                   </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {accessories.map((acc, accIdx) => {
+                                      const accUnits = acc.qtyPerFitting !== undefined 
+                                        ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+                                        : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+                                      const accTotalQty = tagInfo.totalQty * accUnits;
+                                      const accCost = acc.customCost !== undefined ? acc.customCost : (acc.cost_price || 0);
+                                      const accRetail = acc.customRetail !== undefined ? acc.customRetail : (acc.retail_price || 0);
 
+                                      return (
+                                        <div 
+                                          key={acc.id || accIdx}
+                                          style={{ 
+                                            background: 'var(--bg-secondary)', 
+                                            border: '1px solid var(--border)', 
+                                            borderRadius: '6px', 
+                                            padding: '8px 10px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px'
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                                {acc.sku || acc.one_to_one_code || 'ACC'}
+                                              </span>
+                                              <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {acc.name || acc.client_description}
+                                              </span>
+                                            </div>
+                                            <button 
+                                              className="btn btn-ghost btn-xs" 
+                                              onClick={() => handleRemoveAccessory(tag, accIdx)}
+                                              style={{ color: 'var(--text-danger)', padding: '2px' }}
+                                              title="Remove accessory"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+
+                                          {/* ACCESSORY RATIO & PRICING BAR */}
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '11px', borderTop: '1px dashed var(--border)', paddingTop: '6px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <span style={{ color: 'var(--text-secondary)' }}>Units per Fitting:</span>
+                                              <input 
+                                                type="number"
+                                                min="1"
+                                                value={accUnits}
+                                                onChange={e => handleUpdateAccessoryQtyPerFitting(tag, accIdx, e.target.value)}
+                                                style={{ width: '42px', height: '22px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', color: 'var(--text-primary)', fontWeight: 600 }}
+                                              />
+                                              <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                                                (Total: {accTotalQty})
+                                              </span>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                              {/* ACC COST */}
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                                <div style={{ 
+                                                  display: 'inline-flex', 
+                                                  alignItems: 'baseline', 
+                                                  borderBottom: '1.5px solid var(--border)', 
+                                                  paddingBottom: '1px',
+                                                  transition: 'border-color 0.15s'
+                                                }}>
+                                                  <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>R</span>
+                                                  <input 
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={accCost}
+                                                    onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
+                                                    style={{ 
+                                                      minWidth: '65px',
+                                                      width: '75px', 
+                                                      background: 'transparent', 
+                                                      border: 'none', 
+                                                      outline: 'none', 
+                                                      fontSize: '11.5px', 
+                                                      fontWeight: 600, 
+                                                      color: 'var(--text-primary)',
+                                                      padding: '0 2px'
+                                                    }}
+                                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {/* ACC RETAIL */}
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                                <div style={{ 
+                                                  display: 'inline-flex', 
+                                                  alignItems: 'baseline', 
+                                                  borderBottom: '1.5px solid var(--border)', 
+                                                  paddingBottom: '1px',
+                                                  transition: 'border-color 0.15s'
+                                                }}>
+                                                  <span style={{ fontSize: '10.5px', color: 'var(--text-success)' }}>R</span>
+                                                  <input 
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={accRetail}
+                                                    onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
+                                                    style={{ 
+                                                      minWidth: '70px',
+                                                      width: '80px', 
+                                                      background: 'transparent', 
+                                                      border: 'none', 
+                                                      outline: 'none', 
+                                                      fontSize: '11.5px', 
+                                                      fontWeight: 700, 
+                                                      color: 'var(--text-success)',
+                                                      padding: '0 2px'
+                                                    }}
+                                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
+                                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                                  />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* -------------------------------------------------------- */}
+              {/* SUB-TAB 2: LINEAR LED BUILDER */}
+              {/* -------------------------------------------------------- */}
+              {specSubTab === 'leds' && (
+                linearLedTags.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '28px', marginBottom: '8px' }}>〰️</div>
+                    <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>No Linear LED Runs Found</div>
+                    <div style={{ fontSize: '12px', marginTop: '6px', maxWidth: '480px', margin: '6px auto 0', lineHeight: 1.5 }}>
+                      Linear LED strips are automatically detected when CAD layers use the <code>0-LEDS-*</code> prefix, plan tags start with <code>L-</code> or <code>LED</code>, or units are in meters (<code>m</code>). You can also switch any Point Fixture to Linear LED using the type dropdown.
                     </div>
                   </div>
-                );
-              })}
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '16px' }}>
+                    {linearLedTags.map(tagInfo => {
+                      const tag = tagInfo.tag;
+                      const spec = specifications[tag];
+                      const ledCfg = spec?.ledConfig || {};
+                      const meters = tagInfo.totalMeters || tagInfo.totalQty || 3;
+                      const cleanLen = Math.round(meters * 100) / 100;
+                      const stockLen = Number(ledCfg.stockLength) || 3;
+                      const cutBars = Math.max(1, Math.ceil(cleanLen / stockLen));
+                      const wattsPerM = Number(ledCfg.stripWattsPerMeter) || 14.4;
+                      const totalWatts = Math.round(cleanLen * wattsPerM);
+                      const recDriverW = ledCfg.driverWattage || (Math.ceil((totalWatts * 1.2) / 50) * 50) || 100;
+
+                      const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
+                      const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
+
+                      const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
+                      const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
+
+                      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
+                      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
+
+                      const totalRunCost = Math.round((cleanLen * (profileCost + stripCost)) + driverCost + 25);
+                      const totalRunRetail = Math.round((cleanLen * (profileRetail + stripRetail)) + driverRetail + 65);
+                      const marginPct = totalRunRetail > 0 ? Math.round(((totalRunRetail - totalRunCost) / totalRunRetail) * 100) : 0;
+
+                      return (
+                        <div 
+                          key={tag}
+                          style={{ 
+                            background: 'var(--bg-primary)', 
+                            border: (ledCfg.profileProduct || ledCfg.stripProduct) ? '1px solid var(--border)' : '1.5px dashed var(--border-warning, #f59e0b)', 
+                            borderRadius: '10px', 
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                          }}
+                        >
+                          {/* BUILDER HEADER */}
+                          <div style={{ 
+                            background: 'var(--bg-secondary)', 
+                            borderBottom: '1px solid var(--border)', 
+                            padding: '10px 14px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ 
+                                background: 'var(--bg-info)', 
+                                color: '#fff', 
+                                fontFamily: 'monospace', 
+                                fontWeight: 800, 
+                                fontSize: '13px', 
+                                padding: '3px 8px', 
+                                borderRadius: '4px' 
+                              }}>
+                                〰️ {tag}
+                              </span>
+                              <div>
+                                <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {cleanLen}m total linear run
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  Across {tagInfo.areasCount} room(s) & {tagInfo.floorsCount} floor(s) [{tagInfo.runs.length} run(s)]
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <select
+                                value="linear_led"
+                                onChange={(e) => handleUpdateTagType(tag, e.target.value)}
+                                className="select select-xs"
+                                style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', height: '24px', background: 'var(--bg-primary)' }}
+                              >
+                                <option value="fixture">💡 Point Fixture</option>
+                                <option value="linear_led">〰️ Linear LED</option>
+                                <option value="track_system">🛤️ Track System</option>
+                              </select>
+
+                              <button 
+                                className="btn btn-ghost btn-xs" 
+                                onClick={() => handleRemoveProductFromSpec(tag)}
+                                style={{ color: 'var(--text-danger)', fontSize: '11px' }}
+                                title="Reset builder configuration"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* BUILDER CONTENT */}
+                          <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            
+                            {/* SPECIFICATION PARAMETERS */}
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '10px 12px',
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(3, 1fr)',
+                              gap: '8px'
+                            }}>
+                              <div>
+                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Profile Cuts
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={ledCfg.stockLength || '3'}
+                                  onChange={e => handleUpdateLedConfig(tag, 'stockLength', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="3">3m Stock Bars</option>
+                                  <option value="2">2m Stock Bars</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Mounting
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={ledCfg.mounting || 'Surface'}
+                                  onChange={e => handleUpdateLedConfig(tag, 'mounting', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="Surface">Surface Mounted</option>
+                                  <option value="Recessed">Recessed (Trimmed)</option>
+                                  <option value="Trimless">Trimless Plaster-in</option>
+                                  <option value="Pendant">Suspended / Pendant</option>
+                                  <option value="Corner 45°">Corner 45°</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Diffuser Lens
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={ledCfg.diffuser || 'Opal'}
+                                  onChange={e => handleUpdateLedConfig(tag, 'diffuser', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="Opal">Opal / Frosted</option>
+                                  <option value="Black">Black / Smoked</option>
+                                  <option value="Micro-Prismatic">Micro-Prismatic</option>
+                                  <option value="Clear">Clear</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* INFO BADGE */}
+                            <div style={{ fontSize: '11px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.08)', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Info size={13} />
+                              <span>Requires <strong>{cutBars}x {stockLen}m bars</strong> ({cutBars * stockLen}m total stock) &bull; Auto-includes <strong>{Math.max(2, (tagInfo.runs.length || 1) * 2)} end caps</strong> & mounting clips</span>
+                            </div>
+
+                            {/* COMPONENT 1: PROFILE / EXTRUSION */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  1. Aluminium Profile Extrusion
+                                </span>
+                                <button 
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'led_profile', 'Linear')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  {ledCfg.profileProduct ? 'Change Profile' : '+ Select Profile'}
+                                </button>
+                              </div>
+
+                              {ledCfg.profileProduct ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {ledCfg.profileProduct.image_url ? (
+                                      <img src={ledCfg.profileProduct.image_url.startsWith('http') ? ledCfg.profileProduct.image_url : `${API_BASE}${ledCfg.profileProduct.image_url}`} alt="profile" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    ) : (
+                                      <span style={{ fontSize: '14px' }}>📐</span>
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                      {ledCfg.profileSku}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {ledCfg.profileName}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                      R {profileRetail}/m
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                      Total: R {(cleanLen * profileRetail).toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
+                                  No extrusion selected yet. Click "+ Select Profile" to choose from catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* COMPONENT 2: LED STRIP TAPE */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  2. LED Strip Tape ({totalWatts}W Load)
+                                </span>
+                                <button 
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'led_strip', 'LEDStrip')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  {ledCfg.stripProduct ? 'Change Strip' : '+ Select LED Strip'}
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                <div>
+                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>CCT</label>
+                                  <select 
+                                    className="select select-xs" 
+                                    value={ledCfg.cct || '3000K'} 
+                                    onChange={e => handleUpdateLedConfig(tag, 'cct', e.target.value)}
+                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                  >
+                                    <option value="2700K">2700K Extra Warm</option>
+                                    <option value="3000K">3000K Warm White</option>
+                                    <option value="4000K">4000K Neutral White</option>
+                                    <option value="Tunable White">Tunable White</option>
+                                    <option value="RGBW">RGBW Color</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>IP Rating</label>
+                                  <select 
+                                    className="select select-xs" 
+                                    value={ledCfg.ipRating || 'IP20'} 
+                                    onChange={e => handleUpdateLedConfig(tag, 'ipRating', e.target.value)}
+                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                  >
+                                    <option value="IP20">IP20 (Indoor)</option>
+                                    <option value="IP65">IP65 (Silicone)</option>
+                                    <option value="IP67">IP67 (Outdoor)</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Watts / m</label>
+                                  <input 
+                                    type="number" 
+                                    step="0.1" 
+                                    value={wattsPerM} 
+                                    onChange={e => handleUpdateLedConfig(tag, 'stripWattsPerMeter', parseFloat(e.target.value) || 0)}
+                                    style={{ width: '100%', height: '24px', padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                  />
+                                </div>
+                              </div>
+
+                              {ledCfg.stripProduct ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {ledCfg.stripProduct.image_url ? (
+                                      <img src={ledCfg.stripProduct.image_url.startsWith('http') ? ledCfg.stripProduct.image_url : `${API_BASE}${ledCfg.stripProduct.image_url}`} alt="strip" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    ) : (
+                                      <span style={{ fontSize: '14px' }}>〰️</span>
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                      {ledCfg.stripSku}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {ledCfg.stripName}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                      R {stripRetail}/m
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                      Total: R {(cleanLen * stripRetail).toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
+                                  No LED strip selected yet. Click "+ Select LED Strip" to choose from catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* COMPONENT 3: 24V DRIVER */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  3. 24V Driver (Rec: ~{recDriverW}W)
+                                </span>
+                                <button 
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  {ledCfg.driverProduct ? 'Change Driver' : '+ Select Driver'}
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                <div>
+                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Dimming Protocol</label>
+                                  <select 
+                                    className="select select-xs" 
+                                    value={ledCfg.dimming || 'Phase Cut'} 
+                                    onChange={e => handleUpdateLedConfig(tag, 'dimming', e.target.value)}
+                                    style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                  >
+                                    <option value="Phase Cut">Phase Cut (Triac Dimming)</option>
+                                    <option value="DALI-2">DALI-2 / Push-Dim</option>
+                                    <option value="0-10V">0-10V Dimming</option>
+                                    <option value="Non-Dim">Non-Dimmable</option>
+                                    <option value="Casambi">Casambi Bluetooth</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '9.5px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Driver Watts</label>
+                                  <input 
+                                    type="number" 
+                                    value={recDriverW} 
+                                    onChange={e => handleUpdateLedConfig(tag, 'driverWattage', parseInt(e.target.value, 10) || 100)}
+                                    style={{ width: '100%', height: '24px', padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                                  />
+                                </div>
+                              </div>
+
+                              {ledCfg.driverProduct ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {ledCfg.driverProduct.image_url ? (
+                                      <img src={ledCfg.driverProduct.image_url.startsWith('http') ? ledCfg.driverProduct.image_url : `${API_BASE}${ledCfg.driverProduct.image_url}`} alt="driver" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    ) : (
+                                      <span style={{ fontSize: '14px' }}>⚡</span>
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                      {ledCfg.driverSku}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {ledCfg.driverName}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                      R {driverRetail}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
+                                  No driver selected yet. Click "+ Select Driver" to choose from catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* FINANCIALS SUMMARY FOOTER */}
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              borderTop: '1px solid var(--border)', 
+                              margin: '0 -14px -14px -14px', 
+                              padding: '10px 14px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                Est. Assembly Cost: <strong style={{ color: 'var(--text-primary)' }}>R {totalRunCost.toLocaleString()}</strong>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--text-success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                  {marginPct}% Margin
+                                </span>
+                                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-success)' }}>
+                                  R {totalRunRetail.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* -------------------------------------------------------- */}
+              {/* SUB-TAB 3: TRACK SYSTEMS BUILDER */}
+              {/* -------------------------------------------------------- */}
+              {specSubTab === 'tracks' && (
+                trackSystemTags.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '28px', marginBottom: '8px' }}>🛤️</div>
+                    <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>No Track Systems Found</div>
+                    <div style={{ fontSize: '12px', marginTop: '6px', maxWidth: '480px', margin: '6px auto 0', lineHeight: 1.5 }}>
+                      Track systems are automatically detected when CAD layers use the <code>0-TRACKS-*</code> prefix or plan tags start with <code>TRK</code> or <code>TRACK</code>. You can also switch any Point Fixture to Track System using the type dropdown.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(520px, 1fr))', gap: '16px' }}>
+                    {trackSystemTags.map(tagInfo => {
+                      const tag = tagInfo.tag;
+                      const spec = specifications[tag];
+                      const trackCfg = spec?.trackConfig || {};
+                      const meters = tagInfo.totalMeters || tagInfo.totalQty || 3;
+                      const cleanLen = Math.round(meters * 100) / 100;
+                      const stockLength = Number(trackCfg.stockLength) || 3;
+                      const railsCount = Math.max(1, Math.ceil(cleanLen / stockLength));
+                      const joinersCount = Math.max(0, railsCount - 1);
+                      const spots = trackCfg.spots || [];
+
+                      const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
+                      const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
+
+                      const kitCost = 140 + (joinersCount * 45);
+                      const kitRetail = 280 + (joinersCount * 95);
+
+                      let spotsCost = 0;
+                      let spotsRetail = 0;
+                      let totalSpotsWatts = 0;
+                      spots.forEach(sp => {
+                        const q = Number(sp.qty || 1);
+                        spotsCost += (q * Number(sp.cost_price || 0));
+                        spotsRetail += (q * Number(sp.retail_price || 0));
+                        totalSpotsWatts += (q * Number(sp.wattage || 12));
+                      });
+
+                      const recTrackDriverW = Math.ceil((totalSpotsWatts * 1.2) / 50) * 50 || 100;
+                      const driverCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
+                      const driverRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
+
+                      const totalTrackCost = Math.round((railsCount * railCost) + kitCost + spotsCost + (trackCfg.systemType === '230V Mains 3-Phase' ? 0 : driverCost));
+                      const totalTrackRetail = Math.round((railsCount * railRetail) + kitRetail + spotsRetail + (trackCfg.systemType === '230V Mains 3-Phase' ? 0 : driverRetail));
+                      const marginPct = totalTrackRetail > 0 ? Math.round(((totalTrackRetail - totalTrackCost) / totalTrackRetail) * 100) : 0;
+
+                      return (
+                        <div 
+                          key={tag}
+                          style={{ 
+                            background: 'var(--bg-primary)', 
+                            border: (trackCfg.railProduct || spots.length > 0) ? '1px solid var(--border)' : '1.5px dashed var(--border-warning, #f59e0b)', 
+                            borderRadius: '10px', 
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                          }}
+                        >
+                          {/* BUILDER HEADER */}
+                          <div style={{ 
+                            background: 'var(--bg-secondary)', 
+                            borderBottom: '1px solid var(--border)', 
+                            padding: '10px 14px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ 
+                                background: 'var(--bg-info)', 
+                                color: '#fff', 
+                                fontFamily: 'monospace', 
+                                fontWeight: 800, 
+                                fontSize: '13px', 
+                                padding: '3px 8px', 
+                                borderRadius: '4px' 
+                              }}>
+                                🛤️ {tag}
+                              </span>
+                              <div>
+                                <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {cleanLen}m total track system
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  Across {tagInfo.areasCount} room(s) & {tagInfo.floorsCount} floor(s) [{tagInfo.runs.length} run(s)]
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <select
+                                value="track_system"
+                                onChange={(e) => handleUpdateTagType(tag, e.target.value)}
+                                className="select select-xs"
+                                style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', height: '24px', background: 'var(--bg-primary)' }}
+                              >
+                                <option value="fixture">💡 Point Fixture</option>
+                                <option value="linear_led">〰️ Linear LED</option>
+                                <option value="track_system">🛤️ Track System</option>
+                              </select>
+
+                              <button 
+                                className="btn btn-ghost btn-xs" 
+                                onClick={() => handleRemoveProductFromSpec(tag)}
+                                style={{ color: 'var(--text-danger)', fontSize: '11px' }}
+                                title="Reset builder configuration"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* BUILDER CONTENT */}
+                          <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            
+                            {/* SYSTEM ARCHITECTURE SETTINGS */}
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '10px 12px',
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(4, 1fr)',
+                              gap: '8px'
+                            }}>
+                              <div>
+                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Architecture
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={trackCfg.systemType || '48V Low-Voltage Magnetic'}
+                                  onChange={e => handleUpdateTrackConfig(tag, 'systemType', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="48V Low-Voltage Magnetic">48V Magnetic</option>
+                                  <option value="230V Mains 3-Phase">230V Mains 3P</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Mounting
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={trackCfg.mounting || 'Surface Mounted'}
+                                  onChange={e => handleUpdateTrackConfig(tag, 'mounting', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="Surface Mounted">Surface Mount</option>
+                                  <option value="Recessed Trimless">Recessed Trimless</option>
+                                  <option value="Recessed Trimmed">Recessed Trimmed</option>
+                                  <option value="Suspended">Suspended / Pendant</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Finish
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={trackCfg.finish || 'Matte Black'}
+                                  onChange={e => handleUpdateTrackConfig(tag, 'finish', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="Matte Black">Matte Black</option>
+                                  <option value="Matte White">Matte White</option>
+                                  <option value="Anodized Bronze">Anodized Bronze</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Stock Length
+                                </label>
+                                <select 
+                                  className="select select-xs"
+                                  value={trackCfg.stockLength || '3'}
+                                  onChange={e => handleUpdateTrackConfig(tag, 'stockLength', e.target.value)}
+                                  style={{ width: '100%', fontSize: '11px', background: 'var(--bg-primary)' }}
+                                >
+                                  <option value="3">3m Rails</option>
+                                  <option value="2">2m Rails</option>
+                                  <option value="1">1m Rails</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* TRACK HARDWARE BREAKDOWN BADGE */}
+                            <div style={{ fontSize: '11px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.08)', padding: '6px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Info size={13} />
+                              <span>Auto-assembled: <strong>{railsCount}x {stockLength}m Rails</strong> &bull; <strong>{joinersCount}x Joiners</strong> &bull; <strong>1x Live End Feed</strong> &bull; <strong>1x Dead End Cap</strong></span>
+                            </div>
+
+                            {/* COMPONENT 1: TRACK RAILS */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  1. Track Rail Profile
+                                </span>
+                                <button 
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'track_rail', 'Track')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  {trackCfg.railProduct ? 'Change Rail' : '+ Select Rail'}
+                                </button>
+                              </div>
+
+                              {trackCfg.railProduct ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {trackCfg.railProduct.image_url ? (
+                                      <img src={trackCfg.railProduct.image_url.startsWith('http') ? trackCfg.railProduct.image_url : `${API_BASE}${trackCfg.railProduct.image_url}`} alt="rail" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    ) : (
+                                      <span style={{ fontSize: '14px' }}>🛤️</span>
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                      {trackCfg.railSku}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {trackCfg.railName}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                      R {railRetail}/rail
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                      Total: R {(railsCount * railRetail).toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
+                                  No track profile selected yet. Click "+ Select Rail" to choose from catalog.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* COMPONENT 2: TRACK SPOTLIGHTS & LUMINAIRES */}
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  2. Mounted Spotlights & Heads ({spots.length} Models &bull; {totalSpotsWatts}W Load)
+                                </span>
+                                <button 
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'track_spot', 'Spotlight')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  + Add Spotlight / Track Head
+                                </button>
+                              </div>
+
+                              {spots.length === 0 ? (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '8px' }}>
+                                  No spotlights mounted to this track yet. Click "+ Add Spotlight" to attach luminaires.
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {spots.map(sp => (
+                                    <div 
+                                      key={sp.id}
+                                      style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'space-between', 
+                                        gap: '8px', 
+                                        background: 'var(--bg-primary)', 
+                                        border: '1px solid var(--border)', 
+                                        borderRadius: '6px', 
+                                        padding: '6px 10px' 
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                        <div style={{ width: '32px', height: '32px', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                          {sp.image_url ? (
+                                            <img src={sp.image_url.startsWith('http') ? sp.image_url : `${API_BASE}${sp.image_url}`} alt="spot" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                          ) : (
+                                            <span style={{ fontSize: '12px' }}>💡</span>
+                                          )}
+                                        </div>
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                            {sp.sku}
+                                          </div>
+                                          <div style={{ fontSize: '10.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {sp.name}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* BEAM / CCT / QTY */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <select 
+                                          className="select select-xs" 
+                                          value={sp.beamAngle || '24°'} 
+                                          onChange={e => handleUpdateTrackSpot(tag, sp.id, 'beamAngle', e.target.value)}
+                                          style={{ fontSize: '10px', height: '22px', padding: '1px 4px' }}
+                                        >
+                                          <option value="15°">15°</option>
+                                          <option value="24°">24°</option>
+                                          <option value="36°">36°</option>
+                                          <option value="50°">50°</option>
+                                        </select>
+
+                                        <select 
+                                          className="select select-xs" 
+                                          value={sp.cct || '3000K'} 
+                                          onChange={e => handleUpdateTrackSpot(tag, sp.id, 'cct', e.target.value)}
+                                          style={{ fontSize: '10px', height: '22px', padding: '1px 4px' }}
+                                        >
+                                          <option value="2700K">2700K</option>
+                                          <option value="3000K">3000K</option>
+                                          <option value="4000K">4000K</option>
+                                        </select>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                          <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Qty:</span>
+                                          <input 
+                                            type="number" 
+                                            min="1" 
+                                            value={sp.qty || 1} 
+                                            onChange={e => handleUpdateTrackSpot(tag, sp.id, 'qty', parseInt(e.target.value, 10) || 1)}
+                                            style={{ width: '38px', height: '22px', padding: '1px 3px', fontSize: '10.5px', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                                          />
+                                        </div>
+
+                                        <div style={{ textAlign: 'right', minWidth: '70px' }}>
+                                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                            R {((sp.qty || 1) * (sp.retail_price || 0)).toLocaleString()}
+                                          </div>
+                                        </div>
+
+                                        <button 
+                                          className="btn btn-ghost btn-xs" 
+                                          onClick={() => handleRemoveTrackSpot(tag, sp.id)}
+                                          style={{ padding: '2px', color: 'var(--text-danger)' }}
+                                          title="Remove spotlight"
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* COMPONENT 3: 48V DRIVER */}
+                            {(trackCfg.systemType || '48V Low-Voltage Magnetic').includes('48V') && (
+                              <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--bg-secondary)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    3. 48V DC Power Supply (Rec: ~{recTrackDriverW}W)
+                                  </span>
+                                  <button 
+                                    className="btn btn-secondary btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'track_driver', 'Accessory')}
+                                    style={{ fontSize: '11px' }}
+                                  >
+                                    {trackCfg.driverProduct ? 'Change Driver' : '+ Select Driver'}
+                                  </button>
+                                </div>
+
+                                {trackCfg.driverProduct ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      {trackCfg.driverProduct.image_url ? (
+                                        <img src={trackCfg.driverProduct.image_url.startsWith('http') ? trackCfg.driverProduct.image_url : `${API_BASE}${trackCfg.driverProduct.image_url}`} alt="driver" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                      ) : (
+                                        <span style={{ fontSize: '14px' }}>⚡</span>
+                                      )}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                        {trackCfg.driverSku}
+                                      </div>
+                                      <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {trackCfg.driverName}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                                        R {driverRetail}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '6px' }}>
+                                    No 48V driver selected yet. Click "+ Select Driver" to choose from catalog.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* FINANCIALS SUMMARY FOOTER */}
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              borderTop: '1px solid var(--border)', 
+                              margin: '0 -14px -14px -14px', 
+                              padding: '10px 14px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                Est. Track System Cost: <strong style={{ color: 'var(--text-primary)' }}>R {totalTrackCost.toLocaleString()}</strong>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--text-success)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                  {marginPct}% Margin
+                                </span>
+                                <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-success)' }}>
+                                  R {totalTrackRetail.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
             </div>
           )}
         </div>
@@ -2071,10 +3557,29 @@ export default function TakeoffSpecEngine({
             <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
               <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 700 }}>
                 <Search size={16} style={{ color: 'var(--text-info)' }} /> 
-                {catalogTargetMode === 'product' ? (
+                {catalogTargetMode === 'product' && (
                   <span>Select Master Fitting for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
-                ) : (
+                )}
+                {catalogTargetMode === 'accessory' && (
                   <span>Add Accessory for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'led_profile' && (
+                  <span>Select Aluminium Profile / Channel for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'led_strip' && (
+                  <span>Select LED Strip Tape for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'led_driver' && (
+                  <span>Select 24V Constant Voltage Driver for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'track_rail' && (
+                  <span>Select Track Rail / Profile for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'track_spot' && (
+                  <span>Add Spotlight / Track Luminaire for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'track_driver' && (
+                  <span>Select Power Supply / Track Driver for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
                 )}
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setCatalogModalOpen(false)}>
