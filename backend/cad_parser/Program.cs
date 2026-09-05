@@ -66,7 +66,7 @@ namespace OneToOne.CadParser
 
             try
             {
-                using var stream = File.OpenRead(filePath);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.SequentialScan);
                 using var reader = new DwgReader(stream);
                 var doc = reader.Read();
 

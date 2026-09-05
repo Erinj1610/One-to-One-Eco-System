@@ -48,20 +48,23 @@ async def inspect_cad_file(file: UploadFile = File(...)):
     suffix = Path(file.filename).suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
-        content = await file.read()
-        tmp.write(content)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
 
     try:
         cmd_prefix = get_cad_parser_command()
         cmd = cmd_prefix + ["inspect", tmp_path]
         logger.info(f"Running CAD inspect: {' '.join(cmd)}")
         
+        env = os.environ.copy()
+        env["DOTNET_gcServer"] = "0"
         proc = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=120
+            timeout=180,
+            env=env
         )
 
         if proc.returncode != 0:
@@ -98,8 +101,8 @@ async def parse_cad_file(
     suffix = Path(file.filename).suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
-        content = await file.read()
-        tmp.write(content)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
 
     try:
         cmd_prefix = get_cad_parser_command()
@@ -115,12 +118,15 @@ async def parse_cad_file(
 
         logger.info(f"Running CAD parse: {' '.join(cmd)}")
         
+        env = os.environ.copy()
+        env["DOTNET_gcServer"] = "0"
         proc = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=120
+            timeout=180,
+            env=env
         )
 
         if proc.returncode != 0:
