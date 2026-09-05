@@ -465,6 +465,28 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 </div>
               </div>
 
+              {/* Ready Guidance Banner */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                background: 'var(--bg-success, #eaf3de)',
+                border: '1px solid var(--border-success, rgba(59,109,17,0.3))',
+                color: 'var(--text-success, #2e580c)',
+                fontSize: '12px',
+                lineHeight: '1.45'
+              }}>
+                <CheckCircle2 size={18} style={{ flexShrink: 0, color: '#2e7d32', marginTop: '1px' }} />
+                <div>
+                  <div style={{ fontWeight: 700 }}>Drawing scanned & layers auto-detected!</div>
+                  <div style={{ marginTop: '2px', opacity: 0.9 }}>
+                    All settings are pre-configured. Click the blue <strong>"Analyse & Count Drawing"</strong> button below to extract your quantities. You only need to touch the options below if you wish to override the layers.
+                  </div>
+                </div>
+              </div>
+
               {/* Form Config Box */}
               <div style={{
                 background: 'var(--bg-primary, #151821)',
