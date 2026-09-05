@@ -26,6 +26,7 @@ from routes.palladium import router as palladium_router, public_router as pallad
 from routes.procurement import router as procurement_router, public_router as procurement_public_router
 from routes.invoicing import router as invoicing_router, public_router as invoicing_public_router
 from routes.payments import router as payments_router, public_router as payments_public_router
+from routes.cad import router as cad_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -99,6 +100,7 @@ app.include_router(invoicing_router, prefix="/api", tags=["invoicing"])
 app.include_router(invoicing_public_router, prefix="/api", tags=["invoicing"])
 app.include_router(payments_router, prefix="/api", tags=["payments"])
 app.include_router(payments_public_router, prefix="/api", tags=["payments"])
+app.include_router(cad_router)
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles

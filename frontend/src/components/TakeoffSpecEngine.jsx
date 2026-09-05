@@ -24,9 +24,11 @@ import {
   ExternalLink,
   ChevronDown,
   X,
-  Info
+  Info,
+  Compass
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
+import CadImportModal from './CadImportModal';
 
 // Standard room suggestions for smart autocomplete
 const COMMON_ROOM_SUGGESTIONS = [
@@ -97,6 +99,9 @@ export default function TakeoffSpecEngine({
   // Bulk Paste Modal
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteRawText, setPasteRawText] = useState('');
+
+  // CAD Drawing Ingestion Modal
+  const [showCadModal, setShowCadModal] = useState(false);
 
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
@@ -410,6 +415,26 @@ export default function TakeoffSpecEngine({
     }
     setPasteRawText('');
     setShowPasteModal(false);
+  };
+
+  // CAD Import Handler (Append or Replace)
+  const handleCadImport = (items, mode) => {
+    if (!items || !items.length) return;
+    const newRows = items.map((item, idx) => ({
+      id: 'tu-cad-' + Date.now() + '-' + idx,
+      tag: (item.tag || '').trim().toUpperCase(),
+      floor: (item.floor || 'Ground').trim(),
+      area: (item.area || 'Landscape').trim(),
+      qty: Math.max(1, Number(item.qty) || 1),
+      notes: ''
+    }));
+
+    if (mode === 'replace') {
+      setCountUpRows(newRows);
+    } else {
+      setCountUpRows(prev => [...prev, ...newRows]);
+    }
+    setHasUnsavedChanges(true);
   };
 
   // -------------------------------------------------------------
@@ -1022,6 +1047,14 @@ export default function TakeoffSpecEngine({
               >
                 <FileText size={12} /> 📋 Paste from Excel / CSV
               </button>
+              <button 
+                className="btn btn-secondary btn-xs" 
+                onClick={() => setShowCadModal(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(59, 130, 246, 0.08)', color: '#3b82f6', borderColor: 'rgba(59, 130, 246, 0.3)' }}
+                title="Import and count fittings from AutoCAD .dwg file"
+              >
+                <Compass size={12} /> 📐 Import CAD Plan (.dwg)
+              </button>
               {countUpRows.length > 0 && (
                 <button className="btn btn-ghost btn-xs" onClick={handleClearAllRows} style={{ color: 'var(--text-danger)' }}>
                   Clear All
@@ -1093,7 +1126,7 @@ export default function TakeoffSpecEngine({
                 {filteredCountUpRows.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No count-up lines recorded. Click <strong>+ Add Row</strong> or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
+                      No count-up lines recorded. Click <strong>+ Add Row</strong>, <strong>📐 Import CAD Plan (.dwg)</strong>, or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
                     </td>
                   </tr>
                 ) : (
@@ -2487,6 +2520,15 @@ export default function TakeoffSpecEngine({
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: CAD DRAWING (.DWG) INGESTION */}
+      {/* ------------------------------------------------------------- */}
+      <CadImportModal 
+        isOpen={showCadModal}
+        onClose={() => setShowCadModal(false)}
+        onImportData={handleCadImport}
+      />
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL: COPY SPEC TO ANOTHER TAG */}
