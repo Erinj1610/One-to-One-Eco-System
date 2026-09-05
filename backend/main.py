@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import uvicorn
 import sys
 import asyncio
@@ -30,6 +31,8 @@ from routes.cad import router as cad_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,
