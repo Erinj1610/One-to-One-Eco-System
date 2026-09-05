@@ -82,7 +82,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
 
       const data = await res.json();
       setInspectData(data);
-      const lightLayer = data.suggestedLightingLayer || '';
+      const lightLayer = data.suggestedLightingLayer || '*';
       const boundLayer = data.suggestedBoundaryLayer || '*';
       const floorName = (data.availableFloors && data.availableFloors.length > 0) ? data.availableFloors[0] : 'Ground Floor';
 
@@ -538,12 +538,12 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                     onChange={e => setLightingLayer(e.target.value)}
                     style={{ width: '100%', fontSize: '12px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)', color: 'var(--text-primary, #ffffff)', padding: '8px 10px', borderRadius: '6px' }}
                   >
+                    <option value="*">All Lighting Layers (* Recommended) — {inspectData.totalLightingInserts || 'All'} fixtures</option>
                     {lightingLayerOptions.map(l => (
                       <option key={l.name} value={l.name}>
                         {l.name} — {l.inserts} blocks {l.isLightingCandidate ? '★ (Lighting Candidate)' : ''}
                       </option>
                     ))}
-                    <option value="*">All Layers with Blocks (*)</option>
                   </select>
                   <div style={{ fontSize: '10.5px', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
                     Every block on this layer is counted and linked with its closest plan code tag.
