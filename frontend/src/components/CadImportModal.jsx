@@ -5,6 +5,7 @@ import {
   FileCheck, 
   Layers, 
   AlertCircle, 
+  AlertTriangle,
   CheckCircle2, 
   RefreshCw, 
   X, 
@@ -30,6 +31,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   // Inspection states
   const [inspecting, setInspecting] = useState(false);
   const [inspectData, setInspectData] = useState(null);
+  const [unstandardizedPrompt, setUnstandardizedPrompt] = useState(false);
   const [lightingLayer, setLightingLayer] = useState('');
   const [boundaryLayer, setBoundaryLayer] = useState('');
   const [defaultFloor, setDefaultFloor] = useState('Ground Floor');
@@ -47,6 +49,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
     setFile(null);
     setInspecting(false);
     setInspectData(null);
+    setUnstandardizedPrompt(false);
     setLightingLayer('');
     setBoundaryLayer('');
     setDefaultFloor('Ground Floor');
@@ -130,7 +133,16 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
       setBoundaryLayer(boundLayer);
       setDefaultFloor(floorName);
 
-      // Immediately run parse using selected engine
+      const hasStandardLayers = Boolean(data.isStandardized || (data.standardLayersFound && data.standardLayersFound.length > 0));
+
+      if (!hasStandardLayers) {
+        // Halt automatic parse: Prompt user that standard 0- layers were not found
+        setUnstandardizedPrompt(true);
+        return;
+      }
+
+      // Standard layers found: run parse immediately
+      setUnstandardizedPrompt(false);
       await runParseWithEngine(engineVersion, selectedFile, lightLayer, boundLayer, floorName);
     } catch (err) {
       console.error('CAD inspect error:', err);
@@ -423,85 +435,288 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 </div>
               </div>
 
-              <div 
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                    handleFileSelect(e.dataTransfer.files[0]);
-                  }
-                }}
-                onClick={() => {
-                  const el = document.getElementById('cad-file-input');
-                  if (el) el.click();
-                }}
-                style={{
-                  border: dragOver ? '2px dashed #3b82f6' : '2px dashed var(--border, #3a4254)',
+              {unstandardizedPrompt && inspectData ? (
+                <div style={{
                   borderRadius: '12px',
-                  background: dragOver ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary, #151821)',
-                  padding: '50px 24px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.04) 100%)',
+                  padding: '22px 20px',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '14px'
-                }}
-              >
-                <input 
-                  id="cad-file-input"
-                  type="file" 
-                  accept=".dwg"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelect(e.target.files[0]);
+                  gap: '16px',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '10px',
+                        background: 'rgba(245, 158, 11, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        color: '#fbbf24'
+                      }}>
+                        <AlertTriangle size={24} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: '#fef3c7' }}>
+                            Standard CAD Layers Not Found
+                          </span>
+                          <span style={{
+                            fontSize: '9.5px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: 'rgba(245, 158, 11, 0.25)',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                            color: '#fbbf24',
+                            fontWeight: 700
+                          }}>
+                            UNSTANDARDIZED DRAWING
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '4px', lineHeight: '1.5' }}>
+                          File <strong>{file?.name}</strong> was inspected ({inspectData.totalEntities?.toLocaleString()} entities, {inspectData.totalLayers} layers), but none of the dedicated <code>0-</code> precision layers were detected.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setUnstandardizedPrompt(false);
+                        setFile(null);
+                        setInspectData(null);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-secondary, #94a3b8)',
+                        cursor: 'pointer',
+                        padding: '4px'
+                      }}
+                      title="Clear File"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* MISSING SPECIFICATION PILLS */}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    border: '1px solid rgba(245, 158, 11, 0.25)'
+                  }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Missing Precision Layers:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(inspectData.standardLayersMissing && inspectData.standardLayersMissing.length > 0 
+                        ? inspectData.standardLayersMissing 
+                        : ['0-FLOORS', '0-ROOMS', '0-FITTINGS', '0-LEDS', '0-TRACKS']
+                      ).map(layerName => (
+                        <span
+                          key={layerName}
+                          style={{
+                            fontSize: '11px',
+                            fontFamily: 'monospace',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#fca5a5'
+                          }}
+                        >
+                          ✕ {layerName}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: '1.4', marginTop: '2px' }}>
+                      Without these layers, the system cannot mathematically separate fittings from other CAD symbols or exact room polygons.
+                    </div>
+                  </div>
+
+                  {/* ACTION CARDS */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Select How to Proceed:
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      {/* OPTION 1: CANCEL & FORMAT */}
+                      <div
+                        onClick={() => {
+                          setUnstandardizedPrompt(false);
+                          setFile(null);
+                          setInspectData(null);
+                          setShowCadGuide(true);
+                        }}
+                        style={{
+                          padding: '14px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(59, 130, 246, 0.4)',
+                          background: 'rgba(59, 130, 246, 0.08)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#60a5fa' }}>
+                            Cancel & Format Drawing
+                          </span>
+                          <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: '#3b82f6', color: '#fff', fontWeight: 700 }}>
+                            100% ACCURACY
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.4' }}>
+                          Clear this file and view the layer instructions below to set up <code>0-FITTINGS</code>, <code>0-ROOMS</code>, etc. in AutoCAD.
+                        </div>
+                      </div>
+
+                      {/* OPTION 2: PROCEED WITH HEURISTIC */}
+                      <div
+                        onClick={() => {
+                          setUnstandardizedPrompt(false);
+                          runParseWithEngine('2.0', file, lightingLayer, boundaryLayer, defaultFloor);
+                        }}
+                        style={{
+                          padding: '14px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#fbbf24' }}>
+                            Proceed with Heuristic Mode (Engine 2.0) →
+                          </span>
+                          <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.3)', color: '#fbbf24', fontWeight: 700 }}>
+                            SMART GUESSWORK
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.4' }}>
+                          Continue using visual shape recognition & wall obstacle raycasting. Results will be previewed for manual review.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right', marginTop: '2px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnstandardizedPrompt(false);
+                          setEngineVersion('1.0');
+                          setStep(2);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-secondary, #94a3b8)',
+                          fontSize: '11px',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: '2px 4px'
+                        }}
+                      >
+                        Or manually configure layers using Classic Engine 1.0 →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handleFileSelect(e.dataTransfer.files[0]);
                     }
                   }}
-                />
+                  onClick={() => {
+                    const el = document.getElementById('cad-file-input');
+                    if (el) el.click();
+                  }}
+                  style={{
+                    border: dragOver ? '2px dashed #3b82f6' : '2px dashed var(--border, #3a4254)',
+                    borderRadius: '12px',
+                    background: dragOver ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-primary, #151821)',
+                    padding: '50px 24px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '14px'
+                  }}
+                >
+                  <input 
+                    id="cad-file-input"
+                    type="file" 
+                    accept=".dwg"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileSelect(e.target.files[0]);
+                      }
+                    }}
+                  />
 
-                <div style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'rgba(59, 130, 246, 0.12)',
-                  color: '#3b82f6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Upload size={26} />
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
-                    Choose an AutoCAD Plan (.dwg) or drag & drop here
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '50%',
+                    background: 'rgba(59, 130, 246, 0.12)',
+                    color: '#3b82f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Upload size={26} />
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                    Supports AutoCAD binary drawings (AutoCAD R13 through 2024+)
+
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
+                      Choose an AutoCAD Plan (.dwg) or drag & drop here
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+                      Supports AutoCAD binary drawings (AutoCAD R13 through 2024+)
+                    </div>
+                  </div>
+
+                  <div style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    background: 'var(--bg-secondary, #1e222d)',
+                    border: '1px solid var(--border, #2e3545)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--text-primary, #ffffff)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    marginTop: '4px'
+                  }}>
+                    📁 Browse Computer
                   </div>
                 </div>
-
-                <div style={{
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  background: 'var(--bg-secondary, #1e222d)',
-                  border: '1px solid var(--border, #2e3545)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--text-primary, #ffffff)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginTop: '4px'
-                }}>
-                  📁 Browse Computer
-                </div>
-              </div>
+              )}
 
               {/* CAD PREPARATION SPECIFICATION GUIDE (FOR 100% ACCURACY) */}
               <div style={{
@@ -611,7 +826,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                       color: '#93c5fd'
                     }}>
                       <Info size={14} style={{ flexShrink: 0 }} />
-                      <span><em>Drawing from an external architect? Don't worry—Engine 2.0 will automatically fall back to Smart Heuristic mode if standard layers are absent.</em></span>
+                      <span><em>Drawing from an external architect? If standard layers are absent, you will be prompted before parsing, with the option to proceed using Smart Heuristic estimation or format your drawing.</em></span>
                     </div>
                   </div>
                 )}
@@ -632,6 +847,24 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 }}>
                   <RefreshCw size={16} className="animate-spin" style={{ color: '#3b82f6' }} />
                   <span>Scanning drawing blocks, layers, and text tags...</span>
+                </div>
+              )}
+
+              {parsing && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-primary, #151821)',
+                  border: '1px solid var(--border, #2e3545)',
+                  color: 'var(--text-primary, #ffffff)',
+                  fontSize: '12.5px'
+                }}>
+                  <RefreshCw size={16} className="animate-spin" style={{ color: '#3b82f6' }} />
+                  <span>Processing CAD drawing with Engine {engineVersion}...</span>
                 </div>
               )}
             </div>
@@ -927,6 +1160,39 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                   </button>
                 </div>
               </div>
+
+              {/* DETERMINISTIC VS HEURISTIC STATUS CALLOUT */}
+              {inspectData?.standardLayersFound && inspectData.standardLayersFound.length > 0 ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 14px',
+                  borderRadius: '6px',
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  color: '#86efac',
+                  fontSize: '11.5px'
+                }}>
+                  <CheckCircle2 size={15} color="#4ade80" style={{ flexShrink: 0 }} />
+                  <span><strong>100% Precision Mode:</strong> Drawing parsed deterministically via standard layers (<code>{inspectData.standardLayersFound.join(', ')}</code>). Zero heuristic estimations used.</span>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 14px',
+                  borderRadius: '6px',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                  color: '#fde68a',
+                  fontSize: '11.5px'
+                }}>
+                  <AlertTriangle size={15} color="#fbbf24" style={{ flexShrink: 0 }} />
+                  <span><strong>Heuristic Estimation:</strong> Standard <code>0-</code> layers were not found. Counts and areas were inferred using visual shape recognition and raycasting. Please verify line items carefully.</span>
+                </div>
+              )}
 
               {/* STATS METRIC TILES */}
               <div style={{ display: 'grid', gridTemplateColumns: (parseResult.summary?.totalLedRuns > 0 || parseResult.summary?.totalTrackRuns > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '10px' }}>

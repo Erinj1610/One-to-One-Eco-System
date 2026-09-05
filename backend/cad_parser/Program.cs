@@ -194,6 +194,30 @@ namespace OneToOne.CadParser
                 detectedFloors.Add("Ground Floor");
             }
 
+            var standardLayersFound = layerGroups
+                .Where(l => {
+                    string u = l.Name.ToUpperInvariant();
+                    return u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
+                })
+                .Select(l => l.Name)
+                .ToList();
+
+            bool isStandardized = standardLayersFound.Any(l => l.ToUpperInvariant().StartsWith("0-FITTING")) ||
+                                  standardLayersFound.Any(l => l.ToUpperInvariant().StartsWith("0-ROOM"));
+
+            var specPrefixes = new Dictionary<string, string>
+            {
+                { "0-FLOORS", "0-FLOOR" },
+                { "0-ROOMS", "0-ROOM" },
+                { "0-FITTINGS", "0-FITTING" },
+                { "0-LEDS", "0-LED" },
+                { "0-TRACKS", "0-TRACK" }
+            };
+            var missingStandardSpecs = specPrefixes
+                .Where(kvp => !standardLayersFound.Any(f => f.ToUpperInvariant().StartsWith(kvp.Value)))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
             var result = new
             {
                 success = true,
@@ -202,7 +226,10 @@ namespace OneToOne.CadParser
                 layers = layerGroups,
                 suggestedLightingLayer = suggestedLighting,
                 suggestedBoundaryLayer = suggestedBoundary,
-                availableFloors = detectedFloors.OrderBy(f => f).ToList()
+                availableFloors = detectedFloors.OrderBy(f => f).ToList(),
+                isStandardized = isStandardized,
+                standardLayersFound = standardLayersFound,
+                standardLayersMissing = missingStandardSpecs
             };
 
             Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
