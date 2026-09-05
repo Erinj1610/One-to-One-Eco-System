@@ -187,6 +187,46 @@ export default function TakeoffSpecEngine({
     return Array.from(s);
   }, [countUpRows]);
 
+  // Dynamic suggestions for Count-Up: user-typed entries automatically appear in lower rows alongside standard presets
+  const dynamicFloorSuggestions = useMemo(() => {
+    const custom = countUpRows
+      .map(r => (r.floor || '').trim())
+      .filter(Boolean);
+    const seen = new Set();
+    const result = [];
+    [...custom, ...FLOOR_LEVEL_SUGGESTIONS].forEach(item => {
+      const lower = item.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        result.push(item);
+      }
+    });
+    return result;
+  }, [countUpRows]);
+
+  const dynamicRoomSuggestions = useMemo(() => {
+    const custom = countUpRows
+      .map(r => (r.area || '').trim())
+      .filter(Boolean);
+    const seen = new Set();
+    const result = [];
+    [...custom, ...COMMON_ROOM_SUGGESTIONS].forEach(item => {
+      const lower = item.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        result.push(item);
+      }
+    });
+    return result;
+  }, [countUpRows]);
+
+  const dynamicTagSuggestions = useMemo(() => {
+    const custom = countUpRows
+      .map(r => (r.tag || '').trim().toUpperCase())
+      .filter(Boolean);
+    return Array.from(new Set(custom));
+  }, [countUpRows]);
+
   // Derived: Stats
   const stats = useMemo(() => {
     const totalRows = countUpRows.length;
@@ -210,8 +250,10 @@ export default function TakeoffSpecEngine({
         // Accessories
         if (Array.isArray(spec.accessories)) {
           spec.accessories.forEach(acc => {
-            const ratio = Number(acc.ratio) || 1.0;
-            const accQty = Math.ceil(qty * ratio);
+            const accUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+            const accQty = qty * accUnits;
             const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
             const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
             estimatedCost += (accQty * acCost);
@@ -395,6 +437,7 @@ export default function TakeoffSpecEngine({
               retail_price: a.retail_price || 0,
               customCost: a.cost_price || 0,
               customRetail: a.retail_price || 0,
+              qtyPerFitting: 1,
               ratio: 1.0,
               isDefault: true
             }));
@@ -419,7 +462,8 @@ export default function TakeoffSpecEngine({
           retail_price: 280,
           customCost: 150,
           customRetail: 280,
-          ratio: product.fittings_per_driver ? (1 / (parseFloat(product.fittings_per_driver) || 1)) : 1.0,
+          qtyPerFitting: 1,
+          ratio: 1.0,
           isDefault: true
         });
       }
@@ -444,6 +488,7 @@ export default function TakeoffSpecEngine({
         retail_price: product.retail_price || 0,
         customCost: product.cost_price || 0,
         customRetail: product.retail_price || 0,
+        qtyPerFitting: 1,
         ratio: 1.0,
         isDefault: false
       };
@@ -509,14 +554,16 @@ export default function TakeoffSpecEngine({
     });
   };
 
-  const handleUpdateAccessoryRatio = (tag, accIndex, newRatio) => {
+  const handleUpdateAccessoryQtyPerFitting = (tag, accIndex, newQty) => {
+    const units = Math.max(1, parseInt(newQty, 10) || 1);
     setSpecifications(prev => {
       const spec = prev[tag];
       if (!spec || !spec.accessories) return prev;
       const updatedAccessories = [...spec.accessories];
       updatedAccessories[accIndex] = {
         ...updatedAccessories[accIndex],
-        ratio: Math.max(0.01, parseFloat(newRatio) || 1.0)
+        qtyPerFitting: units,
+        ratio: units
       };
       return {
         ...prev,
@@ -524,6 +571,8 @@ export default function TakeoffSpecEngine({
       };
     });
   };
+
+  const handleUpdateAccessoryRatio = handleUpdateAccessoryQtyPerFitting;
 
   const handleUpdateAccessoryPrice = (tag, accIndex, field, val) => {
     const num = Math.max(0, parseFloat(val) || 0);
@@ -658,10 +707,11 @@ export default function TakeoffSpecEngine({
         generatedItems.push({
           id: fixtureId,
           qty,
-          type: product.category || 'Hardware',
+          type: tag, // Type column holds Plan Code / Tag (e.g. A1, DL1)
+          itemType: 'Hardware',
           oneOneCode: product.one_to_one_code || '',
           code: product.sku || '',
-          description: `[${tag}] ${product.client_description || product.name || ''}` + (row.notes ? ` — ${row.notes}` : ''),
+          description: (product.client_description || product.name || '') + (row.notes ? ` — ${row.notes}` : ''), // Plan code is in Type column, not in description
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
@@ -683,8 +733,10 @@ export default function TakeoffSpecEngine({
         // Generate Dynamic Accessories
         if (Array.isArray(spec.accessories) && spec.accessories.length > 0) {
           spec.accessories.forEach((acc, accIdx) => {
-            const ratio = Number(acc.ratio) || 1.0;
-            const accQty = Math.max(1, Math.ceil(qty * ratio));
+            const accUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+            const accQty = qty * accUnits;
             const accId = 'I-' + Date.now() + '-' + rowIdx + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4);
 
             const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
@@ -693,10 +745,11 @@ export default function TakeoffSpecEngine({
             generatedItems.push({
               id: accId,
               qty: accQty,
-              type: acc.category || 'Accessory',
+              type: tag, // Type column holds Plan Code / Tag for accessories too
+              itemType: 'Hardware',
               oneOneCode: acc.one_to_one_code || '',
               code: acc.sku || '',
-              description: `[Acc for ${tag}] ${acc.name || acc.client_description || ''}` + (ratio !== 1.0 ? ` (${ratio} per fixture)` : ''),
+              description: acc.name || acc.client_description || '', // Clean description without [Acc for...] tag
               floor: row.floor || 'Ground',
               area: row.area || 'General Area',
               dimming: acc.dimming_protocol || acc.dimmable || '—',
@@ -721,10 +774,11 @@ export default function TakeoffSpecEngine({
         generatedItems.push({
           id: fixtureId,
           qty,
-          type: 'Hardware',
+          type: tag, // Type column holds Plan Code / Tag
+          itemType: 'Hardware',
           oneOneCode: '',
-          code: tag,
-          description: `[${tag}] Unassigned Fixture` + (row.notes ? ` — ${row.notes}` : ''),
+          code: '',
+          description: 'Unassigned Fixture' + (row.notes ? ` — ${row.notes}` : ''),
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: 'Non-dim',
@@ -1005,11 +1059,14 @@ export default function TakeoffSpecEngine({
             background: 'var(--bg-primary)',
             boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
           }}>
+            <datalist id="plan-tags-list">
+              {dynamicTagSuggestions.map(t => <option key={t} value={t} />)}
+            </datalist>
             <datalist id="common-rooms-list">
-              {COMMON_ROOM_SUGGESTIONS.map(r => <option key={r} value={r} />)}
+              {dynamicRoomSuggestions.map(r => <option key={r} value={r} />)}
             </datalist>
             <datalist id="floor-levels-list">
-              {FLOOR_LEVEL_SUGGESTIONS.map(f => <option key={f} value={f} />)}
+              {dynamicFloorSuggestions.map(f => <option key={f} value={f} />)}
             </datalist>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', tableLayout: 'fixed' }}>
@@ -1062,6 +1119,7 @@ export default function TakeoffSpecEngine({
                             data-field="tag"
                             value={row.tag} 
                             placeholder="e.g. DL1"
+                            list="plan-tags-list"
                             onChange={e => handleUpdateRow(row.id, 'tag', e.target.value)}
                             onKeyDown={e => handleKeyDown(e, index, 'tag')}
                             style={{ 
@@ -1497,22 +1555,25 @@ export default function TakeoffSpecEngine({
                             </div>
                           </div>
 
-                          {/* EDITABLE PRICING SECTION */}
+                          {/* EDITABLE PRICING SECTION - CLEAN NON-BLOCK ARCHITECTURAL STYLE */}
                           <div style={{ 
-                            background: 'var(--bg-primary)', 
+                            background: 'var(--bg-secondary)', 
                             border: '1px solid var(--border)', 
                             borderRadius: '6px', 
-                            padding: '10px 12px'
+                            padding: '8px 12px'
                           }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Project Pricing (Editable per Tag)
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                Project Pricing (Editable)
                               </span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ 
                                   fontSize: '11px', 
                                   fontWeight: 700, 
-                                  color: marginPct < 39 ? 'var(--text-danger)' : 'var(--text-success)' 
+                                  color: marginPct < 39 ? 'var(--text-danger)' : 'var(--text-success)',
+                                  background: marginPct < 39 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px'
                                 }}>
                                   Margin: {marginPct}%
                                 </span>
@@ -1520,48 +1581,117 @@ export default function TakeoffSpecEngine({
                                   className="btn btn-ghost btn-xs"
                                   onClick={() => handleResetSpecPrices(tag)}
                                   title="Reset to default catalog pricing"
-                                  style={{ padding: '1px 4px', fontSize: '10px', color: 'var(--text-secondary)' }}
+                                  style={{ padding: '1px 6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                 >
                                   <RotateCcw size={10} /> Reset
                                 </button>
                               </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                              <div>
-                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Cost Price (R)</label>
-                                <input 
-                                  type="number"
-                                  step="0.01"
-                                  className="input input-xs"
-                                  value={costPrice}
-                                  onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
-                                  style={{ width: '100%', fontWeight: 600, fontSize: '11.5px' }}
-                                />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+                              {/* COST */}
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
+                                  Cost Price
+                                </span>
+                                <div style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'baseline', 
+                                  gap: '3px', 
+                                  borderBottom: '1.5px solid var(--border)', 
+                                  paddingBottom: '2px',
+                                  transition: 'border-color 0.15s'
+                                }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>R</span>
+                                  <input 
+                                    type="number"
+                                    step="0.01"
+                                    value={costPrice}
+                                    onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
+                                    style={{ 
+                                      width: '100%', 
+                                      background: 'transparent', 
+                                      border: 'none', 
+                                      outline: 'none', 
+                                      fontWeight: 600, 
+                                      fontSize: '12px', 
+                                      color: 'var(--text-primary)',
+                                      padding: 0
+                                    }}
+                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                  />
+                                </div>
                               </div>
 
-                              <div>
-                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Trade Price (R)</label>
-                                <input 
-                                  type="number"
-                                  step="0.01"
-                                  className="input input-xs"
-                                  value={tradePrice}
-                                  onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
-                                  style={{ width: '100%', fontWeight: 600, fontSize: '11.5px' }}
-                                />
+                              {/* TRADE */}
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
+                                  Trade Price
+                                </span>
+                                <div style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'baseline', 
+                                  gap: '3px', 
+                                  borderBottom: '1.5px solid var(--border)', 
+                                  paddingBottom: '2px',
+                                  transition: 'border-color 0.15s'
+                                }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>R</span>
+                                  <input 
+                                    type="number"
+                                    step="0.01"
+                                    value={tradePrice}
+                                    onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
+                                    style={{ 
+                                      width: '100%', 
+                                      background: 'transparent', 
+                                      border: 'none', 
+                                      outline: 'none', 
+                                      fontWeight: 600, 
+                                      fontSize: '12px', 
+                                      color: 'var(--text-primary)',
+                                      padding: 0
+                                    }}
+                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                  />
+                                </div>
                               </div>
 
-                              <div>
-                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Retail Price (R)</label>
-                                <input 
-                                  type="number"
-                                  step="0.01"
-                                  className="input input-xs"
-                                  value={retailPrice}
-                                  onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
-                                  style={{ width: '100%', fontWeight: 700, color: 'var(--text-success)', fontSize: '11.5px' }}
-                                />
+                              {/* RETAIL */}
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '2px' }}>
+                                  Retail Price
+                                </span>
+                                <div style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'baseline', 
+                                  gap: '3px', 
+                                  borderBottom: '1.5px solid var(--border)', 
+                                  paddingBottom: '2px',
+                                  transition: 'border-color 0.15s'
+                                }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-success)', fontWeight: 600 }}>R</span>
+                                  <input 
+                                    type="number"
+                                    step="0.01"
+                                    value={retailPrice}
+                                    onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
+                                    style={{ 
+                                      width: '100%', 
+                                      background: 'transparent', 
+                                      border: 'none', 
+                                      outline: 'none', 
+                                      fontWeight: 700, 
+                                      fontSize: '12px', 
+                                      color: 'var(--text-success)',
+                                      padding: 0
+                                    }}
+                                    onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
+                                    onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1658,64 +1788,107 @@ export default function TakeoffSpecEngine({
                                       {acc.name}
                                     </div>
 
-                                    {/* RATIO & PRICING ROW */}
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                      {/* RATIO PRESETS */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Ratio:</span>
-                                        <button 
-                                          className={`btn btn-xs ${acc.ratio === 1.0 ? 'btn-primary' : 'btn-ghost'}`} 
-                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
-                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 1.0)}
-                                        >
-                                          1:1
-                                        </button>
-                                        <button 
-                                          className={`btn btn-xs ${acc.ratio === 0.5 ? 'btn-primary' : 'btn-ghost'}`} 
-                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
-                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 0.5)}
-                                        >
-                                          1:2
-                                        </button>
-                                        <button 
-                                          className={`btn btn-xs ${acc.ratio === 0.25 ? 'btn-primary' : 'btn-ghost'}`} 
-                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
-                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 0.25)}
-                                        >
-                                          1:4
-                                        </button>
-                                        <input 
-                                          type="number"
-                                          step="0.05"
-                                          value={acc.ratio !== undefined ? acc.ratio : 1.0}
-                                          onChange={e => handleUpdateAccessoryRatio(tag, accIdx, e.target.value)}
-                                          style={{ width: '42px', height: '20px', fontSize: '10.5px', textAlign: 'center' }}
-                                          className="input input-xs"
-                                          title="Custom ratio per fixture"
-                                        />
+                                    {/* QTY PER FITTING & PRICING ROW - CLEAN ARCHITECTURAL NON-BLOCK STYLE */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginTop: '4px', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
+                                      {/* QTY PER FITTING (STEPS STRICTLY BY 1) */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Qty per fitting:</span>
+                                        <div style={{ 
+                                          display: 'inline-flex', 
+                                          alignItems: 'center', 
+                                          borderBottom: '1.5px solid var(--border)', 
+                                          paddingBottom: '1px',
+                                          transition: 'border-color 0.15s'
+                                        }}>
+                                          <input 
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={acc.qtyPerFitting !== undefined ? acc.qtyPerFitting : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1)}
+                                            onChange={e => handleUpdateAccessoryQtyPerFitting(tag, accIdx, e.target.value)}
+                                            style={{ 
+                                              width: '38px', 
+                                              background: 'transparent', 
+                                              border: 'none', 
+                                              outline: 'none', 
+                                              fontSize: '12px', 
+                                              fontWeight: 700, 
+                                              textAlign: 'center',
+                                              color: 'var(--text-primary)',
+                                              padding: 0
+                                            }}
+                                            onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                            onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                            title="Units of this accessory per fixture (steps by 1)"
+                                          />
+                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: '2px' }}>×</span>
+                                        </div>
                                       </div>
 
                                       {/* EDITABLE ACC PRICES */}
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                          <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)' }}>Cost:</span>
-                                          <input 
-                                            type="number"
-                                            value={accCost}
-                                            onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
-                                            style={{ width: '56px', height: '20px', fontSize: '10.5px' }}
-                                            className="input input-xs"
-                                          />
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                        {/* ACC COST */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                          <div style={{ 
+                                            display: 'inline-flex', 
+                                            alignItems: 'baseline', 
+                                            borderBottom: '1.5px solid var(--border)', 
+                                            paddingBottom: '1px',
+                                            transition: 'border-color 0.15s'
+                                          }}>
+                                            <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>R</span>
+                                            <input 
+                                              type="number"
+                                              step="0.01"
+                                              value={accCost}
+                                              onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
+                                              style={{ 
+                                                width: '58px', 
+                                                background: 'transparent', 
+                                                border: 'none', 
+                                                outline: 'none', 
+                                                fontSize: '11.5px', 
+                                                fontWeight: 600, 
+                                                color: 'var(--text-primary)',
+                                                padding: '0 2px'
+                                              }}
+                                              onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
+                                              onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                            />
+                                          </div>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                          <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)' }}>Ret:</span>
-                                          <input 
-                                            type="number"
-                                            value={accRetail}
-                                            onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
-                                            style={{ width: '56px', height: '20px', fontSize: '10.5px', fontWeight: 600, color: 'var(--text-success)' }}
-                                            className="input input-xs"
-                                          />
+
+                                        {/* ACC RETAIL */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                          <div style={{ 
+                                            display: 'inline-flex', 
+                                            alignItems: 'baseline', 
+                                            borderBottom: '1.5px solid var(--border)', 
+                                            paddingBottom: '1px',
+                                            transition: 'border-color 0.15s'
+                                          }}>
+                                            <span style={{ fontSize: '10.5px', color: 'var(--text-success)' }}>R</span>
+                                            <input 
+                                              type="number"
+                                              step="0.01"
+                                              value={accRetail}
+                                              onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
+                                              style={{ 
+                                                width: '58px', 
+                                                background: 'transparent', 
+                                                border: 'none', 
+                                                outline: 'none', 
+                                                fontSize: '11.5px', 
+                                                fontWeight: 700, 
+                                                color: 'var(--text-success)',
+                                                padding: '0 2px'
+                                              }}
+                                              onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
+                                              onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
+                                            />
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
