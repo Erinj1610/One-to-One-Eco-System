@@ -2524,11 +2524,13 @@ export default function TakeoffSpecEngine({
       {/* ------------------------------------------------------------- */}
       {/* MODAL: CAD DRAWING (.DWG) INGESTION */}
       {/* ------------------------------------------------------------- */}
-      <CadImportModal 
-        isOpen={showCadModal}
-        onClose={() => setShowCadModal(false)}
-        onImportData={handleCadImport}
-      />
+      {showCadModal && (
+        <CadImportModal 
+          isOpen={showCadModal}
+          onClose={() => setShowCadModal(false)}
+          onImportData={handleCadImport}
+        />
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL: COPY SPEC TO ANOTHER TAG */}

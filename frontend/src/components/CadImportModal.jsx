@@ -37,8 +37,6 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   // Error handling
   const [error, setError] = useState(null);
 
-  if (!isOpen) return null;
-
   const handleReset = () => {
     setStep(1);
     setFile(null);
@@ -168,6 +166,8 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
     if (!inspectData || !inspectData.layers) return [];
     return inspectData.layers.filter(l => l.closedPolylines > 0);
   }, [inspectData]);
+
+  if (!isOpen) return null;
 
   return (
     <div className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in'>
