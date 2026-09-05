@@ -10,29 +10,49 @@ import {
   Layers, 
   FileSpreadsheet, 
   Save, 
-  ArrowRight, 
   Sliders, 
   Grid, 
   List, 
   Check, 
-  RefreshCw,
-  FileText,
-  HelpCircle,
+  RefreshCw, 
+  FileText, 
+  Eye, 
+  Download, 
+  RotateCcw, 
+  ArrowRight,
+  Maximize2,
   ExternalLink,
   ChevronDown,
-  X
+  X,
+  Info
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
 
-/**
- * TakeoffSpecEngine
- * 
- * Upstream architectural module for fast fixture count-up (Takeoff) by floor/room,
- * centralized specification mapping (Plan Tag -> Catalog Product), and dynamic accessory
- * attachment with configurable ratios.
- * 
- * Outputs cleanly into the manual BOQ Spreadsheet with Zero Disruption to existing workflows.
- */
+// Standard room suggestions for smart autocomplete
+const COMMON_ROOM_SUGGESTIONS = [
+  'Entrance Hall', 'Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Scullery', 'Pantry',
+  'Master Bedroom', 'Master Ensuite', 'Master Dressing', 'Bedroom 2', 'Bedroom 3', 'Bedroom 4',
+  'Guest Bedroom', 'Guest Bathroom', 'Guest WC / Powder', 'Passage / Hallway', 'Staircase',
+  'Study / Home Office', 'TV Lounge', 'Bar / Entertainment', 'Covered Patio', 'Balcony',
+  'Terrace', 'Garage', 'Exterior Façade', 'Garden / Pathway', 'Pool Area', 'BOH / Staff'
+];
+
+const FLOOR_LEVEL_SUGGESTIONS = [
+  'Basement', 'Lower Ground', 'Ground', 'First Floor', 'Second Floor', 'Roof / Terrace', 'Exterior / Garden'
+];
+
+const CATEGORY_OPTIONS = [
+  { label: 'All Categories', value: 'All' },
+  { label: 'Downlights', value: 'Downlight' },
+  { label: 'Spotlights', value: 'Spotlight' },
+  { label: 'Pendants & Decorative', value: 'Pendant' },
+  { label: 'Linear Profiles', value: 'Linear' },
+  { label: 'Track Systems', value: 'Track' },
+  { label: 'LED Strips', value: 'LEDStrip' },
+  { label: 'Exterior / Outdoor', value: 'Outdoor' },
+  { label: 'Accessories & Drivers', value: 'Accessory' }
+];
+
 export default function TakeoffSpecEngine({
   orderId,
   projectKey,
@@ -42,7 +62,7 @@ export default function TakeoffSpecEngine({
   onGenerateBOQ,
   onCancel
 }) {
-  // Navigation inside engine: 'countup' | 'spec' | 'summary'
+  // Navigation tabs: 'countup' | 'spec' | 'summary'
   const [activeTab, setActiveTab] = useState('countup');
 
   // Count-Up Rows: [{ id, tag, floor, area, qty, notes }]
@@ -50,7 +70,6 @@ export default function TakeoffSpecEngine({
     if (initialTakeoffData && Array.isArray(initialTakeoffData.countUpRows) && initialTakeoffData.countUpRows.length > 0) {
       return initialTakeoffData.countUpRows;
     }
-    // Default initial template rows
     return [
       { id: 'tu-' + Date.now() + '-1', tag: 'DL1', floor: 'Ground', area: 'Kitchen', qty: 6, notes: 'Recessed downlight' },
       { id: 'tu-' + Date.now() + '-2', tag: 'DL1', floor: 'Ground', area: 'Living', qty: 8, notes: 'Recessed downlight' },
@@ -58,7 +77,7 @@ export default function TakeoffSpecEngine({
     ];
   });
 
-  // Specifications: { [tag]: { product: Object, accessories: Array } }
+  // Specifications: { [tag]: { product, customCost, customTrade, customRetail, accessories: [] } }
   const [specifications, setSpecifications] = useState(() => {
     if (initialTakeoffData && initialTakeoffData.specifications && typeof initialTakeoffData.specifications === 'object') {
       return initialTakeoffData.specifications;
@@ -66,9 +85,10 @@ export default function TakeoffSpecEngine({
     return {};
   });
 
-  // Save feedback state
+  // UI & Feedback state
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Search & Filter in Count-Up
   const [countUpSearch, setCountUpSearch] = useState('');
@@ -80,16 +100,33 @@ export default function TakeoffSpecEngine({
 
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
-  const [catalogTargetTag, setCatalogTargetTag] = useState(null); // tag string
+  const [catalogTargetTag, setCatalogTargetTag] = useState(null);
   const [catalogTargetMode, setCatalogTargetMode] = useState('product'); // 'product' | 'accessory'
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('All');
   const [catalogResults, setCatalogResults] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
 
+  // Fitting Specifications Modal (Preview before / after adding)
+  const [inspectedProduct, setInspectedProduct] = useState(null);
+  const [inspectedForTag, setInspectedForTag] = useState(null);
+
+  // Copy Spec to another tag modal
+  const [copySourceTag, setCopySourceTag] = useState(null);
+  const [copyTargetTag, setCopyTargetTag] = useState('');
+
   // Generate BOQ Modal State
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generateMode, setGenerateMode] = useState('append'); // 'append' | 'replace'
+  const [includeRoomSpacers, setIncludeRoomSpacers] = useState(true);
+
+  // Focus ref for auto-focusing newly added rows
+  const newRowTagInputRef = useRef(null);
+
+  // Mark unsaved changes
+  useEffect(() => {
+    setHasUnsavedChanges(true);
+  }, [countUpRows, specifications]);
 
   // Debounced catalog search
   useEffect(() => {
@@ -117,7 +154,7 @@ export default function TakeoffSpecEngine({
       }
     };
 
-    const timer = setTimeout(fetchCatalog, 300);
+    const timer = setTimeout(fetchCatalog, 250);
     return () => clearTimeout(timer);
   }, [catalogModalOpen, catalogSearch, catalogCategory]);
 
@@ -155,32 +192,74 @@ export default function TakeoffSpecEngine({
     const totalRows = countUpRows.length;
     const totalQty = countUpRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
     const configuredTags = uniqueTags.filter(ut => specifications[ut.tag]?.product).length;
+    
+    // Financial estimates
+    let estimatedCost = 0;
+    let estimatedRetail = 0;
+
+    countUpRows.forEach(row => {
+      const tag = (row.tag || '').trim().toUpperCase();
+      const spec = specifications[tag];
+      const qty = Number(row.qty) || 0;
+      if (spec && spec.product) {
+        const c = spec.customCost !== undefined ? Number(spec.customCost) : Number(spec.product.cost_price || 0);
+        const r = spec.customRetail !== undefined ? Number(spec.customRetail) : Number(spec.product.retail_price || 0);
+        estimatedCost += (qty * c);
+        estimatedRetail += (qty * r);
+
+        // Accessories
+        if (Array.isArray(spec.accessories)) {
+          spec.accessories.forEach(acc => {
+            const ratio = Number(acc.ratio) || 1.0;
+            const accQty = Math.ceil(qty * ratio);
+            const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+            const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+            estimatedCost += (accQty * acCost);
+            estimatedRetail += (accQty * acRet);
+          });
+        }
+      }
+    });
+
+    const estimatedMargin = estimatedRetail > 0 
+      ? Math.round(((estimatedRetail - estimatedCost) / estimatedRetail) * 100)
+      : 0;
+
     return {
       totalRows,
       totalQty,
       uniqueTagsCount: uniqueTags.length,
       configuredTags,
-      pendingTags: uniqueTags.length - configuredTags
+      pendingTags: uniqueTags.length - configuredTags,
+      estimatedCost,
+      estimatedRetail,
+      estimatedMargin
     };
   }, [countUpRows, uniqueTags, specifications]);
 
   // -------------------------------------------------------------
   // Count-Up Row Operations
   // -------------------------------------------------------------
-  const handleAddRow = (defaults = {}) => {
+  const handleAddRow = (defaults = {}, focusAfter = true) => {
     const newId = 'tu-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
     const lastRow = countUpRows[countUpRows.length - 1];
-    setCountUpRows(prev => [
-      ...prev,
-      {
-        id: newId,
-        tag: defaults.tag || (lastRow ? lastRow.tag : 'DL1'),
-        floor: defaults.floor || (lastRow ? lastRow.floor : 'Ground'),
-        area: defaults.area || (lastRow ? lastRow.area : ''),
-        qty: defaults.qty || 1,
-        notes: defaults.notes || ''
-      }
-    ]);
+    const newRow = {
+      id: newId,
+      tag: defaults.tag || (lastRow ? lastRow.tag : 'DL1'),
+      floor: defaults.floor || (lastRow ? lastRow.floor : 'Ground'),
+      area: defaults.area || (lastRow ? lastRow.area : ''),
+      qty: defaults.qty || 1,
+      notes: defaults.notes || ''
+    };
+    setCountUpRows(prev => [...prev, newRow]);
+
+    if (focusAfter) {
+      setTimeout(() => {
+        if (newRowTagInputRef.current) {
+          newRowTagInputRef.current.focus();
+        }
+      }, 50);
+    }
   };
 
   const handleAddMultipleRows = (count = 5) => {
@@ -223,6 +302,21 @@ export default function TakeoffSpecEngine({
   const handleClearAllRows = () => {
     if (window.confirm("Are you sure you want to clear all Takeoff count-up rows?")) {
       setCountUpRows([]);
+    }
+  };
+
+  // Keyboard navigation on row input
+  const handleKeyDown = (e, index, field) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // If on the last row and in notes or qty, automatically add next row!
+      if (index === countUpRows.length - 1 && (field === 'notes' || field === 'qty')) {
+        handleAddRow();
+      } else {
+        // Focus the next row's same field or tag
+        const nextInput = document.querySelector(`[data-row-index="${index + 1}"][data-field="${field}"]`);
+        if (nextInput) nextInput.focus();
+      }
     }
   };
 
@@ -280,11 +374,12 @@ export default function TakeoffSpecEngine({
     setCatalogModalOpen(true);
   };
 
-  const handleSelectCatalogItem = async (product) => {
-    if (!catalogTargetTag) return;
+  const handleSelectCatalogItem = async (product, targetTag = null) => {
+    const activeTag = targetTag || catalogTargetTag;
+    if (!activeTag) return;
 
     if (catalogTargetMode === 'product') {
-      // 1. Fetch any linked accessories from database
+      // 1. Fetch linked accessories from DB
       let fetchedAccessories = [];
       try {
         const accRes = await fetch(`${API_BASE}/api/products/${product.id}/accessories`);
@@ -298,6 +393,8 @@ export default function TakeoffSpecEngine({
               category: 'Accessory',
               cost_price: a.cost_price || 0,
               retail_price: a.retail_price || 0,
+              customCost: a.cost_price || 0,
+              customRetail: a.retail_price || 0,
               ratio: 1.0,
               isDefault: true
             }));
@@ -307,7 +404,7 @@ export default function TakeoffSpecEngine({
         console.warn("Could not load product accessories from DB:", e);
       }
 
-      // Check if product requires an external driver based on specs
+      // Check if external driver needed
       if (
         product.driver_spec && 
         (!product.driver_incl || product.driver_incl.toLowerCase() !== 'yes') &&
@@ -320,6 +417,8 @@ export default function TakeoffSpecEngine({
           category: 'Accessory',
           cost_price: 150,
           retail_price: 280,
+          customCost: 150,
+          customRetail: 280,
           ratio: product.fittings_per_driver ? (1 / (parseFloat(product.fittings_per_driver) || 1)) : 1.0,
           isDefault: true
         });
@@ -327,8 +426,11 @@ export default function TakeoffSpecEngine({
 
       setSpecifications(prev => ({
         ...prev,
-        [catalogTargetTag]: {
+        [activeTag]: {
           product,
+          customCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+          customTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+          customRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0,
           accessories: fetchedAccessories
         }
       }));
@@ -340,15 +442,23 @@ export default function TakeoffSpecEngine({
         category: product.category || 'Accessory',
         cost_price: product.cost_price || 0,
         retail_price: product.retail_price || 0,
+        customCost: product.cost_price || 0,
+        customRetail: product.retail_price || 0,
         ratio: 1.0,
         isDefault: false
       };
 
       setSpecifications(prev => {
-        const currentSpec = prev[catalogTargetTag] || { product: null, accessories: [] };
+        const currentSpec = prev[activeTag] || { 
+          product: null, 
+          customCost: 0, 
+          customTrade: 0, 
+          customRetail: 0, 
+          accessories: [] 
+        };
         return {
           ...prev,
-          [catalogTargetTag]: {
+          [activeTag]: {
             ...currentSpec,
             accessories: [...(currentSpec.accessories || []), newAcc]
           }
@@ -357,6 +467,38 @@ export default function TakeoffSpecEngine({
     }
 
     setCatalogModalOpen(false);
+    setInspectedProduct(null);
+  };
+
+  const handleUpdateSpecPrice = (tag, field, val) => {
+    const num = Math.max(0, parseFloat(val) || 0);
+    setSpecifications(prev => {
+      const spec = prev[tag];
+      if (!spec) return prev;
+      return {
+        ...prev,
+        [tag]: {
+          ...spec,
+          [field]: num
+        }
+      };
+    });
+  };
+
+  const handleResetSpecPrices = (tag) => {
+    setSpecifications(prev => {
+      const spec = prev[tag];
+      if (!spec || !spec.product) return prev;
+      return {
+        ...prev,
+        [tag]: {
+          ...spec,
+          customCost: spec.product.cost_price || 0,
+          customTrade: spec.product.trade_price || 0,
+          customRetail: spec.product.retail_price || 0
+        }
+      };
+    });
   };
 
   const handleRemoveProductFromSpec = (tag) => {
@@ -383,6 +525,23 @@ export default function TakeoffSpecEngine({
     });
   };
 
+  const handleUpdateAccessoryPrice = (tag, accIndex, field, val) => {
+    const num = Math.max(0, parseFloat(val) || 0);
+    setSpecifications(prev => {
+      const spec = prev[tag];
+      if (!spec || !spec.accessories) return prev;
+      const updatedAccessories = [...spec.accessories];
+      updatedAccessories[accIndex] = {
+        ...updatedAccessories[accIndex],
+        [field]: num
+      };
+      return {
+        ...prev,
+        [tag]: { ...spec, accessories: updatedAccessories }
+      };
+    });
+  };
+
   const handleRemoveAccessory = (tag, accIndex) => {
     setSpecifications(prev => {
       const spec = prev[tag];
@@ -393,6 +552,22 @@ export default function TakeoffSpecEngine({
         [tag]: { ...spec, accessories: updatedAccessories }
       };
     });
+  };
+
+  // Copy spec from one tag to another
+  const handleExecuteCopySpec = () => {
+    if (!copySourceTag || !copyTargetTag.trim()) return;
+    const cleanTarget = copyTargetTag.trim().toUpperCase();
+    const sourceSpec = specifications[copySourceTag];
+    if (!sourceSpec) return;
+
+    setSpecifications(prev => ({
+      ...prev,
+      [cleanTarget]: JSON.parse(JSON.stringify(sourceSpec))
+    }));
+    setCopySourceTag(null);
+    setCopyTargetTag('');
+    alert(`Copied specification and accessories from ${copySourceTag} to ${cleanTarget}!`);
   };
 
   // -------------------------------------------------------------
@@ -410,6 +585,7 @@ export default function TakeoffSpecEngine({
         await onSaveTakeoffData(takeoffPayload);
       }
       setLastSavedTime(new Date().toLocaleTimeString());
+      setHasUnsavedChanges(false);
     } catch (err) {
       console.error("Failed to save takeoff data:", err);
       alert("Error saving Takeoff & Spec data to server.");
@@ -428,10 +604,45 @@ export default function TakeoffSpecEngine({
     }
 
     const generatedItems = [];
+    const seenRooms = new Set();
 
-    countUpRows.forEach((row, rowIdx) => {
+    // Sort rows by floor and room for logical grouping in the spreadsheet
+    const sortedRows = [...countUpRows].sort((a, b) => {
+      const floorComp = (a.floor || '').localeCompare(b.floor || '');
+      if (floorComp !== 0) return floorComp;
+      return (a.area || '').localeCompare(b.area || '');
+    });
+
+    sortedRows.forEach((row, rowIdx) => {
       const tag = (row.tag || '').trim().toUpperCase();
       if (!tag) return;
+
+      const roomKey = `${row.floor || 'Ground'}: ${row.area || 'General Area'}`;
+      
+      // Optional: insert room spacer row
+      if (includeRoomSpacers && !seenRooms.has(roomKey) && row.area) {
+        seenRooms.add(roomKey);
+        generatedItems.push({
+          id: 'SPACER-' + Date.now() + '-' + rowIdx,
+          isSpacer: true,
+          qty: 0,
+          type: 'SPACER',
+          oneOneCode: '',
+          code: '',
+          description: `— ${roomKey.toUpperCase()} —`,
+          floor: row.floor || 'Ground',
+          area: row.area || 'General Area',
+          dimming: '',
+          brand: '',
+          supplier: '',
+          unitCost: 0,
+          unitTrade: 0,
+          unitRetail: 0,
+          selection: '',
+          stockStatus: '',
+          eta: ''
+        });
+      }
 
       const spec = specifications[tag];
       const product = spec ? spec.product : null;
@@ -440,6 +651,10 @@ export default function TakeoffSpecEngine({
       const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
       
       if (product) {
+        const costPrice = spec.customCost !== undefined ? Number(spec.customCost) : (product.cost_price || 0);
+        const tradePrice = spec.customTrade !== undefined ? Number(spec.customTrade) : (product.trade_price || 0);
+        const retailPrice = spec.customRetail !== undefined ? Number(spec.customRetail) : (product.retail_price || 0);
+
         generatedItems.push({
           id: fixtureId,
           qty,
@@ -452,9 +667,9 @@ export default function TakeoffSpecEngine({
           dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
           brand: product.brand || '',
           supplier: product.supplier || product.supplier_name || orderSupplier || 'Molecule Dist.',
-          unitCost: product.cost_price || 0,
-          unitTrade: product.trade_price || 0,
-          unitRetail: product.retail_price || 0,
+          unitCost: costPrice,
+          unitTrade: tradePrice,
+          unitRetail: retailPrice,
           selection: product.selection || 'Selection',
           stockStatus: (product.stock_level || product.stock) > 0 ? 'Stock' : 'Ordered',
           eta: product.lead_time || '4 weeks',
@@ -465,11 +680,15 @@ export default function TakeoffSpecEngine({
           spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
         });
 
+        // Generate Dynamic Accessories
         if (Array.isArray(spec.accessories) && spec.accessories.length > 0) {
           spec.accessories.forEach((acc, accIdx) => {
             const ratio = Number(acc.ratio) || 1.0;
             const accQty = Math.max(1, Math.ceil(qty * ratio));
             const accId = 'I-' + Date.now() + '-' + rowIdx + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4);
+
+            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
 
             generatedItems.push({
               id: accId,
@@ -483,9 +702,9 @@ export default function TakeoffSpecEngine({
               dimming: acc.dimming_protocol || acc.dimmable || '—',
               brand: acc.brand || product.brand || '',
               supplier: acc.supplier || acc.supplier_name || product.supplier || orderSupplier || 'Molecule Dist.',
-              unitCost: acc.cost_price || 0,
-              unitTrade: acc.trade_price || 0,
-              unitRetail: acc.retail_price || 0,
+              unitCost: accCost,
+              unitTrade: accRetail * 0.8,
+              unitRetail: accRetail,
               selection: 'Accessory',
               stockStatus: (acc.stock_level || acc.stock) > 0 ? 'Stock' : 'Ordered',
               eta: acc.lead_time || '4 weeks',
@@ -498,13 +717,14 @@ export default function TakeoffSpecEngine({
           });
         }
       } else {
+        // Fallback placeholder row for unassigned tag
         generatedItems.push({
           id: fixtureId,
           qty,
           type: 'Hardware',
           oneOneCode: '',
           code: tag,
-          description: `[${tag}] Unconfigured Fixture` + (row.notes ? ` — ${row.notes}` : ''),
+          description: `[${tag}] Unassigned Fixture` + (row.notes ? ` — ${row.notes}` : ''),
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: 'Non-dim',
@@ -532,6 +752,37 @@ export default function TakeoffSpecEngine({
     }
   };
 
+  // Export Matrix to CSV
+  const handleExportMatrixCSV = () => {
+    if (matrixData.length === 0 || uniqueTags.length === 0) return;
+    const headers = ['Floor', 'Room / Area', ...uniqueTags.map(ut => ut.tag), 'Total'];
+    const csvRows = [headers.join(',')];
+
+    matrixData.forEach(row => {
+      let rSum = 0;
+      const cells = [
+        `"${row.floor}"`,
+        `"${row.area}"`,
+        ...uniqueTags.map(ut => {
+          const q = row.tags[ut.tag] || 0;
+          rSum += q;
+          return q;
+        }),
+        rSum
+      ];
+      csvRows.push(cells.join(','));
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvRows.join('\n'));
+    const link = document.createElement('a');
+    link.setAttribute('href', csvContent);
+    link.setAttribute('download', `Takeoff_Matrix_${orderId || 'Export'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filtered Count-Up rows
   const filteredCountUpRows = useMemo(() => {
     return countUpRows.filter(r => {
       if (floorFilter !== 'All' && r.floor !== floorFilter) return false;
@@ -547,6 +798,7 @@ export default function TakeoffSpecEngine({
     });
   }, [countUpRows, floorFilter, countUpSearch]);
 
+  // Cross-tabulation Matrix (Areas vs Tags)
   const matrixData = useMemo(() => {
     const areasMap = new Map();
     countUpRows.forEach(r => {
@@ -564,53 +816,65 @@ export default function TakeoffSpecEngine({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* TOP STATUS & CONTROLS HEADER BAR */}
+      {/* ------------------------------------------------------------- */}
+      {/* TOP HEADER CONTROLS BAR */}
+      {/* ------------------------------------------------------------- */}
       <div style={{ 
         background: 'var(--bg-secondary)', 
         border: '1px solid var(--border)', 
-        borderRadius: '8px', 
+        borderRadius: '10px', 
         padding: '16px 20px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: '16px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span style={{ 
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
+              background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', 
               color: '#fff', 
-              padding: '4px 8px', 
+              padding: '3px 8px', 
               borderRadius: '4px', 
-              fontSize: '11px', 
+              fontSize: '10.5px', 
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '4px',
+              letterSpacing: '0.4px'
             }}>
               <Sparkles size={12} /> UPSTREAM ACCELERATOR
             </span>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Takeoff & Specification Engine
             </h2>
+            {hasUnsavedChanges && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-warning)', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                • Unsaved Edits
+              </span>
+            )}
           </div>
           <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
-            Enter fixture counts by room & floor, map plan tags to master catalog items, configure dynamic accessories, and auto-compile directly into your BOQ spreadsheet.
+            Enter fixture counts by room, assign master catalog items with editable pricing, pair dynamic accessories, and compile into your BOQ spreadsheet.
           </p>
         </div>
 
         {/* METRICS & QUICK ACTIONS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Fixtures Counted</div>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)' }}>{stats.totalQty}</div>
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center', minWidth: '80px' }}>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-info)' }}>{stats.totalQty}</div>
             </div>
-            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Plan Tags</div>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {stats.configuredTags} / {stats.uniqueTagsCount} <span style={{ fontSize: '10px', fontWeight: 'normal', color: stats.pendingTags > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>({stats.pendingTags} pending)</span>
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center', minWidth: '90px' }}>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Plan Tags</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {stats.configuredTags} / {stats.uniqueTagsCount}
+                <span style={{ fontSize: '10px', fontWeight: 'normal', color: stats.pendingTags > 0 ? 'var(--text-warning)' : 'var(--text-success)', marginLeft: '4px' }}>
+                  ({stats.pendingTags} pending)
+                </span>
               </div>
             </div>
           </div>
@@ -619,7 +883,7 @@ export default function TakeoffSpecEngine({
             className="btn btn-secondary btn-sm"
             onClick={handleSaveTakeoff}
             disabled={isSaving}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
           >
             <Save size={14} /> {isSaving ? 'Saving...' : 'Save Takeoff'}
             {lastSavedTime && <span style={{ fontSize: '10px', opacity: 0.8 }}>({lastSavedTime})</span>}
@@ -635,46 +899,57 @@ export default function TakeoffSpecEngine({
               display: 'flex', 
               alignItems: 'center', 
               gap: '6px',
-              fontWeight: 600
+              fontWeight: 700,
+              padding: '7px 14px'
             }}
           >
-            <FileSpreadsheet size={14} /> 🚀 Generate into BOQ Spreadsheet
+            <FileSpreadsheet size={15} /> 🚀 Generate into BOQ Spreadsheet
           </button>
         </div>
       </div>
 
+      {/* ------------------------------------------------------------- */}
       {/* INNER NAVIGATION TABS */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+      {/* ------------------------------------------------------------- */}
+      <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
         <button
           className={`btn btn-sm ${activeTab === 'countup' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('countup')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
         >
           <List size={14} /> 1. Room-by-Room Count-Up ({countUpRows.length})
         </button>
         <button
           className={`btn btn-sm ${activeTab === 'spec' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('spec')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
         >
           <Sliders size={14} /> 2. Tag Specification & Accessories ({uniqueTags.length})
         </button>
         <button
           className={`btn btn-sm ${activeTab === 'summary' ? 'btn-primary' : 'btn-ghost'}`}
           onClick={() => setActiveTab('summary')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
         >
           <Grid size={14} /> 3. Summary & Takeoff Matrix
         </button>
       </div>
 
-      {/* TAB 1: COUNT-UP */}
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 1: COUNT-UP (SLEEK SPREADSHEET DATA GRID - NO BLOCKS) */}
+      {/* ------------------------------------------------------------- */}
       {activeTab === 'countup' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          
+          {/* TOOLBAR */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-xs" onClick={() => handleAddRow()} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Plus size={12} /> Add Row
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <button 
+                className="btn btn-primary btn-xs" 
+                onClick={() => handleAddRow()} 
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+              >
+                <Plus size={13} /> Add Row
               </button>
               <button className="btn btn-secondary btn-xs" onClick={() => handleAddMultipleRows(5)}>
                 + Add 5 Rows
@@ -693,8 +968,9 @@ export default function TakeoffSpecEngine({
               )}
             </div>
 
+            {/* SEARCH & FLOOR FILTER */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px' }}>
                 <Search size={12} style={{ color: 'var(--text-secondary)', marginRight: '6px' }} />
                 <input 
                   type="text" 
@@ -721,127 +997,233 @@ export default function TakeoffSpecEngine({
             </div>
           </div>
 
-          <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflowX: 'auto', background: 'var(--bg-card)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+          {/* SPREADSHEET TABLE: BORDERLESS SEAMLESS CELLS */}
+          <div style={{ 
+            border: '1px solid var(--border)', 
+            borderRadius: '8px', 
+            overflowX: 'auto', 
+            background: 'var(--bg-primary)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+          }}>
+            <datalist id="common-rooms-list">
+              {COMMON_ROOM_SUGGESTIONS.map(r => <option key={r} value={r} />)}
+            </datalist>
+            <datalist id="floor-levels-list">
+              {FLOOR_LEVEL_SUGGESTIONS.map(f => <option key={f} value={f} />)}
+            </datalist>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', tableLayout: 'fixed' }}>
               <thead>
-                <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                  <th style={{ padding: '8px 12px', width: '40px' }}>#</th>
-                  <th style={{ padding: '8px 12px', width: '120px' }}>Plan Tag / Code</th>
-                  <th style={{ padding: '8px 12px', width: '130px' }}>Floor Level</th>
-                  <th style={{ padding: '8px 12px', minWidth: '180px' }}>Room / Area</th>
-                  <th style={{ padding: '8px 12px', width: '90px' }}>Quantity</th>
-                  <th style={{ padding: '8px 12px' }}>Mounting & Notes</th>
-                  <th style={{ padding: '8px 12px', width: '140px' }}>Catalog Mapping</th>
-                  <th style={{ padding: '8px 12px', width: '80px', textAlign: 'center' }}>Actions</th>
+                <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
+                  <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
+                  <th style={{ padding: '8px 10px', width: '130px' }}>Plan Tag / Code</th>
+                  <th style={{ padding: '8px 10px', width: '140px' }}>Floor Level</th>
+                  <th style={{ padding: '8px 10px', width: '220px' }}>Room / Area</th>
+                  <th style={{ padding: '8px 10px', width: '90px', textAlign: 'center' }}>Quantity</th>
+                  <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
+                  <th style={{ padding: '8px 10px', width: '180px' }}>Catalog Mapping</th>
+                  <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredCountUpRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No count-up entries found. Click <strong>+ Add Row</strong> or <strong>📋 Paste from Excel / CSV</strong> to begin your fixture takeoff.
+                    <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No count-up lines recorded. Click <strong>+ Add Row</strong> or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
                     </td>
                   </tr>
                 ) : (
                   filteredCountUpRows.map((row, index) => {
                     const tag = (row.tag || '').trim().toUpperCase();
-                    const isConfigured = specifications[tag]?.product;
+                    const spec = specifications[tag];
+                    const isConfigured = Boolean(spec?.product);
 
                     return (
-                      <tr key={row.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 12px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                      <tr 
+                        key={row.id} 
+                        style={{ 
+                          borderBottom: '1px solid var(--border)',
+                          transition: 'background 0.1s ease'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        {/* INDEX */}
+                        <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>
                           {index + 1}
                         </td>
                         
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* TAG INPUT */}
+                        <td style={{ padding: '4px 8px' }}>
                           <input 
+                            ref={index === filteredCountUpRows.length - 1 ? newRowTagInputRef : null}
                             type="text" 
-                            className="input input-xs"
+                            data-row-index={index}
+                            data-field="tag"
                             value={row.tag} 
                             placeholder="e.g. DL1"
                             onChange={e => handleUpdateRow(row.id, 'tag', e.target.value)}
+                            onKeyDown={e => handleKeyDown(e, index, 'tag')}
                             style={{ 
                               width: '100%', 
                               fontWeight: 700, 
                               fontFamily: 'monospace', 
                               color: 'var(--text-info)',
-                              textTransform: 'uppercase' 
+                              textTransform: 'uppercase',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              outline: 'none',
+                              fontSize: '12px'
                             }}
+                            onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                            onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
                         </td>
 
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* FLOOR INPUT */}
+                        <td style={{ padding: '4px 8px' }}>
                           <input 
                             type="text" 
-                            className="input input-xs"
+                            data-row-index={index}
+                            data-field="floor"
                             value={row.floor} 
                             placeholder="Ground"
+                            list="floor-levels-list"
                             onChange={e => handleUpdateRow(row.id, 'floor', e.target.value)}
-                            style={{ width: '100%' }}
-                            list={`floors-list-${row.id}`}
+                            onKeyDown={e => handleKeyDown(e, index, 'floor')}
+                            style={{ 
+                              width: '100%',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              outline: 'none',
+                              fontSize: '12px',
+                              color: 'var(--text-primary)'
+                            }}
+                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                            onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
-                          <datalist id={`floors-list-${row.id}`}>
-                            <option value="Basement" />
-                            <option value="Ground" />
-                            <option value="First Floor" />
-                            <option value="Second Floor" />
-                            <option value="Roof / Terrace" />
-                            <option value="Exterior / Garden" />
-                          </datalist>
                         </td>
 
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* ROOM / AREA INPUT (WITH AUTOCOMPLETE) */}
+                        <td style={{ padding: '4px 8px' }}>
                           <input 
                             type="text" 
-                            className="input input-xs"
+                            data-row-index={index}
+                            data-field="area"
                             value={row.area} 
                             placeholder="e.g. Kitchen, Master Bedroom"
+                            list="common-rooms-list"
                             onChange={e => handleUpdateRow(row.id, 'area', e.target.value)}
-                            style={{ width: '100%' }}
+                            onKeyDown={e => handleKeyDown(e, index, 'area')}
+                            style={{ 
+                              width: '100%',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              outline: 'none',
+                              fontSize: '12px',
+                              color: 'var(--text-primary)'
+                            }}
+                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                            onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
                         </td>
 
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* QUANTITY INPUT */}
+                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
                           <input 
                             type="number" 
                             min="1"
-                            className="input input-xs"
+                            data-row-index={index}
+                            data-field="qty"
                             value={row.qty} 
                             onChange={e => handleUpdateRow(row.id, 'qty', e.target.value)}
-                            style={{ width: '100%', fontWeight: 600, textAlign: 'right' }}
+                            onKeyDown={e => handleKeyDown(e, index, 'qty')}
+                            style={{ 
+                              width: '100%', 
+                              fontWeight: 700, 
+                              textAlign: 'center',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              outline: 'none',
+                              fontSize: '12.5px',
+                              color: 'var(--text-primary)'
+                            }}
+                            onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                            onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
                         </td>
 
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* NOTES INPUT */}
+                        <td style={{ padding: '4px 8px' }}>
                           <input 
                             type="text" 
-                            className="input input-xs"
+                            data-row-index={index}
+                            data-field="notes"
                             value={row.notes} 
-                            placeholder="e.g. Recessed 2.7m ceiling"
+                            placeholder="e.g. Recessed 2.7m ceiling, beam angle 38°"
                             onChange={e => handleUpdateRow(row.id, 'notes', e.target.value)}
-                            style={{ width: '100%', fontSize: '11px' }}
+                            onKeyDown={e => handleKeyDown(e, index, 'notes')}
+                            style={{ 
+                              width: '100%', 
+                              fontSize: '11.5px',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              outline: 'none',
+                              color: 'var(--text-secondary)'
+                            }}
+                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                            onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
                         </td>
 
-                        <td style={{ padding: '6px 12px' }}>
+                        {/* CATALOG MAPPING STATUS */}
+                        <td style={{ padding: '4px 8px' }}>
                           {isConfigured ? (
-                            <span 
-                              style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '4px', 
-                                color: 'var(--text-success)', 
-                                fontSize: '11px',
-                                background: 'rgba(16, 185, 129, 0.1)',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => setActiveTab('spec')}
-                              title="Mapped! Click to view/edit specification"
-                            >
-                              <CheckCircle size={12} /> {specifications[tag].product.sku || 'Mapped'}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span 
+                                style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '4px', 
+                                  color: 'var(--text-success)', 
+                                  fontSize: '11px',
+                                  background: 'rgba(16, 185, 129, 0.1)',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '120px'
+                                }}
+                                onClick={() => setActiveTab('spec')}
+                                title="Mapped! Click to view/edit specification"
+                              >
+                                <CheckCircle size={12} /> {spec.product.sku || 'Mapped'}
+                              </span>
+                              <button 
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => {
+                                  setInspectedProduct(spec.product);
+                                  setInspectedForTag(tag);
+                                }}
+                                title="View full fitting specification sheet"
+                                style={{ padding: '2px 4px', color: 'var(--text-info)' }}
+                              >
+                                <Eye size={12} />
+                              </button>
+                            </div>
                           ) : (
                             <span 
                               style={{ 
@@ -853,23 +1235,25 @@ export default function TakeoffSpecEngine({
                                 background: 'rgba(245, 158, 11, 0.1)',
                                 padding: '2px 8px',
                                 borderRadius: '4px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                fontWeight: 500
                               }}
                               onClick={() => openCatalogPicker(tag, 'product')}
                               title="Click to select catalog product for this tag"
                             >
-                              <AlertCircle size={12} /> Unassigned
+                              <Plus size={11} /> Assign Product
                             </span>
                           )}
                         </td>
 
-                        <td style={{ padding: '6px 12px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                        {/* ACTIONS */}
+                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
                             <button 
                               className="btn btn-ghost btn-xs" 
                               onClick={() => handleDuplicateRow(row.id)}
                               title="Duplicate row"
-                              style={{ padding: '2px 4px' }}
+                              style={{ padding: '2px 4px', color: 'var(--text-secondary)' }}
                             >
                               <Copy size={12} />
                             </button>
@@ -891,9 +1275,13 @@ export default function TakeoffSpecEngine({
             </table>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-            <button className="btn btn-ghost btn-xs" onClick={() => handleAddRow()} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Plus size={12} /> Add next row
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+            <button 
+              className="btn btn-ghost btn-xs" 
+              onClick={() => handleAddRow()} 
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-info)' }}
+            >
+              <Plus size={12} /> Add next row (Press Enter in last cell)
             </button>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
               Showing {filteredCountUpRows.length} of {countUpRows.length} total rows
@@ -902,27 +1290,35 @@ export default function TakeoffSpecEngine({
         </div>
       )}
 
-      {/* TAB 2: SPEC */}
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 2: SPECIFICATION & DYNAMIC ACCESSORIES */}
+      {/* ------------------------------------------------------------- */}
       {activeTab === 'spec' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
           <div style={{ 
-            background: 'var(--bg-card)', 
+            background: 'var(--bg-secondary)', 
             border: '1px solid var(--border)', 
-            borderRadius: '6px', 
+            borderRadius: '8px', 
             padding: '12px 16px',
             fontSize: '12px',
             color: 'var(--text-secondary)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
           }}>
-            <div>
-              <strong>Plan Code Mapping Engine:</strong> Select a master catalog fitting once for each unique Plan Tag (e.g. <code>DL1</code>). When compiling into the BOQ, every room having this tag will automatically inherit this fixture, pricing, and all attached accessories.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Info size={16} style={{ color: 'var(--text-info)' }} />
+              <div>
+                <strong>Centralized Plan Tag Specification:</strong> Default prices automatically populate from the catalog, and you can <strong>edit Cost, Trade, and Retail prices directly</strong> for this project.
+              </div>
             </div>
             <button 
               className="btn btn-primary btn-xs"
               onClick={() => setShowGenerateModal(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', fontWeight: 600 }}
             >
               <FileSpreadsheet size={12} /> Generate BOQ
             </button>
@@ -933,25 +1329,35 @@ export default function TakeoffSpecEngine({
               No Plan Tags found yet. Head over to <strong>1. Room-by-Room Count-Up</strong> to enter fixture tags first.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))', gap: '16px' }}>
               {uniqueTags.map(tagInfo => {
                 const tag = tagInfo.tag;
                 const spec = specifications[tag];
                 const product = spec ? spec.product : null;
                 const accessories = (spec && spec.accessories) || [];
 
+                const costPrice = spec?.customCost !== undefined ? spec.customCost : (product?.cost_price || 0);
+                const tradePrice = spec?.customTrade !== undefined ? spec.customTrade : (product?.trade_price || 0);
+                const retailPrice = spec?.customRetail !== undefined ? spec.customRetail : (product?.retail_price || 0);
+                
+                const marginPct = retailPrice > 0 
+                  ? Math.round(((retailPrice - costPrice) / retailPrice) * 100)
+                  : 0;
+
                 return (
                   <div 
                     key={tag} 
                     style={{ 
-                      background: 'var(--bg-card)', 
-                      border: product ? '1px solid var(--border)' : '1px dashed var(--border-warning, #f59e0b)', 
-                      borderRadius: '8px', 
+                      background: 'var(--bg-primary)', 
+                      border: product ? '1px solid var(--border)' : '1.5px dashed var(--border-warning, #f59e0b)', 
+                      borderRadius: '10px', 
                       overflow: 'hidden',
                       display: 'flex',
-                      flexDirection: 'column'
+                      flexDirection: 'column',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                     }}
                   >
+                    {/* TAG CARD HEADER */}
                     <div style={{ 
                       background: 'var(--bg-secondary)', 
                       borderBottom: '1px solid var(--border)', 
@@ -965,7 +1371,7 @@ export default function TakeoffSpecEngine({
                           background: 'var(--bg-info)', 
                           color: '#fff', 
                           fontFamily: 'monospace', 
-                          fontWeight: 700, 
+                          fontWeight: 800, 
                           fontSize: '13px', 
                           padding: '3px 8px', 
                           borderRadius: '4px' 
@@ -973,179 +1379,347 @@ export default function TakeoffSpecEngine({
                           {tag}
                         </span>
                         <div>
-                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {tagInfo.totalQty} total fixtures
                           </div>
-                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
                             Across {tagInfo.areasCount} room(s) & {tagInfo.floorsCount} floor(s)
                           </div>
                         </div>
                       </div>
 
-                      {product && (
-                        <button 
-                          className="btn btn-ghost btn-xs" 
-                          onClick={() => handleRemoveProductFromSpec(tag)}
-                          style={{ color: 'var(--text-danger)', fontSize: '11px' }}
-                        >
-                          Clear Mapping
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {product && (
+                          <>
+                            <button
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => {
+                                setCopySourceTag(tag);
+                                setCopyTargetTag('');
+                              }}
+                              title="Copy this fixture and accessories to another tag"
+                              style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <Copy size={11} /> Copy to...
+                            </button>
+                            <button 
+                              className="btn btn-ghost btn-xs" 
+                              onClick={() => handleRemoveProductFromSpec(tag)}
+                              style={{ color: 'var(--text-danger)', fontSize: '11px' }}
+                              title="Remove mapped product"
+                            >
+                              Clear
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
+                    {/* PRODUCT DETAILS & EDITABLE PRICING */}
                     <div style={{ padding: '14px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {product ? (
                         <div style={{ 
-                          background: 'var(--bg-primary)', 
+                          background: 'var(--bg-secondary)', 
                           border: '1px solid var(--border)', 
-                          borderRadius: '6px', 
+                          borderRadius: '8px', 
                           padding: '12px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '8px'
+                          gap: '10px'
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                                {product.brand || 'Catalog Product'} • {product.category || 'Hardware'}
+                          {/* PRODUCT INFO HEADER WITH THUMBNAIL */}
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <div 
+                              style={{ 
+                                width: '64px', 
+                                height: '64px', 
+                                borderRadius: '6px', 
+                                background: 'var(--bg-primary)', 
+                                border: '1px solid var(--border)', 
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => {
+                                setInspectedProduct(product);
+                                setInspectedForTag(tag);
+                              }}
+                              title="Click to view full specifications and photo"
+                            >
+                              {product.image_url ? (
+                                <img 
+                                  src={product.image_url.startsWith('http') ? product.image_url : `${API_BASE}${product.image_url}`} 
+                                  alt={product.name} 
+                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                />
+                              ) : (
+                                <span style={{ fontSize: '18px', opacity: 0.5 }}>📷</span>
+                              )}
+                            </div>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                                    {product.brand || 'Catalog'} • {product.category || 'Hardware'}
+                                  </div>
+                                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                                    {product.sku || product.one_to_one_code}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <button 
+                                    className="btn btn-secondary btn-xs"
+                                    onClick={() => {
+                                      setInspectedProduct(product);
+                                      setInspectedForTag(tag);
+                                    }}
+                                    style={{ fontSize: '10.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    title="Open comprehensive Fitting Specification Sheet"
+                                  >
+                                    <Eye size={11} /> View Specs
+                                  </button>
+                                  <button 
+                                    className="btn btn-ghost btn-xs"
+                                    onClick={() => openCatalogPicker(tag, 'product')}
+                                    style={{ fontSize: '10.5px' }}
+                                  >
+                                    Change
+                                  </button>
+                                </div>
                               </div>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
-                                {product.sku || product.one_to_one_code || 'Product'}
-                              </div>
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {product.client_description || product.name}
                               </div>
                             </div>
-                            <button 
-                              className="btn btn-secondary btn-xs"
-                              onClick={() => openCatalogPicker(tag, 'product')}
-                              style={{ fontSize: '10.5px' }}
-                            >
-                              Change
-                            </button>
                           </div>
 
+                          {/* EDITABLE PRICING SECTION */}
                           <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: 'repeat(3, 1fr)', 
-                            gap: '8px', 
-                            marginTop: '4px',
-                            background: 'var(--bg-secondary)', 
-                            padding: '8px', 
-                            borderRadius: '4px',
-                            fontSize: '11px' 
+                            background: 'var(--bg-primary)', 
+                            border: '1px solid var(--border)', 
+                            borderRadius: '6px', 
+                            padding: '10px 12px'
                           }}>
-                            <div>
-                              <span style={{ color: 'var(--text-secondary)' }}>Cost:</span> <strong>R {Number(product.cost_price || 0).toLocaleString()}</strong>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                              <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                Project Pricing (Editable per Tag)
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 700, 
+                                  color: marginPct < 39 ? 'var(--text-danger)' : 'var(--text-success)' 
+                                }}>
+                                  Margin: {marginPct}%
+                                </span>
+                                <button
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() => handleResetSpecPrices(tag)}
+                                  title="Reset to default catalog pricing"
+                                  style={{ padding: '1px 4px', fontSize: '10px', color: 'var(--text-secondary)' }}
+                                >
+                                  <RotateCcw size={10} /> Reset
+                                </button>
+                              </div>
                             </div>
-                            <div>
-                              <span style={{ color: 'var(--text-secondary)' }}>Trade:</span> <strong>R {Number(product.trade_price || 0).toLocaleString()}</strong>
-                            </div>
-                            <div>
-                              <span style={{ color: 'var(--text-secondary)' }}>Retail:</span> <strong style={{ color: 'var(--text-success)' }}>R {Number(product.retail_price || 0).toLocaleString()}</strong>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                              <div>
+                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Cost Price (R)</label>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  className="input input-xs"
+                                  value={costPrice}
+                                  onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
+                                  style={{ width: '100%', fontWeight: 600, fontSize: '11.5px' }}
+                                />
+                              </div>
+
+                              <div>
+                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Trade Price (R)</label>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  className="input input-xs"
+                                  value={tradePrice}
+                                  onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
+                                  style={{ width: '100%', fontWeight: 600, fontSize: '11.5px' }}
+                                />
+                              </div>
+
+                              <div>
+                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Retail Price (R)</label>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  className="input input-xs"
+                                  value={retailPrice}
+                                  onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
+                                  style={{ width: '100%', fontWeight: 700, color: 'var(--text-success)', fontSize: '11.5px' }}
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          {(product.driver_spec || product.cutout || product.system_power > 0) && (
-                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                              {product.driver_spec && <span>⚡ Driver: <strong>{product.driver_spec}</strong></span>}
-                              {product.cutout && <span>⭕ Cutout: <strong>{product.cutout}</strong></span>}
-                              {product.system_power > 0 && <span>💡 Power: <strong>{product.system_power}W</strong></span>}
+                          {/* TECHNICAL HIGHLIGHTS */}
+                          {(product.driver_spec || product.cutout || product.system_power > 0 || product.kelvin) && (
+                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '2px' }}>
+                              {product.driver_spec && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>⚡ Driver: <strong>{product.driver_spec}</strong></span>}
+                              {product.cutout && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>⭕ Cutout: <strong>{product.cutout}</strong></span>}
+                              {product.system_power > 0 && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>💡 {product.system_power}W</span>}
+                              {product.kelvin && <span style={{ background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>🌡️ {product.kelvin}</span>}
                             </div>
                           )}
                         </div>
                       ) : (
                         <div style={{ 
-                          padding: '20px', 
+                          padding: '28px', 
                           textAlign: 'center', 
                           border: '1px dashed var(--border)', 
-                          borderRadius: '6px',
+                          borderRadius: '8px',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          gap: '8px'
+                          gap: '10px'
                         }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            No master product selected for <strong>{tag}</strong>.
+                          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                            No master fitting assigned to tag <strong>{tag}</strong>.
                           </div>
                           <button 
                             className="btn btn-primary btn-sm"
                             onClick={() => openCatalogPicker(tag, 'product')}
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
                           >
-                            <Search size={13} /> Select Product from Catalog
+                            <Search size={14} /> Browse Catalog & Assign Fitting
                           </button>
                         </div>
                       )}
 
+                      {/* DYNAMIC ACCESSORIES SECTION */}
                       {product && (
-                        <div style={{ marginTop: '6px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+                        <div style={{ marginTop: '4px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Layers size={13} style={{ color: 'var(--text-info)' }} /> Dynamic Accessories ({accessories.length})
                             </span>
                             <button 
                               className="btn btn-ghost btn-xs"
                               onClick={() => openCatalogPicker(tag, 'accessory')}
-                              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: 'var(--text-info)' }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: 'var(--text-info)', fontWeight: 600 }}
                             >
                               <Plus size={11} /> Add Accessory
                             </button>
                           </div>
 
                           {accessories.length === 0 ? (
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', padding: '6px 0' }}>
-                              No accessories attached. Click "+ Add Accessory" if this fixture requires a driver, plaster kit, or optical attachment.
+                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 0' }}>
+                              No accessories attached. Click "+ Add Accessory" to pair a driver, plaster frame, or lens.
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {accessories.map((acc, accIdx) => {
+                                const accCost = acc.customCost !== undefined ? acc.customCost : (acc.cost_price || 0);
+                                const accRetail = acc.customRetail !== undefined ? acc.customRetail : (acc.retail_price || 0);
+
                                 return (
                                   <div 
                                     key={acc.id + '-' + accIdx}
                                     style={{ 
-                                      background: 'var(--bg-primary)', 
+                                      background: 'var(--bg-secondary)', 
                                       border: '1px solid var(--border)', 
-                                      borderRadius: '4px', 
-                                      padding: '6px 8px',
+                                      borderRadius: '6px', 
+                                      padding: '8px 10px',
                                       display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      fontSize: '11px',
-                                      gap: '8px'
+                                      flexDirection: 'column',
+                                      gap: '6px',
+                                      fontSize: '11.5px'
                                     }}
                                   >
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
                                         {acc.sku || acc.name}
                                       </div>
-                                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {acc.name} • Cost: R {Number(acc.cost_price || 0).toLocaleString()} • Ret: R {Number(acc.retail_price || 0).toLocaleString()}
+                                      <button 
+                                        className="btn btn-ghost btn-xs"
+                                        onClick={() => handleRemoveAccessory(tag, accIdx)}
+                                        style={{ padding: '2px 4px', color: 'var(--text-danger)' }}
+                                        title="Remove accessory"
+                                      >
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </div>
+
+                                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                      {acc.name}
+                                    </div>
+
+                                    {/* RATIO & PRICING ROW */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                                      {/* RATIO PRESETS */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Ratio:</span>
+                                        <button 
+                                          className={`btn btn-xs ${acc.ratio === 1.0 ? 'btn-primary' : 'btn-ghost'}`} 
+                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
+                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 1.0)}
+                                        >
+                                          1:1
+                                        </button>
+                                        <button 
+                                          className={`btn btn-xs ${acc.ratio === 0.5 ? 'btn-primary' : 'btn-ghost'}`} 
+                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
+                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 0.5)}
+                                        >
+                                          1:2
+                                        </button>
+                                        <button 
+                                          className={`btn btn-xs ${acc.ratio === 0.25 ? 'btn-primary' : 'btn-ghost'}`} 
+                                          style={{ padding: '1px 5px', fontSize: '9.5px', height: '20px' }}
+                                          onClick={() => handleUpdateAccessoryRatio(tag, accIdx, 0.25)}
+                                        >
+                                          1:4
+                                        </button>
+                                        <input 
+                                          type="number"
+                                          step="0.05"
+                                          value={acc.ratio !== undefined ? acc.ratio : 1.0}
+                                          onChange={e => handleUpdateAccessoryRatio(tag, accIdx, e.target.value)}
+                                          style={{ width: '42px', height: '20px', fontSize: '10.5px', textAlign: 'center' }}
+                                          className="input input-xs"
+                                          title="Custom ratio per fixture"
+                                        />
+                                      </div>
+
+                                      {/* EDITABLE ACC PRICES */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                          <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)' }}>Cost:</span>
+                                          <input 
+                                            type="number"
+                                            value={accCost}
+                                            onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customCost', e.target.value)}
+                                            style={{ width: '56px', height: '20px', fontSize: '10.5px' }}
+                                            className="input input-xs"
+                                          />
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                          <span style={{ fontSize: '9.5px', color: 'var(--text-tertiary)' }}>Ret:</span>
+                                          <input 
+                                            type="number"
+                                            value={accRetail}
+                                            onChange={e => handleUpdateAccessoryPrice(tag, accIdx, 'customRetail', e.target.value)}
+                                            style={{ width: '56px', height: '20px', fontSize: '10.5px', fontWeight: 600, color: 'var(--text-success)' }}
+                                            className="input input-xs"
+                                          />
+                                        </div>
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Ratio:</span>
-                                      <input 
-                                        type="number" 
-                                        step="0.05"
-                                        min="0.01"
-                                        value={acc.ratio !== undefined ? acc.ratio : 1.0}
-                                        onChange={e => handleUpdateAccessoryRatio(tag, accIdx, e.target.value)}
-                                        style={{ width: '48px', height: '22px', fontSize: '11px', textAlign: 'center' }}
-                                        className="input input-xs"
-                                        title="Ratio of accessories per fixture (1.0 = 1:1, 0.25 = 1 per 4 fixtures)"
-                                      />
-                                    </div>
-
-                                    <button 
-                                      className="btn btn-ghost btn-xs"
-                                      onClick={() => handleRemoveAccessory(tag, accIdx)}
-                                      style={{ padding: '2px 4px', color: 'var(--text-danger)' }}
-                                      title="Remove accessory"
-                                    >
-                                      <Trash2 size={11} />
-                                    </button>
                                   </div>
                                 );
                               })}
@@ -1153,6 +1727,7 @@ export default function TakeoffSpecEngine({
                           )}
                         </div>
                       )}
+
                     </div>
                   </div>
                 );
@@ -1162,35 +1737,68 @@ export default function TakeoffSpecEngine({
         </div>
       )}
 
-      {/* TAB 3: SUMMARY MATRIX */}
+      {/* ------------------------------------------------------------- */}
+      {/* TAB 3: SUMMARY & TAKEOFF MATRIX */}
+      {/* ------------------------------------------------------------- */}
       {activeTab === 'summary' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ 
-            background: 'var(--bg-card)', 
-            border: '1px solid var(--border)', 
-            borderRadius: '6px', 
-            padding: '12px 16px',
-            fontSize: '12px',
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div>
-              <strong>Cross-Tabulation Matrix:</strong> Summary of fixture counts mapped across rooms and floor levels.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* FINANCIAL PREVIEW CARDS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures Counted</span>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                {stats.totalQty}
+              </div>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Across {matrixData.length} areas</span>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>
-              Total Fixtures: <span style={{ color: 'var(--text-info)' }}>{stats.totalQty}</span>
+
+            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Cost Total (EX VAT)</span>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                R {Math.round(stats.estimatedCost).toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Fixtures + Accessories</span>
+            </div>
+
+            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Est. Retail Total (EX VAT)</span>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-info)', marginTop: '2px' }}>
+                R {Math.round(stats.estimatedRetail).toLocaleString()}
+              </div>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Before volume discount</span>
+            </div>
+
+            <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: `1px solid ${stats.estimatedMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)'}` }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Estimated Margin</span>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: stats.estimatedMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', marginTop: '2px' }}>
+                {stats.estimatedMargin}%
+              </div>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Baseline target &gt;= 39%</span>
             </div>
           </div>
 
-          <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflowX: 'auto', background: 'var(--bg-card)' }}>
+          {/* MATRIX TOOLBAR */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Cross-Tabulation Matrix (Rooms vs Plan Tags)
+            </span>
+            <button 
+              className="btn btn-secondary btn-xs"
+              onClick={handleExportMatrixCSV}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <Download size={12} /> Export Matrix CSV
+            </button>
+          </div>
+
+          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflowX: 'auto', background: 'var(--bg-primary)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
                   <th style={{ padding: '8px 12px' }}>Floor & Room / Area</th>
                   {uniqueTags.map(ut => (
-                    <th key={ut.tag} style={{ padding: '8px 12px', textAlign: 'center', width: '80px' }}>
+                    <th key={ut.tag} style={{ padding: '8px 12px', textAlign: 'center', width: '85px' }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-info)' }}>{ut.tag}</span>
                     </th>
                   ))}
@@ -1254,7 +1862,9 @@ export default function TakeoffSpecEngine({
         </div>
       )}
 
+      {/* ------------------------------------------------------------- */}
       {/* MODAL: CATALOG SEARCH & PICKER */}
+      {/* ------------------------------------------------------------- */}
       {catalogModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1262,13 +1872,13 @@ export default function TakeoffSpecEngine({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1100
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '720px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
             
-            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-              <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600 }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
+              <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 700 }}>
                 <Search size={16} style={{ color: 'var(--text-info)' }} /> 
                 {catalogTargetMode === 'product' ? (
-                  <span>Select Master Fixture for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                  <span>Select Master Fitting for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
                 ) : (
                   <span>Add Accessory for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
                 )}
@@ -1278,35 +1888,32 @@ export default function TakeoffSpecEngine({
               </button>
             </div>
 
+            {/* SEARCH & WORKING CATEGORY FILTER BAR */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', gap: '10px' }}>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px' }}>
                 <Search size={14} style={{ color: 'var(--text-secondary)', marginRight: '8px' }} />
                 <input 
                   type="text" 
                   autoFocus
-                  placeholder="Search catalog by code, name, brand, or spec..."
+                  placeholder="Search catalog by code, name, brand, or specs..."
                   value={catalogSearch}
                   onChange={e => setCatalogSearch(e.target.value)}
-                  style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '12px' }}
+                  style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '12.5px' }}
                 />
               </div>
               <select 
                 className="select select-sm"
                 value={catalogCategory}
                 onChange={e => setCatalogCategory(e.target.value)}
-                style={{ width: '150px', fontSize: '12px' }}
+                style={{ width: '180px', fontSize: '12px' }}
               >
-                <option value="All">All Categories</option>
-                <option value="Downlight">Downlight</option>
-                <option value="Spotlight">Spotlight</option>
-                <option value="Linear">Linear</option>
-                <option value="Pendant">Pendant</option>
-                <option value="Outdoor">Outdoor</option>
-                <option value="Track">Track</option>
-                <option value="Accessory">Accessory / Driver</option>
+                {CATEGORY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
 
+            {/* RESULTS LIST */}
             <div style={{ padding: '14px 18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {catalogLoading ? (
                 <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
@@ -1321,24 +1928,55 @@ export default function TakeoffSpecEngine({
                 catalogResults.map(prod => (
                   <div 
                     key={prod.id}
-                    onClick={() => handleSelectCatalogItem(prod)}
                     style={{ 
                       background: 'var(--bg-primary)', 
                       border: '1px solid var(--border)', 
-                      borderRadius: '6px', 
+                      borderRadius: '8px', 
                       padding: '10px 14px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      cursor: 'pointer',
+                      gap: '12px',
                       transition: 'border-color 0.15s ease'
                     }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-info)'}
                     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
                   >
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
+                    {/* THUMBNAIL PHOTO */}
+                    <div 
+                      style={{ 
+                        width: '48px', 
+                        height: '48px', 
+                        borderRadius: '6px', 
+                        background: 'var(--bg-secondary)', 
+                        border: '1px solid var(--border)', 
+                        overflow: 'hidden', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        flexShrink: 0,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        setInspectedProduct(prod);
+                        setInspectedForTag(catalogTargetTag);
+                      }}
+                      title="Click to view full specifications and photo"
+                    >
+                      {prod.image_url ? (
+                        <img 
+                          src={prod.image_url.startsWith('http') ? prod.image_url : `${API_BASE}${prod.image_url}`} 
+                          alt={prod.name} 
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: '16px', opacity: 0.5 }}>📷</span>
+                      )}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
+                        <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '13px' }}>
                           {prod.sku || prod.one_to_one_code || 'PROD'}
                         </span>
                         {prod.brand && (
@@ -1362,11 +2000,33 @@ export default function TakeoffSpecEngine({
                       )}
                     </div>
 
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-success)' }}>
-                        R {Number(prod.retail_price || 0).toLocaleString()}
+                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)' }}>
+                          R {Number(prod.retail_price || 0).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                          Cost: R {Number(prod.cost_price || 0).toLocaleString()}
+                        </div>
                       </div>
-                      <button className="btn btn-primary btn-xs" style={{ fontSize: '10.5px', pointerEvents: 'none' }}>
+
+                      <button 
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => {
+                          setInspectedProduct(prod);
+                          setInspectedForTag(catalogTargetTag);
+                        }}
+                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                        title="Inspect full specifications before selecting"
+                      >
+                        <Eye size={12} /> View
+                      </button>
+
+                      <button 
+                        className="btn btn-primary btn-xs"
+                        onClick={() => handleSelectCatalogItem(prod)}
+                        style={{ fontSize: '11px', fontWeight: 600 }}
+                      >
                         Select
                       </button>
                     </div>
@@ -1384,7 +2044,261 @@ export default function TakeoffSpecEngine({
         </div>
       )}
 
-      {/* MODAL: BULK PASTE */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: FULL FITTING SPECIFICATIONS PREVIEW (BEFORE / AFTER) */}
+      {/* ------------------------------------------------------------- */}
+      {inspectedProduct && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1200
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '920px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+            
+            <div className="card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  📖 Fitting Specifications: {inspectedProduct.name || inspectedProduct.sku}
+                </span>
+                {inspectedProduct.one_to_one_code && (
+                  <span className="badge b-info" style={{ fontSize: '11px', padding: '2px 8px', fontFamily: 'monospace', fontWeight: 700 }}>
+                    {inspectedProduct.one_to_one_code}
+                  </span>
+                )}
+                <span className="badge b-ghost" style={{ fontSize: '11px', padding: '2px 6px', fontFamily: 'monospace' }}>
+                  SKU: {inspectedProduct.sku}
+                </span>
+                <span className={`badge ${inspectedProduct.selection?.toLowerCase().includes('non') ? 'b-ghost' : 'b-success'}`} style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 700 }}>
+                  {inspectedProduct.selection || 'Selection'}
+                </span>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setInspectedProduct(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="card-body" style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Description Heading */}
+              {inspectedProduct.client_description && (
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Client Specification Description</span>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                    {inspectedProduct.client_description}
+                  </div>
+                </div>
+              )}
+
+              {/* DUAL COLUMN: Visuals on Left, Specs on Right */}
+              <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '18px' }}>
+                
+                {/* Visual Assets */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '8px', textAlign: 'left' }}>
+                      📷 Product Visual Asset
+                    </span>
+                    <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                      {inspectedProduct.image_url ? (
+                        <img
+                          src={inspectedProduct.image_url.startsWith('http') ? inspectedProduct.image_url : `${API_BASE}${inspectedProduct.image_url}`}
+                          alt={inspectedProduct.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-tertiary)' }}>
+                          <span style={{ fontSize: '28px', display: 'block', marginBottom: '4px', opacity: 0.6 }}>📷</span>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>No Visual Photo Available</div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {inspectedProduct.family || inspectedProduct.category || 'Catalog Spec'}
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: '8px' }}>
+                      📐 Technical / CAD Drawing
+                    </span>
+                    <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--bg-secondary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                      {inspectedProduct.technical_image_url ? (
+                        <img
+                          src={inspectedProduct.technical_image_url.startsWith('http') ? inspectedProduct.technical_image_url : `${API_BASE}${inspectedProduct.technical_image_url}`}
+                          alt={`${inspectedProduct.name} CAD`}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-tertiary)' }}>
+                          <span style={{ fontSize: '28px', display: 'block', marginBottom: '4px', opacity: 0.6 }}>📐</span>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>No CAD Drawing</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {(inspectedProduct.qr_link || inspectedProduct.spec_sheet_url) && (
+                    <a 
+                      href={inspectedProduct.qr_link || inspectedProduct.spec_sheet_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="btn btn-outline" 
+                      style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', padding: '8px' }}
+                    >
+                      <FileText size={14} color="var(--text-info)" /> Open Official Spec Sheet (PDF) ↗
+                    </a>
+                  )}
+                </div>
+
+                {/* Technical Details */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      💡 Optical & Fitting Performance
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Power</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {inspectedProduct.system_power ? `${inspectedProduct.system_power} W` : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Kelvin (CCT)</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {inspectedProduct.kelvin || '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Color Rendering</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {inspectedProduct.cri ? (String(inspectedProduct.cri).toUpperCase().startsWith('CRI') ? inspectedProduct.cri : `CRI ${inspectedProduct.cri}`) : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Beam Angle</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {inspectedProduct.beam_angle || '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>IP Rating</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {inspectedProduct.ip_rating ? (String(inspectedProduct.ip_rating).toUpperCase().startsWith('IP') || String(inspectedProduct.ip_rating).toLowerCase().includes('non') ? inspectedProduct.ip_rating : `IP${inspectedProduct.ip_rating}`) : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--bg-secondary)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Cutout</span>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px', fontFamily: 'monospace' }}>
+                          {inspectedProduct.cutout || '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: 'var(--text-warning)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      ⚡ Control, Dimming & Light Source
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11.5px' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Brand:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inspectedProduct.brand || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Dimmable:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inspectedProduct.dimmable || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Dimming Protocol:</span>
+                        <div style={{ fontWeight: 700, color: 'var(--text-info)' }}>{inspectedProduct.dimming_protocol || 'On-Off'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Driver Included:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inspectedProduct.driver_incl || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Light Source:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inspectedProduct.light_source_incl || '—'}</div>
+                      </div>
+                      <div>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Finish / Color:</span>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{inspectedProduct.color || '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      🌊 Wetworks & Installation Constraints
+                    </h4>
+                    <div style={{ background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '10px 12px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                      {inspectedProduct.wetworks ? inspectedProduct.wetworks : 'No special wetworks or installation constraints recorded.'}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Financial & Stock Details */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', background: 'rgba(24, 95, 165, 0.04)', padding: '14px 18px', borderRadius: '10px', border: '1px solid rgba(24, 95, 165, 0.15)' }}>
+                <div>
+                  <h4 style={{ fontSize: '10.5px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, marginBottom: '8px' }}>Default Catalog Pricing</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '12px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Cost Price:</span>
+                      <div style={{ fontWeight: 600 }}>R {Number(inspectedProduct.cost_price || 0).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Trade Price:</span>
+                      <div style={{ fontWeight: 600 }}>R {Number(inspectedProduct.trade_price || 0).toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Retail Price:</span>
+                      <div style={{ fontWeight: 700, color: 'var(--text-info)' }}>R {Number(inspectedProduct.retail_price || 0).toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 style={{ fontSize: '10.5px', textTransform: 'uppercase', color: 'var(--text-info)', fontWeight: 700, marginBottom: '8px' }}>Inventory Summary</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Stock Level:</span>
+                      <div style={{ fontWeight: 700, color: inspectedProduct.stock_level > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
+                        {inspectedProduct.stock_level > 0 ? `${inspectedProduct.stock_level} In Stock` : 'Ordered'}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Lead Time:</span>
+                      <div style={{ fontWeight: 600 }}>{inspectedProduct.lead_time || '4 weeks'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="card-foot" style={{ padding: '12px 20px', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setInspectedProduct(null)}>Close</button>
+              {inspectedForTag && (
+                <button 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => handleSelectCatalogItem(inspectedProduct, inspectedForTag)}
+                  style={{ fontWeight: 700 }}
+                >
+                  ✓ Select Fitting for Tag {inspectedForTag}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: BULK PASTE FROM EXCEL */}
+      {/* ------------------------------------------------------------- */}
       {showPasteModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1392,9 +2306,9 @@ export default function TakeoffSpecEngine({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1100
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '580px', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-            <div className="card-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '580px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+            <div className="card-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <FileText size={16} style={{ color: 'var(--text-info)' }} /> Paste Count-Up from Excel / CSV
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowPasteModal(false)}>
@@ -1404,7 +2318,7 @@ export default function TakeoffSpecEngine({
 
             <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Copy columns from your drawing schedule or Excel sheet and paste below. Expected order:
+                Copy columns from your drawing schedule or Excel sheet and paste below:
               </p>
               <div style={{ background: 'var(--bg-primary)', padding: '6px 10px', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-info)' }}>
                 [Tag] &lt;tab&gt; [Floor] &lt;tab&gt; [Room] &lt;tab&gt; [Qty] &lt;tab&gt; [Notes]
@@ -1420,13 +2334,59 @@ export default function TakeoffSpecEngine({
 
             <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowPasteModal(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" onClick={handleProcessPaste}>Import Rows</button>
+              <button className="btn btn-primary btn-sm" onClick={handleProcessPaste} style={{ fontWeight: 600 }}>Import Rows</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: GENERATE INTO BOQ CONFIRMATION */}
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: COPY SPEC TO ANOTHER TAG */}
+      {/* ------------------------------------------------------------- */}
+      {copySourceTag && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1100
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+            <div className="card-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+              <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Copy size={15} style={{ color: 'var(--text-info)' }} /> Copy Specification from {copySourceTag}
+              </div>
+              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setCopySourceTag(null)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Enter the target plan tag to copy this fitting, pricing, and all attached accessories to:
+              </label>
+              <input 
+                type="text" 
+                placeholder="e.g. DL2, DL3"
+                value={copyTargetTag}
+                onChange={e => setCopyTargetTag(e.target.value.toUpperCase())}
+                style={{ textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700, fontSize: '13px' }}
+                className="input input-sm"
+              />
+            </div>
+
+            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setCopySourceTag(null)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" onClick={handleExecuteCopySpec} disabled={!copyTargetTag.trim()}>
+                Duplicate Spec
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: GENERATE INTO BOQ SPREADSHEET CONFIRMATION */}
+      {/* ------------------------------------------------------------- */}
       {showGenerateModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1434,10 +2394,10 @@ export default function TakeoffSpecEngine({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1100
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '480px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
             
             <div className="card-head" style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
-              <div className="card-title" style={{ fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+              <div className="card-title" style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
                 <FileSpreadsheet size={16} style={{ color: 'var(--text-success)' }} /> Compile into BOQ Spreadsheet
               </div>
               <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setShowGenerateModal(false)}>
@@ -1447,10 +2407,11 @@ export default function TakeoffSpecEngine({
 
             <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                This will expand your <strong>{countUpRows.length} count-up entries</strong> into room-by-room items and accessories, then populate them into the BOQ Spreadsheet.
+                This will expand your <strong>{countUpRows.length} count-up entries</strong> into room-by-room items and accessories with your customized pricing, then populate them into the BOQ Spreadsheet.
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
+              {/* GENERATION MODE SELECTION */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
                   <input 
                     type="radio" 
@@ -1474,6 +2435,16 @@ export default function TakeoffSpecEngine({
                 </label>
               </div>
 
+              {/* ROOM SPACERS TOGGLE */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
+                <input 
+                  type="checkbox" 
+                  checked={includeRoomSpacers} 
+                  onChange={e => setIncludeRoomSpacers(e.target.checked)}
+                />
+                <span>Automatically insert Room Header Spacers (e.g. <code>— GROUND: KITCHEN —</code>)</span>
+              </label>
+
               {stats.pendingTags > 0 && (
                 <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', padding: '10px 12px', fontSize: '11.5px', color: 'var(--text-warning)' }}>
                   ⚠️ You have <strong>{stats.pendingTags} unassigned plan tag(s)</strong>. They will be generated as placeholder rows with their plan tag so no counts are lost.
@@ -1492,7 +2463,7 @@ export default function TakeoffSpecEngine({
                   background: 'linear-gradient(135deg, #10b981, #059669)', 
                   borderColor: '#059669', 
                   color: '#fff',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px'

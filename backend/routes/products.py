@@ -191,8 +191,11 @@ def list_products(
             (Product.family.ilike(f"%{q}%"))
         )
         
-    if category and category != 'All Categories':
-        query = query.filter(Product.category == category)
+    if category and category not in ('All', 'All Categories', ''):
+        query = query.filter(
+            (Product.category.ilike(f"%{category}%")) |
+            (Product.fitting_type.ilike(f"%{category}%"))
+        )
 
     if supplier and supplier != 'All Suppliers':
         query = query.filter((Product.supplier_name == supplier) | (Product.brand == supplier))
@@ -887,8 +890,11 @@ def bulk_repricing_shift(payload: BulkRepricingPayload, db: Session = Depends(ge
     query = db.query(Product).filter(Product.is_active == True)
     if payload.supplier_name and payload.supplier_name != "All Suppliers":
         query = query.filter(Product.supplier_name == payload.supplier_name)
-    if payload.category and payload.category != "All Categories":
-        query = query.filter(Product.category == payload.category)
+    if payload.category and payload.category not in ("All", "All Categories", ""):
+        query = query.filter(
+            (Product.category.ilike(f"%{payload.category}%")) |
+            (Product.fitting_type.ilike(f"%{payload.category}%"))
+        )
 
     target_products = query.all()
     if not target_products:
