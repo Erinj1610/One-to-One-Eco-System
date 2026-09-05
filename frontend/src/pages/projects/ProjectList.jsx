@@ -8,6 +8,7 @@ import {
   FileText, ShoppingBag, FolderGit, Calendar, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSidebar';
+import MobileProjectsViewer from '../../components/mobile/MobileProjectsViewer';
 
 
 export function getOrderDynamicStatus(o) {
@@ -98,9 +99,16 @@ export function calculateProjectStageAndProgress(p) {
 }
 
 export default function ProjectList() {
-  const { projects, addProject, contacts, getModuleName, bulkDeleteProjects } = useStore();
+  const { projects, addProject, contacts, getModuleName, bulkDeleteProjects, refreshProjects } = useStore();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Bulk Selection States
   const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -436,6 +444,14 @@ export default function ProjectList() {
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
 
+
+  if (isMobile) {
+    return (
+      <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+        <MobileProjectsViewer projects={projects} onRefresh={refreshProjects} />
+      </div>
+    );
+  }
 
   return (
     <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>

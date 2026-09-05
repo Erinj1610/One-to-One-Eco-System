@@ -476,4 +476,41 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea {
     border-radius: 2px;
     margin: 0 auto 16px;
   }
+
+  /* Universal Mobile Responsive Safeguards */
+  .card, .card-body, .table-responsive {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .stat-grid-4, .stat-grid-3, .stat-grid-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .stat {
+    padding: 10px 12px !important;
+  }
+
+  .stat-value {
+    font-size: 16px !important;
+  }
+
+  .row-2, .row-3 {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .crm-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  div[style*="1fr 340px"],
+  div[style*="1fr 50px"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+    width: 100% !important;
+  }
 }
