@@ -11,6 +11,7 @@ from models.orm_models import Project, Client, Order, DesignFee
 from services.google_drive_service import (
     ensure_project_drive_tree,
     ensure_order_drive_tree,
+    ensure_design_drive_tree,
     ensure_client_folder,
     get_master_drive_tree,
     create_custom_folder,
@@ -99,6 +100,56 @@ def get_order_folders(order_id: str, db: Session = Depends(get_db)):
         return folders
     except Exception as e:
         logger.error(f"Error ensuring drive tree for order {clean_id}: {e}", exc_info=True)
+        return []
+
+
+# --- 2b. Get Folder Tree Scoped to a Design Package ---
+@router.get("/design/{design_id}/folders")
+def get_design_folders(design_id: str, db: Session = Depends(get_db)):
+    """
+    Returns Google Drive folders scoped directly to a Design Package.
+    Auto-provisions: [Client] / [Project] / Designs / [Fee Ref - Name]
+    along with the 5 standard subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards).
+    """
+    clean_id = (design_id or "").strip()
+    if not clean_id:
+        return []
+
+    design = None
+    if clean_id.isdigit():
+        design = db.query(DesignFee).filter(DesignFee.id == int(clean_id)).first()
+    if not design:
+        design = db.query(DesignFee).filter(func.lower(DesignFee.fee_ref) == clean_id.lower()).first()
+
+    client_name = "General Clients"
+    project_name = "General Project"
+    fee_ref = clean_id
+    design_name = ""
+
+    if design:
+        fee_ref = design.fee_ref or f"DF-{design.id}"
+        design_name = design.name or ""
+        
+        project = None
+        if design.project_id:
+            project = db.query(Project).filter(Project.id == design.project_id).first()
+        elif design.project_key:
+            project = db.query(Project).filter(func.lower(Project.project_key) == design.project_key.lower()).first()
+
+        if project:
+            project_name = project.name
+            client_name = project.client_name or "General Clients"
+
+    try:
+        folders = ensure_design_drive_tree(
+            client_name=client_name,
+            project_name=project_name,
+            fee_ref=fee_ref,
+            design_name=design_name
+        )
+        return folders
+    except Exception as e:
+        logger.error(f"Error ensuring drive tree for design {clean_id}: {e}", exc_info=True)
         return []
 
 

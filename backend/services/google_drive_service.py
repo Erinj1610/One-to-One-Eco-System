@@ -33,9 +33,11 @@ ORDER_STANDARD_SUBFOLDERS = [
 
 # Design-Level Standard Subfolders
 DESIGN_STANDARD_SUBFOLDERS = [
-    {"name": "01 - Proposals & Contracts", "sort": 1},
-    {"name": "02 - Moodboards & Sketches", "sort": 2},
-    {"name": "03 - Presentation Decks", "sort": 3},
+    {"name": "01 - Drawings & CAD", "sort": 1},
+    {"name": "02 - Project Specifications", "sort": 2},
+    {"name": "03 - Site Photos & Snags", "sort": 3},
+    {"name": "04 - Proposals & Contracts", "sort": 4},
+    {"name": "05 - Moodboards & Presentations", "sort": 5},
 ]
 
 
@@ -201,6 +203,93 @@ def ensure_order_drive_tree(
     return folder_nodes
 
 
+def ensure_design_drive_tree(
+    client_name: str, 
+    project_name: str, 
+    fee_ref: str, 
+    design_name: str = ""
+) -> List[Dict[str, Any]]:
+    """
+    Ensures the path down to a specific Design Package:
+    Root -> Client -> Project -> Designs -> [Fee Ref - Design Name]
+    Plus ensures the 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards).
+    Returns all folder nodes scoped to this design package.
+    """
+    drive_service = get_drive_service()
+    clean_client = (client_name or "General Clients").strip()
+    clean_project = (project_name or "General Project").strip()
+    
+    name_part = f" - {design_name.strip()}" if design_name and design_name.strip() else ""
+    design_folder_name = f"{fee_ref.strip()}{name_part}"
+
+    # 1. Ensure Client & Project & Designs parent folders
+    client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
+    designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder['id'])
+    
+    # 2. Ensure Design Folder
+    design_folder = get_or_create_drive_folder(drive_service, design_folder_name, designs_root['id'])
+    design_folder_id = design_folder['id']
+
+    # 3. Query existing subfolders in this Design
+    existing = get_subfolders(drive_service, design_folder_id)
+    existing_by_name = {f['name'].lower().strip(): f for f in existing}
+
+    folder_nodes = [
+        {
+            "id": design_folder_id,
+            "gdrive_folder_id": design_folder_id,
+            "name": design_folder['name'],
+            "parent_id": None, # Acts as root in design-scoped view
+            "type": "design_root",
+            "sort_order": 0,
+            "webViewLink": design_folder.get('webViewLink', '')
+        }
+    ]
+
+    # 4. Ensure 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards)
+    for starter in DESIGN_STANDARD_SUBFOLDERS:
+        s_name = starter["name"]
+        match_key = s_name.lower().strip()
+        matched = existing_by_name.get(match_key)
+        if not matched:
+            stripped = re.sub(r'^\d+\s*-\s*', '', match_key)
+            for ex_name, ex_f in existing_by_name.items():
+                if stripped in ex_name or ex_name in stripped:
+                    matched = ex_f
+                    break
+
+        if not matched:
+            matched = get_or_create_drive_folder(drive_service, s_name, design_folder_id)
+            existing_by_name[match_key] = matched
+
+        folder_nodes.append({
+            "id": matched['id'],
+            "gdrive_folder_id": matched['id'],
+            "name": matched['name'],
+            "parent_id": design_folder_id,
+            "type": "design_sub",
+            "sort_order": starter["sort"],
+            "webViewLink": matched.get('webViewLink', '')
+        })
+
+    # 5. Include any custom folders created inside the design
+    known_ids = {n['id'] for n in folder_nodes}
+    for ex in existing:
+        if ex['id'] not in known_ids:
+            folder_nodes.append({
+                "id": ex['id'],
+                "gdrive_folder_id": ex['id'],
+                "name": ex['name'],
+                "parent_id": design_folder_id,
+                "type": "custom",
+                "sort_order": 99,
+                "webViewLink": ex.get('webViewLink', '')
+            })
+
+    return folder_nodes
+
+
 def ensure_project_drive_tree(
     client_name: str, 
     project_name: str, 
@@ -292,9 +381,10 @@ def ensure_project_drive_tree(
                 df_matched = get_or_create_drive_folder(drive_service, target_name, designs_root_id)
                 existing_designs_by_name[df_key] = df_matched
 
+            df_id = df_matched['id']
             folder_nodes.append({
-                "id": df_matched['id'],
-                "gdrive_folder_id": df_matched['id'],
+                "id": df_id,
+                "gdrive_folder_id": df_id,
                 "name": df_matched['name'],
                 "parent_id": designs_root_id,
                 "project_gdrive_id": project_folder_id,
@@ -302,6 +392,50 @@ def ensure_project_drive_tree(
                 "sort_order": 10,
                 "webViewLink": df_matched.get('webViewLink', '')
             })
+
+            # Ensure 5 standard subfolders inside each design package (Drawings, Specs, Site Photos, Proposals, Moodboards)
+            sub_of_df = get_subfolders(drive_service, df_id)
+            sub_of_df_by_name = {sf['name'].lower().strip(): sf for sf in sub_of_df}
+            for starter in DESIGN_STANDARD_SUBFOLDERS:
+                ds_name = starter["name"]
+                ds_key = ds_name.lower().strip()
+                ds_match = sub_of_df_by_name.get(ds_key)
+                if not ds_match:
+                    stripped = re.sub(r'^\d+\s*-\s*', '', ds_key)
+                    for ex_name, ex_f in sub_of_df_by_name.items():
+                        if stripped in ex_name or ex_name in stripped:
+                            ds_match = ex_f
+                            break
+
+                if not ds_match:
+                    ds_match = get_or_create_drive_folder(drive_service, ds_name, df_id)
+                    sub_of_df_by_name[ds_key] = ds_match
+
+                folder_nodes.append({
+                    "id": ds_match['id'],
+                    "gdrive_folder_id": ds_match['id'],
+                    "name": ds_match['name'],
+                    "parent_id": df_id,
+                    "project_gdrive_id": project_folder_id,
+                    "type": "design_sub",
+                    "sort_order": starter["sort"],
+                    "webViewLink": ds_match.get('webViewLink', '')
+                })
+
+            # Include any custom folders under this design package
+            known_sub_ids = {n['id'] for n in folder_nodes}
+            for ex_sub in sub_of_df:
+                if ex_sub['id'] not in known_sub_ids:
+                    folder_nodes.append({
+                        "id": ex_sub['id'],
+                        "gdrive_folder_id": ex_sub['id'],
+                        "name": ex_sub['name'],
+                        "parent_id": df_id,
+                        "project_gdrive_id": project_folder_id,
+                        "type": "custom",
+                        "sort_order": 99,
+                        "webViewLink": ex_sub.get('webViewLink', '')
+                    })
 
     # Include any custom folders under Designs
     known_design_ids = {n['id'] for n in folder_nodes}

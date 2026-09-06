@@ -25,13 +25,15 @@ import {
 import { API_BASE } from '../../api_config';
 
 export default function DriveFileExplorer({
-  scope = 'project', // 'project' | 'order' | 'client' | 'global'
+  scope = 'project', // 'project' | 'order' | 'client' | 'design' | 'global'
   projectId,
   orderId,
   clientId,
+  designId,
   projectName = '',
   clientName = '',
   orderRef = '',
+  designRef = '',
   readOnly = false
 }) {
   const [folders, setFolders] = useState([]);
@@ -69,6 +71,9 @@ export default function DriveFileExplorer({
     if (scope === 'order') {
       if (!orderId) return;
       url = `${API_BASE}/api/documents/order/${orderId}/folders`;
+    } else if (scope === 'design') {
+      if (!designId) return;
+      url = `${API_BASE}/api/documents/design/${designId}/folders`;
     } else if (scope === 'client') {
       if (!clientId) return;
       url = `${API_BASE}/api/documents/client/${clientId}/folders`;
@@ -95,6 +100,7 @@ export default function DriveFileExplorer({
             f.type === 'order_root' || 
             f.type === 'orders_root' || 
             f.type === 'design_root' || 
+            f.type === 'design_package' ||
             f.type === 'client_root' ||
             f.is_client_root
           ) {
@@ -108,6 +114,8 @@ export default function DriveFileExplorer({
           if (!selectedFolder || !safeData.some(f => f.id === selectedFolder.id)) {
             const preferred = (scope === 'order' 
               ? safeData.find(f => f.type === 'order_sub') 
+              : scope === 'design'
+              ? safeData.find(f => f.type === 'design_sub')
               : safeData[0]) || safeData[0];
             handleSelectFolder(preferred);
           }
@@ -125,7 +133,7 @@ export default function DriveFileExplorer({
 
   useEffect(() => {
     loadFolders();
-  }, [scope, projectId, orderId, clientId]);
+  }, [scope, projectId, orderId, clientId, designId]);
 
   // Fetch files when selected folder changes
   const handleSelectFolder = async (folder) => {
@@ -535,6 +543,11 @@ export default function DriveFileExplorer({
               Order: {orderRef || orderId}
             </span>
           )}
+          {scope === 'design' && (
+            <span style={{ fontSize: '11px', color: '#ec4899', background: 'rgba(236, 72, 153, 0.1)', border: '1px solid rgba(236, 72, 153, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              Design: {designRef || designId}
+            </span>
+          )}
           {scope === 'project' && projectName && (
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
               Project: {projectName}
@@ -631,7 +644,7 @@ export default function DriveFileExplorer({
           
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-              {scope === 'order' ? 'Order Folders' : scope === 'client' ? 'Client Folders' : scope === 'global' ? 'All Folders' : 'Project Folders'}
+              {scope === 'order' ? 'Order Folders' : scope === 'design' ? 'Design Folders' : scope === 'client' ? 'Client Folders' : scope === 'global' ? 'All Folders' : 'Project Folders'}
             </span>
             {!readOnly && (
               <button 
