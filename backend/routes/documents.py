@@ -574,19 +574,29 @@ def get_project_folders(project_id: str, db: Session = Depends(get_db)):
         dfs = db.query(DesignFee).filter(
             or_(DesignFee.project_id == project.id, DesignFee.project_key == project.project_key)
         ).all()
-        design_fee_list = [
-            {"id": d.id, "fee_ref": d.fee_ref, "name": d.name}
-            for d in dfs
-        ]
+        design_fee_list = []
+        seen_df = set()
+        for d in dfs:
+            ref = (d.fee_ref or f"DF-{d.id}").strip()
+            nm = (d.name or "").strip()
+            k = (ref.lower(), nm.lower())
+            if k not in seen_df:
+                seen_df.add(k)
+                design_fee_list.append({"id": d.id, "fee_ref": ref, "name": nm})
 
         # Fetch related orders
         ords = db.query(Order).filter(
             or_(Order.project_id == project.id, Order.project_key == project.project_key)
         ).all()
-        order_list = [
-            {"id": o.id, "po_number": o.po_number, "supplier_name": o.supplier_name}
-            for o in ords
-        ]
+        order_list = []
+        seen_ord = set()
+        for o in ords:
+            po = (o.po_number or f"ORD-{o.id}").strip()
+            supp = (o.supplier_name or "").strip()
+            k = (po.lower(), supp.lower())
+            if k not in seen_ord:
+                seen_ord.add(k)
+                order_list.append({"id": o.id, "po_number": po, "supplier_name": supp})
     else:
         client_name = "General Clients"
         project_name = clean_id.replace('-', ' ').replace('_', ' ').title()
