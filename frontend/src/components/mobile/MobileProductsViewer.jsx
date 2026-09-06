@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Package, Box, Tag, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import MobileProductDetailDrawer from './MobileProductDetailDrawer';
+import { API_BASE } from '../../api_config';
 
 export default function MobileProductsViewer({ items = [], onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -90,6 +91,10 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
             const retail = Number(item.retail || item.unitRetail || item.price || 0);
             const location = item.location || 'STOCK';
 
+            const thumb = item.image_url 
+              ? (item.image_url.startsWith('http') ? item.image_url : `${API_BASE}${item.image_url.startsWith('/') ? '' : '/'}${item.image_url}`)
+              : item.image;
+
             return (
               <div
                 key={sku}
@@ -112,12 +117,45 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
                   </div>
                 </div>
 
-                <div>
-                  <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {name}
-                  </h4>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
-                    {brand} {location ? `• Location: ${location}` : ''}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {thumb ? (
+                    <img 
+                      src={thumb} 
+                      alt={sku} 
+                      style={{ 
+                        width: '44px', 
+                        height: '44px', 
+                        objectFit: 'contain', 
+                        borderRadius: '8px', 
+                        background: 'var(--bg-secondary)', 
+                        border: '1px solid var(--border)', 
+                        flexShrink: 0 
+                      }} 
+                    />
+                  ) : (
+                    <div style={{ 
+                      width: '44px', 
+                      height: '44px', 
+                      borderRadius: '8px', 
+                      background: 'var(--bg-secondary)', 
+                      border: '1px solid var(--border)', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      color: 'var(--text-info)', 
+                      flexShrink: 0 
+                    }}>
+                      <Box size={20} />
+                    </div>
+                  )}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {name}
+                    </h4>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {brand} {location ? `• Location: ${location}` : ''}
+                    </div>
                   </div>
                 </div>
 
