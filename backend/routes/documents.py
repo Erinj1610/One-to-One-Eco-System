@@ -349,9 +349,10 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                     db.rollback()
 
             # Ensure native shortcut in client folder pointing to the project in 01 - PROJECTS
-            sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
-            if sc and sc.get('id'):
-                client_shortcuts_by_target[proj_folder_id] = sc
+            if proj_folder_id not in client_shortcuts_by_target:
+                sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
+                if sc and sc.get('id'):
+                    client_shortcuts_by_target[proj_folder_id] = sc
 
             valid_projects.append((proj, proj_folder_id))
             proj_folder_ids.append(proj_folder_id)
@@ -523,7 +524,7 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
         return all_nodes
     except Exception as e:
         logger.error(f"Error ensuring client folder tree for {clean_id}: {e}", exc_info=True)
-        return []
+        raise HTTPException(status_code=500, detail=f"Failed to fetch client folders: {str(e)}")
 
 
 # --- 4. Get Folder Tree Scoped to a Project ---
