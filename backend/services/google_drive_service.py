@@ -290,6 +290,7 @@ def create_drive_shortcut(
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
+        existing = res.get('files', [])
         matched_shortcut = None
         for ex in existing:
             if ex.get('mimeType') == 'application/vnd.google-apps.shortcut':
