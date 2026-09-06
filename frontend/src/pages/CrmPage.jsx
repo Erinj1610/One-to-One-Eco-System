@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import MobileCrmViewer from '../components/mobile/MobileCrmViewer';
+import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import { API_BASE } from '../api_config';
 
 // Date anchor and comparison helpers
@@ -1505,9 +1506,9 @@ export default function CrmPage() {
       {/* Tabs */}
       <div className="card" style={{ marginBottom: '24px' }}>
         <div className="tabs" style={{ borderBottom: 'none', padding: '0 8px' }}>
-          {['overview', 'projects', 'activity', 'financials'].map(tab => (
+          {['overview', 'projects', 'files', 'activity', 'financials'].map(tab => (
             <button key={tab} className={`tab-btn ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-              {tab === 'activity' ? 'Activity Log' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'activity' ? 'Activity Log' : tab === 'files' ? '📁 Drive & Files' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -1899,9 +1900,19 @@ export default function CrmPage() {
                  )}
                </tbody>
              </table>
-          </div>
+           </div>
         )}
 
+        {/* TAB: DRIVE & FILES SCOPED TO THIS CLIENT */}
+        {activeTab === 'files' && (
+          <div className="animation-fade-in" style={{ minHeight: '620px' }}>
+            <DriveFileExplorer
+              scope="client"
+              clientId={selectedClient.id}
+              clientName={selectedClient.name}
+            />
+          </div>
+        )}
 
         {/* TAB 4: ACTIVITY LOG */}
         {activeTab === 'activity' && (

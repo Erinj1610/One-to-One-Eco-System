@@ -25,9 +25,13 @@ import {
 import { API_BASE } from '../../api_config';
 
 export default function DriveFileExplorer({
+  scope = 'project', // 'project' | 'order' | 'client' | 'global'
   projectId,
+  orderId,
+  clientId,
   projectName = '',
   clientName = '',
+  orderRef = '',
   readOnly = false
 }) {
   const [folders, setFolders] = useState([]);
@@ -59,21 +63,53 @@ export default function DriveFileExplorer({
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [renameInputVal, setRenameInputVal] = useState('');
 
-  // Fetch folders for this project
+  // Fetch folders based on current scope
   const loadFolders = async () => {
-    if (!projectId) return;
+    let url = '';
+    if (scope === 'order') {
+      if (!orderId) return;
+      url = `${API_BASE}/api/documents/order/${orderId}/folders`;
+    } else if (scope === 'client') {
+      if (!clientId) return;
+      url = `${API_BASE}/api/documents/client/${clientId}/folders`;
+    } else if (scope === 'global') {
+      url = `${API_BASE}/api/documents/tree`;
+    } else {
+      // project
+      if (!projectId) return;
+      url = `${API_BASE}/api/documents/${projectId}/folders`;
+    }
+
     setFoldersLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/documents/${projectId}/folders`);
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const safeData = Array.isArray(data) ? data : [];
         setFolders(safeData);
 
-        // Auto-select first folder if none selected
+        // Auto-expand special containers
+        const initialExpanded = {};
+        safeData.forEach(f => {
+          if (
+            f.type === 'order_root' || 
+            f.type === 'orders_root' || 
+            f.type === 'design_root' || 
+            f.type === 'client_root' ||
+            f.is_client_root
+          ) {
+            initialExpanded[f.id] = true;
+          }
+        });
+        setExpandedFolders(prev => ({ ...initialExpanded, ...prev }));
+
+        // Auto-select folder if none selected
         if (safeData.length > 0) {
           if (!selectedFolder || !safeData.some(f => f.id === selectedFolder.id)) {
-            handleSelectFolder(safeData[0]);
+            const preferred = (scope === 'order' 
+              ? safeData.find(f => f.type === 'order_sub') 
+              : safeData[0]) || safeData[0];
+            handleSelectFolder(preferred);
           }
         }
       } else {
@@ -89,7 +125,7 @@ export default function DriveFileExplorer({
 
   useEffect(() => {
     loadFolders();
-  }, [projectId]);
+  }, [scope, projectId, orderId, clientId]);
 
   // Fetch files when selected folder changes
   const handleSelectFolder = async (folder) => {
@@ -494,9 +530,24 @@ export default function DriveFileExplorer({
           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
             Google Drive File System
           </span>
-          {projectName && (
+          {scope === 'order' && (
+            <span style={{ fontSize: '11px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              Order: {orderRef || orderId}
+            </span>
+          )}
+          {scope === 'project' && projectName && (
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-              {projectName}
+              Project: {projectName}
+            </span>
+          )}
+          {scope === 'client' && clientName && (
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+              Client: {clientName}
+            </span>
+          )}
+          {scope === 'global' && (
+            <span style={{ fontSize: '11px', color: '#8b5cf6', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+              Company Master Drive
             </span>
           )}
         </div>
@@ -580,17 +631,17 @@ export default function DriveFileExplorer({
           
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-              Project Folders
+              {scope === 'order' ? 'Order Folders' : scope === 'client' ? 'Client Folders' : scope === 'global' ? 'All Folders' : 'Project Folders'}
             </span>
             {!readOnly && (
               <button 
                 className="btn btn-ghost btn-xs" 
                 style={{ padding: '2px 6px', fontSize: '10.5px', display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--text-info)' }}
-                title="Create custom folder at root"
+                title="Create custom folder"
                 onClick={() => {
-                  const rootProjectFolder = folders[0]?.project_gdrive_id;
-                  if (rootProjectFolder) {
-                    setCreatingSubfolderOf(rootProjectFolder);
+                  const rootTarget = selectedFolder?.id || folders[0]?.project_gdrive_id || folders[0]?.id;
+                  if (rootTarget) {
+                    setCreatingSubfolderOf(rootTarget);
                     setNewFolderName('');
                   }
                 }}

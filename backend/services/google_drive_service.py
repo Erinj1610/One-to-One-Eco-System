@@ -16,15 +16,26 @@ SCOPES_DRIVE = [
 # Shared Google Drive Root Folder
 ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 
-# 7 Standard Foundational Starter Folders
-DEFAULT_PROJECT_STARTER_FOLDERS = [
-    {"sort": 1, "name": "01 - Design & Design Fees"},
-    {"sort": 2, "name": "02 - CAD, Layouts & Drawings"},
-    {"sort": 3, "name": "03 - Specifications & Cut Sheets"},
-    {"sort": 4, "name": "04 - Orders, Quotes & BOQs"},
-    {"sort": 5, "name": "05 - Logistics & Deliveries"},
-    {"sort": 6, "name": "06 - Invoices & Financials"},
-    {"sort": 7, "name": "07 - Site Photos & Snags"},
+# Project-Level Standard Starter Folders
+PROJECT_STANDARD_FOLDERS = [
+    {"name": "01 - Drawings & CAD", "sort": 1},
+    {"name": "02 - Project Specifications", "sort": 2},
+    {"name": "03 - Site Photos & Snags", "sort": 3},
+]
+
+# Order-Level Standard Subfolders
+ORDER_STANDARD_SUBFOLDERS = [
+    {"name": "01 - BOQs & Quotations", "sort": 1},
+    {"name": "02 - Supplier POs & Confirmations", "sort": 2},
+    {"name": "03 - Logistics (Delivery Notes & Packing Lists)", "sort": 3},
+    {"name": "04 - Invoices & Proof of Payment", "sort": 4},
+]
+
+# Design-Level Standard Subfolders
+DESIGN_STANDARD_SUBFOLDERS = [
+    {"name": "01 - Proposals & Contracts", "sort": 1},
+    {"name": "02 - Moodboards & Sketches", "sort": 2},
+    {"name": "03 - Presentation Decks", "sort": 3},
 ]
 
 
@@ -49,7 +60,7 @@ def get_or_create_drive_folder(drive_service, folder_name: str, parent_folder_id
     try:
         res = drive_service.files().list(
             q=query,
-            fields="files(id, name, webViewLink)",
+            fields="files(id, name, webViewLink, parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
@@ -61,7 +72,7 @@ def get_or_create_drive_folder(drive_service, folder_name: str, parent_folder_id
 
     # Create new folder if not found
     folder_metadata = {
-        'name': folder_name,
+        'name': folder_name.strip(),
         'mimeType': 'application/vnd.google-apps.folder'
     }
     if parent_folder_id:
@@ -70,7 +81,7 @@ def get_or_create_drive_folder(drive_service, folder_name: str, parent_folder_id
     try:
         created = drive_service.files().create(
             body=folder_metadata,
-            fields='id, name, webViewLink',
+            fields='id, name, webViewLink, parents',
             supportsAllDrives=True
         ).execute()
         return created
@@ -79,108 +90,377 @@ def get_or_create_drive_folder(drive_service, folder_name: str, parent_folder_id
         raise
 
 
-def ensure_project_drive_tree(client_name: str, project_name: str) -> List[Dict[str, Any]]:
+def get_subfolders(drive_service, parent_id: str) -> List[Dict[str, Any]]:
+    """Returns all immediate subfolders under a parent folder."""
+    query = f"'{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    try:
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name, webViewLink, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=100
+        ).execute()
+        return res.get('files', [])
+    except Exception as e:
+        logger.warning(f"Error listing subfolders under {parent_id}: {e}")
+        return []
+
+
+def ensure_client_folder(client_name: str) -> Dict[str, Any]:
+    """Ensures a Client folder exists under the Shared Drive root."""
+    drive_service = get_drive_service()
+    clean_client = (client_name or "General Clients").strip()
+    return get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
+
+
+def ensure_order_drive_tree(
+    client_name: str, 
+    project_name: str, 
+    order_identifier: str, 
+    supplier_name: str = ""
+) -> List[Dict[str, Any]]:
     """
-    Ensures Client folder, Project folder, and the 7 foundational starter folders
-    exist under the Shared Drive root. Returns the full list of folders for the project.
+    Ensures the path down to a specific Order:
+    Root -> Client -> Project -> Orders -> [Order Ref / PO]
+    Plus ensures the 4 standard order subfolders (BOQs, POs, Logistics, Invoices).
+    Returns all folder nodes scoped to this order.
     """
+    drive_service = get_drive_service()
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
+    
+    supplier_part = f" - {supplier_name.strip()}" if supplier_name and supplier_name.strip() else ""
+    order_folder_name = f"{order_identifier.strip()}{supplier_part}"
 
-    drive_service = get_drive_service()
-
-    # 1. Ensure Client Folder
+    # 1. Ensure Client & Project & Orders parent folders
     client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
-    client_folder_id = client_folder['id']
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
+    orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder['id'])
+    
+    # 2. Ensure Order Folder
+    order_folder = get_or_create_drive_folder(drive_service, order_folder_name, orders_root['id'])
+    order_folder_id = order_folder['id']
 
-    # 2. Ensure Project Folder
-    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder_id)
-    project_folder_id = project_folder['id']
+    # 3. Query existing subfolders in this Order
+    existing = get_subfolders(drive_service, order_folder_id)
+    existing_by_name = {f['name'].lower().strip(): f for f in existing}
 
-    # 3. Query existing subfolders under this Project folder
-    query = f"'{project_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    try:
-        existing_res = drive_service.files().list(
-            q=query,
-            fields="files(id, name, webViewLink)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        existing_folders = existing_res.get('files', [])
-    except Exception as e:
-        logger.warning(f"Error listing project subfolders: {e}")
-        existing_folders = []
+    folder_nodes = [
+        {
+            "id": order_folder_id,
+            "gdrive_folder_id": order_folder_id,
+            "name": order_folder['name'],
+            "parent_id": None, # Acts as root in order-scoped view
+            "type": "order_root",
+            "sort_order": 0,
+            "webViewLink": order_folder.get('webViewLink', '')
+        }
+    ]
 
-    existing_by_name = {f['name'].lower().strip(): f for f in existing_folders}
-
-    # 4. Create missing foundational starter folders
-    folder_nodes = []
-    for starter in DEFAULT_PROJECT_STARTER_FOLDERS:
+    # 4. Ensure 4 standard order subfolders
+    for starter in ORDER_STANDARD_SUBFOLDERS:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
-        
-        # Check if an equivalent folder already exists (e.g. "01 - Design & Design Fees" or "Design & Design Fees")
         matched = existing_by_name.get(match_key)
         if not matched:
-            # Check without number prefix
-            stripped_key = re.sub(r'^\d+\s*-\s*', '', match_key)
+            stripped = re.sub(r'^\d+\s*-\s*', '', match_key)
             for ex_name, ex_f in existing_by_name.items():
-                if stripped_key in ex_name or ex_name in stripped_key:
+                if stripped in ex_name or ex_name in stripped:
                     matched = ex_f
                     break
 
         if not matched:
-            matched = get_or_create_drive_folder(drive_service, s_name, project_folder_id)
+            matched = get_or_create_drive_folder(drive_service, s_name, order_folder_id)
             existing_by_name[match_key] = matched
 
         folder_nodes.append({
             "id": matched['id'],
             "gdrive_folder_id": matched['id'],
             "name": matched['name'],
-            "parent_id": None, # Direct child of project root
-            "project_gdrive_id": project_folder_id,
+            "parent_id": order_folder_id,
+            "type": "order_sub",
             "sort_order": starter["sort"],
             "webViewLink": matched.get('webViewLink', '')
         })
 
-    # 5. Also include any custom folders created by the user under this project
-    existing_ids = {n['id'] for n in folder_nodes}
-    for custom_f in existing_folders:
-        if custom_f['id'] not in existing_ids:
+    # 5. Include any custom folders created inside the order
+    known_ids = {n['id'] for n in folder_nodes}
+    for ex in existing:
+        if ex['id'] not in known_ids:
+            folder_nodes.append({
+                "id": ex['id'],
+                "gdrive_folder_id": ex['id'],
+                "name": ex['name'],
+                "parent_id": order_folder_id,
+                "type": "custom",
+                "sort_order": 99,
+                "webViewLink": ex.get('webViewLink', '')
+            })
+
+    return folder_nodes
+
+
+def ensure_project_drive_tree(
+    client_name: str, 
+    project_name: str, 
+    design_fees: Optional[List[Dict[str, Any]]] = None,
+    orders: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Ensures Client folder, Project folder, standard project subfolders,
+    Designs folder with active design packages, and Orders folder with active orders.
+    Returns the comprehensive list of folder nodes.
+    """
+    drive_service = get_drive_service()
+    clean_client = (client_name or "General Clients").strip()
+    clean_project = (project_name or "General Project").strip()
+
+    # 1. Ensure Client Folder & Project Folder
+    client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
+    project_folder_id = project_folder['id']
+
+    # 2. Existing immediate children of Project
+    proj_children = get_subfolders(drive_service, project_folder_id)
+    proj_children_by_name = {f['name'].lower().strip(): f for f in proj_children}
+
+    folder_nodes = []
+
+    # 3. Standard Project-Level Folders (Drawings, Specs, Photos)
+    for starter in PROJECT_STANDARD_FOLDERS:
+        s_name = starter["name"]
+        match_key = s_name.lower().strip()
+        matched = proj_children_by_name.get(match_key)
+        if not matched:
+            stripped = re.sub(r'^\d+\s*-\s*', '', match_key)
+            for ex_name, ex_f in proj_children_by_name.items():
+                if stripped in ex_name or ex_name in stripped:
+                    matched = ex_f
+                    break
+
+        if not matched:
+            matched = get_or_create_drive_folder(drive_service, s_name, project_folder_id)
+            proj_children_by_name[match_key] = matched
+
+        folder_nodes.append({
+            "id": matched['id'],
+            "gdrive_folder_id": matched['id'],
+            "name": matched['name'],
+            "parent_id": None,
+            "project_gdrive_id": project_folder_id,
+            "type": "project_standard",
+            "sort_order": starter["sort"],
+            "webViewLink": matched.get('webViewLink', '')
+        })
+
+    # 4. Ensure "Designs" Parent Folder
+    designs_root = proj_children_by_name.get("designs")
+    if not designs_root:
+        designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
+        proj_children_by_name["designs"] = designs_root
+
+    designs_root_id = designs_root['id']
+    folder_nodes.append({
+        "id": designs_root_id,
+        "gdrive_folder_id": designs_root_id,
+        "name": "📁 Designs",
+        "parent_id": None,
+        "project_gdrive_id": project_folder_id,
+        "type": "design_root",
+        "sort_order": 4,
+        "webViewLink": designs_root.get('webViewLink', '')
+    })
+
+    # Subfolders under Designs
+    existing_designs = get_subfolders(drive_service, designs_root_id)
+    existing_designs_by_name = {f['name'].lower().strip(): f for f in existing_designs}
+
+    if design_fees:
+        for df in design_fees:
+            fee_ref = df.get("fee_ref") or f"DF-{df.get('id', '')}"
+            df_name = df.get("name") or "Design Package"
+            target_name = f"{fee_ref} - {df_name}".strip()
+            df_key = target_name.lower().strip()
+            df_matched = existing_designs_by_name.get(df_key)
+            if not df_matched:
+                for ex_name, ex_f in existing_designs_by_name.items():
+                    if fee_ref.lower() in ex_name:
+                        df_matched = ex_f
+                        break
+            if not df_matched:
+                df_matched = get_or_create_drive_folder(drive_service, target_name, designs_root_id)
+                existing_designs_by_name[df_key] = df_matched
+
+            folder_nodes.append({
+                "id": df_matched['id'],
+                "gdrive_folder_id": df_matched['id'],
+                "name": df_matched['name'],
+                "parent_id": designs_root_id,
+                "project_gdrive_id": project_folder_id,
+                "type": "design_package",
+                "sort_order": 10,
+                "webViewLink": df_matched.get('webViewLink', '')
+            })
+
+    # Include any custom folders under Designs
+    known_design_ids = {n['id'] for n in folder_nodes}
+    for ex in existing_designs:
+        if ex['id'] not in known_design_ids:
+            folder_nodes.append({
+                "id": ex['id'],
+                "gdrive_folder_id": ex['id'],
+                "name": ex['name'],
+                "parent_id": designs_root_id,
+                "project_gdrive_id": project_folder_id,
+                "type": "design_package",
+                "sort_order": 20,
+                "webViewLink": ex.get('webViewLink', '')
+            })
+
+    # 5. Ensure "Orders" Parent Folder
+    orders_root = proj_children_by_name.get("orders")
+    if not orders_root:
+        orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
+        proj_children_by_name["orders"] = orders_root
+
+    orders_root_id = orders_root['id']
+    folder_nodes.append({
+        "id": orders_root_id,
+        "gdrive_folder_id": orders_root_id,
+        "name": "📁 Orders",
+        "parent_id": None,
+        "project_gdrive_id": project_folder_id,
+        "type": "orders_root",
+        "sort_order": 5,
+        "webViewLink": orders_root.get('webViewLink', '')
+    })
+
+    # Subfolders under Orders
+    existing_orders = get_subfolders(drive_service, orders_root_id)
+    existing_orders_by_name = {f['name'].lower().strip(): f for f in existing_orders}
+
+    if orders:
+        for ord_item in orders:
+            po_num = ord_item.get("po_number") or f"ORD-{ord_item.get('id', '')}"
+            supp_name = (ord_item.get("supplier_name") or ord_item.get("supplier") or "").strip()
+            supp_suffix = f" - {supp_name}" if supp_name else ""
+            ord_name = f"{po_num}{supp_suffix}".strip()
+            ord_key = ord_name.lower().strip()
+            
+            ord_matched = existing_orders_by_name.get(ord_key)
+            if not ord_matched:
+                for ex_name, ex_f in existing_orders_by_name.items():
+                    if po_num.lower() in ex_name:
+                        ord_matched = ex_f
+                        break
+            if not ord_matched:
+                ord_matched = get_or_create_drive_folder(drive_service, ord_name, orders_root_id)
+                existing_orders_by_name[ord_key] = ord_matched
+
+            ord_id = ord_matched['id']
+            folder_nodes.append({
+                "id": ord_id,
+                "gdrive_folder_id": ord_id,
+                "name": ord_matched['name'],
+                "parent_id": orders_root_id,
+                "project_gdrive_id": project_folder_id,
+                "type": "order_folder",
+                "sort_order": 15,
+                "webViewLink": ord_matched.get('webViewLink', '')
+            })
+
+            # Ensure the 4 order subfolders under each order
+            sub_of_order = get_subfolders(drive_service, ord_id)
+            sub_of_order_by_name = {sf['name'].lower().strip(): sf for sf in sub_of_order}
+            for starter in ORDER_STANDARD_SUBFOLDERS:
+                os_name = starter["name"]
+                os_key = os_name.lower().strip()
+                os_match = sub_of_order_by_name.get(os_key)
+                if not os_match:
+                    os_match = get_or_create_drive_folder(drive_service, os_name, ord_id)
+                    sub_of_order_by_name[os_key] = os_match
+
+                folder_nodes.append({
+                    "id": os_match['id'],
+                    "gdrive_folder_id": os_match['id'],
+                    "name": os_match['name'],
+                    "parent_id": ord_id,
+                    "project_gdrive_id": project_folder_id,
+                    "type": "order_sub",
+                    "sort_order": starter["sort"],
+                    "webViewLink": os_match.get('webViewLink', '')
+                })
+
+    # Include any custom folders directly under Orders
+    known_order_ids = {n['id'] for n in folder_nodes}
+    for ex in existing_orders:
+        if ex['id'] not in known_order_ids:
+            folder_nodes.append({
+                "id": ex['id'],
+                "gdrive_folder_id": ex['id'],
+                "name": ex['name'],
+                "parent_id": orders_root_id,
+                "project_gdrive_id": project_folder_id,
+                "type": "order_folder",
+                "sort_order": 30,
+                "webViewLink": ex.get('webViewLink', '')
+            })
+
+    # Include any other custom folders directly under the Project
+    known_all_ids = {n['id'] for n in folder_nodes}
+    for custom_f in proj_children:
+        if custom_f['id'] not in known_all_ids:
             folder_nodes.append({
                 "id": custom_f['id'],
                 "gdrive_folder_id": custom_f['id'],
                 "name": custom_f['name'],
                 "parent_id": None,
                 "project_gdrive_id": project_folder_id,
+                "type": "custom",
                 "sort_order": 99,
                 "webViewLink": custom_f.get('webViewLink', '')
             })
 
-    # 6. Also check for 1-level nested subfolders within these folders
-    for parent_node in list(folder_nodes):
-        try:
-            sub_q = f"'{parent_node['id']}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-            sub_res = drive_service.files().list(
-                q=sub_q,
-                fields="files(id, name, webViewLink)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-            for sub_f in sub_res.get('files', []):
-                folder_nodes.append({
-                    "id": sub_f['id'],
-                    "gdrive_folder_id": sub_f['id'],
-                    "name": sub_f['name'],
-                    "parent_id": parent_node['id'],
-                    "project_gdrive_id": project_folder_id,
-                    "sort_order": 50,
-                    "webViewLink": sub_f.get('webViewLink', '')
-                })
-        except Exception as sub_err:
-            logger.warning(f"Error fetching subfolders for {parent_node['name']}: {sub_err}")
-
     return folder_nodes
+
+
+def get_master_drive_tree() -> List[Dict[str, Any]]:
+    """
+    Returns the complete directory tree starting from ROOT_DRIVE_FOLDER_ID.
+    Fetches all folders with their parents in one optimized query.
+    """
+    drive_service = get_drive_service()
+    query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
+    try:
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name, parents, webViewLink, createdTime)",
+            pageSize=1000,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        all_folders = res.get('files', [])
+        
+        tree_nodes = []
+        for f in all_folders:
+            parents = f.get('parents', [])
+            parent_id = parents[0] if parents else None
+            is_root_child = parent_id == ROOT_DRIVE_FOLDER_ID
+            
+            tree_nodes.append({
+                "id": f['id'],
+                "gdrive_folder_id": f['id'],
+                "name": f['name'],
+                "parent_id": None if is_root_child else parent_id,
+                "raw_parent_id": parent_id,
+                "is_client_root": is_root_child,
+                "webViewLink": f.get('webViewLink', '')
+            })
+        return tree_nodes
+    except Exception as e:
+        logger.error(f"Error fetching master drive tree: {e}")
+        return []
 
 
 def create_custom_folder(parent_folder_id: str, folder_name: str) -> Dict[str, Any]:
@@ -234,7 +514,8 @@ def list_folder_files(folder_id: str) -> List[Dict[str, Any]]:
             fields="files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, iconLink)",
             orderBy="modifiedTime desc",
             supportsAllDrives=True,
-            includeItemsFromAllDrives=True
+            includeItemsFromAllDrives=True,
+            pageSize=200
         ).execute()
         files = res.get('files', [])
         
