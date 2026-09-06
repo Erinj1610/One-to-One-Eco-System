@@ -102,6 +102,8 @@ export default function DriveFileExplorer({
             f.type === 'design_root' || 
             f.type === 'design_package' ||
             f.type === 'client_root' ||
+            f.type === 'project_folder' ||
+            f.type === 'project_root' ||
             f.is_client_root
           ) {
             initialExpanded[f.id] = true;

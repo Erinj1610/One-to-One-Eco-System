@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import difflib
 import logging
 from typing import List, Dict, Any, Optional
 import google.auth
@@ -52,44 +53,9 @@ def get_drive_service():
         raise RuntimeError(f"Google Drive Authentication Failed: {e}")
 
 
-def get_or_create_drive_folder(drive_service, folder_name: str, parent_folder_id: Optional[str] = None) -> Dict[str, Any]:
-    """Finds an existing folder by name under parent_folder_id or creates a new one in Shared Drive."""
-    sanitized_name = folder_name.replace("'", "\\'")
-    query = f"name='{sanitized_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    if parent_folder_id:
-        query += f" and '{parent_folder_id}' in parents"
-
-    try:
-        res = drive_service.files().list(
-            q=query,
-            fields="files(id, name, webViewLink, parents)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        files = res.get('files', [])
-        if files:
-            return files[0]
-    except Exception as e:
-        logger.warning(f"Error searching for Drive folder '{folder_name}': {e}")
-
-    # Create new folder if not found
-    folder_metadata = {
-        'name': folder_name.strip(),
-        'mimeType': 'application/vnd.google-apps.folder'
-    }
-    if parent_folder_id:
-        folder_metadata['parents'] = [parent_folder_id]
-
-    try:
-        created = drive_service.files().create(
-            body=folder_metadata,
-            fields='id, name, webViewLink, parents',
-            supportsAllDrives=True
-        ).execute()
-        return created
-    except Exception as e:
-        logger.error(f"Failed to create Drive folder '{folder_name}': {e}")
-        raise
+def normalize_name(s: str) -> str:
+    """Normalizes string for fuzzy comparison (lowercase, alphanumeric only)."""
+    return re.sub(r'[^a-z0-9]+', '', (s or "").lower())
 
 
 def get_subfolders(drive_service, parent_id: str) -> List[Dict[str, Any]]:
@@ -107,6 +73,89 @@ def get_subfolders(drive_service, parent_id: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"Error listing subfolders under {parent_id}: {e}")
         return []
+
+
+def get_or_create_drive_folder(
+    drive_service, 
+    folder_name: str, 
+    parent_folder_id: Optional[str] = None,
+    fuzzy_threshold: float = 0.85
+) -> Dict[str, Any]:
+    """
+    Finds an existing folder by name under parent_folder_id or creates a new one in Shared Drive.
+    Includes fuzzy matching & normalization deduplication to prevent duplicate client/project folders.
+    """
+    clean_name = folder_name.strip()
+    sanitized_name = clean_name.replace("'", "\\'")
+    
+    # 1. Exact Name Query
+    query = f"name='{sanitized_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    if parent_folder_id:
+        query += f" and '{parent_folder_id}' in parents"
+
+    try:
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name, webViewLink, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        files = res.get('files', [])
+        if files:
+            return files[0]
+    except Exception as e:
+        logger.warning(f"Error searching for Drive folder '{clean_name}': {e}")
+
+    # 2. Fuzzy Matching Deduplication: Check existing subfolders in parent
+    target_norm = normalize_name(clean_name)
+    if len(target_norm) >= 3 and parent_folder_id:
+        existing_subfolders = get_subfolders(drive_service, parent_folder_id)
+        best_match = None
+        best_score = 0.0
+
+        for ef in existing_subfolders:
+            ef_name = ef.get('name', '')
+            ef_norm = normalize_name(ef_name)
+            if not ef_norm:
+                continue
+
+            # Exact normalized match (e.g. spacing, punctuation, case differences)
+            if ef_norm == target_norm:
+                logger.info(f"Deduplication: folder '{clean_name}' matched existing '{ef_name}' ({ef.get('id')}) via normalization")
+                return ef
+
+            ratio = difflib.SequenceMatcher(None, target_norm, ef_norm).ratio()
+            # If one is a significant substring of the other (e.g. "Wynand Wilsenach Architects" in "Wynand Wilsenach Architects - Project")
+            if len(target_norm) >= 6 and (target_norm in ef_norm or ef_norm in target_norm):
+                ratio = max(ratio, 0.90)
+
+            if ratio >= fuzzy_threshold and ratio > best_score:
+                best_score = ratio
+                best_match = ef
+
+        if best_match:
+            logger.info(f"Deduplication: folder '{clean_name}' fuzzy-matched existing '{best_match.get('name')}' ({best_match.get('id')}) with score {best_score:.2f}")
+            return best_match
+
+    # 3. Create new folder if no match found
+    folder_metadata = {
+        'name': clean_name,
+        'mimeType': 'application/vnd.google-apps.folder'
+    }
+    if parent_folder_id:
+        folder_metadata['parents'] = [parent_folder_id]
+
+    try:
+        created = drive_service.files().create(
+            body=folder_metadata,
+            fields='id, name, webViewLink, parents',
+            supportsAllDrives=True
+        ).execute()
+        logger.info(f"Created new Drive folder '{clean_name}' with ID: {created.get('id')}")
+        return created
+    except Exception as e:
+        logger.error(f"Failed to create Drive folder '{clean_name}': {e}")
+        raise
 
 
 def ensure_client_folder(client_name: str) -> Dict[str, Any]:
@@ -294,29 +343,50 @@ def ensure_project_drive_tree(
     client_name: str, 
     project_name: str, 
     design_fees: Optional[List[Dict[str, Any]]] = None,
-    orders: Optional[List[Dict[str, Any]]] = None
+    orders: Optional[List[Dict[str, Any]]] = None,
+    client_folder_id: Optional[str] = None,
+    parent_for_project: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Ensures Client folder, Project folder, standard project subfolders,
     Designs folder with active design packages, and Orders folder with active orders.
-    Returns the comprehensive list of folder nodes.
+    Correctly establishes parent_id relationships so it renders properly in both
+    Project-scoped view (where project node has parent_id=None) and
+    Client-scoped view (where project node has parent_id=client_folder_id).
     """
     drive_service = get_drive_service()
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
 
     # 1. Ensure Client Folder & Project Folder
-    client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
-    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
+    if not client_folder_id:
+        client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
+        client_folder_id = client_folder['id']
+    else:
+        client_folder = {'id': client_folder_id, 'name': clean_client}
+
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder_id)
     project_folder_id = project_folder['id']
 
     # 2. Existing immediate children of Project
     proj_children = get_subfolders(drive_service, project_folder_id)
     proj_children_by_name = {f['name'].lower().strip(): f for f in proj_children}
 
-    folder_nodes = []
+    # 3. Initialize nodes with Project Folder itself
+    folder_nodes = [
+        {
+            "id": project_folder_id,
+            "gdrive_folder_id": project_folder_id,
+            "name": project_folder['name'],
+            "parent_id": parent_for_project,
+            "project_gdrive_id": project_folder_id,
+            "type": "project_folder",
+            "sort_order": 0,
+            "webViewLink": project_folder.get('webViewLink', '')
+        }
+    ]
 
-    # 3. Standard Project-Level Folders (Drawings, Specs, Photos)
+    # 4. Standard Project-Level Folders (Drawings, Specs, Photos)
     for starter in PROJECT_STANDARD_FOLDERS:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
@@ -336,14 +406,14 @@ def ensure_project_drive_tree(
             "id": matched['id'],
             "gdrive_folder_id": matched['id'],
             "name": matched['name'],
-            "parent_id": None,
+            "parent_id": project_folder_id,
             "project_gdrive_id": project_folder_id,
             "type": "project_standard",
             "sort_order": starter["sort"],
             "webViewLink": matched.get('webViewLink', '')
         })
 
-    # 4. Ensure "Designs" Parent Folder
+    # 5. Ensure "Designs" Parent Folder
     designs_root = proj_children_by_name.get("designs")
     if not designs_root:
         designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
@@ -354,7 +424,7 @@ def ensure_project_drive_tree(
         "id": designs_root_id,
         "gdrive_folder_id": designs_root_id,
         "name": "📁 Designs",
-        "parent_id": None,
+        "parent_id": project_folder_id,
         "project_gdrive_id": project_folder_id,
         "type": "design_root",
         "sort_order": 4,
@@ -452,7 +522,7 @@ def ensure_project_drive_tree(
                 "webViewLink": ex.get('webViewLink', '')
             })
 
-    # 5. Ensure "Orders" Parent Folder
+    # 6. Ensure "Orders" Parent Folder
     orders_root = proj_children_by_name.get("orders")
     if not orders_root:
         orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
@@ -463,7 +533,7 @@ def ensure_project_drive_tree(
         "id": orders_root_id,
         "gdrive_folder_id": orders_root_id,
         "name": "📁 Orders",
-        "parent_id": None,
+        "parent_id": project_folder_id,
         "project_gdrive_id": project_folder_id,
         "type": "orders_root",
         "sort_order": 5,
@@ -549,7 +619,7 @@ def ensure_project_drive_tree(
                 "id": custom_f['id'],
                 "gdrive_folder_id": custom_f['id'],
                 "name": custom_f['name'],
-                "parent_id": None,
+                "parent_id": project_folder_id,
                 "project_gdrive_id": project_folder_id,
                 "type": "custom",
                 "sort_order": 99,

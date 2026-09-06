@@ -1,3 +1,5 @@
+import re
+import difflib
 import logging
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
@@ -52,6 +54,72 @@ def get_global_drive_tree():
         return []
 
 
+def resolve_project_client(project: Optional[Project], db: Session) -> tuple[Optional[Client], str]:
+    """
+    Robustly resolves the canonical Client for a Project.
+    1. By project.client_id
+    2. By project.client_name matching Client.name (exact or case-insensitive)
+    3. By fuzzy matching Client names against project.name or project.client_name
+    Persists project.client_id and project.client_name in Cloud SQL when matched.
+    Returns (client_instance, canonical_client_name).
+    """
+    if not project:
+        return None, "General Clients"
+
+    client = None
+    if project.client_id:
+        client = db.query(Client).filter(Client.id == project.client_id).first()
+        if client:
+            return client, client.name
+
+    if project.client_name and project.client_name.strip():
+        c_name = project.client_name.strip()
+        client = db.query(Client).filter(func.lower(Client.name) == c_name.lower()).first()
+        if not client:
+            client = db.query(Client).filter(Client.name.ilike(f"%{c_name}%")).first()
+
+    if not client and project.name:
+        all_clients = db.query(Client).all()
+        proj_norm = re.sub(r'[^a-z0-9]+', '', (project.name or "").lower())
+        best_c = None
+        best_score = 0.0
+        for c in all_clients:
+            c_norm = re.sub(r'[^a-z0-9]+', '', (c.name or "").lower())
+            if not c_norm:
+                continue
+            if c_norm == proj_norm:
+                best_c = c
+                best_score = 1.0
+                break
+            ratio = difflib.SequenceMatcher(None, c_norm, proj_norm).ratio()
+            if len(c_norm) >= 6 and (c_norm in proj_norm or proj_norm in c_norm):
+                ratio = max(ratio, 0.90)
+            if ratio >= 0.85 and ratio > best_score:
+                best_score = ratio
+                best_c = c
+        if best_c:
+            client = best_c
+
+    if client:
+        try:
+            changed = False
+            if project.client_id != client.id:
+                project.client_id = client.id
+                changed = True
+            if project.client_name != client.name:
+                project.client_name = client.name
+                changed = True
+            if changed:
+                db.commit()
+                logger.info(f"Relational link saved: Project {project.id} -> Client {client.id} ({client.name})")
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Could not persist client link on project {project.id}: {e}")
+        return client, client.name
+
+    return None, (project.client_name or "General Clients")
+
+
 # --- 2. Get Folder Tree Scoped to an Order ---
 @router.get("/order/{order_id}/folders")
 def get_order_folders(order_id: str, db: Session = Depends(get_db)):
@@ -87,8 +155,8 @@ def get_order_folders(order_id: str, db: Session = Depends(get_db)):
             project = db.query(Project).filter(func.lower(Project.project_key) == order.project_key.lower()).first()
 
         if project:
+            _, client_name = resolve_project_client(project, db)
             project_name = project.name
-            client_name = project.client_name or "General Clients"
 
     try:
         folders = ensure_order_drive_tree(
@@ -137,8 +205,8 @@ def get_design_folders(design_id: str, db: Session = Depends(get_db)):
             project = db.query(Project).filter(func.lower(Project.project_key) == design.project_key.lower()).first()
 
         if project:
+            _, client_name = resolve_project_client(project, db)
             project_name = project.name
-            client_name = project.client_name or "General Clients"
 
     try:
         folders = ensure_design_drive_tree(
@@ -153,12 +221,21 @@ def get_design_folders(design_id: str, db: Session = Depends(get_db)):
         return []
 
 
-# --- 3. Get Folder Tree Scoped to a Client ---
+# --- 3. Get Folder Tree Scoped to a Client (Full Cascading Waterfall) ---
 @router.get("/client/{client_id}/folders")
 def get_client_folders(client_id: str, db: Session = Depends(get_db)):
     """
     Returns Google Drive folders scoped to a Client.
-    Auto-creates the client folder if missing and lists its project subfolders.
+    Cascading Waterfall:
+    1. Ensures Client folder at Drive Root (with fuzzy deduplication).
+    2. Queries DB for all projects belonging to this client.
+    3. For each project, auto-provisions:
+       - Project folder under Client (parent_id = client_folder_id)
+       - Drawings, Specs, Photos
+       - Designs/ with all design packages (and 5 standard subfolders each)
+       - Orders/ with all orders (and 4 standard subfolders each)
+    4. Includes any custom folders in Drive under the Client folder.
+    5. Returns full hierarchical tree.
     """
     clean_id = (client_id or "").strip()
     if not clean_id:
@@ -169,20 +246,20 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
         client = db.query(Client).filter(Client.id == int(clean_id)).first()
     if not client:
         client = db.query(Client).filter(func.lower(Client.name) == clean_id.lower()).first()
+    if not client:
+        client = db.query(Client).filter(Client.name.ilike(f"%{clean_id}%")).first()
 
     client_name = client.name if client else clean_id
 
     try:
         client_f = ensure_client_folder(client_name)
+        client_folder_id = client_f['id']
         drive_service = get_drive_service()
-        
-        # Get immediate project subfolders
-        proj_folders = get_subfolders(drive_service, client_f['id'])
-        
-        nodes = [
+
+        all_nodes = [
             {
-                "id": client_f['id'],
-                "gdrive_folder_id": client_f['id'],
+                "id": client_folder_id,
+                "gdrive_folder_id": client_folder_id,
                 "name": client_f['name'],
                 "parent_id": None,
                 "type": "client_root",
@@ -190,32 +267,92 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                 "webViewLink": client_f.get('webViewLink', '')
             }
         ]
-        
-        for pf in proj_folders:
-            nodes.append({
-                "id": pf['id'],
-                "gdrive_folder_id": pf['id'],
-                "name": pf['name'],
-                "parent_id": client_f['id'],
-                "type": "project_folder",
-                "sort_order": 1,
-                "webViewLink": pf.get('webViewLink', '')
-            })
-            
-            # Subfolders of each project
-            sub_of_proj = get_subfolders(drive_service, pf['id'])
-            for sf in sub_of_proj:
-                nodes.append({
-                    "id": sf['id'],
-                    "gdrive_folder_id": sf['id'],
-                    "name": sf['name'],
-                    "parent_id": pf['id'],
-                    "type": "project_sub",
-                    "sort_order": 2,
-                    "webViewLink": sf.get('webViewLink', '')
+
+        # Query all projects associated with this client
+        projects = []
+        if client:
+            projects = db.query(Project).filter(
+                or_(
+                    Project.client_id == client.id,
+                    func.lower(Project.client_name) == client.name.lower(),
+                    Project.client_name.ilike(f"%{client.name}%"),
+                    Project.name.ilike(f"%{client.name}%")
+                )
+            ).all()
+
+        seen_project_ids = set()
+        seen_gdrive_ids = {client_folder_id}
+
+        for proj in projects:
+            if proj.id in seen_project_ids:
+                continue
+            seen_project_ids.add(proj.id)
+
+            # Ensure client_id / client_name persisted on project
+            try:
+                if proj.client_id != client.id or proj.client_name != client.name:
+                    proj.client_id = client.id
+                    proj.client_name = client.name
+                    db.commit()
+            except Exception:
+                db.rollback()
+
+            # Resolve design fees and orders for this project
+            dfs = db.query(DesignFee).filter(
+                or_(DesignFee.project_id == proj.id, DesignFee.project_key == proj.project_key)
+            ).all()
+            design_fee_list = [
+                {"id": d.id, "fee_ref": d.fee_ref, "name": d.name}
+                for d in dfs
+            ]
+
+            ords = db.query(Order).filter(
+                or_(Order.project_id == proj.id, Order.project_key == proj.project_key)
+            ).all()
+            order_list = [
+                {"id": o.id, "po_number": o.po_number, "supplier_name": o.supplier_name}
+                for o in ords
+            ]
+
+            # Provision project tree nested under client_folder_id
+            proj_nodes = ensure_project_drive_tree(
+                client_name=client_name,
+                project_name=proj.name,
+                design_fees=design_fee_list,
+                orders=order_list,
+                client_folder_id=client_folder_id,
+                parent_for_project=client_folder_id
+            )
+
+            # Update project master_drive_folder if not set
+            if not proj.master_drive_folder and proj_nodes:
+                try:
+                    proj.master_drive_folder = proj_nodes[0].get("gdrive_folder_id")
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            for n in proj_nodes:
+                if n['id'] not in seen_gdrive_ids:
+                    seen_gdrive_ids.add(n['id'])
+                    all_nodes.append(n)
+
+        # Also fetch any direct subfolders in Drive that might not be in DB
+        drive_children = get_subfolders(drive_service, client_folder_id)
+        for dc in drive_children:
+            if dc['id'] not in seen_gdrive_ids:
+                seen_gdrive_ids.add(dc['id'])
+                all_nodes.append({
+                    "id": dc['id'],
+                    "gdrive_folder_id": dc['id'],
+                    "name": dc['name'],
+                    "parent_id": client_folder_id,
+                    "type": "project_folder",
+                    "sort_order": 50,
+                    "webViewLink": dc.get('webViewLink', '')
                 })
 
-        return nodes
+        return all_nodes
     except Exception as e:
         logger.error(f"Error ensuring client folder tree for {clean_id}: {e}", exc_info=True)
         return []
@@ -254,7 +391,7 @@ def get_project_folders(project_id: str, db: Session = Depends(get_db)):
 
     # 4. Resolve client and project names
     if project:
-        client_name = project.client_name or "General Clients"
+        _, client_name = resolve_project_client(project, db)
         project_name = project.name
         
         # Fetch related design fees
@@ -285,7 +422,8 @@ def get_project_folders(project_id: str, db: Session = Depends(get_db)):
             client_name=client_name, 
             project_name=project_name,
             design_fees=design_fee_list,
-            orders=order_list
+            orders=order_list,
+            parent_for_project=None
         )
 
         # Update master_drive_folder if not set
