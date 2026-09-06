@@ -134,6 +134,7 @@ export default function TakeoffSpecEngine({
   // Generate BOQ Modal State
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generateMode, setGenerateMode] = useState('append'); // 'append' | 'replace'
+  const [groupingMode, setGroupingMode] = useState('plan_code'); // 'plan_code' | 'area'
   const [includeRoomSpacers, setIncludeRoomSpacers] = useState(true);
 
   // Focus ref for auto-focusing newly added rows
@@ -1142,441 +1143,545 @@ export default function TakeoffSpecEngine({
     }
 
     const generatedItems = [];
-    const seenRooms = new Set();
 
-    // Sort rows by floor and room for logical grouping in the spreadsheet
-    const sortedRows = [...countUpRows].sort((a, b) => {
-      const floorComp = (a.floor || '').localeCompare(b.floor || '');
-      if (floorComp !== 0) return floorComp;
-      return (a.area || '').localeCompare(b.area || '');
+    // Helper to generate a completely blank spacer divider row
+    const makeBlankSpacer = (idSuffix) => ({
+      id: 'SPACER-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4),
+      isSpacer: true,
+      qty: 0,
+      type: 'SPACER',
+      oneOneCode: '',
+      code: '',
+      description: '',
+      floor: '',
+      area: '',
+      dimming: '',
+      brand: '',
+      supplier: '',
+      unitCost: 0,
+      unitTrade: 0,
+      unitRetail: 0,
+      selection: '',
+      stockStatus: '',
+      eta: ''
     });
 
-    sortedRows.forEach((row, rowIdx) => {
+    // Helper to generate linear LED hardware for a row
+    const buildLinearLedItems = (row, spec, idSuffix) => {
+      const items = [];
       const tag = (row.tag || '').trim().toUpperCase();
-      if (!tag) return;
+      const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+      const cleanLen = Math.round(len * 100) / 100;
+      const ledCfg = spec?.ledConfig || {};
+      const profMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
+      const stripMeters = ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen;
+      const drvQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
 
-      const roomKey = `${row.floor || 'Ground'}: ${row.area || 'General Area'}`;
-      
-      // Optional: insert room spacer row
-      if (includeRoomSpacers && !seenRooms.has(roomKey) && row.area) {
-        seenRooms.add(roomKey);
-        generatedItems.push({
-          id: 'SPACER-' + Date.now() + '-' + rowIdx,
-          isSpacer: true,
-          qty: 0,
-          type: 'SPACER',
-          oneOneCode: '',
-          code: '',
-          description: `— ${roomKey.toUpperCase()} —`,
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: '',
-          brand: '',
-          supplier: '',
-          unitCost: 0,
-          unitTrade: 0,
-          unitRetail: 0,
-          selection: '',
-          stockStatus: '',
-          eta: ''
+      // 1. Aluminium Profile / Extrusion
+      const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
+      const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
+      items.push({
+        id: 'I-' + Date.now() + '-' + idSuffix + '-prof-' + Math.random().toString(36).substr(2, 4),
+        qty: profMeters,
+        type: tag,
+        itemType: 'Hardware',
+        oneOneCode: ledCfg.profileProduct?.one_to_one_code || '',
+        code: ledCfg.profileSku || 'LED-PROFILE',
+        description: `${ledCfg.profileName || 'Aluminium LED Profile'} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: '—',
+        brand: ledCfg.profileProduct?.brand || '',
+        supplier: ledCfg.profileProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        unitCost: profileCost,
+        unitTrade: profileRetail * 0.8,
+        unitRetail: profileRetail,
+        selection: 'Profile',
+        stockStatus: 'Stock',
+        eta: '2 weeks',
+        image_url: ledCfg.profileProduct?.image_url || ''
+      });
+
+      // 2. LED Strip Tape
+      const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
+      const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
+      items.push({
+        id: 'I-' + Date.now() + '-' + idSuffix + '-strip-' + Math.random().toString(36).substr(2, 4),
+        qty: stripMeters,
+        type: tag,
+        itemType: 'Hardware',
+        oneOneCode: ledCfg.stripProduct?.one_to_one_code || '',
+        code: ledCfg.stripSku || 'LED-STRIP-24V',
+        description: `${ledCfg.stripName || 'LED Strip Tape'} — ${stripMeters}m`,
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: ledCfg.stripProduct?.dimming_protocol || 'Phase Cut / 24V',
+        brand: ledCfg.stripProduct?.brand || '',
+        supplier: ledCfg.stripProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        unitCost: stripCost,
+        unitTrade: stripRetail * 0.8,
+        unitRetail: stripRetail,
+        selection: 'Strip',
+        stockStatus: 'Stock',
+        eta: '2 weeks',
+        image_url: ledCfg.stripProduct?.image_url || ''
+      });
+
+      // 3. LED Driver / Power Supply
+      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
+      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
+      items.push({
+        id: 'I-' + Date.now() + '-' + idSuffix + '-drv-' + Math.random().toString(36).substr(2, 4),
+        qty: drvQty,
+        type: tag,
+        itemType: 'Hardware',
+        oneOneCode: ledCfg.driverProduct?.one_to_one_code || '',
+        code: ledCfg.driverSku || 'LED-DRIVER-24V',
+        description: `${ledCfg.driverName || '24V Constant Voltage Driver'}`,
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: ledCfg.driverProduct?.dimming_protocol || 'Phase Cut',
+        brand: ledCfg.driverProduct?.brand || '',
+        supplier: ledCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        unitCost: driverCost,
+        unitTrade: driverRetail * 0.8,
+        unitRetail: driverRetail,
+        selection: 'Driver',
+        stockStatus: 'Stock',
+        eta: '2 weeks',
+        image_url: ledCfg.driverProduct?.image_url || ''
+      });
+
+      // 4. Dynamic Accessories / End Caps
+      if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
+        spec.accessories.forEach((acc, accIdx) => {
+          const accUnits = acc.qtyPerFitting !== undefined 
+            ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+            : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+          const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+          const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+          items.push({
+            id: 'I-' + Date.now() + '-' + idSuffix + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
+            qty: accUnits,
+            type: tag,
+            itemType: 'Hardware',
+            oneOneCode: acc.one_to_one_code || '',
+            code: acc.sku || 'LED-ACC',
+            description: acc.name || acc.client_description || 'Linear LED Accessory',
+            floor: row.floor || 'Ground',
+            area: row.area || 'General Area',
+            dimming: '—',
+            brand: acc.brand || '',
+            supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
+            unitCost: accCost,
+            unitTrade: accRetail * 0.8,
+            unitRetail: accRetail,
+            selection: 'Accessory',
+            stockStatus: 'Stock',
+            eta: '2 weeks',
+            image_url: acc.image_url || ''
+          });
         });
-      }
-
-      const spec = specifications[tag];
-      const itemType = spec?.itemType || row.itemType || 'fixture';
-      const product = spec ? spec.product : null;
-      const qty = Math.max(1, Number(row.qty) || 1);
-
-      if (itemType === 'linear_led') {
-        // -----------------------------------------------------------
-        // EXPAND LINEAR LED RUN INTO ITEMIZED HARDWARE
-        // -----------------------------------------------------------
-        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
-        const cleanLen = Math.round(len * 100) / 100;
-        const ledCfg = spec?.ledConfig || {};
-        const profMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
-        const stripMeters = ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen;
-        const drvQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
-
-        // 1. Aluminium Profile / Extrusion
-        const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
-        const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-prof-' + Math.random().toString(36).substr(2, 4),
-          qty: profMeters,
+      } else {
+        items.push({
+          id: 'I-' + Date.now() + '-' + idSuffix + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
+          qty: 1,
           type: tag,
           itemType: 'Hardware',
-          oneOneCode: ledCfg.profileProduct?.one_to_one_code || '',
-          code: ledCfg.profileSku || 'LED-PROFILE',
-          description: `${ledCfg.profileName || 'Aluminium LED Profile'} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+          oneOneCode: '',
+          code: 'LED-ENDCAPS-KIT',
+          description: `Profile End Caps (Pair) & Mounting Clips for ${tag}`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: '—',
-          brand: ledCfg.profileProduct?.brand || '',
-          supplier: ledCfg.profileProduct?.supplier || orderSupplier || 'Molecule Dist.',
-          unitCost: profileCost,
-          unitTrade: profileRetail * 0.8,
-          unitRetail: profileRetail,
-          selection: 'Profile',
+          brand: '',
+          supplier: orderSupplier || 'Molecule Dist.',
+          unitCost: 25,
+          unitTrade: 50,
+          unitRetail: 65,
+          selection: 'Accessory',
           stockStatus: 'Stock',
-          eta: '2 weeks',
-          image_url: ledCfg.profileProduct?.image_url || ''
+          eta: '2 weeks'
         });
+      }
+      return items;
+    };
 
-        // 2. LED Strip Tape
-        const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
-        const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-strip-' + Math.random().toString(36).substr(2, 4),
-          qty: stripMeters,
-          type: tag,
-          itemType: 'Hardware',
-          oneOneCode: ledCfg.stripProduct?.one_to_one_code || '',
-          code: ledCfg.stripSku || 'LED-STRIP-24V',
-          description: `${ledCfg.stripName || 'LED Strip Tape'} — ${stripMeters}m`,
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: ledCfg.stripProduct?.dimming_protocol || 'Phase Cut / 24V',
-          brand: ledCfg.stripProduct?.brand || '',
-          supplier: ledCfg.stripProduct?.supplier || orderSupplier || 'Molecule Dist.',
-          unitCost: stripCost,
-          unitTrade: stripRetail * 0.8,
-          unitRetail: stripRetail,
-          selection: 'Strip',
-          stockStatus: 'Stock',
-          eta: '2 weeks',
-          image_url: ledCfg.stripProduct?.image_url || ''
+    // Helper to generate track system hardware for a row
+    const buildTrackSystemItems = (row, spec, idSuffix) => {
+      const items = [];
+      const tag = (row.tag || '').trim().toUpperCase();
+      const trackCfg = spec?.trackConfig || {};
+      const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
+      const cleanLen = Math.round(len * 100) / 100;
+      const railMeters = trackCfg.railMeters !== undefined ? Number(trackCfg.railMeters) : cleanLen;
+      const drvQty = trackCfg.driverQty !== undefined ? Number(trackCfg.driverQty) : 1;
+
+      // 1. Track Rails
+      const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
+      const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
+      items.push({
+        id: 'I-' + Date.now() + '-' + idSuffix + '-rail-' + Math.random().toString(36).substr(2, 4),
+        qty: railMeters,
+        type: tag,
+        itemType: 'Hardware',
+        oneOneCode: trackCfg.railProduct?.one_to_one_code || '',
+        code: trackCfg.railSku || 'TRACK-RAIL',
+        description: `${trackCfg.railName || 'Track Profile Rail'} — ${railMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: '—',
+        brand: trackCfg.railProduct?.brand || '',
+        supplier: trackCfg.railProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        unitCost: railCost,
+        unitTrade: railRetail * 0.8,
+        unitRetail: railRetail,
+        selection: 'Track Rail',
+        stockStatus: 'Stock',
+        eta: '3 weeks',
+        image_url: trackCfg.railProduct?.image_url || ''
+      });
+
+      // 2. Track-Mounted Spotlights / Luminaires
+      if (Array.isArray(trackCfg.spots) && trackCfg.spots.length > 0) {
+        trackCfg.spots.forEach((spot, spIdx) => {
+          const spQty = Math.max(1, Number(spot.qty) || 1);
+          const spCost = Number(spot.cost_price) || 0;
+          const spRetail = Number(spot.retail_price) || 0;
+          items.push({
+            id: 'I-' + Date.now() + '-' + idSuffix + '-spot-' + spIdx + '-' + Math.random().toString(36).substr(2, 4),
+            qty: spQty,
+            type: tag,
+            itemType: 'Hardware',
+            oneOneCode: spot.product?.one_to_one_code || '',
+            code: spot.sku || 'TRACK-SPOT',
+            description: `${spot.name} — Track Luminaire`,
+            floor: row.floor || 'Ground',
+            area: row.area || 'General Area',
+            dimming: spot.product?.dimming_protocol || 'DALI / 48V Dim',
+            brand: spot.product?.brand || '',
+            supplier: spot.product?.supplier || orderSupplier || 'Molecule Dist.',
+            unitCost: spCost,
+            unitTrade: spRetail * 0.8,
+            unitRetail: spRetail,
+            selection: 'Track Luminaire',
+            stockStatus: 'Stock',
+            eta: '3 weeks',
+            image_url: spot.image_url || ''
+          });
         });
+      }
 
-        // 3. LED Driver / Power Supply
-        const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
-        const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-drv-' + Math.random().toString(36).substr(2, 4),
+      // 3. Track Driver / Power Box
+      if (trackCfg.driverProduct || trackCfg.driverName) {
+        const drvCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
+        const drvRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
+        items.push({
+          id: 'I-' + Date.now() + '-' + idSuffix + '-tr-drv-' + Math.random().toString(36).substr(2, 4),
           qty: drvQty,
           type: tag,
           itemType: 'Hardware',
-          oneOneCode: ledCfg.driverProduct?.one_to_one_code || '',
-          code: ledCfg.driverSku || 'LED-DRIVER-24V',
-          description: `${ledCfg.driverName || '24V Constant Voltage Driver'}`,
+          oneOneCode: trackCfg.driverProduct?.one_to_one_code || '',
+          code: trackCfg.driverSku || 'TRACK-DRIVER-48V',
+          description: `${trackCfg.driverName || '48V DC Low-Voltage Track Power Supply Box'}`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
-          dimming: ledCfg.driverProduct?.dimming_protocol || 'Phase Cut',
-          brand: ledCfg.driverProduct?.brand || '',
-          supplier: ledCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
-          unitCost: driverCost,
-          unitTrade: driverRetail * 0.8,
-          unitRetail: driverRetail,
+          dimming: '48V DALI / Dim',
+          brand: trackCfg.driverProduct?.brand || '',
+          supplier: trackCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
+          unitCost: drvCost,
+          unitTrade: drvRetail * 0.8,
+          unitRetail: drvRetail,
           selection: 'Driver',
           stockStatus: 'Stock',
-          eta: '2 weeks',
-          image_url: ledCfg.driverProduct?.image_url || ''
+          eta: '3 weeks',
+          image_url: trackCfg.driverProduct?.image_url || ''
         });
+      }
 
-        // 4. Dynamic Accessories / End Caps
-        if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
-          spec.accessories.forEach((acc, accIdx) => {
-            const accUnits = acc.qtyPerFitting !== undefined 
-              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
-            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
-            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
-            generatedItems.push({
-              id: 'I-' + Date.now() + '-' + rowIdx + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
-              qty: accUnits,
-              type: tag,
-              itemType: 'Hardware',
-              oneOneCode: acc.one_to_one_code || '',
-              code: acc.sku || 'LED-ACC',
-              description: acc.name || acc.client_description || 'Linear LED Accessory',
-              floor: row.floor || 'Ground',
-              area: row.area || 'General Area',
-              dimming: '—',
-              brand: acc.brand || '',
-              supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
-              unitCost: accCost,
-              unitTrade: accRetail * 0.8,
-              unitRetail: accRetail,
-              selection: 'Accessory',
-              stockStatus: 'Stock',
-              eta: '2 weeks',
-              image_url: acc.image_url || ''
-            });
-          });
-        } else {
-          // Fallback kit
-          generatedItems.push({
-            id: 'I-' + Date.now() + '-' + rowIdx + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
-            qty: 1,
+      // 4. Dynamic Accessories / Track Hardware Kit
+      if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
+        spec.accessories.forEach((acc, accIdx) => {
+          const accUnits = acc.qtyPerFitting !== undefined 
+            ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+            : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+          const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+          const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+          items.push({
+            id: 'I-' + Date.now() + '-' + idSuffix + '-tr-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
+            qty: accUnits,
             type: tag,
             itemType: 'Hardware',
-            oneOneCode: '',
-            code: 'LED-ENDCAPS-KIT',
-            description: `Profile End Caps (Pair) & Mounting Clips for ${tag}`,
+            oneOneCode: acc.one_to_one_code || '',
+            code: acc.sku || 'TRACK-ACC',
+            description: acc.name || acc.client_description || 'Track Accessory',
             floor: row.floor || 'Ground',
             area: row.area || 'General Area',
             dimming: '—',
-            brand: '',
-            supplier: orderSupplier || 'Molecule Dist.',
-            unitCost: 25,
-            unitTrade: 50,
-            unitRetail: 65,
+            brand: acc.brand || '',
+            supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
+            unitCost: accCost,
+            unitTrade: accRetail * 0.8,
+            unitRetail: accRetail,
             selection: 'Accessory',
             stockStatus: 'Stock',
-            eta: '2 weeks'
+            eta: '3 weeks',
+            image_url: acc.image_url || ''
           });
-        }
-
-      } else if (itemType === 'track_system') {
-        // -----------------------------------------------------------
-        // EXPAND TRACK SYSTEM INTO RAILS + SPOTS + FEEDS + DRIVER
-        // -----------------------------------------------------------
-        const trackCfg = spec?.trackConfig || {};
-        const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
-        const cleanLen = Math.round(len * 100) / 100;
-        const railMeters = trackCfg.railMeters !== undefined ? Number(trackCfg.railMeters) : cleanLen;
-        const drvQty = trackCfg.driverQty !== undefined ? Number(trackCfg.driverQty) : 1;
-
-        // 1. Track Rails
-        const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
-        const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
-        generatedItems.push({
-          id: 'I-' + Date.now() + '-' + rowIdx + '-rail-' + Math.random().toString(36).substr(2, 4),
-          qty: railMeters,
+        });
+      } else {
+        items.push({
+          id: 'I-' + Date.now() + '-' + idSuffix + '-tr-kit-' + Math.random().toString(36).substr(2, 4),
+          qty: 1,
           type: tag,
           itemType: 'Hardware',
-          oneOneCode: trackCfg.railProduct?.one_to_one_code || '',
-          code: trackCfg.railSku || 'TRACK-RAIL',
-          description: `${trackCfg.railName || 'Track Profile Rail'} — ${railMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+          oneOneCode: '',
+          code: 'TRACK-HARDWARE-KIT',
+          description: `Track Hardware Kit (1x Live End Power Feed + 1x Dead End Cap for ${tag})`,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: '—',
-          brand: trackCfg.railProduct?.brand || '',
-          supplier: trackCfg.railProduct?.supplier || orderSupplier || 'Molecule Dist.',
-          unitCost: railCost,
-          unitTrade: railRetail * 0.8,
-          unitRetail: railRetail,
-          selection: 'Track Rail',
-          stockStatus: 'Stock',
-          eta: '3 weeks',
-          image_url: trackCfg.railProduct?.image_url || ''
-        });
-
-        // 2. Track-Mounted Spotlights / Luminaires
-        if (Array.isArray(trackCfg.spots) && trackCfg.spots.length > 0) {
-          trackCfg.spots.forEach((spot, spIdx) => {
-            const spQty = Math.max(1, Number(spot.qty) || 1);
-            const spCost = Number(spot.cost_price) || 0;
-            const spRetail = Number(spot.retail_price) || 0;
-            generatedItems.push({
-              id: 'I-' + Date.now() + '-' + rowIdx + '-spot-' + spIdx + '-' + Math.random().toString(36).substr(2, 4),
-              qty: spQty,
-              type: tag,
-              itemType: 'Hardware',
-              oneOneCode: spot.product?.one_to_one_code || '',
-              code: spot.sku || 'TRACK-SPOT',
-              description: `${spot.name} — Track Luminaire`,
-              floor: row.floor || 'Ground',
-              area: row.area || 'General Area',
-              dimming: spot.product?.dimming_protocol || 'DALI / 48V Dim',
-              brand: spot.product?.brand || '',
-              supplier: spot.product?.supplier || orderSupplier || 'Molecule Dist.',
-              unitCost: spCost,
-              unitTrade: spRetail * 0.8,
-              unitRetail: spRetail,
-              selection: 'Track Luminaire',
-              stockStatus: 'Stock',
-              eta: '3 weeks',
-              image_url: spot.image_url || ''
-            });
-          });
-        }
-
-        // 3. Track Driver / Power Box
-        if (trackCfg.driverProduct || trackCfg.driverName) {
-          const drvCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
-          const drvRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
-          generatedItems.push({
-            id: 'I-' + Date.now() + '-' + rowIdx + '-tr-drv-' + Math.random().toString(36).substr(2, 4),
-            qty: drvQty,
-            type: tag,
-            itemType: 'Hardware',
-            oneOneCode: trackCfg.driverProduct?.one_to_one_code || '',
-            code: trackCfg.driverSku || 'TRACK-DRIVER-48V',
-            description: `${trackCfg.driverName || '48V DC Low-Voltage Track Power Supply Box'}`,
-            floor: row.floor || 'Ground',
-            area: row.area || 'General Area',
-            dimming: '48V DALI / Dim',
-            brand: trackCfg.driverProduct?.brand || '',
-            supplier: trackCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
-            unitCost: drvCost,
-            unitTrade: drvRetail * 0.8,
-            unitRetail: drvRetail,
-            selection: 'Driver',
-            stockStatus: 'Stock',
-            eta: '3 weeks',
-            image_url: trackCfg.driverProduct?.image_url || ''
-          });
-        }
-
-        // 4. Dynamic Accessories / Track Hardware Kit
-        if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
-          spec.accessories.forEach((acc, accIdx) => {
-            const accUnits = acc.qtyPerFitting !== undefined 
-              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
-            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
-            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
-            generatedItems.push({
-              id: 'I-' + Date.now() + '-' + rowIdx + '-tr-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
-              qty: accUnits,
-              type: tag,
-              itemType: 'Hardware',
-              oneOneCode: acc.one_to_one_code || '',
-              code: acc.sku || 'TRACK-ACC',
-              description: acc.name || acc.client_description || 'Track Accessory',
-              floor: row.floor || 'Ground',
-              area: row.area || 'General Area',
-              dimming: '—',
-              brand: acc.brand || '',
-              supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
-              unitCost: accCost,
-              unitTrade: accRetail * 0.8,
-              unitRetail: accRetail,
-              selection: 'Accessory',
-              stockStatus: 'Stock',
-              eta: '3 weeks',
-              image_url: acc.image_url || ''
-            });
-          });
-        } else {
-          // Fallback kit
-          generatedItems.push({
-            id: 'I-' + Date.now() + '-' + rowIdx + '-tr-kit-' + Math.random().toString(36).substr(2, 4),
-            qty: 1,
-            type: tag,
-            itemType: 'Hardware',
-            oneOneCode: '',
-            code: 'TRACK-HARDWARE-KIT',
-            description: `Track Hardware Kit (1x Live End Power Feed + 1x Dead End Cap for ${tag})`,
-            floor: row.floor || 'Ground',
-            area: row.area || 'General Area',
-            dimming: '—',
-            brand: '',
-            supplier: orderSupplier || 'Molecule Dist.',
-            unitCost: 140,
-            unitTrade: 280,
-            unitRetail: 350,
-            selection: 'Accessory',
-            stockStatus: 'Stock',
-            eta: '3 weeks'
-          });
-        }
-
-      } else if (product) {
-        // -----------------------------------------------------------
-        // STANDARD POINT FIXTURE
-        // -----------------------------------------------------------
-        const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
-        const costPrice = spec.customCost !== undefined ? Number(spec.customCost) : (product.cost_price || 0);
-        const tradePrice = spec.customTrade !== undefined ? Number(spec.customTrade) : (product.trade_price || 0);
-        const retailPrice = spec.customRetail !== undefined ? Number(spec.customRetail) : (product.retail_price || 0);
-
-        generatedItems.push({
-          id: fixtureId,
-          qty,
-          type: tag, // Type column holds Plan Code / Tag (e.g. A1, DL1)
-          itemType: 'Hardware',
-          oneOneCode: product.one_to_one_code || '',
-          code: product.sku || '',
-          description: (product.client_description || product.name || '') + (row.notes ? ` — ${row.notes}` : ''), // Plan code is in Type column, not in description
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
-          brand: product.brand || '',
-          supplier: product.supplier || product.supplier_name || orderSupplier || 'Molecule Dist.',
-          unitCost: costPrice,
-          unitTrade: tradePrice,
-          unitRetail: retailPrice,
-          selection: product.selection || 'Selection',
-          stockStatus: (product.stock_level || product.stock) > 0 ? 'Stock' : 'Ordered',
-          eta: product.lead_time || '4 weeks',
-          foh_code_description: product.foh_code_description || '',
-          wetworks: product.wetworks || '',
-          image_url: product.image_url || '',
-          technical_image_url: product.technical_image_url || '',
-          spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
-        });
-
-        // Generate Dynamic Accessories
-        if (Array.isArray(spec.accessories) && spec.accessories.length > 0) {
-          spec.accessories.forEach((acc, accIdx) => {
-            const accUnits = acc.qtyPerFitting !== undefined 
-              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
-            const accQty = qty * accUnits;
-            const accId = 'I-' + Date.now() + '-' + rowIdx + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4);
-
-            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
-            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
-
-            generatedItems.push({
-              id: accId,
-              qty: accQty,
-              type: tag, // Type column holds Plan Code / Tag for accessories too
-              itemType: 'Hardware',
-              oneOneCode: acc.one_to_one_code || '',
-              code: acc.sku || '',
-              description: acc.name || acc.client_description || '', // Clean description without [Acc for...] tag
-              floor: row.floor || 'Ground',
-              area: row.area || 'General Area',
-              dimming: acc.dimming_protocol || acc.dimmable || '—',
-              brand: acc.brand || product.brand || '',
-              supplier: acc.supplier || acc.supplier_name || product.supplier || orderSupplier || 'Molecule Dist.',
-              unitCost: accCost,
-              unitTrade: accRetail * 0.8,
-              unitRetail: accRetail,
-              selection: 'Accessory',
-              stockStatus: (acc.stock_level || acc.stock) > 0 ? 'Stock' : 'Ordered',
-              eta: acc.lead_time || '4 weeks',
-              foh_code_description: acc.foh_code_description || '',
-              wetworks: acc.wetworks || '',
-              image_url: acc.image_url || '',
-              technical_image_url: acc.technical_image_url || '',
-              spec_sheet_url: acc.qr_link || acc.spec_sheet_url || ''
-            });
-          });
-        }
-      } else {
-        // Fallback placeholder row for unassigned tag
-        const fixtureId = 'I-' + Date.now() + '-' + rowIdx + '-' + Math.random().toString(36).substr(2, 4);
-        generatedItems.push({
-          id: fixtureId,
-          qty,
-          type: tag, // Type column holds Plan Code / Tag
-          itemType: 'Hardware',
-          oneOneCode: '',
-          code: '',
-          description: 'Unassigned Fixture' + (row.notes ? ` — ${row.notes}` : ''),
-          floor: row.floor || 'Ground',
-          area: row.area || 'General Area',
-          dimming: 'Non-dim',
           brand: '',
           supplier: orderSupplier || 'Molecule Dist.',
-          unitCost: 0,
-          unitTrade: 0,
-          unitRetail: 0,
-          selection: 'Selection',
-          stockStatus: 'Ordered',
-          eta: '4 weeks',
-          foh_code_description: '',
-          wetworks: '',
-          image_url: '',
-          technical_image_url: '',
-          spec_sheet_url: ''
+          unitCost: 140,
+          unitTrade: 280,
+          unitRetail: 350,
+          selection: 'Accessory',
+          stockStatus: 'Stock',
+          eta: '3 weeks'
         });
       }
-    });
+      return items;
+    };
+
+    // Helper to generate point fixture item
+    const buildPointFixtureItem = (row, spec, product, idSuffix) => {
+      const tag = (row.tag || '').trim().toUpperCase();
+      const qty = Math.max(1, Number(row.qty) || 1);
+      const fixtureId = 'I-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4);
+      const costPrice = spec.customCost !== undefined ? Number(spec.customCost) : (product.cost_price || 0);
+      const tradePrice = spec.customTrade !== undefined ? Number(spec.customTrade) : (product.trade_price || 0);
+      const retailPrice = spec.customRetail !== undefined ? Number(spec.customRetail) : (product.retail_price || 0);
+
+      return {
+        id: fixtureId,
+        qty,
+        type: tag, // Type column holds Plan Code / Tag (e.g. A1, DL1)
+        itemType: 'Hardware',
+        oneOneCode: product.one_to_one_code || '',
+        code: product.sku || '',
+        description: (product.client_description || product.name || '') + (row.notes ? ` — ${row.notes}` : ''),
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
+        brand: product.brand || '',
+        supplier: product.supplier || product.supplier_name || orderSupplier || 'Molecule Dist.',
+        unitCost: costPrice,
+        unitTrade: tradePrice,
+        unitRetail: retailPrice,
+        selection: product.selection || 'Selection',
+        stockStatus: (product.stock_level || product.stock) > 0 ? 'Stock' : 'Ordered',
+        eta: product.lead_time || '4 weeks',
+        foh_code_description: product.foh_code_description || '',
+        wetworks: product.wetworks || '',
+        image_url: product.image_url || '',
+        technical_image_url: product.technical_image_url || '',
+        spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
+      };
+    };
+
+    // Helper to generate point fixture accessory item
+    const buildPointFixtureAccessoryItem = (acc, tag, accQty, product, idSuffix, floor = '', area = '') => {
+      const accId = 'I-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4);
+      const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+      const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+
+      return {
+        id: accId,
+        qty: accQty,
+        type: tag, // Type column holds Plan Code / Tag
+        itemType: 'Hardware',
+        oneOneCode: acc.one_to_one_code || '',
+        code: acc.sku || '',
+        description: acc.name || acc.client_description || '',
+        floor: floor,
+        area: area,
+        dimming: acc.dimming_protocol || acc.dimmable || '—',
+        brand: acc.brand || product?.brand || '',
+        supplier: acc.supplier || acc.supplier_name || product?.supplier || orderSupplier || 'Molecule Dist.',
+        unitCost: accCost,
+        unitTrade: accRetail * 0.8,
+        unitRetail: accRetail,
+        selection: 'Accessory',
+        stockStatus: (acc.stock_level || acc.stock) > 0 ? 'Stock' : 'Ordered',
+        eta: acc.lead_time || '4 weeks',
+        foh_code_description: acc.foh_code_description || '',
+        wetworks: acc.wetworks || '',
+        image_url: acc.image_url || '',
+        technical_image_url: acc.technical_image_url || '',
+        spec_sheet_url: acc.qr_link || acc.spec_sheet_url || ''
+      };
+    };
+
+    // Helper to generate unassigned placeholder item
+    const buildUnassignedItem = (row, tag, idSuffix) => {
+      const qty = Math.max(1, Number(row.qty) || 1);
+      const fixtureId = 'I-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4);
+      return {
+        id: fixtureId,
+        qty,
+        type: tag,
+        itemType: 'Hardware',
+        oneOneCode: '',
+        code: '',
+        description: 'Unassigned Fixture' + (row.notes ? ` — ${row.notes}` : ''),
+        floor: row.floor || 'Ground',
+        area: row.area || 'General Area',
+        dimming: 'Non-dim',
+        brand: '',
+        supplier: orderSupplier || 'Molecule Dist.',
+        unitCost: 0,
+        unitTrade: 0,
+        unitRetail: 0,
+        selection: 'Selection',
+        stockStatus: 'Ordered',
+        eta: '4 weeks',
+        foh_code_description: '',
+        wetworks: '',
+        image_url: '',
+        technical_image_url: '',
+        spec_sheet_url: ''
+      };
+    };
+
+    if (groupingMode === 'plan_code') {
+      // -------------------------------------------------------------
+      // OPTION 1: GROUP BY PLAN CODE / TAG
+      // -------------------------------------------------------------
+      const rowsByTag = new Map();
+      countUpRows.forEach(row => {
+        const tag = (row.tag || '').trim().toUpperCase();
+        if (!tag) return;
+        if (!rowsByTag.has(tag)) {
+          rowsByTag.set(tag, []);
+        }
+        rowsByTag.get(tag).push(row);
+      });
+
+      // Natural alphanumeric sort for plan tags: A1, A2, A10, B1, DL1, L-01...
+      const sortedTags = Array.from(rowsByTag.keys()).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+      );
+
+      sortedTags.forEach((tag, tagIdx) => {
+        const rows = rowsByTag.get(tag).sort((a, b) => {
+          const floorComp = (a.floor || '').localeCompare(b.floor || '');
+          if (floorComp !== 0) return floorComp;
+          return (a.area || '').localeCompare(b.area || '');
+        });
+
+        const spec = specifications[tag];
+        const itemType = spec?.itemType || rows[0]?.itemType || 'fixture';
+        const product = spec ? spec.product : null;
+
+        // Insert completely blank spacer row between plan codes
+        if (includeRoomSpacers && generatedItems.length > 0) {
+          generatedItems.push(makeBlankSpacer(`tag-${tagIdx}`));
+        }
+
+        if (itemType === 'linear_led') {
+          // Linear LEDs stay itemized per run (each area retains its profile, strip, driver, accessories)
+          rows.forEach((row, rIdx) => {
+            generatedItems.push(...buildLinearLedItems(row, spec, `tag-${tagIdx}-r-${rIdx}`));
+          });
+        } else if (itemType === 'track_system') {
+          // Track Systems stay itemized per run (each area retains rails, spots, driver, hardware kit)
+          rows.forEach((row, rIdx) => {
+            generatedItems.push(...buildTrackSystemItems(row, spec, `tag-${tagIdx}-r-${rIdx}`));
+          });
+        } else if (product) {
+          // Standard Point Fixture:
+          // 1. Output all room location rows
+          let totalTagQty = 0;
+          rows.forEach((row, rIdx) => {
+            const qty = Math.max(1, Number(row.qty) || 1);
+            totalTagQty += qty;
+            generatedItems.push(buildPointFixtureItem(row, spec, product, `tag-${tagIdx}-r-${rIdx}`));
+          });
+
+          // 2. Output consolidated accessories directly beneath with blank floor & area
+          if (Array.isArray(spec.accessories) && spec.accessories.length > 0) {
+            spec.accessories.forEach((acc, accIdx) => {
+              const accUnits = acc.qtyPerFitting !== undefined 
+                ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+                : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+              const totalAccQty = totalTagQty * accUnits;
+              // Blank floor and blank area space as requested
+              generatedItems.push(buildPointFixtureAccessoryItem(
+                acc, tag, totalAccQty, product, `tag-${tagIdx}-acc-${accIdx}`, '', ''
+              ));
+            });
+          }
+        } else {
+          // Unassigned tag
+          rows.forEach((row, rIdx) => {
+            generatedItems.push(buildUnassignedItem(row, tag, `tag-${tagIdx}-r-${rIdx}`));
+          });
+        }
+      });
+
+    } else {
+      // -------------------------------------------------------------
+      // OPTION 2: GROUP BY AREA / ROOM (CURRENT DEFAULT)
+      // -------------------------------------------------------------
+      const seenRooms = new Set();
+      const sortedRows = [...countUpRows].sort((a, b) => {
+        const floorComp = (a.floor || '').localeCompare(b.floor || '');
+        if (floorComp !== 0) return floorComp;
+        return (a.area || '').localeCompare(b.area || '');
+      });
+
+      sortedRows.forEach((row, rowIdx) => {
+        const tag = (row.tag || '').trim().toUpperCase();
+        if (!tag) return;
+
+        const roomKey = `${row.floor || 'Ground'}: ${row.area || 'General Area'}`;
+        
+        // Insert completely blank spacer row between rooms
+        if (includeRoomSpacers && !seenRooms.has(roomKey) && row.area) {
+          if (generatedItems.length > 0) {
+            generatedItems.push(makeBlankSpacer(`area-${rowIdx}`));
+          }
+          seenRooms.add(roomKey);
+        }
+
+        const spec = specifications[tag];
+        const itemType = spec?.itemType || row.itemType || 'fixture';
+        const product = spec ? spec.product : null;
+        const qty = Math.max(1, Number(row.qty) || 1);
+
+        if (itemType === 'linear_led') {
+          generatedItems.push(...buildLinearLedItems(row, spec, rowIdx));
+        } else if (itemType === 'track_system') {
+          generatedItems.push(...buildTrackSystemItems(row, spec, rowIdx));
+        } else if (product) {
+          generatedItems.push(buildPointFixtureItem(row, spec, product, rowIdx));
+          if (Array.isArray(spec.accessories) && spec.accessories.length > 0) {
+            spec.accessories.forEach((acc, accIdx) => {
+              const accUnits = acc.qtyPerFitting !== undefined 
+                ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
+                : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+              const accQty = qty * accUnits;
+              generatedItems.push(buildPointFixtureAccessoryItem(
+                acc, tag, accQty, product, `${rowIdx}-acc-${accIdx}`, row.floor || 'Ground', row.area || 'General Area'
+              ));
+            });
+          }
+        } else {
+          generatedItems.push(buildUnassignedItem(row, tag, rowIdx));
+        }
+      });
+    }
 
     setShowGenerateModal(false);
 
@@ -5329,8 +5434,51 @@ export default function TakeoffSpecEngine({
                 This will expand your <strong>{countUpRows.length} count-up entries</strong> into room-by-room items and accessories with your customized pricing, then populate them into the BOQ Spreadsheet.
               </p>
 
+              {/* GROUPING FORMAT SELECTION */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+                  Grouping & Organization
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <input 
+                    type="radio" 
+                    name="groupingMode" 
+                    value="plan_code" 
+                    checked={groupingMode === 'plan_code'} 
+                    onChange={() => setGroupingMode('plan_code')}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <div>
+                    <div><strong>Group by Plan Code / Tag</strong></div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'normal', marginTop: '2px' }}>
+                      Groups all room locations per fixture code, with total accessories summarized at the bottom (LED & Tracks itemized per run).
+                    </div>
+                  </div>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginTop: '4px' }}>
+                  <input 
+                    type="radio" 
+                    name="groupingMode" 
+                    value="area" 
+                    checked={groupingMode === 'area'} 
+                    onChange={() => setGroupingMode('area')}
+                    style={{ marginTop: '2px' }}
+                  />
+                  <div>
+                    <div><strong>Group by Area / Room</strong></div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'normal', marginTop: '2px' }}>
+                      Itemizes every fixture and its accessories room-by-room (standard installer view).
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               {/* GENERATION MODE SELECTION */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
+                  Destination Mode
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
                   <input 
                     type="radio" 
@@ -5361,7 +5509,7 @@ export default function TakeoffSpecEngine({
                   checked={includeRoomSpacers} 
                   onChange={e => setIncludeRoomSpacers(e.target.checked)}
                 />
-                <span>Automatically insert Room Header Spacers (e.g. <code>— GROUND: KITCHEN —</code>)</span>
+                <span>Automatically insert blank spacer rows between {groupingMode === 'plan_code' ? 'Plan Codes' : 'Rooms'}</span>
               </label>
 
               {stats.pendingTags > 0 && (
