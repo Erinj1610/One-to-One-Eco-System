@@ -372,6 +372,10 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                 if t_id:
                     client_shortcuts_by_target[t_id] = ch
 
+        # Pre-fetch all current projects in 01 - PROJECTS in a single call to avoid per-project latency
+        existing_proj_folders = get_subfolders(drive_service, projects_root_id, include_shortcuts=False)
+        existing_proj_by_norm = {normalize_name(pf['name']): pf for pf in existing_proj_folders}
+
         seen_project_ids = set()
         seen_gdrive_ids = {client_folder_id}
         valid_projects = []
@@ -391,8 +395,18 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
             except Exception:
                 db.rollback()
 
-            # Ensure physical project folder in 01 - PROJECTS
-            proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
+            # Find or create physical project folder in 01 - PROJECTS
+            p_norm = normalize_name(proj.name)
+            proj_f = existing_proj_by_norm.get(p_norm)
+            if not proj_f:
+                for ep_norm, ep_f in existing_proj_by_norm.items():
+                    if (len(p_norm) >= 4 and p_norm in ep_norm) or (len(ep_norm) >= 4 and ep_norm in p_norm):
+                        proj_f = ep_f
+                        break
+            if not proj_f:
+                proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
+                existing_proj_by_norm[p_norm] = proj_f
+
             proj_folder_id = proj_f['id']
             if proj.master_drive_folder != proj_folder_id:
                 try:
@@ -401,10 +415,11 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                 except Exception:
                     db.rollback()
 
-            # Ensure native shortcut in client folder pointing to the project in 01 - PROJECTS
-            sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
-            if sc and sc.get('id'):
-                client_shortcuts_by_target[proj_folder_id] = sc
+            # Ensure native shortcut in client folder pointing to the active project in 01 - PROJECTS
+            if proj_folder_id not in client_shortcuts_by_target:
+                sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
+                if sc and sc.get('id'):
+                    client_shortcuts_by_target[proj_folder_id] = sc
 
             valid_projects.append((proj, proj_folder_id))
             proj_folder_ids.append(proj_folder_id)
