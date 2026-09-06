@@ -3048,101 +3048,81 @@ export default function ProductsPage() {
                 {activeTab === 'accessories' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>⚡ Link Compatible Accessories, Drivers & Bezels</h4>
-                      
-                      {/* GOOGLE SHEET BULK LINKING BANNER */}
-                      <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-                        <span style={{ fontSize: '15px' }}>💡</span>
-                        <div>
-                          <strong>Google Sheet Bulk Linking Active:</strong> You can link drivers and accessories in bulk by entering comma-separated SKUs in <strong>Column AE</strong> (<em>Linked Accessories / Drivers</em>) of the master Google Sheet, then clicking <strong>Sync From Google Sheet</strong>. You can also manually link or adjust items below.
-                        </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                        <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          ⚡ Linked Drivers, Bezels & Accessories
+                        </h4>
+                        <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                          🔒 Read-Only • Managed by Google Sheet (Col AE)
+                        </span>
                       </div>
-
-                      {/* ADD ACCESSORY ROW */}
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Select Product to Link:</label>
-                          <select 
-                            className="form-control" 
-                            style={{ height: '32px', fontSize: '12px' }}
-                            value={newAccessoryId}
-                            onChange={e => setNewAccessoryId(e.target.value)}
-                          >
-                            <option value="">-- Choose Driver or Accessory SKU --</option>
-                            {products.filter(p => p.id !== activeProduct.id).map(p => (
-                              <option key={p.id} value={p.id}>[{p.sku}] — {p.name} (R {p.retail_price || p.unitCost || 0})</option>
-                            ))}
-                          </select>
+                      
+                      {/* READ-ONLY SOURCE OF TRUTH BANNER */}
+                      <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '12px 18px', marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <ShieldCheck size={20} color="#10b981" style={{ flexShrink: 0 }} />
+                          <div>
+                            <strong>Google Sheet Single Source of Truth:</strong> Linked drivers, mounting kits, and accessories for this fitting are synchronized directly from <strong>Column AE</strong> (<em>Linked Accessories / Drivers</em>) of the Master Google Sheet. Manual editing in the portal is disabled to keep your sheet 100% authoritative.
+                          </div>
                         </div>
-
-                        <div style={{ width: '180px' }}>
-                          <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Relationship Type:</label>
-                          <select 
-                            className="form-control" 
-                            style={{ height: '32px', fontSize: '12px' }}
-                            value={newAccessoryType}
-                            onChange={e => setNewAccessoryType(e.target.value)}
+                        {specsSheetInfo.spreadsheet_url && (
+                          <a 
+                            href={specsSheetInfo.spreadsheet_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="btn btn-ghost btn-sm" 
+                            style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '6px 12px', height: '32px', display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
                           >
-                            <option value="Required Driver">Required Driver</option>
-                            <option value="Optional Bezel / Trim">Optional Bezel / Trim</option>
-                            <option value="Emergency Battery Pack">Emergency Battery Pack</option>
-                            <option value="Dimmer Controller">Dimmer Controller</option>
-                          </select>
-                        </div>
-
-                        <button 
-                          className="btn btn-primary btn-sm" 
-                          style={{ height: '32px', marginTop: '18px', padding: '0 16px', fontSize: '12px' }}
-                          onClick={() => handleAddAccessory(activeProduct.id)}
-                        >
-                          ➕ Link Accessory
-                        </button>
+                            <ExternalLink size={13} /> Edit in Sheet ↗
+                          </a>
+                        )}
                       </div>
 
                       {/* ACCESSORIES TABLE */}
                       {isLoadingAccessories ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading linked accessories...</div>
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading linked accessories...</div>
                       ) : accessoriesList.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                          No drivers or accessories linked to this fitting yet.
+                        <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                          No drivers or accessories linked in Column AE of the Google Sheet for SKU: <code>{activeProduct.sku}</code>
                         </div>
                       ) : (
-                        <table className="table" style={{ width: '100%', fontSize: '12px' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-secondary)' }}>
-                              <th>Relationship</th>
-                              <th>Accessory SKU</th>
-                              <th>Description / Name</th>
-                              <th style={{ textAlign: 'right' }}>RRP Price</th>
-                              <th style={{ textAlign: 'center' }}>Stock Qty</th>
-                              <th style={{ textAlign: 'center' }}>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {accessoriesList.map((acc) => (
-                              <tr key={acc.id}>
-                                <td>
-                                  <span className="badge b-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
-                                    {acc.relationship_type}
-                                  </span>
-                                </td>
-                                <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{acc.sku}</td>
-                                <td>{acc.name}</td>
-                                <td style={{ textAlign: 'right', fontWeight: 600 }}>R {(acc.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{acc.stock || 0}</td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button 
-                                    className="btn btn-ghost btn-sm" 
-                                    style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '11px' }}
-                                    onClick={() => handleRemoveAccessory(activeProduct.id, acc.id)}
-                                  >
-                                    🗑️ Unlink
-                                  </button>
-                                </td>
+                        <div className="table-responsive">
+                          <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg-secondary)' }}>
+                                <th>Relationship</th>
+                                <th>Accessory SKU</th>
+                                <th>Description / Name</th>
+                                <th style={{ textAlign: 'right' }}>RRP Price</th>
+                                <th style={{ textAlign: 'center' }}>Stock Qty</th>
+                                <th style={{ textAlign: 'center' }}>Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {accessoriesList.map((acc) => {
+                                const stockQty = acc.stock || 0;
+                                return (
+                                  <tr key={acc.id}>
+                                    <td>
+                                      <span className="badge b-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
+                                        {acc.relationship_type}
+                                      </span>
+                                    </td>
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-info)' }}>{acc.sku}</td>
+                                    <td style={{ fontWeight: 600 }}>{acc.name}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {(acc.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{stockQty}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      <span className={`badge ${stockQty > 0 ? 'b-success' : 'b-danger'}`} style={{ fontSize: '9.5px', padding: '2px 7px' }}>
+                                        {stockQty > 0 ? 'In Stock' : 'Out of Stock'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </div>
                   </div>
