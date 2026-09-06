@@ -538,6 +538,12 @@ export default function ProductsPage() {
   // Read-only / edit mode for detail view
   const [isEditing, setIsEditing] = useState(false);
 
+  // Linked Accessories & Drivers states
+  const [accessoriesList, setAccessoriesList] = useState([]);
+  const [isLoadingAccessories, setIsLoadingAccessories] = useState(false);
+  const [newAccessoryId, setNewAccessoryId] = useState('');
+  const [newAccessoryType, setNewAccessoryType] = useState('Required Driver');
+
   const mapProduct = (p) => {
     const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - p.cost_price) / p.retail_price) * 100) : 37;
     return {
