@@ -290,16 +290,26 @@ def create_drive_shortcut(
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-        existing = res.get('files', [])
+        matched_shortcut = None
         for ex in existing:
             if ex.get('mimeType') == 'application/vnd.google-apps.shortcut':
                 target = ex.get('shortcutDetails', {}).get('targetId')
                 if target == target_folder_id:
                     logger.info(f"Shortcut '{clean_name}' -> {target_folder_id} already exists ({ex.get('id')})")
-                    return ex
-            if ex.get('name', '').lower() == clean_name.lower():
+                    matched_shortcut = ex
+                elif ex.get('name', '').lower() == clean_name.lower():
+                    # Same name but obsolete target -> delete so we can replace with correct target
+                    try:
+                        drive_service.files().delete(fileId=ex['id'], supportsAllDrives=True).execute()
+                        logger.info(f"Deleted obsolete shortcut '{clean_name}' ({ex['id']}) pointing to old target {target}")
+                    except Exception as de:
+                        logger.warning(f"Could not delete obsolete shortcut {ex['id']}: {de}")
+            elif ex.get('name', '').lower() == clean_name.lower():
                 logger.info(f"Item '{clean_name}' already exists in parent {parent_folder_id}")
                 return ex
+
+        if matched_shortcut:
+            return matched_shortcut
     except Exception as e:
         logger.warning(f"Error querying existing shortcuts under {parent_folder_id}: {e}")
 
@@ -1146,12 +1156,26 @@ def migrate_drive_to_2_tier(db: Optional[Any] = None) -> Dict[str, Any]:
                 client_folders = get_subfolders(drive_service, clients_root_id, include_shortcuts=False)
                 client_folders_by_norm = {normalize_name(cf['name']): cf for cf in client_folders}
 
+                from models.orm_models import Client
+                all_clients = db_sess.query(Client).all()
+                client_id_map = {c.id: normalize_name(c.name) for c in all_clients}
+
                 for p in all_db_projects:
-                    if p.client_name and p.master_drive_folder:
-                        c_norm = normalize_name(p.client_name)
-                        matched_cf = client_folders_by_norm.get(c_norm)
-                        if matched_cf:
-                            create_drive_shortcut(drive_service, p.name, p.master_drive_folder, matched_cf['id'])
+                    if p.master_drive_folder:
+                        c_norm = normalize_name(p.client_name) if p.client_name else None
+                        if not c_norm and p.client_id in client_id_map:
+                            c_norm = client_id_map[p.client_id]
+                        if c_norm:
+                            matched_cf = client_folders_by_norm.get(c_norm)
+                            if not matched_cf:
+                                for cf_k, cf_v in client_folders_by_norm.items():
+                                    if (len(c_norm) >= 6 and c_norm in cf_k) or (len(cf_k) >= 6 and cf_k in c_norm):
+                                        matched_cf = cf_v
+                                        break
+                            if matched_cf:
+                                sc = create_drive_shortcut(drive_service, p.name, p.master_drive_folder, matched_cf['id'])
+                                if sc and sc.get('id'):
+                                    report["shortcuts_created"].append(f"Shortcut '{p.name}' -> {p.master_drive_folder} in {matched_cf['name']}")
 
                 db_sess.commit()
                 report["db_sync_status"] = "completed"

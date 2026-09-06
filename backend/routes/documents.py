@@ -340,26 +340,18 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
             # Locate physical project folder in 01 - PROJECTS
             proj_folder_id = proj.master_drive_folder
             if not proj_folder_id:
-                proj_norm = normalize_name(proj.name)
-                matched_sc = client_children_by_norm.get(proj_norm)
-                if matched_sc:
-                    proj_folder_id = matched_sc.get('shortcutDetails', {}).get('targetId') or matched_sc.get('id')
-                
-                if not proj_folder_id:
-                    proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
-                    proj_folder_id = proj_f['id']
-
+                proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
+                proj_folder_id = proj_f['id']
                 try:
                     proj.master_drive_folder = proj_folder_id
                     db.commit()
                 except Exception:
                     db.rollback()
 
-            # Ensure native shortcut in client folder
-            if proj_folder_id not in client_shortcuts_by_target and normalize_name(proj.name) not in client_children_by_norm:
-                sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
-                if sc and sc.get('id'):
-                    client_shortcuts_by_target[proj_folder_id] = sc
+            # Ensure native shortcut in client folder pointing to the project in 01 - PROJECTS
+            sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
+            if sc and sc.get('id'):
+                client_shortcuts_by_target[proj_folder_id] = sc
 
             valid_projects.append((proj, proj_folder_id))
             proj_folder_ids.append(proj_folder_id)
