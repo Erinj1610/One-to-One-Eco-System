@@ -466,7 +466,7 @@ export default function ProjectManagement() {
   // Deletion locks
   const hasDesignFees = designFees.length > 0;
   const hasOrders = orders.length > 0;
-  const hasFiles = p?.designFees?.some(df => df.files && df.files.length > 0) || files.length > 0;
+  const hasFiles = p?.designFees?.some(df => df.files && df.files.length > 0) || (Array.isArray(p?.files) && p.files.length > 0);
   const isLockedForDeletion = hasDesignFees || hasOrders || hasFiles;
 
   const handleDeleteProject = () => {
