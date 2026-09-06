@@ -298,7 +298,7 @@ def create_drive_shortcut(
                 if target == target_folder_id:
                     logger.info(f"Shortcut '{clean_name}' -> {target_folder_id} already exists ({ex.get('id')})")
                     matched_shortcut = ex
-                elif ex.get('name', '').lower() == clean_name.lower():
+                elif ex.get('name', '').lower() == clean_name.lower() or normalize_name(ex.get('name', '')) == normalize_name(clean_name):
                     # Same name but obsolete target -> delete so we can replace with correct target
                     try:
                         drive_service.files().delete(fileId=ex['id'], supportsAllDrives=True).execute()
@@ -309,7 +309,7 @@ def create_drive_shortcut(
                             logger.info(f"Trashed obsolete shortcut '{clean_name}' ({ex['id']}) pointing to old target {target}")
                         except Exception as te:
                             logger.warning(f"Could not delete or trash obsolete shortcut {ex['id']}: {te}")
-            elif ex.get('name', '').lower() == clean_name.lower():
+            elif ex.get('name', '').lower() == clean_name.lower() or normalize_name(ex.get('name', '')) == normalize_name(clean_name):
                 logger.info(f"Item '{clean_name}' already exists in parent {parent_folder_id}")
                 return ex
 
@@ -398,10 +398,33 @@ def ensure_order_drive_tree(
     supplier_part = f" - {supplier_name.strip()}" if supplier_name and supplier_name.strip() else ""
     order_folder_name = f"{order_identifier.strip()}{supplier_part}"
 
-    # 1. Ensure Project in 01 - PROJECTS & Orders parent folder
+    # 1. Ensure Project in 01 - PROJECTS & complete project hierarchy
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
     project_folder_id = project_folder['id']
-    orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
+
+    # Ensure standard project subfolders (Drawings, Specs, Photos) and Designs/Orders containers
+    proj_children = get_subfolders(drive_service, project_folder_id, include_shortcuts=False)
+    proj_children_names = {normalize_name(f['name']) for f in proj_children}
+
+    for starter in PROJECT_STANDARD_FOLDERS:
+        s_norm = normalize_name(starter["name"])
+        s_stripped = re.sub(r'^\d+\s*-\s*', '', starter["name"])
+        s_stripped_norm = normalize_name(s_stripped)
+        if not any(s_norm in cn or s_stripped_norm in cn or cn in s_norm for cn in proj_children_names):
+            get_or_create_drive_folder(drive_service, starter["name"], project_folder_id)
+            proj_children_names.add(s_norm)
+
+    if not any("design" in cn for cn in proj_children_names):
+        get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
+        proj_children_names.add("designs")
+
+    orders_root = None
+    for f in proj_children:
+        if normalize_name(f['name']) == "orders":
+            orders_root = f
+            break
+    if not orders_root:
+        orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
     
     # 2. Ensure shortcut in 02 - CLIENTS / [Client]
     if clean_client and clean_client.lower() != "general clients":
@@ -496,10 +519,33 @@ def ensure_design_drive_tree(
     name_part = f" - {design_name.strip()}" if design_name and design_name.strip() else ""
     design_folder_name = f"{fee_ref.strip()}{name_part}"
 
-    # 1. Ensure Project in 01 - PROJECTS & Designs parent folder
+    # 1. Ensure Project in 01 - PROJECTS & complete project hierarchy
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
     project_folder_id = project_folder['id']
-    designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
+
+    # Ensure standard project subfolders (Drawings, Specs, Photos) and Designs/Orders containers
+    proj_children = get_subfolders(drive_service, project_folder_id, include_shortcuts=False)
+    proj_children_names = {normalize_name(f['name']) for f in proj_children}
+
+    for starter in PROJECT_STANDARD_FOLDERS:
+        s_norm = normalize_name(starter["name"])
+        s_stripped = re.sub(r'^\d+\s*-\s*', '', starter["name"])
+        s_stripped_norm = normalize_name(s_stripped)
+        if not any(s_norm in cn or s_stripped_norm in cn or cn in s_norm for cn in proj_children_names):
+            get_or_create_drive_folder(drive_service, starter["name"], project_folder_id)
+            proj_children_names.add(s_norm)
+
+    if not any("order" in cn for cn in proj_children_names):
+        get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
+        proj_children_names.add("orders")
+
+    designs_root = None
+    for f in proj_children:
+        if normalize_name(f['name']) == "designs":
+            designs_root = f
+            break
+    if not designs_root:
+        designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
     
     # 2. Ensure shortcut in 02 - CLIENTS / [Client]
     if clean_client and clean_client.lower() != "general clients":
@@ -914,30 +960,67 @@ def get_master_drive_tree() -> List[Dict[str, Any]]:
             if not page_token:
                 break
         
-        all_item_ids = {f['id'] for f in all_items}
-        
-        # Sort items so physical folders and valid shortcuts (pointing within the drive) take precedence
+        items_by_id = {f['id']: f for f in all_items}
+        reachable_ids = set()
+        unreachable_ids = set()
+
+        def is_reachable(fid: str, path_visited: set) -> bool:
+            if fid == ROOT_DRIVE_FOLDER_ID:
+                return True
+            if fid in reachable_ids:
+                return True
+            if fid in unreachable_ids or fid not in items_by_id:
+                return False
+            if fid in path_visited:
+                return False
+            path_visited.add(fid)
+
+            item = items_by_id[fid]
+            parents = item.get('parents', [])
+            if not parents:
+                unreachable_ids.add(fid)
+                return False
+
+            parent_id = parents[0]
+            if is_reachable(parent_id, path_visited):
+                reachable_ids.add(fid)
+                return True
+            else:
+                unreachable_ids.add(fid)
+                return False
+
+        # Pre-compute reachability for all items
+        for item in all_items:
+            is_reachable(item['id'], set())
+
+        # Validate shortcuts: both the shortcut itself and its target must be reachable
+        def is_shortcut_valid(item: Dict[str, Any]) -> bool:
+            if item.get('mimeType') != 'application/vnd.google-apps.shortcut':
+                return True
+            tid = item.get('shortcutDetails', {}).get('targetId')
+            return bool(tid and tid in reachable_ids)
+
+        valid_items = [
+            f for f in all_items 
+            if f['id'] in reachable_ids and is_shortcut_valid(f)
+        ]
+
+        # Sort items so physical folders take precedence over shortcuts, then by createdTime
         def item_priority(item):
             is_sc = item.get('mimeType') == 'application/vnd.google-apps.shortcut'
-            tid = item.get('shortcutDetails', {}).get('targetId')
-            valid_target = tid in all_item_ids if is_sc else True
-            return (1 if valid_target else 0, 0 if is_sc else 1, item.get('createdTime', ''))
+            return (0 if is_sc else 1, item.get('createdTime', ''))
 
-        all_items.sort(key=item_priority, reverse=True)
+        valid_items.sort(key=item_priority, reverse=True)
 
         tree_nodes = []
         seen_parent_and_name = set()
 
-        for f in all_items:
+        for f in valid_items:
             parents = f.get('parents', [])
             parent_id = parents[0] if parents else None
             is_root_child = parent_id == ROOT_DRIVE_FOLDER_ID
             is_shortcut = f.get('mimeType') == 'application/vnd.google-apps.shortcut'
             target_id = f.get('shortcutDetails', {}).get('targetId') if is_shortcut else None
-
-            # Skip dead shortcuts whose target no longer exists or is outside this Shared Drive
-            if is_shortcut and target_id and target_id not in all_item_ids:
-                continue
 
             # Deduplicate by parent and normalized name
             norm_name = normalize_name(f['name'])
@@ -1171,11 +1254,8 @@ def migrate_drive_to_2_tier(db: Optional[Any] = None) -> Dict[str, Any]:
                     p_norm = normalize_name(p.name)
                     matched_pf = proj_folders_by_norm.get(p_norm)
                     if not matched_pf:
-                        # Substring match
-                        for k, v in proj_folders_by_norm.items():
-                            if (len(p_norm) >= 4 and p_norm in k) or (len(k) >= 4 and k in p_norm):
-                                matched_pf = v
-                                break
+                        matched_pf = get_or_create_drive_folder(drive_service, p.name, projects_root_id)
+                        proj_folders_by_norm[p_norm] = matched_pf
                     
                     if matched_pf and p.master_drive_folder != matched_pf['id']:
                         p.master_drive_folder = matched_pf['id']

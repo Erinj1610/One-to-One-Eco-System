@@ -123,6 +123,15 @@ def resolve_project_client(project: Optional[Project], db: Session) -> tuple[Opt
         if best_c:
             client = best_c
 
+    if not client:
+        # Check if any DesignFee for this project has a linked client
+        df_with_client = db.query(DesignFee).filter(
+            or_(DesignFee.project_id == project.id, DesignFee.project_key == project.project_key),
+            DesignFee.client_id.isnot(None)
+        ).first()
+        if df_with_client and df_with_client.client_id:
+            client = db.query(Client).filter(Client.id == df_with_client.client_id).first()
+
     if client:
         try:
             changed = False
@@ -313,14 +322,43 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
         # Query projects associated with this client
         projects = []
         if client:
+            related_client_ids = {client.id}
+            client_names_to_match = {client.name.lower().strip()}
+
+            # Match sibling/alias clients via similarity (e.g. Wynand Wilsenacht vs Wynand Wilsenach)
+            all_clients = db.query(Client).all()
+            for other_c in all_clients:
+                if other_c.id != client.id:
+                    c1_norm = normalize_name(other_c.name)
+                    c2_norm = normalize_name(client.name)
+                    score = difflib.SequenceMatcher(None, c1_norm, c2_norm).ratio()
+                    if score >= 0.85 or (len(c1_norm) >= 6 and (c1_norm in c2_norm or c2_norm in c1_norm)):
+                        related_client_ids.add(other_c.id)
+                        client_names_to_match.add(other_c.name.lower().strip())
+
             projects = db.query(Project).filter(
                 or_(
-                    Project.client_id == client.id,
-                    func.lower(Project.client_name) == client.name.lower(),
-                    Project.client_name.ilike(f"%{client.name}%"),
-                    Project.name.ilike(f"%{client.name}%")
+                    Project.client_id.in_(related_client_ids),
+                    func.lower(Project.client_name).in_(client_names_to_match),
+                    *[Project.client_name.ilike(f"%{cn}%") for cn in client_names_to_match],
+                    *[Project.name.ilike(f"%{cn}%") for cn in client_names_to_match]
                 )
             ).all()
+
+            # Also check if any orders referencing this client belong to additional projects
+            client_orders = db.query(Order).filter(
+                or_(
+                    *[Order.quote_name.ilike(f"%{cn}%") for cn in client_names_to_match]
+                )
+            ).all()
+            order_proj_ids = {o.project_id for o in client_orders if o.project_id}
+            if order_proj_ids:
+                addl_projects = db.query(Project).filter(Project.id.in_(order_proj_ids)).all()
+                existing_pids = {p.id for p in projects}
+                for ap in addl_projects:
+                    if ap.id not in existing_pids:
+                        projects.append(ap)
+                        existing_pids.add(ap.id)
 
         # Query existing items inside client folder (shortcuts or folders)
         client_children = get_subfolders(drive_service, client_folder_id, include_shortcuts=True)
@@ -353,11 +391,10 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
             except Exception:
                 db.rollback()
 
-            # Locate physical project folder in 01 - PROJECTS
-            proj_folder_id = proj.master_drive_folder
-            if not proj_folder_id:
-                proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
-                proj_folder_id = proj_f['id']
+            # Ensure physical project folder in 01 - PROJECTS
+            proj_f = get_or_create_drive_folder(drive_service, proj.name, projects_root_id)
+            proj_folder_id = proj_f['id']
+            if proj.master_drive_folder != proj_folder_id:
                 try:
                     proj.master_drive_folder = proj_folder_id
                     db.commit()
@@ -365,10 +402,9 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                     db.rollback()
 
             # Ensure native shortcut in client folder pointing to the project in 01 - PROJECTS
-            if proj_folder_id not in client_shortcuts_by_target:
-                sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
-                if sc and sc.get('id'):
-                    client_shortcuts_by_target[proj_folder_id] = sc
+            sc = create_drive_shortcut(drive_service, proj.name, proj_folder_id, client_folder_id)
+            if sc and sc.get('id'):
+                client_shortcuts_by_target[proj_folder_id] = sc
 
             valid_projects.append((proj, proj_folder_id))
             proj_folder_ids.append(proj_folder_id)
@@ -621,10 +657,10 @@ def get_project_folders(project_id: str, db: Session = Depends(get_db)):
             parent_for_project=None
         )
 
-        # Update master_drive_folder if not set
-        if project and not project.master_drive_folder and folders:
+        # Update master_drive_folder if not set or outdated
+        if project and folders:
             first_project_gdrive_id = folders[0].get("project_gdrive_id")
-            if first_project_gdrive_id:
+            if first_project_gdrive_id and project.master_drive_folder != first_project_gdrive_id:
                 try:
                     project.master_drive_folder = first_project_gdrive_id
                     db.commit()
