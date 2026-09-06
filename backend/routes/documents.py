@@ -61,6 +61,22 @@ def get_global_drive_tree():
         return []
 
 
+@router.get("/diag/inspect/{file_id}")
+def inspect_file(file_id: str):
+    """Diagnostic endpoint to inspect metadata and children of any Google Drive file or folder."""
+    try:
+        drive_service = get_drive_service()
+        meta = drive_service.files().get(
+            fileId=file_id,
+            fields="id, name, mimeType, parents, trashed, driveId, shortcutDetails",
+            supportsAllDrives=True
+        ).execute()
+        subs = get_subfolders(drive_service, file_id, include_shortcuts=True)
+        return {"meta": meta, "subs": subs}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def resolve_project_client(project: Optional[Project], db: Session) -> tuple[Optional[Client], str]:
     """
     Robustly resolves the canonical Client for a Project.
