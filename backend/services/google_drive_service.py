@@ -84,16 +84,26 @@ def get_subfolders(drive_service, parent_id: str, include_shortcuts: bool = True
         query = f"'{clean_parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
 
     try:
-        res = drive_service.files().list(
-            q=query,
-            corpora='drive',
-            driveId=ROOT_DRIVE_FOLDER_ID,
-            fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=100
-        ).execute()
-        return res.get('files', [])
+        all_files = []
+        page_token = None
+        while True:
+            params = {
+                "q": query,
+                "corpora": "drive",
+                "driveId": ROOT_DRIVE_FOLDER_ID,
+                "fields": "nextPageToken, files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
+                "supportsAllDrives": True,
+                "includeItemsFromAllDrives": True,
+                "pageSize": 200
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            res = drive_service.files().list(**params).execute()
+            all_files.extend(res.get('files', []))
+            page_token = res.get('nextPageToken')
+            if not page_token:
+                break
+        return all_files
     except Exception as e:
         logger.warning(f"Error listing subfolders under {clean_parent_id}: {e}")
         return []
@@ -125,20 +135,28 @@ def get_subfolders_batch(
             query = f"({parents_clause}) and mimeType='application/vnd.google-apps.folder' and trashed=false"
 
         try:
-            res = drive_service.files().list(
-                q=query,
-                corpora='drive',
-                driveId=ROOT_DRIVE_FOLDER_ID,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
-                pageSize=500
-            ).execute()
-            files = res.get('files', [])
-            for f in files:
-                for p in f.get('parents', []):
-                    if p in result_by_parent:
-                        result_by_parent[p].append(f)
+            page_token = None
+            while True:
+                params = {
+                    "q": query,
+                    "corpora": "drive",
+                    "driveId": ROOT_DRIVE_FOLDER_ID,
+                    "supportsAllDrives": True,
+                    "includeItemsFromAllDrives": True,
+                    "fields": "nextPageToken, files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
+                    "pageSize": 500
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                res = drive_service.files().list(**params).execute()
+                files = res.get('files', [])
+                for f in files:
+                    for p in f.get('parents', []):
+                        if p in result_by_parent:
+                            result_by_parent[p].append(f)
+                page_token = res.get('nextPageToken')
+                if not page_token:
+                    break
         except Exception as e:
             logger.warning(f"Batch subfolder query error: {e}")
             for pid in chunk:
@@ -844,16 +862,25 @@ def get_master_drive_tree() -> List[Dict[str, Any]]:
     drive_service = get_drive_service()
     query = "(mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.shortcut') and trashed=false"
     try:
-        res = drive_service.files().list(
-            q=query,
-            corpora='drive',
-            driveId=ROOT_DRIVE_FOLDER_ID,
-            fields="files(id, name, mimeType, parents, shortcutDetails, webViewLink, createdTime)",
-            pageSize=1000,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        all_items = res.get('files', [])
+        all_items = []
+        page_token = None
+        while True:
+            params = {
+                "q": query,
+                "corpora": "drive",
+                "driveId": ROOT_DRIVE_FOLDER_ID,
+                "fields": "nextPageToken, files(id, name, mimeType, parents, shortcutDetails, webViewLink, createdTime)",
+                "pageSize": 1000,
+                "supportsAllDrives": True,
+                "includeItemsFromAllDrives": True
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            res = drive_service.files().list(**params).execute()
+            all_items.extend(res.get('files', []))
+            page_token = res.get('nextPageToken')
+            if not page_token:
+                break
         
         tree_nodes = []
         for f in all_items:
