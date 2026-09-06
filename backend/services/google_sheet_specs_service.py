@@ -7,7 +7,7 @@ from sqlalchemy import text
 from datetime import datetime
 from typing import Any, Optional
 
-from models.orm_models import Product, PortalSetting
+from models.orm_models import Product, PortalSetting, ProductAccessory
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ HEADERS = [
     "Client Description",
     "1-to-1 Code",
     "Wetworks",
-    "Selection"
+    "Selection",
+    "Linked Accessories / Drivers"
 ]
 
 def get_google_clients():
@@ -80,7 +81,12 @@ def parse_field(val: Any) -> Optional[str]:
     return s
 
 def product_to_row(p: Product) -> list:
-    """Serializes a Product ORM instance to a 30-column sheet row matching HEADERS."""
+    """Serializes a Product ORM instance to a 31-column sheet row matching HEADERS."""
+    linked_acc_str = ""
+    if hasattr(p, 'accessories') and p.accessories:
+        acc_skus = [acc.accessory_product.sku for acc in p.accessories if acc.accessory_product and acc.accessory_product.sku]
+        linked_acc_str = ", ".join(acc_skus)
+
     return [
         p.sku or "",
         p.name or "",
@@ -111,7 +117,8 @@ def product_to_row(p: Product) -> list:
         p.client_description or "",
         p.one_to_one_code or "",
         getattr(p, 'wetworks', '') or "",
-        p.selection or ""
+        p.selection or "",
+        linked_acc_str
     ]
 
 def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
@@ -170,7 +177,7 @@ def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
             # Write Header
             sheets_service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
-                range=f"'{TAB_INBOX}'!A1:AD1",
+                range=f"'{TAB_INBOX}'!A1:AE1",
                 valueInputOption='RAW',
                 body={'values': [HEADERS]}
             ).execute()
@@ -266,7 +273,7 @@ def generate_specs_master_sheet(db: Session, spreadsheet_id: str = None) -> dict
     # Write data to ITEM DATABASE
     sheets_service.spreadsheets().values().update(
         spreadsheetId=clean_id,
-        range=f"'{target_tab}'!A1:AD",
+        range=f"'{target_tab}'!A1:AE",
         valueInputOption='RAW',
         body={'values': rows}
     ).execute()
@@ -358,10 +365,10 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
     sheet_map = ensure_workbook_tabs(sheets_service, clean_id)
     target_tab = TAB_MASTER if TAB_MASTER in sheet_map else "Sheet1"
 
-    # Read strictly from the curated Master tab (columns A through AD)
+    # Read strictly from the curated Master tab (columns A through AE)
     res = sheets_service.spreadsheets().values().get(
         spreadsheetId=clean_id,
-        range=f"'{target_tab}'!A2:AD"
+        range=f"'{target_tab}'!A2:AE"
     ).execute()
     
     rows = res.get('values', [])
@@ -386,7 +393,7 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         if not prod:
             continue
 
-        # Extract values according to the 30-column specification
+        # Extract values according to the 31-column specification
         name_desc = parse_field(r[1]) if len(r) > 1 else None
         category = parse_field(r[2]) if len(r) > 2 else None
         foh_codes = parse_field(r[3]) if len(r) > 3 else None
@@ -416,6 +423,7 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         one_to_one_code = parse_field(r[27]) if len(r) > 27 else None
         wetworks = parse_field(r[28]) if len(r) > 28 else None
         selection = parse_field(r[29]) if len(r) > 29 else None
+        linked_acc_str = parse_field(r[30]) if len(r) > 30 else None
 
         # Apply updates to product ORM model (Palladium ERP is master for name/description)
         if name_desc is not None and not prod.name: prod.name = name_desc
@@ -452,6 +460,49 @@ def sync_specs_from_sheet(db: Session, spreadsheet_id: str = None) -> dict:
         if one_to_one_code is not None: prod.one_to_one_code = one_to_one_code
         if wetworks is not None: prod.wetworks = wetworks
         if selection is not None: prod.selection = selection
+
+        # Synchronize Linked Drivers & Accessories from Column AE
+        if linked_acc_str is not None:
+            raw_skus = [s.strip() for s in re.split(r'[,;\n]', linked_acc_str) if s.strip()]
+            target_accessory_links = []
+            for raw_s in raw_skus:
+                clean_sku = re.sub(r'^(Driver|Bezel|Mounting Kit|Accessory|Trim):\s*', '', raw_s, flags=re.IGNORECASE).strip()
+                matched_acc = all_products.get(clean_sku.upper())
+                if matched_acc and matched_acc.id != prod.id:
+                    name_cat = f"{matched_acc.category or ''} {matched_acc.name or ''}".lower()
+                    if any(k in name_cat for k in ['driver', 'power supply', 'gear', 'ballast']):
+                        rel_type = "Required Driver"
+                    elif any(k in name_cat for k in ['bezel', 'trim', 'frame']):
+                        rel_type = "Optional Bezel / Trim"
+                    elif any(k in name_cat for k in ['mount', 'plaster', 'box', 'kit', 'ring']):
+                        rel_type = "Mounting Kit / Plaster Ring"
+                    elif any(k in name_cat for k in ['emerg']):
+                        rel_type = "Emergency Battery Pack"
+                    else:
+                        rel_type = "Compatible Accessory"
+                    target_accessory_links.append((matched_acc.id, rel_type))
+
+            # Query existing links for this parent product
+            existing_links = db.query(ProductAccessory).filter(ProductAccessory.parent_product_id == prod.id).all()
+            existing_acc_map = {a.accessory_product_id: a for a in existing_links}
+            target_ids_set = {tid for tid, _ in target_accessory_links}
+
+            # Unlink accessories that were removed from the cell
+            for acc_id, link_obj in existing_acc_map.items():
+                if acc_id not in target_ids_set:
+                    db.delete(link_obj)
+
+            # Insert new or update relationship type
+            for acc_id, rel_type in target_accessory_links:
+                if acc_id in existing_acc_map:
+                    existing_acc_map[acc_id].relationship_type = rel_type
+                else:
+                    new_link = ProductAccessory(
+                        parent_product_id=prod.id,
+                        accessory_product_id=acc_id,
+                        relationship_type=rel_type
+                    )
+                    db.add(new_link)
 
         updated_count += 1
 
@@ -547,7 +598,7 @@ def sync_new_items_to_inbox(db: Session, spreadsheet_id: str = None) -> dict:
     # 5. Append new items to 'NEW ITEMS' tab
     sheets_service.spreadsheets().values().append(
         spreadsheetId=clean_id,
-        range=f"'{TAB_INBOX}'!A:AD",
+        range=f"'{TAB_INBOX}'!A:AE",
         valueInputOption='RAW',
         insertDataOption='INSERT_ROWS',
         body={'values': new_rows_to_append}

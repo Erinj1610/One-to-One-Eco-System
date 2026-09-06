@@ -2294,7 +2294,7 @@ export default function ProductsPage() {
                             Specifications & Digital Assets Master
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            Synchronized with 30-Column Master Google Sheet • Tab: <code>ITEM DATABASE</code>
+                            Synchronized with 31-Column Master Google Sheet • Tab: <code>ITEM DATABASE</code> (Col AE: Linked Accessories)
                           </div>
                         </div>
                       </div>
@@ -3048,8 +3048,16 @@ export default function ProductsPage() {
                 {activeTab === 'accessories' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)' }}>
-                      <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 600 }}>⚡ Link Compatible Accessories, Drivers & Bezels</h4>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>⚡ Link Compatible Accessories, Drivers & Bezels</h4>
                       
+                      {/* GOOGLE SHEET BULK LINKING BANNER */}
+                      <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+                        <span style={{ fontSize: '15px' }}>💡</span>
+                        <div>
+                          <strong>Google Sheet Bulk Linking Active:</strong> You can link drivers and accessories in bulk by entering comma-separated SKUs in <strong>Column AE</strong> (<em>Linked Accessories / Drivers</em>) of the master Google Sheet, then clicking <strong>Sync From Google Sheet</strong>. You can also manually link or adjust items below.
+                        </div>
+                      </div>
+
                       {/* ADD ACCESSORY ROW */}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', background: 'var(--bg-secondary)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                         <div style={{ flex: 1 }}>
