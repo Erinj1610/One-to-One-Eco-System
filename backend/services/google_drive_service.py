@@ -303,8 +303,12 @@ def create_drive_shortcut(
                     try:
                         drive_service.files().delete(fileId=ex['id'], supportsAllDrives=True).execute()
                         logger.info(f"Deleted obsolete shortcut '{clean_name}' ({ex['id']}) pointing to old target {target}")
-                    except Exception as de:
-                        logger.warning(f"Could not delete obsolete shortcut {ex['id']}: {de}")
+                    except Exception:
+                        try:
+                            drive_service.files().update(fileId=ex['id'], body={'trashed': True}, supportsAllDrives=True).execute()
+                            logger.info(f"Trashed obsolete shortcut '{clean_name}' ({ex['id']}) pointing to old target {target}")
+                        except Exception as te:
+                            logger.warning(f"Could not delete or trash obsolete shortcut {ex['id']}: {te}")
             elif ex.get('name', '').lower() == clean_name.lower():
                 logger.info(f"Item '{clean_name}' already exists in parent {parent_folder_id}")
                 return ex
@@ -910,13 +914,37 @@ def get_master_drive_tree() -> List[Dict[str, Any]]:
             if not page_token:
                 break
         
+        all_item_ids = {f['id'] for f in all_items}
+        
+        # Sort items so physical folders and valid shortcuts (pointing within the drive) take precedence
+        def item_priority(item):
+            is_sc = item.get('mimeType') == 'application/vnd.google-apps.shortcut'
+            tid = item.get('shortcutDetails', {}).get('targetId')
+            valid_target = tid in all_item_ids if is_sc else True
+            return (1 if valid_target else 0, 0 if is_sc else 1, item.get('createdTime', ''))
+
+        all_items.sort(key=item_priority, reverse=True)
+
         tree_nodes = []
+        seen_parent_and_name = set()
+
         for f in all_items:
             parents = f.get('parents', [])
             parent_id = parents[0] if parents else None
             is_root_child = parent_id == ROOT_DRIVE_FOLDER_ID
             is_shortcut = f.get('mimeType') == 'application/vnd.google-apps.shortcut'
             target_id = f.get('shortcutDetails', {}).get('targetId') if is_shortcut else None
+
+            # Skip dead shortcuts whose target no longer exists or is outside this Shared Drive
+            if is_shortcut and target_id and target_id not in all_item_ids:
+                continue
+
+            # Deduplicate by parent and normalized name
+            norm_name = normalize_name(f['name'])
+            parent_key = (parent_id or '', norm_name)
+            if parent_key in seen_parent_and_name:
+                continue
+            seen_parent_and_name.add(parent_key)
             
             tree_nodes.append({
                 "id": f['id'],
