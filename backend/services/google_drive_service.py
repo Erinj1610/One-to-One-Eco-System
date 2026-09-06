@@ -86,6 +86,8 @@ def get_subfolders(drive_service, parent_id: str, include_shortcuts: bool = True
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
@@ -95,6 +97,54 @@ def get_subfolders(drive_service, parent_id: str, include_shortcuts: bool = True
     except Exception as e:
         logger.warning(f"Error listing subfolders under {clean_parent_id}: {e}")
         return []
+
+
+def get_subfolders_batch(
+    drive_service, 
+    parent_ids: List[str], 
+    include_shortcuts: bool = True
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Fetches immediate subfolders for MULTIPLE parent IDs in a single batched Drive API query.
+    Returns a mapping of { parent_id: [child_folder_dict, ...] }.
+    Reduces 20+ sequential API calls down to 1 call.
+    """
+    clean_ids = list({pid.strip() for pid in parent_ids if pid and pid.strip()})
+    if not clean_ids:
+        return {}
+
+    result_by_parent: Dict[str, List[Dict[str, Any]]] = {pid: [] for pid in clean_ids}
+    chunk_size = 25
+
+    for i in range(0, len(clean_ids), chunk_size):
+        chunk = clean_ids[i:i + chunk_size]
+        parents_clause = " or ".join([f"'{pid}' in parents" for pid in chunk])
+        if include_shortcuts:
+            query = f"({parents_clause}) and (mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.shortcut') and trashed=false"
+        else:
+            query = f"({parents_clause}) and mimeType='application/vnd.google-apps.folder' and trashed=false"
+
+        try:
+            res = drive_service.files().list(
+                q=query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
+                pageSize=500
+            ).execute()
+            files = res.get('files', [])
+            for f in files:
+                for p in f.get('parents', []):
+                    if p in result_by_parent:
+                        result_by_parent[p].append(f)
+        except Exception as e:
+            logger.warning(f"Batch subfolder query error: {e}")
+            for pid in chunk:
+                result_by_parent[pid] = get_subfolders(drive_service, pid, include_shortcuts=include_shortcuts)
+
+    return result_by_parent
 
 
 def get_or_create_drive_folder(
@@ -118,6 +168,8 @@ def get_or_create_drive_folder(
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, webViewLink, parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
@@ -214,6 +266,8 @@ def create_drive_shortcut(
         query = f"'{parent_folder_id}' in parents and trashed=false and (name='{sanitized_name}' or mimeType='application/vnd.google-apps.shortcut')"
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
@@ -792,6 +846,8 @@ def get_master_drive_tree() -> List[Dict[str, Any]]:
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, mimeType, parents, shortcutDetails, webViewLink, createdTime)",
             pageSize=1000,
             supportsAllDrives=True,
@@ -858,6 +914,8 @@ def migrate_drive_to_2_tier(db: Optional[Any] = None) -> Dict[str, Any]:
         # 1. Fetch immediate items under ROOT_DRIVE_FOLDER_ID
         res = drive_service.files().list(
             q=f"'{ROOT_DRIVE_FOLDER_ID}' in parents and trashed=false",
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, mimeType, parents, webViewLink)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
@@ -1096,6 +1154,8 @@ def list_folder_files(folder_id: str) -> List[Dict[str, Any]]:
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, iconLink)",
             orderBy="modifiedTime desc",
             supportsAllDrives=True,

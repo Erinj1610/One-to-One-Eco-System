@@ -72,6 +72,8 @@ def get_or_create_folder(drive_service, folder_name, parent_folder_id=None):
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
@@ -302,6 +304,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
             existing_res = drive_service.files().list(
                 q=query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
                 fields="files(id, webViewLink, name)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
@@ -1230,6 +1234,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             latest_query = f"'{latest_folder_id}' in parents and trashed=false"
             latest_res = drive_service.files().list(
                 q=latest_query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
                 fields="files(id, name, createdTime)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True

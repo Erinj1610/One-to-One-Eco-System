@@ -23,6 +23,7 @@ from services.google_drive_service import (
     upload_file_to_drive,
     get_drive_service,
     get_subfolders,
+    get_subfolders_batch,
     get_or_create_root_containers,
     get_or_create_drive_folder,
     create_drive_shortcut,
@@ -319,6 +320,8 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
 
         seen_project_ids = set()
         seen_gdrive_ids = {client_folder_id}
+        valid_projects = []
+        proj_folder_ids = []
 
         for proj in projects:
             if proj.id in seen_project_ids:
@@ -358,7 +361,16 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                 if sc and sc.get('id'):
                     client_shortcuts_by_target[proj_folder_id] = sc
 
-            # Add Project node (nested under Client in the UI view)
+            valid_projects.append((proj, proj_folder_id))
+            proj_folder_ids.append(proj_folder_id)
+
+        # Batch 1: Query immediate subfolders of all projects in a single Drive call
+        batch_proj_subs = get_subfolders_batch(drive_service, proj_folder_ids, include_shortcuts=False)
+
+        container_ids_to_fetch = []
+        proj_containers_map = {}
+
+        for proj, proj_folder_id in valid_projects:
             if proj_folder_id not in seen_gdrive_ids:
                 seen_gdrive_ids.add(proj_folder_id)
                 all_nodes.append({
@@ -372,8 +384,7 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                     "webViewLink": f"https://drive.google.com/drive/folders/{proj_folder_id}"
                 })
 
-            # Fetch immediate subfolders of this project in Drive
-            proj_subs = get_subfolders(drive_service, proj_folder_id, include_shortcuts=False)
+            proj_subs = batch_proj_subs.get(proj_folder_id, [])
             proj_subs_by_name = {ps['name'].lower().strip(): ps for ps in proj_subs}
 
             # If project standard folders don't exist yet, ensure them
@@ -423,22 +434,6 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                     "webViewLink": designs_root.get('webViewLink', '')
                 })
 
-            # Check immediate children inside Designs
-            df_subs = get_subfolders(drive_service, designs_root['id'], include_shortcuts=False)
-            for df_sub in df_subs:
-                if df_sub['id'] not in seen_gdrive_ids:
-                    seen_gdrive_ids.add(df_sub['id'])
-                    all_nodes.append({
-                        "id": df_sub['id'],
-                        "gdrive_folder_id": df_sub['id'],
-                        "name": df_sub['name'],
-                        "parent_id": designs_root['id'],
-                        "project_gdrive_id": proj_folder_id,
-                        "type": "design_package",
-                        "sort_order": 10,
-                        "webViewLink": df_sub.get('webViewLink', '')
-                    })
-
             # Check Orders container
             orders_root = proj_subs_by_name.get("orders")
             if not orders_root:
@@ -458,34 +453,66 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                     "webViewLink": orders_root.get('webViewLink', '')
                 })
 
-            # Check immediate children inside Orders (scoped to client if relevant)
-            ord_subs = get_subfolders(drive_service, orders_root['id'], include_shortcuts=False)
-            all_known_clients = db.query(Client).all() if client else []
-            client_norm = normalize_name(client_name)
+            proj_containers_map[proj_folder_id] = {
+                "designs_root_id": designs_root['id'],
+                "orders_root_id": orders_root['id']
+            }
+            container_ids_to_fetch.append(designs_root['id'])
+            container_ids_to_fetch.append(orders_root['id'])
 
-            for ord_sub in ord_subs:
-                # Filter out orders that clearly belong to other clients
-                sub_norm = normalize_name(ord_sub['name'])
-                is_other_client = False
-                if client and all_known_clients:
-                    for oc in all_known_clients:
-                        if oc.id != client.id:
-                            oc_norm = normalize_name(oc.name)
-                            if len(oc_norm) >= 6 and oc_norm in sub_norm and oc_norm not in client_norm:
-                                is_other_client = True
-                                break
-                if not is_other_client and ord_sub['id'] not in seen_gdrive_ids:
-                    seen_gdrive_ids.add(ord_sub['id'])
-                    all_nodes.append({
-                        "id": ord_sub['id'],
-                        "gdrive_folder_id": ord_sub['id'],
-                        "name": ord_sub['name'],
-                        "parent_id": orders_root['id'],
-                        "project_gdrive_id": proj_folder_id,
-                        "type": "order_folder",
-                        "sort_order": 15,
-                        "webViewLink": ord_sub.get('webViewLink', '')
-                    })
+        # Batch 2: Query immediate children inside Designs and Orders in a single Drive call
+        batch_container_subs = get_subfolders_batch(drive_service, container_ids_to_fetch, include_shortcuts=False)
+
+        all_known_clients = db.query(Client).all() if client else []
+        client_norm = normalize_name(client_name)
+
+        for proj, proj_folder_id in valid_projects:
+            containers = proj_containers_map.get(proj_folder_id, {})
+            d_root_id = containers.get("designs_root_id")
+            o_root_id = containers.get("orders_root_id")
+
+            # Designs children
+            if d_root_id:
+                df_subs = batch_container_subs.get(d_root_id, [])
+                for df_sub in df_subs:
+                    if df_sub['id'] not in seen_gdrive_ids:
+                        seen_gdrive_ids.add(df_sub['id'])
+                        all_nodes.append({
+                            "id": df_sub['id'],
+                            "gdrive_folder_id": df_sub['id'],
+                            "name": df_sub['name'],
+                            "parent_id": d_root_id,
+                            "project_gdrive_id": proj_folder_id,
+                            "type": "design_package",
+                            "sort_order": 10,
+                            "webViewLink": df_sub.get('webViewLink', '')
+                        })
+
+            # Orders children (scoped to client if relevant)
+            if o_root_id:
+                ord_subs = batch_container_subs.get(o_root_id, [])
+                for ord_sub in ord_subs:
+                    sub_norm = normalize_name(ord_sub['name'])
+                    is_other_client = False
+                    if client and all_known_clients:
+                        for oc in all_known_clients:
+                            if oc.id != client.id:
+                                oc_norm = normalize_name(oc.name)
+                                if len(oc_norm) >= 6 and oc_norm in sub_norm and oc_norm not in client_norm:
+                                    is_other_client = True
+                                    break
+                    if not is_other_client and ord_sub['id'] not in seen_gdrive_ids:
+                        seen_gdrive_ids.add(ord_sub['id'])
+                        all_nodes.append({
+                            "id": ord_sub['id'],
+                            "gdrive_folder_id": ord_sub['id'],
+                            "name": ord_sub['name'],
+                            "parent_id": o_root_id,
+                            "project_gdrive_id": proj_folder_id,
+                            "type": "order_folder",
+                            "sort_order": 15,
+                            "webViewLink": ord_sub.get('webViewLink', '')
+                        })
 
         # Also include any custom folders directly in Drive under Client folder
         for dc in client_children:
