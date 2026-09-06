@@ -232,6 +232,51 @@ def ensure_workbook_tabs(sheets_service, spreadsheet_id: str) -> dict:
             except Exception as fmt_err:
                 logger.warning(f"Formatting notice on inbox sheet: {fmt_err}")
 
+    # 3. Automatically add Column AE (Column 31: "Linked Accessories / Drivers") if missing
+    for tab_name in [TAB_MASTER, TAB_INBOX]:
+        if tab_name in sheet_map:
+            try:
+                hdr_res = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'{tab_name}'!AE1"
+                ).execute()
+                ae_val = hdr_res.get('values', [])
+                if not ae_val or not ae_val[0] or not ae_val[0][0]:
+                    # Update AE1 with header
+                    sheets_service.spreadsheets().values().update(
+                        spreadsheetId=spreadsheet_id,
+                        range=f"'{tab_name}'!AE1",
+                        valueInputOption='RAW',
+                        body={'values': [["Linked Accessories / Drivers"]]}
+                    ).execute()
+                    
+                    # Style AE1 with navy background & bold white text
+                    t_id = sheet_map[tab_name]
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=spreadsheet_id,
+                        body={'requests': [{
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": t_id,
+                                    "startRowIndex": 0,
+                                    "endRowIndex": 1,
+                                    "startColumnIndex": 30,
+                                    "endColumnIndex": 31
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "backgroundColor": {"red": 0.117, "green": 0.160, "blue": 0.231},
+                                        "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "fontSize": 10, "bold": True},
+                                        "horizontalAlignment": "LEFT"
+                                    }
+                                },
+                                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+                            }
+                        }]}
+                    ).execute()
+            except Exception as ae_err:
+                logger.warning(f"Notice: Could not auto-add Column AE to tab '{tab_name}': {ae_err}")
+
     return sheet_map
 
 def generate_specs_master_sheet(db: Session, spreadsheet_id: str = None) -> dict:
