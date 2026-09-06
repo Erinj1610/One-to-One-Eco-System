@@ -1041,7 +1041,16 @@ def get_master_drive_tree() -> List[Dict[str, Any]]:
                 "target_id": target_id,
                 "webViewLink": f.get('webViewLink', '')
             })
-        return tree_nodes
+
+        # Pass 2: Double-guarantee that NO node can be an orphan.
+        # Every node returned MUST either be a direct child of ROOT_DRIVE_FOLDER_ID (is_client_root=True)
+        # or its parent_id MUST exist in the tree.
+        valid_node_ids = {n['id'] for n in tree_nodes}
+        clean_tree = [
+            n for n in tree_nodes
+            if n['is_client_root'] or (n['parent_id'] and n['parent_id'] in valid_node_ids)
+        ]
+        return clean_tree
     except Exception as e:
         logger.error(f"Error fetching master drive tree: {e}")
         return []
