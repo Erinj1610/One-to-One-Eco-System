@@ -342,6 +342,28 @@ export default function DriveFileExplorer({
     return files.filter(f => (f.name || '').toLowerCase().includes(q));
   }, [files, fileSearch]);
 
+  // Immediate subfolders of the currently selected folder
+  const currentSubfolders = useMemo(() => {
+    if (!selectedFolder) return [];
+    const safeFolders = Array.isArray(folders) ? folders : [];
+    const q = fileSearch.trim().toLowerCase();
+    return safeFolders
+      .filter(f => f.parent_id === selectedFolder.id)
+      .filter(f => !q || (f.name || '').toLowerCase().includes(q))
+      .sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99) || (a.name || '').localeCompare(b.name || ''));
+  }, [folders, selectedFolder, fileSearch]);
+
+  // Dynamic counter for breadcrumbs
+  const headerItemCount = useMemo(() => {
+    const folderCount = currentSubfolders.length;
+    const fileCount = filteredFiles.length;
+    const parts = [];
+    if (folderCount > 0) parts.push(`${folderCount} folder${folderCount === 1 ? '' : 's'}`);
+    if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? '' : 's'}`);
+    if (parts.length === 0) return '0 items';
+    return parts.join(', ');
+  }, [currentSubfolders, filteredFiles]);
+
   const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -713,8 +735,8 @@ export default function DriveFileExplorer({
                 {selectedFolder ? selectedFolder.name : 'Select a folder'}
               </span>
               {selectedFolder && (
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                  ({filteredFiles.length} item{filteredFiles.length === 1 ? '' : 's'})
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '4px' }}>
+                  {headerItemCount}
                 </span>
               )}
             </div>
@@ -732,38 +754,124 @@ export default function DriveFileExplorer({
             )}
           </div>
 
-          {/* Files List / Table */}
+          {/* Main Content Area: Folders Grid + Files List */}
           <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
             {filesLoading ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
                 <RefreshCw size={16} className="spin" style={{ margin: '0 auto 8px' }} />
-                Reading files from Google Drive...
+                Reading folder contents from Google Drive...
               </div>
             ) : !selectedFolder ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
-                Select a folder on the left to view files.
+                Select a folder on the left to view its contents.
               </div>
-            ) : filteredFiles.length === 0 ? (
+            ) : currentSubfolders.length === 0 && filteredFiles.length === 0 ? (
               <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <Folder size={32} style={{ opacity: 0.3, margin: '0 auto 10px' }} />
+                <Folder size={36} style={{ opacity: 0.25, margin: '0 auto 12px', color: 'var(--text-secondary)' }} />
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  No files in this folder yet
+                  This folder is currently empty
                 </div>
-                <div style={{ fontSize: '11.5px', maxWidth: '320px', margin: '0 auto 16px', lineHeight: '1.4' }}>
-                  Drag and drop PDFs, drawings, or documents here, or click upload to add to Google Drive.
+                <div style={{ fontSize: '11.5px', maxWidth: '340px', margin: '0 auto 16px', lineHeight: '1.4' }}>
+                  No subfolders or files have been added yet. Drag and drop documents here or create a new subfolder.
                 </div>
                 {!readOnly && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ fontSize: '11.5px' }}
-                  >
-                    <Upload size={12} /> Choose File to Upload
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                    <button 
+                      className="btn btn-primary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Upload size={12} /> Upload File
+                    </button>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setCreatingSubfolderOf(selectedFolder.id);
+                        setNewFolderName('');
+                      }}
+                      style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <FolderPlus size={12} /> New Subfolder
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
-              <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+              <div>
+                {/* 1. SUBFOLDERS GRID SECTION */}
+                {currentSubfolders.length > 0 && (
+                  <div style={{ padding: '14px 16px 10px 16px', borderBottom: filteredFiles.length > 0 ? '1px solid var(--border)' : 'none' }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Folder size={12} style={{ color: '#3b82f6' }} />
+                      <span>Folders ({currentSubfolders.length})</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                      {currentSubfolders.map(sub => {
+                        const isOrders = sub.type === 'orders_root' || sub.type === 'order_folder' || sub.type === 'order_sub';
+                        const isDesigns = sub.type === 'design_root' || sub.type === 'design_package' || sub.type === 'design_sub';
+                        const iconColor = isOrders ? '#10b981' : isDesigns ? '#ec4899' : '#3b82f6';
+                        
+                        return (
+                          <div
+                            key={sub.id}
+                            onClick={() => {
+                              handleSelectFolder(sub);
+                              setExpandedFolders(prev => ({ ...prev, [sub.id]: true }));
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '10px 12px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              userSelect: 'none'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.borderColor = iconColor;
+                              e.currentTarget.style.transform = 'translateY(-1px)';
+                              e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.06)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                              e.currentTarget.style.transform = 'none';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }}
+                          >
+                            <Folder size={20} style={{ color: iconColor, flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div 
+                                style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                title={sub.name}
+                              >
+                                {sub.name}
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                                {sub.type === 'orders_root' ? 'Orders Container' : sub.type === 'design_root' ? 'Designs Container' : sub.type === 'order_folder' ? 'Order' : sub.type === 'design_package' ? 'Design Package' : 'Folder'}
+                              </div>
+                            </div>
+                            <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. LOOSE FILES SECTION */}
+                {filteredFiles.length > 0 ? (
+                  <div style={{ padding: '12px 16px' }}>
+                    {currentSubfolders.length > 0 && (
+                      <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FileText size={12} style={{ color: '#10b981' }} />
+                        <span>Files ({filteredFiles.length})</span>
+                      </div>
+                    )}
+                    <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600 }}>File Name</th>
@@ -857,9 +965,31 @@ export default function DriveFileExplorer({
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div style={{ margin: '16px', padding: '24px 16px', border: '1px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg-secondary)' }}>
+              <Upload size={20} style={{ opacity: 0.35, margin: '0 auto 8px', color: 'var(--text-secondary)' }} />
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
+                No loose files in "{selectedFolder.name}"
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '360px', margin: '0 auto 12px', lineHeight: '1.4' }}>
+                Drop files here to upload to this folder, or select a subfolder above to view its contents.
+              </div>
+              {!readOnly && (
+                <button 
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ fontSize: '11px', padding: '4px 10px' }}
+                >
+                  <Upload size={11} style={{ marginRight: '4px' }} /> Upload to this folder
+                </button>
+              )}
+            </div>
+          )}
         </div>
+      )}
+    </div>
+  </div>
 
         {/* IN-PORTAL PREVIEW DRAWER */}
         {previewFile && (

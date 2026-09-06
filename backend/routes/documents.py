@@ -309,10 +309,28 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
             ords = db.query(Order).filter(
                 or_(Order.project_id == proj.id, Order.project_key == proj.project_key)
             ).all()
-            order_list = [
-                {"id": o.id, "po_number": o.po_number, "supplier_name": o.supplier_name}
-                for o in ords
-            ]
+
+            # Client-Separated Scoping: Only include orders belonging to this client
+            all_known_clients = db.query(Client).all() if client else []
+            client_norm = re.sub(r'[^a-z0-9]+', '', client_name.lower()) if client_name else ""
+            order_list = []
+            for o in ords:
+                quote_norm = re.sub(r'[^a-z0-9]+', '', (o.quote_name or "").lower())
+                supp_norm = re.sub(r'[^a-z0-9]+', '', (o.supplier_name or "").lower())
+                is_other_client = False
+                if client and all_known_clients:
+                    for oc in all_known_clients:
+                        if oc.id != client.id:
+                            oc_norm = re.sub(r'[^a-z0-9]+', '', oc.name.lower())
+                            if len(oc_norm) >= 6 and (oc_norm in quote_norm or oc_norm in supp_norm) and oc_norm not in client_norm:
+                                is_other_client = True
+                                break
+                if not is_other_client:
+                    order_list.append({
+                        "id": o.id,
+                        "po_number": o.po_number,
+                        "supplier_name": o.supplier_name
+                    })
 
             # Provision project tree nested under client_folder_id
             proj_nodes = ensure_project_drive_tree(
