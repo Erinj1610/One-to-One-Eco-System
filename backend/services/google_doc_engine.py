@@ -273,8 +273,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
     # Vaulting setup if saving
     if is_save_action:
-        client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
-        project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+        from services.google_drive_service import get_or_create_root_containers, create_drive_shortcut
+        projects_root, clients_root = get_or_create_root_containers(drive_service)
+        project_folder_id = get_or_create_folder(drive_service, project_name, projects_root['id'])
+        if client_name and client_name.strip() and client_name.strip().lower() != "general clients":
+            try:
+                client_folder_id = get_or_create_folder(drive_service, client_name, clients_root['id'])
+                create_drive_shortcut(drive_service, project_name, project_folder_id, client_folder_id)
+            except Exception as e:
+                logger.warning(f"Could not create client shortcut in google_doc_engine: {e}")
         
         # Design Fee proposals go directly under Project; Orders go inside an "Orders" parent folder under Project
         if sheet_name == 'DESIGN_FEE_PROPOSAL':

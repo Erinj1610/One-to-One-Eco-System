@@ -17,6 +17,10 @@ SCOPES_DRIVE = [
 # Shared Google Drive Root Folder
 ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 
+# 2-Tier Master Hierarchy Root Folder Names
+PROJECTS_ROOT_NAME = "01 - PROJECTS"
+CLIENTS_ROOT_NAME = "02 - CLIENTS"
+
 # Project-Level Standard Starter Folders
 PROJECT_STANDARD_FOLDERS = [
     {"name": "01 - Drawings & CAD", "sort": 1},
@@ -58,20 +62,38 @@ def normalize_name(s: str) -> str:
     return re.sub(r'[^a-z0-9]+', '', (s or "").lower())
 
 
-def get_subfolders(drive_service, parent_id: str) -> List[Dict[str, Any]]:
-    """Returns all immediate subfolders under a parent folder."""
-    query = f"'{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+def get_subfolders(drive_service, parent_id: str, include_shortcuts: bool = True) -> List[Dict[str, Any]]:
+    """Returns all immediate subfolders (and optional shortcuts) under a parent folder."""
+    clean_parent_id = parent_id.strip()
+    try:
+        f_meta = drive_service.files().get(
+            fileId=clean_parent_id,
+            fields='id, mimeType, shortcutDetails',
+            supportsAllDrives=True
+        ).execute()
+        if f_meta.get('mimeType') == 'application/vnd.google-apps.shortcut':
+            target_id = f_meta.get('shortcutDetails', {}).get('targetId')
+            if target_id:
+                clean_parent_id = target_id
+    except Exception:
+        pass
+
+    if include_shortcuts:
+        query = f"'{clean_parent_id}' in parents and (mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.shortcut') and trashed=false"
+    else:
+        query = f"'{clean_parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+
     try:
         res = drive_service.files().list(
             q=query,
-            fields="files(id, name, webViewLink, parents)",
+            fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
             pageSize=100
         ).execute()
         return res.get('files', [])
     except Exception as e:
-        logger.warning(f"Error listing subfolders under {parent_id}: {e}")
+        logger.warning(f"Error listing subfolders under {clean_parent_id}: {e}")
         return []
 
 
@@ -109,7 +131,7 @@ def get_or_create_drive_folder(
     # 2. Fuzzy Matching Deduplication: Check existing subfolders in parent
     target_norm = normalize_name(clean_name)
     if len(target_norm) >= 3 and parent_folder_id:
-        existing_subfolders = get_subfolders(drive_service, parent_folder_id)
+        existing_subfolders = get_subfolders(drive_service, parent_folder_id, include_shortcuts=False)
         best_match = None
         best_score = 0.0
 
@@ -125,7 +147,7 @@ def get_or_create_drive_folder(
                 return ef
 
             ratio = difflib.SequenceMatcher(None, target_norm, ef_norm).ratio()
-            # If one is a significant substring of the other (e.g. "Wynand Wilsenach Architects" in "Wynand Wilsenach Architects - Project")
+            # Significant substring match
             if len(target_norm) >= 6 and (target_norm in ef_norm or ef_norm in target_norm):
                 ratio = max(ratio, 0.90)
 
@@ -158,11 +180,113 @@ def get_or_create_drive_folder(
         raise
 
 
+def get_or_create_root_containers(drive_service) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Ensures '01 - PROJECTS' and '02 - CLIENTS' exist directly under ROOT_DRIVE_FOLDER_ID."""
+    projects_root = get_or_create_drive_folder(
+        drive_service,
+        PROJECTS_ROOT_NAME,
+        ROOT_DRIVE_FOLDER_ID,
+        fuzzy_threshold=0.95
+    )
+    clients_root = get_or_create_drive_folder(
+        drive_service,
+        CLIENTS_ROOT_NAME,
+        ROOT_DRIVE_FOLDER_ID,
+        fuzzy_threshold=0.95
+    )
+    return projects_root, clients_root
+
+
+def create_drive_shortcut(
+    drive_service,
+    shortcut_name: str,
+    target_folder_id: str,
+    parent_folder_id: str
+) -> Dict[str, Any]:
+    """
+    Creates a Google Drive shortcut under parent_folder_id pointing to target_folder_id.
+    If a shortcut pointing to target_folder_id or with the same name already exists in parent_folder_id, returns it.
+    """
+    clean_name = shortcut_name.strip()
+    sanitized_name = clean_name.replace("'", "\\'")
+
+    try:
+        query = f"'{parent_folder_id}' in parents and trashed=false and (name='{sanitized_name}' or mimeType='application/vnd.google-apps.shortcut')"
+        res = drive_service.files().list(
+            q=query,
+            fields="files(id, name, mimeType, shortcutDetails, webViewLink, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        existing = res.get('files', [])
+        for ex in existing:
+            if ex.get('mimeType') == 'application/vnd.google-apps.shortcut':
+                target = ex.get('shortcutDetails', {}).get('targetId')
+                if target == target_folder_id:
+                    logger.info(f"Shortcut '{clean_name}' -> {target_folder_id} already exists ({ex.get('id')})")
+                    return ex
+            if ex.get('name', '').lower() == clean_name.lower():
+                logger.info(f"Item '{clean_name}' already exists in parent {parent_folder_id}")
+                return ex
+    except Exception as e:
+        logger.warning(f"Error querying existing shortcuts under {parent_folder_id}: {e}")
+
+    shortcut_metadata = {
+        'name': clean_name,
+        'mimeType': 'application/vnd.google-apps.shortcut',
+        'shortcutDetails': {
+            'targetId': target_folder_id
+        },
+        'parents': [parent_folder_id]
+    }
+    try:
+        created = drive_service.files().create(
+            body=shortcut_metadata,
+            fields='id, name, mimeType, shortcutDetails, webViewLink, parents',
+            supportsAllDrives=True
+        ).execute()
+        logger.info(f"Created Google Drive shortcut '{clean_name}' -> {target_folder_id} in {parent_folder_id}")
+        return created
+    except Exception as e:
+        logger.error(f"Failed to create shortcut '{clean_name}': {e}")
+        return {}
+
+
+def move_drive_item(drive_service, file_id: str, new_parent_id: str) -> Dict[str, Any]:
+    """Moves a file or folder to a new parent folder in Google Drive."""
+    try:
+        file = drive_service.files().get(
+            fileId=file_id,
+            fields='id, name, parents',
+            supportsAllDrives=True
+        ).execute()
+
+        current_parents = file.get('parents', [])
+        if new_parent_id in current_parents and len(current_parents) == 1:
+            logger.info(f"Item {file_id} already in parent {new_parent_id}")
+            return file
+
+        previous_parents = ",".join(current_parents)
+        updated = drive_service.files().update(
+            fileId=file_id,
+            addParents=new_parent_id,
+            removeParents=previous_parents,
+            fields='id, name, parents, webViewLink',
+            supportsAllDrives=True
+        ).execute()
+        logger.info(f"Moved item '{file.get('name')}' ({file_id}) from [{previous_parents}] to {new_parent_id}")
+        return updated
+    except Exception as e:
+        logger.error(f"Failed to move item {file_id} to parent {new_parent_id}: {e}")
+        raise
+
+
 def ensure_client_folder(client_name: str) -> Dict[str, Any]:
-    """Ensures a Client folder exists under the Shared Drive root."""
+    """Ensures a Client folder exists under '02 - CLIENTS' in the Shared Drive."""
     drive_service = get_drive_service()
     clean_client = (client_name or "General Clients").strip()
-    return get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
+    _, clients_root = get_or_create_root_containers(drive_service)
+    return get_or_create_drive_folder(drive_service, clean_client, clients_root['id'])
 
 
 def ensure_order_drive_tree(
@@ -173,28 +297,39 @@ def ensure_order_drive_tree(
 ) -> List[Dict[str, Any]]:
     """
     Ensures the path down to a specific Order:
-    Root -> Client -> Project -> Orders -> [Order Ref / PO]
+    01 - PROJECTS -> [Project] -> Orders -> [Order Ref / PO]
     Plus ensures the 4 standard order subfolders (BOQs, POs, Logistics, Invoices).
+    Also ensures client folder in 02 - CLIENTS has a shortcut pointing to this project.
     Returns all folder nodes scoped to this order.
     """
     drive_service = get_drive_service()
+    projects_root, clients_root = get_or_create_root_containers(drive_service)
+    
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
     
     supplier_part = f" - {supplier_name.strip()}" if supplier_name and supplier_name.strip() else ""
     order_folder_name = f"{order_identifier.strip()}{supplier_part}"
 
-    # 1. Ensure Client & Project & Orders parent folders
-    client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
-    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
-    orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder['id'])
+    # 1. Ensure Project in 01 - PROJECTS & Orders parent folder
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
+    project_folder_id = project_folder['id']
+    orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
     
-    # 2. Ensure Order Folder
+    # 2. Ensure shortcut in 02 - CLIENTS / [Client]
+    if clean_client and clean_client.lower() != "general clients":
+        try:
+            client_folder = get_or_create_drive_folder(drive_service, clean_client, clients_root['id'])
+            create_drive_shortcut(drive_service, clean_project, project_folder_id, client_folder['id'])
+        except Exception as e:
+            logger.warning(f"Could not create client shortcut for order {order_identifier}: {e}")
+
+    # 3. Ensure Order Folder
     order_folder = get_or_create_drive_folder(drive_service, order_folder_name, orders_root['id'])
     order_folder_id = order_folder['id']
 
-    # 3. Query existing subfolders in this Order
-    existing = get_subfolders(drive_service, order_folder_id)
+    # 4. Query existing subfolders in this Order
+    existing = get_subfolders(drive_service, order_folder_id, include_shortcuts=False)
     existing_by_name = {f['name'].lower().strip(): f for f in existing}
 
     folder_nodes = [
@@ -209,7 +344,7 @@ def ensure_order_drive_tree(
         }
     ]
 
-    # 4. Ensure 4 standard order subfolders
+    # 5. Ensure 4 standard order subfolders
     for starter in ORDER_STANDARD_SUBFOLDERS:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
@@ -235,7 +370,7 @@ def ensure_order_drive_tree(
             "webViewLink": matched.get('webViewLink', '')
         })
 
-    # 5. Include any custom folders created inside the order
+    # 6. Include any custom folders created inside the order
     known_ids = {n['id'] for n in folder_nodes}
     for ex in existing:
         if ex['id'] not in known_ids:
@@ -260,28 +395,39 @@ def ensure_design_drive_tree(
 ) -> List[Dict[str, Any]]:
     """
     Ensures the path down to a specific Design Package:
-    Root -> Client -> Project -> Designs -> [Fee Ref - Design Name]
+    01 - PROJECTS -> [Project] -> Designs -> [Fee Ref - Design Name]
     Plus ensures the 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards).
+    Also ensures client folder in 02 - CLIENTS has a shortcut pointing to this project.
     Returns all folder nodes scoped to this design package.
     """
     drive_service = get_drive_service()
+    projects_root, clients_root = get_or_create_root_containers(drive_service)
+
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
     
     name_part = f" - {design_name.strip()}" if design_name and design_name.strip() else ""
     design_folder_name = f"{fee_ref.strip()}{name_part}"
 
-    # 1. Ensure Client & Project & Designs parent folders
-    client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
-    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder['id'])
-    designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder['id'])
+    # 1. Ensure Project in 01 - PROJECTS & Designs parent folder
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
+    project_folder_id = project_folder['id']
+    designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
     
-    # 2. Ensure Design Folder
+    # 2. Ensure shortcut in 02 - CLIENTS / [Client]
+    if clean_client and clean_client.lower() != "general clients":
+        try:
+            client_folder = get_or_create_drive_folder(drive_service, clean_client, clients_root['id'])
+            create_drive_shortcut(drive_service, clean_project, project_folder_id, client_folder['id'])
+        except Exception as e:
+            logger.warning(f"Could not create client shortcut for design {fee_ref}: {e}")
+
+    # 3. Ensure Design Folder
     design_folder = get_or_create_drive_folder(drive_service, design_folder_name, designs_root['id'])
     design_folder_id = design_folder['id']
 
-    # 3. Query existing subfolders in this Design
-    existing = get_subfolders(drive_service, design_folder_id)
+    # 4. Query existing subfolders in this Design
+    existing = get_subfolders(drive_service, design_folder_id, include_shortcuts=False)
     existing_by_name = {f['name'].lower().strip(): f for f in existing}
 
     folder_nodes = [
@@ -296,7 +442,7 @@ def ensure_design_drive_tree(
         }
     ]
 
-    # 4. Ensure 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards)
+    # 5. Ensure 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards)
     for starter in DESIGN_STANDARD_SUBFOLDERS:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
@@ -322,7 +468,7 @@ def ensure_design_drive_tree(
             "webViewLink": matched.get('webViewLink', '')
         })
 
-    # 5. Include any custom folders created inside the design
+    # 6. Include any custom folders created inside the design
     known_ids = {n['id'] for n in folder_nodes}
     for ex in existing:
         if ex['id'] not in known_ids:
@@ -348,31 +494,38 @@ def ensure_project_drive_tree(
     parent_for_project: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Ensures Client folder, Project folder, standard project subfolders,
-    Designs folder with active design packages, and Orders folder with active orders.
+    Ensures:
+    1. Project folder in '01 - PROJECTS'.
+    2. Native Drive shortcut in '02 - CLIENTS / [client_name]' pointing to the project.
+    3. Standard project subfolders (01 - Drawings, 02 - Specs, 03 - Site Photos).
+    4. Designs folder with active design packages (and 5 standard subfolders each).
+    5. Orders folder with active orders (and 4 standard subfolders each).
     Correctly establishes parent_id relationships so it renders properly in both
     Project-scoped view (where project node has parent_id=None) and
     Client-scoped view (where project node has parent_id=client_folder_id).
     """
     drive_service = get_drive_service()
+    projects_root, clients_root = get_or_create_root_containers(drive_service)
+
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
 
-    # 1. Ensure Client Folder & Project Folder
-    if not client_folder_id:
-        client_folder = get_or_create_drive_folder(drive_service, clean_client, ROOT_DRIVE_FOLDER_ID)
-        client_folder_id = client_folder['id']
-    else:
-        client_folder = {'id': client_folder_id, 'name': clean_client}
-
-    project_folder = get_or_create_drive_folder(drive_service, clean_project, client_folder_id)
+    # 1. Project lives in 01 - PROJECTS
+    project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
     project_folder_id = project_folder['id']
 
-    # 2. Existing immediate children of Project
-    proj_children = get_subfolders(drive_service, project_folder_id)
+    # 2. Client shortcut in 02 - CLIENTS
+    if clean_client and clean_client.lower() != "general clients":
+        if not client_folder_id:
+            client_folder = get_or_create_drive_folder(drive_service, clean_client, clients_root['id'])
+            client_folder_id = client_folder['id']
+        create_drive_shortcut(drive_service, clean_project, project_folder_id, client_folder_id)
+
+    # 3. Existing immediate children of Project
+    proj_children = get_subfolders(drive_service, project_folder_id, include_shortcuts=False)
     proj_children_by_name = {f['name'].lower().strip(): f for f in proj_children}
 
-    # 3. Initialize nodes with Project Folder itself
+    # 4. Initialize nodes with Project Folder itself
     folder_nodes = [
         {
             "id": project_folder_id,
@@ -386,7 +539,7 @@ def ensure_project_drive_tree(
         }
     ]
 
-    # 4. Standard Project-Level Folders (Drawings, Specs, Photos)
+    # 5. Standard Project-Level Folders (Drawings, Specs, Photos)
     for starter in PROJECT_STANDARD_FOLDERS:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
@@ -413,7 +566,7 @@ def ensure_project_drive_tree(
             "webViewLink": matched.get('webViewLink', '')
         })
 
-    # 5. Ensure "Designs" Parent Folder
+    # 6. Ensure "Designs" Parent Folder
     designs_root = proj_children_by_name.get("designs")
     if not designs_root:
         designs_root = get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
@@ -432,7 +585,7 @@ def ensure_project_drive_tree(
     })
 
     # Subfolders under Designs
-    existing_designs = get_subfolders(drive_service, designs_root_id)
+    existing_designs = get_subfolders(drive_service, designs_root_id, include_shortcuts=False)
     existing_designs_by_name = {f['name'].lower().strip(): f for f in existing_designs}
 
     if design_fees:
@@ -463,8 +616,8 @@ def ensure_project_drive_tree(
                 "webViewLink": df_matched.get('webViewLink', '')
             })
 
-            # Ensure 5 standard subfolders inside each design package (Drawings, Specs, Site Photos, Proposals, Moodboards)
-            sub_of_df = get_subfolders(drive_service, df_id)
+            # Ensure 5 standard subfolders inside each design package
+            sub_of_df = get_subfolders(drive_service, df_id, include_shortcuts=False)
             sub_of_df_by_name = {sf['name'].lower().strip(): sf for sf in sub_of_df}
             for starter in DESIGN_STANDARD_SUBFOLDERS:
                 ds_name = starter["name"]
@@ -492,7 +645,6 @@ def ensure_project_drive_tree(
                     "webViewLink": ds_match.get('webViewLink', '')
                 })
 
-            # Include any custom folders under this design package
             known_sub_ids = {n['id'] for n in folder_nodes}
             for ex_sub in sub_of_df:
                 if ex_sub['id'] not in known_sub_ids:
@@ -507,7 +659,7 @@ def ensure_project_drive_tree(
                         "webViewLink": ex_sub.get('webViewLink', '')
                     })
 
-    # Include any custom folders under Designs
+    # Include custom folders directly under Designs
     known_design_ids = {n['id'] for n in folder_nodes}
     for ex in existing_designs:
         if ex['id'] not in known_design_ids:
@@ -522,7 +674,7 @@ def ensure_project_drive_tree(
                 "webViewLink": ex.get('webViewLink', '')
             })
 
-    # 6. Ensure "Orders" Parent Folder
+    # 7. Ensure "Orders" Parent Folder
     orders_root = proj_children_by_name.get("orders")
     if not orders_root:
         orders_root = get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
@@ -541,7 +693,7 @@ def ensure_project_drive_tree(
     })
 
     # Subfolders under Orders
-    existing_orders = get_subfolders(drive_service, orders_root_id)
+    existing_orders = get_subfolders(drive_service, orders_root_id, include_shortcuts=False)
     existing_orders_by_name = {f['name'].lower().strip(): f for f in existing_orders}
 
     if orders:
@@ -551,7 +703,7 @@ def ensure_project_drive_tree(
             supp_suffix = f" - {supp_name}" if supp_name else ""
             ord_name = f"{po_num}{supp_suffix}".strip()
             ord_key = ord_name.lower().strip()
-            
+
             ord_matched = existing_orders_by_name.get(ord_key)
             if not ord_matched:
                 for ex_name, ex_f in existing_orders_by_name.items():
@@ -574,8 +726,8 @@ def ensure_project_drive_tree(
                 "webViewLink": ord_matched.get('webViewLink', '')
             })
 
-            # Ensure the 4 order subfolders under each order
-            sub_of_order = get_subfolders(drive_service, ord_id)
+            # Ensure 4 standard subfolders under each order
+            sub_of_order = get_subfolders(drive_service, ord_id, include_shortcuts=False)
             sub_of_order_by_name = {sf['name'].lower().strip(): sf for sf in sub_of_order}
             for starter in ORDER_STANDARD_SUBFOLDERS:
                 os_name = starter["name"]
@@ -596,7 +748,7 @@ def ensure_project_drive_tree(
                     "webViewLink": os_match.get('webViewLink', '')
                 })
 
-    # Include any custom folders directly under Orders
+    # Include custom folders directly under Orders
     known_order_ids = {n['id'] for n in folder_nodes}
     for ex in existing_orders:
         if ex['id'] not in known_order_ids:
@@ -632,39 +784,252 @@ def ensure_project_drive_tree(
 def get_master_drive_tree() -> List[Dict[str, Any]]:
     """
     Returns the complete directory tree starting from ROOT_DRIVE_FOLDER_ID.
-    Fetches all folders with their parents in one optimized query.
+    Includes folders and native Drive shortcuts with target resolution.
+    Root containers '01 - PROJECTS' and '02 - CLIENTS' appear as top-level roots.
     """
     drive_service = get_drive_service()
-    query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
+    query = "(mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.shortcut') and trashed=false"
     try:
         res = drive_service.files().list(
             q=query,
-            fields="files(id, name, parents, webViewLink, createdTime)",
+            fields="files(id, name, mimeType, parents, shortcutDetails, webViewLink, createdTime)",
             pageSize=1000,
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-        all_folders = res.get('files', [])
+        all_items = res.get('files', [])
         
         tree_nodes = []
-        for f in all_folders:
+        for f in all_items:
             parents = f.get('parents', [])
             parent_id = parents[0] if parents else None
             is_root_child = parent_id == ROOT_DRIVE_FOLDER_ID
+            is_shortcut = f.get('mimeType') == 'application/vnd.google-apps.shortcut'
+            target_id = f.get('shortcutDetails', {}).get('targetId') if is_shortcut else None
             
             tree_nodes.append({
                 "id": f['id'],
-                "gdrive_folder_id": f['id'],
+                "gdrive_folder_id": target_id or f['id'],
+                "real_item_id": f['id'],
                 "name": f['name'],
                 "parent_id": None if is_root_child else parent_id,
                 "raw_parent_id": parent_id,
                 "is_client_root": is_root_child,
+                "is_shortcut": is_shortcut,
+                "target_id": target_id,
                 "webViewLink": f.get('webViewLink', '')
             })
         return tree_nodes
     except Exception as e:
         logger.error(f"Error fetching master drive tree: {e}")
         return []
+
+
+def migrate_drive_to_2_tier(db: Optional[Any] = None) -> Dict[str, Any]:
+    """
+    Executes the 2-Tier Master Hierarchy migration on Google Drive:
+    1. Ensures '01 - PROJECTS' and '02 - CLIENTS' at Shared Drive Root.
+    2. Identifies and cleans up existing folders:
+       - Moves project folders (Reyburn, Cooper, Spike Lights Project, Montjane, Swanepoel) to '01 - PROJECTS'.
+       - Resolves nested duplicate: renames nested Wynand (Project 1638) to 'Spike Lights Project', moves to '01 - PROJECTS'.
+       - Moves client folders (Wynand Wilsenach Architects, etc.) to '02 - CLIENTS'.
+       - Creates native Drive shortcuts in '02 - CLIENTS / [Client]' pointing to each respective project.
+    3. Updates Cloud SQL database Project.master_drive_folder pointers.
+    Returns detailed migration summary report.
+    """
+    drive_service = get_drive_service()
+    projects_root, clients_root = get_or_create_root_containers(drive_service)
+    projects_root_id = projects_root['id']
+    clients_root_id = clients_root['id']
+
+    report: Dict[str, Any] = {
+        "status": "success",
+        "projects_root_id": projects_root_id,
+        "clients_root_id": clients_root_id,
+        "moved_projects": [],
+        "moved_clients": [],
+        "renamed": [],
+        "shortcuts_created": [],
+        "db_updates": [],
+        "errors": []
+    }
+
+    try:
+        # 1. Fetch immediate items under ROOT_DRIVE_FOLDER_ID
+        res = drive_service.files().list(
+            q=f"'{ROOT_DRIVE_FOLDER_ID}' in parents and trashed=false",
+            fields="files(id, name, mimeType, parents, webViewLink)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=100
+        ).execute()
+        root_items = res.get('files', [])
+
+        for item in root_items:
+            item_id = item['id']
+            item_name = item['name'].strip()
+            mime_type = item.get('mimeType')
+
+            # Skip root containers and non-folder items (e.g. root spreadsheets)
+            if item_id in (projects_root_id, clients_root_id):
+                continue
+            if mime_type != 'application/vnd.google-apps.folder':
+                continue
+            if item_name.lower() in [PROJECTS_ROOT_NAME.lower(), CLIENTS_ROOT_NAME.lower()]:
+                continue
+
+            item_norm = normalize_name(item_name)
+
+            # A. Wynand Client Folder (handle nested projects inside it)
+            if item_norm in ["wynandwilsenacharchitects", "wynandwilsenachtarchitects"]:
+                client_folder_id = item_id
+                logger.info(f"Processing client folder '{item_name}' ({client_folder_id})")
+
+                # Inspect subfolders inside Wynand
+                wynand_subs = get_subfolders(drive_service, client_folder_id, include_shortcuts=False)
+                for sub in wynand_subs:
+                    sub_id = sub['id']
+                    sub_name = sub['name'].strip()
+                    sub_norm = normalize_name(sub_name)
+
+                    # Nested duplicate Wynand (Project 1638) -> rename to Spike Lights Project and move to 01 - PROJECTS
+                    if sub_norm in ["wynandwilsenacharchitects", "wynandwilsenachtarchitects"]:
+                        try:
+                            rename_drive_item(sub_id, "Spike Lights Project")
+                            report["renamed"].append(f"Renamed nested folder {sub_id} from '{sub_name}' to 'Spike Lights Project'")
+                            move_drive_item(drive_service, sub_id, projects_root_id)
+                            report["moved_projects"].append(f"Spike Lights Project ({sub_id}) moved to {PROJECTS_ROOT_NAME}")
+                            create_drive_shortcut(drive_service, "Spike Lights Project", sub_id, client_folder_id)
+                            report["shortcuts_created"].append(f"Shortcut 'Spike Lights Project' -> {sub_id} in {item_name}")
+                        except Exception as e:
+                            report["errors"].append(f"Error migrating nested duplicate {sub_id}: {e}")
+
+                    # Reyburn, Cooper or other projects inside Wynand
+                    else:
+                        try:
+                            move_drive_item(drive_service, sub_id, projects_root_id)
+                            report["moved_projects"].append(f"{sub_name} ({sub_id}) moved to {PROJECTS_ROOT_NAME}")
+                            create_drive_shortcut(drive_service, sub_name, sub_id, client_folder_id)
+                            report["shortcuts_created"].append(f"Shortcut '{sub_name}' -> {sub_id} in {item_name}")
+                        except Exception as e:
+                            report["errors"].append(f"Error moving project {sub_id} ({sub_name}): {e}")
+
+                # Move client folder into 02 - CLIENTS
+                try:
+                    move_drive_item(drive_service, client_folder_id, clients_root_id)
+                    report["moved_clients"].append(f"{item_name} ({client_folder_id}) moved to {CLIENTS_ROOT_NAME}")
+                except Exception as e:
+                    report["errors"].append(f"Error moving client folder {client_folder_id}: {e}")
+
+            # B. Other Root Folders (Montjane, Swanepoel, General Clients, etc.)
+            else:
+                # Determine if project or client
+                known_project_names = ["montjane", "swanepoel", "reyburn", "cooper", "spikelightsproject"]
+                is_known_project = item_norm in known_project_names
+
+                if is_known_project:
+                    try:
+                        move_drive_item(drive_service, item_id, projects_root_id)
+                        report["moved_projects"].append(f"{item_name} ({item_id}) moved to {PROJECTS_ROOT_NAME}")
+                    except Exception as e:
+                        report["errors"].append(f"Error moving project {item_name} ({item_id}): {e}")
+                elif "client" in item_norm or item_norm in ["generalclients"]:
+                    try:
+                        move_drive_item(drive_service, item_id, clients_root_id)
+                        report["moved_clients"].append(f"{item_name} ({item_id}) moved to {CLIENTS_ROOT_NAME}")
+                    except Exception as e:
+                        report["errors"].append(f"Error moving client folder {item_name} ({item_id}): {e}")
+                else:
+                    # Default heuristic: check if it has 'Orders' or 'Designs' subfolder -> it's a project!
+                    subs = get_subfolders(drive_service, item_id, include_shortcuts=False)
+                    has_proj_sub = any(s['name'].lower() in ["orders", "designs", "01 - drawings & cad"] for s in subs)
+                    if has_proj_sub:
+                        try:
+                            move_drive_item(drive_service, item_id, projects_root_id)
+                            report["moved_projects"].append(f"{item_name} ({item_id}) moved to {PROJECTS_ROOT_NAME}")
+                        except Exception as e:
+                            report["errors"].append(f"Error moving project {item_name} ({item_id}): {e}")
+                    else:
+                        try:
+                            move_drive_item(drive_service, item_id, clients_root_id)
+                            report["moved_clients"].append(f"{item_name} ({item_id}) moved to {CLIENTS_ROOT_NAME}")
+                        except Exception as e:
+                            report["errors"].append(f"Error moving folder {item_name} ({item_id}): {e}")
+
+        # 2. Sync Cloud SQL Database pointers
+        close_session = False
+        db_sess = db
+        if db_sess is None:
+            try:
+                from database.cloud_sql import SessionLocal
+                db_sess = SessionLocal()
+                close_session = True
+            except Exception as e:
+                logger.warning(f"Could not initialize DB session for Drive sync: {e}")
+
+        if db_sess is not None:
+            try:
+                from models.orm_models import Project
+                
+                # Fetch all current folders in 01 - PROJECTS
+                proj_folders = get_subfolders(drive_service, projects_root_id, include_shortcuts=False)
+                proj_folders_by_norm = {normalize_name(pf['name']): pf for pf in proj_folders}
+
+                all_db_projects = db_sess.query(Project).all()
+                for p in all_db_projects:
+                    # Check if project is 1638 (previously named Wynand Wilsenacht Architects)
+                    if p.id == 1638:
+                        if normalize_name(p.name) in ["wynandwilsenacharchitects", "wynandwilsenachtarchitects"]:
+                            p.name = "Spike Lights Project"
+                            report["db_updates"].append("Updated Project 1638 name to 'Spike Lights Project'")
+                        spike_pf = proj_folders_by_norm.get("spikelightsproject")
+                        if spike_pf:
+                            p.master_drive_folder = spike_pf['id']
+                            report["db_updates"].append(f"Linked Project 1638 master_drive_folder -> {spike_pf['id']}")
+                        continue
+
+                    # Match by normalized name
+                    p_norm = normalize_name(p.name)
+                    matched_pf = proj_folders_by_norm.get(p_norm)
+                    if not matched_pf:
+                        # Substring match
+                        for k, v in proj_folders_by_norm.items():
+                            if (len(p_norm) >= 4 and p_norm in k) or (len(k) >= 4 and k in p_norm):
+                                matched_pf = v
+                                break
+                    
+                    if matched_pf and p.master_drive_folder != matched_pf['id']:
+                        p.master_drive_folder = matched_pf['id']
+                        report["db_updates"].append(f"Linked Project {p.id} ('{p.name}') master_drive_folder -> {matched_pf['id']}")
+
+                # Also ensure shortcuts exist for all clients whose projects are in 01 - PROJECTS
+                client_folders = get_subfolders(drive_service, clients_root_id, include_shortcuts=False)
+                client_folders_by_norm = {normalize_name(cf['name']): cf for cf in client_folders}
+
+                for p in all_db_projects:
+                    if p.client_name and p.master_drive_folder:
+                        c_norm = normalize_name(p.client_name)
+                        matched_cf = client_folders_by_norm.get(c_norm)
+                        if matched_cf:
+                            create_drive_shortcut(drive_service, p.name, p.master_drive_folder, matched_cf['id'])
+
+                db_sess.commit()
+                report["db_sync_status"] = "completed"
+            except Exception as e:
+                if db_sess:
+                    db_sess.rollback()
+                logger.error(f"Error syncing Cloud SQL database during migration: {e}")
+                report["errors"].append(f"DB sync error: {e}")
+            finally:
+                if close_session and db_sess:
+                    db_sess.close()
+
+    except Exception as e:
+        logger.error(f"Failed to migrate Drive to 2-tier: {e}", exc_info=True)
+        report["status"] = "failed"
+        report["error"] = str(e)
+
+    return report
 
 
 def create_custom_folder(parent_folder_id: str, folder_name: str) -> Dict[str, Any]:
@@ -708,9 +1073,25 @@ def trash_drive_item(item_id: str) -> Dict[str, Any]:
 
 
 def list_folder_files(folder_id: str) -> List[Dict[str, Any]]:
-    """Lists all files (excluding subfolders) inside a Google Drive folder."""
+    """Lists all files (excluding subfolders and shortcuts) inside a Google Drive folder."""
     drive_service = get_drive_service()
-    query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+    clean_folder_id = folder_id.strip()
+
+    # If folder_id is a shortcut, resolve to its actual target folder ID
+    try:
+        f_meta = drive_service.files().get(
+            fileId=clean_folder_id,
+            fields='id, mimeType, shortcutDetails',
+            supportsAllDrives=True
+        ).execute()
+        if f_meta.get('mimeType') == 'application/vnd.google-apps.shortcut':
+            target_id = f_meta.get('shortcutDetails', {}).get('targetId')
+            if target_id:
+                clean_folder_id = target_id
+    except Exception:
+        pass
+
+    query = f"'{clean_folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and mimeType != 'application/vnd.google-apps.shortcut' and trashed=false"
     
     try:
         res = drive_service.files().list(
@@ -739,17 +1120,32 @@ def list_folder_files(folder_id: str) -> List[Dict[str, Any]]:
             })
         return formatted
     except Exception as e:
-        logger.error(f"Error listing files for folder {folder_id}: {e}")
+        logger.error(f"Error listing files for folder {clean_folder_id}: {e}")
         return []
 
 
 def upload_file_to_drive(folder_id: str, file_bytes: bytes, filename: str, content_type: str) -> Dict[str, Any]:
-    """Streams an uploaded file directly into Google Drive."""
+    """Streams an uploaded file directly into Google Drive, resolving shortcuts if necessary."""
     drive_service = get_drive_service()
+    clean_folder_id = folder_id.strip()
+
+    # If target is a shortcut, resolve to targetId
+    try:
+        f_meta = drive_service.files().get(
+            fileId=clean_folder_id,
+            fields='id, mimeType, shortcutDetails',
+            supportsAllDrives=True
+        ).execute()
+        if f_meta.get('mimeType') == 'application/vnd.google-apps.shortcut':
+            target_id = f_meta.get('shortcutDetails', {}).get('targetId')
+            if target_id:
+                clean_folder_id = target_id
+    except Exception:
+        pass
     
     file_metadata = {
         'name': filename,
-        'parents': [folder_id]
+        'parents': [clean_folder_id]
     }
     
     media = MediaIoBaseUpload(

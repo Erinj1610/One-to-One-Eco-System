@@ -446,7 +446,12 @@ export default function DriveFileExplorer({
                     <span style={{ width: '17px' }} />
                   )}
 
-                  <Folder size={14} style={{ color: isSelected ? '#3b82f6' : '#f59e0b', flexShrink: 0 }} />
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                    <Folder size={14} style={{ color: isSelected ? '#3b82f6' : '#f59e0b', flexShrink: 0 }} />
+                    {node.is_shortcut && (
+                      <span style={{ position: 'absolute', bottom: '-4px', right: '-4px', fontSize: '9px', fontWeight: 800, color: '#3b82f6', lineHeight: 1 }}>↗</span>
+                    )}
+                  </div>
 
                   {isRenaming ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={e => e.stopPropagation()}>
@@ -810,7 +815,8 @@ export default function DriveFileExplorer({
                       {currentSubfolders.map(sub => {
                         const isOrders = sub.type === 'orders_root' || sub.type === 'order_folder' || sub.type === 'order_sub';
                         const isDesigns = sub.type === 'design_root' || sub.type === 'design_package' || sub.type === 'design_sub';
-                        const iconColor = isOrders ? '#10b981' : isDesigns ? '#ec4899' : '#3b82f6';
+                        const isProject = sub.type === 'project_folder';
+                        const iconColor = isOrders ? '#10b981' : isDesigns ? '#ec4899' : isProject ? '#8b5cf6' : '#3b82f6';
                         
                         return (
                           <div
@@ -842,7 +848,12 @@ export default function DriveFileExplorer({
                               e.currentTarget.style.boxShadow = 'none';
                             }}
                           >
-                            <Folder size={20} style={{ color: iconColor, flexShrink: 0 }} />
+                            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                              <Folder size={20} style={{ color: iconColor }} />
+                              {sub.is_shortcut && (
+                                <span style={{ position: 'absolute', bottom: '-3px', right: '-3px', fontSize: '10px', fontWeight: 800, color: '#3b82f6', lineHeight: 1 }}>↗</span>
+                              )}
+                            </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div 
                                 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -851,7 +862,7 @@ export default function DriveFileExplorer({
                                 {sub.name}
                               </div>
                               <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
-                                {sub.type === 'orders_root' ? 'Orders Container' : sub.type === 'design_root' ? 'Designs Container' : sub.type === 'order_folder' ? 'Order' : sub.type === 'design_package' ? 'Design Package' : 'Folder'}
+                                {sub.is_shortcut ? 'Project Shortcut' : sub.type === 'project_folder' ? 'Project Folder' : sub.type === 'orders_root' ? 'Orders Container' : sub.type === 'design_root' ? 'Designs Container' : sub.type === 'order_folder' ? 'Order' : sub.type === 'design_package' ? 'Design Package' : 'Folder'}
                               </div>
                             </div>
                             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
