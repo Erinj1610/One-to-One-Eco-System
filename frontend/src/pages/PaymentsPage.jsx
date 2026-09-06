@@ -426,7 +426,7 @@ export default function PaymentsPage() {
   if (isMobile) {
     return (
       <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
-        <MobilePaymentsViewer payments={payments} summary={paymentsSummary} />
+        <MobilePaymentsViewer payments={paymentsDocs} summary={paymentsSummary} />
       </div>
     );
   }

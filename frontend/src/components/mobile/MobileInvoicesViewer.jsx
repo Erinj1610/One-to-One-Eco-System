@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Search, FileText, CheckCircle2, Clock, AlertCircle, DollarSign } from 'lucide-react';
+import { Search, FileText, CheckCircle2, Clock, AlertCircle, DollarSign, ChevronRight } from 'lucide-react';
+import MobileInvoiceDetailDrawer from './MobileInvoiceDetailDrawer';
 
 export default function MobileInvoicesViewer({ docs = [], summary = {}, onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('All');
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   const filteredDocs = useMemo(() => {
     return (docs || []).filter(doc => {
@@ -116,17 +118,25 @@ export default function MobileInvoicesViewer({ docs = [], summary = {}, onRefres
             const isAllocated = status.toLowerCase().includes('fully') || status.toLowerCase().includes('allocated');
 
             return (
-              <div key={docNo} className="mobile-feed-card">
+              <div
+                key={docNo}
+                className="mobile-feed-card"
+                onClick={() => setSelectedInvoice(doc)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-info)', fontFamily: 'monospace' }}>
                     {docNo}
                   </span>
-                  <span
-                    className={`badge ${isAllocated ? 'b-success' : 'b-warning'}`}
-                    style={{ fontSize: '9.5px', padding: '2px 7px' }}
-                  >
-                    {isAllocated ? '✓ Allocated' : '⏳ Needs Allocation'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span
+                      className={`badge ${isAllocated ? 'b-success' : 'b-warning'}`}
+                      style={{ fontSize: '9.5px', padding: '2px 7px' }}
+                    >
+                      {isAllocated ? '✓ Allocated' : '⏳ Needs Allocation'}
+                    </span>
+                    <ChevronRight size={14} color="var(--text-tertiary)" />
+                  </div>
                 </div>
 
                 <div>
@@ -158,6 +168,14 @@ export default function MobileInvoicesViewer({ docs = [], summary = {}, onRefres
           })
         )}
       </div>
+
+      {/* INVOICE DETAIL DRAWER */}
+      {selectedInvoice && (
+        <MobileInvoiceDetailDrawer
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
     </div>
   );
 }

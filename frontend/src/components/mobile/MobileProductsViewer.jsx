@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Package, Box, Tag, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Package, Box, Tag, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
+import MobileProductDetailDrawer from './MobileProductDetailDrawer';
 
 export default function MobileProductsViewer({ items = [], onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('All');
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const filteredItems = useMemo(() => {
     return (items || []).filter(item => {
@@ -89,17 +91,25 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
             const location = item.location || 'STOCK';
 
             return (
-              <div key={sku} className="mobile-feed-card">
+              <div
+                key={sku}
+                className="mobile-feed-card"
+                onClick={() => setSelectedProduct(item)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-info)', fontFamily: 'monospace' }}>
                     {sku}
                   </span>
-                  <span
-                    className={`badge ${qty > 0 ? 'b-success' : 'b-danger'}`}
-                    style={{ fontSize: '9.5px', padding: '2px 7px' }}
-                  >
-                    {qty > 0 ? `${qty} in Stock` : 'Out of Stock'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span
+                      className={`badge ${qty > 0 ? 'b-success' : 'b-danger'}`}
+                      style={{ fontSize: '9.5px', padding: '2px 7px' }}
+                    >
+                      {qty > 0 ? `${qty} in Stock` : 'Out of Stock'}
+                    </span>
+                    <ChevronRight size={14} color="var(--text-tertiary)" />
+                  </div>
                 </div>
 
                 <div>
@@ -131,6 +141,14 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
           })
         )}
       </div>
+
+      {/* PRODUCT SPEC DETAIL DRAWER */}
+      {selectedProduct && (
+        <MobileProductDetailDrawer
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
+      )}
     </div>
   );
 }

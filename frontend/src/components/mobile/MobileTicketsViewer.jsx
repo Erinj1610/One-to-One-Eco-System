@@ -1,22 +1,24 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Ticket, AlertTriangle, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Search, Ticket, AlertTriangle, CheckCircle2, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import MobileTicketDetailDrawer from './MobileTicketDetailDrawer';
 
 export default function MobileTicketsViewer({ tickets = [], onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedTicket, setSelectedTicket] = useState(null);
 
   const filteredTickets = useMemo(() => {
     return (tickets || []).filter(t => {
       if (!t) return false;
-      const id = (t.id || t.ticket_id || '').toLowerCase();
-      const issue = (t.title || t.issue || t.description || '').toLowerCase();
-      const project = (t.project_name || t.projectName || t.project || '').toLowerCase();
+      const id = String(t.id || t.ticket_id || '').toLowerCase();
+      const issue = String(t.title || t.issue || t.description || '').toLowerCase();
+      const project = String(t.project_name || t.projectName || t.project || '').toLowerCase();
       const term = searchTerm.toLowerCase();
 
       const matchesSearch = !term || id.includes(term) || issue.includes(term) || project.includes(term);
 
       let matchesStatus = true;
-      const st = (t.status || 'open').toLowerCase();
+      const st = String(t.status || 'open').toLowerCase();
       if (statusFilter === 'Open') {
         matchesStatus = st === 'open';
       } else if (statusFilter === 'In Progress') {
@@ -97,18 +99,24 @@ export default function MobileTicketsViewer({ tickets = [], onRefresh }) {
             const date = t.created_at ? new Date(t.created_at).toLocaleDateString() : '—';
 
             return (
-              <div key={ticketId} className="mobile-feed-card">
+              <div
+                key={ticketId}
+                className="mobile-feed-card"
+                onClick={() => setSelectedTicket(t)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-info)', fontFamily: 'monospace' }}>
                     {ticketId}
                   </span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span className={`badge ${severityBadge(severity)}`} style={{ fontSize: '9.5px', padding: '2px 7px' }}>
                       {severity}
                     </span>
                     <span className="badge b-default" style={{ fontSize: '9.5px', padding: '2px 7px' }}>
                       {status}
                     </span>
+                    <ChevronRight size={14} color="var(--text-tertiary)" />
                   </div>
                 </div>
 
@@ -139,6 +147,14 @@ export default function MobileTicketsViewer({ tickets = [], onRefresh }) {
           })
         )}
       </div>
+
+      {/* TICKET DETAIL DRAWER */}
+      {selectedTicket && (
+        <MobileTicketDetailDrawer
+          ticket={selectedTicket}
+          onClose={() => setSelectedTicket(null)}
+        />
+      )}
     </div>
   );
 }

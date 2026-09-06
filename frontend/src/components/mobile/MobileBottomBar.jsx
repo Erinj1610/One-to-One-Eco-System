@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Briefcase, PackageCheck, TrendingUp, Menu, 
   X, Users, ShoppingBag, FileText, CreditCard, Ticket, Settings, 
-  LogOut, Shield, ChevronRight
+  LogOut, Shield, ChevronRight, BarChart3
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -43,6 +43,7 @@ export default function MobileBottomBar() {
   };
 
   const moreItems = [
+    { label: 'Reports & Analytics', path: '/reports', icon: BarChart3, color: '#6366f1', desc: 'Financial, Sales & KPI Reports' },
     { label: 'Client CRM', path: '/crm', icon: Users, color: '#3b82f6', desc: 'Clients & Accounts' },
     { label: 'Products & Stock', path: '/products', icon: ShoppingBag, color: '#10b981', desc: 'Live Inventory & Catalog' },
     { label: 'Invoices & Claims', path: '/invoices', icon: FileText, color: '#f59e0b', desc: 'Invoicing & Claims' },

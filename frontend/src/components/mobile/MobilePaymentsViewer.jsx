@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Search, CreditCard, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Search, CreditCard, CheckCircle2, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import MobilePaymentDetailDrawer from './MobilePaymentDetailDrawer';
 
 export default function MobilePaymentsViewer({ payments = [], summary = {}, onRefresh }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('All');
+  const [selectedPayment, setSelectedPayment] = useState(null);
 
   const filteredPayments = useMemo(() => {
     return (payments || []).filter(p => {
@@ -116,17 +118,25 @@ export default function MobilePaymentsViewer({ payments = [], summary = {}, onRe
             const isAllocated = status.toLowerCase().includes('fully') || status.toLowerCase().includes('allocated');
 
             return (
-              <div key={recNo} className="mobile-feed-card">
+              <div
+                key={recNo}
+                className="mobile-feed-card"
+                onClick={() => setSelectedPayment(p)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-info)', fontFamily: 'monospace' }}>
                     {recNo}
                   </span>
-                  <span
-                    className={`badge ${isAllocated ? 'b-success' : 'b-warning'}`}
-                    style={{ fontSize: '9.5px', padding: '2px 7px' }}
-                  >
-                    {isAllocated ? '✓ Allocated' : '⏳ Unallocated'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span
+                      className={`badge ${isAllocated ? 'b-success' : 'b-warning'}`}
+                      style={{ fontSize: '9.5px', padding: '2px 7px' }}
+                    >
+                      {isAllocated ? '✓ Allocated' : '⏳ Unallocated'}
+                    </span>
+                    <ChevronRight size={14} color="var(--text-tertiary)" />
+                  </div>
                 </div>
 
                 <div>
@@ -158,6 +168,14 @@ export default function MobilePaymentsViewer({ payments = [], summary = {}, onRe
           })
         )}
       </div>
+
+      {/* PAYMENT DETAIL DRAWER */}
+      {selectedPayment && (
+        <MobilePaymentDetailDrawer
+          payment={selectedPayment}
+          onClose={() => setSelectedPayment(null)}
+        />
+      )}
     </div>
   );
 }
