@@ -1041,6 +1041,44 @@ def migrate_drive_to_2_tier(db: Optional[Any] = None) -> Dict[str, Any]:
                         except Exception as e:
                             report["errors"].append(f"Error moving folder {item_name} ({item_id}): {e}")
 
+        # 1b. Inspect all client folders inside '02 - CLIENTS' to ensure nested physical projects are moved to '01 - PROJECTS'
+        client_folders_in_clients_root = get_subfolders(drive_service, clients_root_id, include_shortcuts=False)
+        for cf in client_folders_in_clients_root:
+            cf_id = cf['id']
+            cf_name = cf['name'].strip()
+            
+            # Fetch physical subfolders inside this client folder (ignoring shortcuts)
+            cf_subs = get_subfolders(drive_service, cf_id, include_shortcuts=False)
+            for sub in cf_subs:
+                sub_id = sub['id']
+                sub_name = sub['name'].strip()
+                sub_norm = normalize_name(sub_name)
+
+                # Skip root containers if somehow nested
+                if sub_id in (projects_root_id, clients_root_id):
+                    continue
+
+                # Nested duplicate Wynand (Project 1638) -> rename to Spike Lights Project and move to 01 - PROJECTS
+                if sub_norm in ["wynandwilsenacharchitects", "wynandwilsenachtarchitects"]:
+                    try:
+                        rename_drive_item(sub_id, "Spike Lights Project")
+                        report["renamed"].append(f"Renamed nested folder {sub_id} from '{sub_name}' to 'Spike Lights Project'")
+                        move_drive_item(drive_service, sub_id, projects_root_id)
+                        report["moved_projects"].append(f"Spike Lights Project ({sub_id}) moved to {PROJECTS_ROOT_NAME}")
+                        create_drive_shortcut(drive_service, "Spike Lights Project", sub_id, cf_id)
+                        report["shortcuts_created"].append(f"Shortcut 'Spike Lights Project' -> {sub_id} in {cf_name}")
+                    except Exception as e:
+                        report["errors"].append(f"Error migrating nested duplicate {sub_id}: {e}")
+                else:
+                    # Move physical project folder to 01 - PROJECTS
+                    try:
+                        move_drive_item(drive_service, sub_id, projects_root_id)
+                        report["moved_projects"].append(f"{sub_name} ({sub_id}) moved to {PROJECTS_ROOT_NAME}")
+                        create_drive_shortcut(drive_service, sub_name, sub_id, cf_id)
+                        report["shortcuts_created"].append(f"Shortcut '{sub_name}' -> {sub_id} in {cf_name}")
+                    except Exception as e:
+                        report["errors"].append(f"Error moving project {sub_id} ({sub_name}) to {PROJECTS_ROOT_NAME}: {e}")
+
         # 2. Sync Cloud SQL Database pointers
         close_session = False
         db_sess = db
