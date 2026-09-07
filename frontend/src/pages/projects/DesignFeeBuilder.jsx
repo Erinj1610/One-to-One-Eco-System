@@ -35,8 +35,10 @@ function buildTokens({
 
   return {
     // Header & Meta
+    DOC_TYPE: 'DESIGN_FEE',
     FEE_NAME: feeName || 'Design Fee Proposal',
-    ORDER_NAME: feeName || 'Design Fee Proposal',
+    FEE_REF: proposalNum,
+    DESIGN_NAME: feeName || 'Design Fee Proposal',
     PROJECT_NAME: projectName || 'Project',
     PROJECT_NAME_LOCATION: projectName || 'Project',
     CLIENT_NAME: companyName || contactPerson || 'Client Name',

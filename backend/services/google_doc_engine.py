@@ -289,23 +289,24 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         s_upper = str(sheet_name or '').upper().strip()
         doc_type_token = str(tokens.get('DOC_TYPE') or '').upper().strip()
 
-        # 1. Strict Order document classification
-        is_order_doc = (
+        # Strict order document check (explicit order tokens or standard order sheet tabs)
+        is_order_type = (
             doc_type_token == 'ORDER' or
             s_upper in [
                 'QUOTATION', 'QUOTE', 'BOQ', 'DEPOSIT_INVOICE', 'FINAL_INVOICE',
                 'BALANCE_INVOICE', 'LIGHTING_SCHEDULE', 'SCHEDULE', 'INVOICE',
                 'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO'
-            ] or
-            bool(tokens.get('ORDER_NUMBER')) or
-            bool(tokens.get('PO_NUMBER'))
+            ]
         )
 
-        # 2. Design document classification (only if not an order document)
-        is_design_doc = not is_order_doc and (
-            doc_type_token == 'DESIGN_FEE' or
-            s_upper in ['DESIGN_FEE_PROPOSAL', 'DESIGN_FEE', 'DESIGN_PROPOSAL'] or
-            bool(tokens.get('FEE_REF'))
+        # Design document check: any design token or design template tab, as long as not an explicit order
+        is_design_doc = not is_order_type and (
+            doc_type_token in ['DESIGN_FEE', 'DESIGN'] or
+            'DESIGN' in s_upper or
+            s_upper in ['DESIGN_FEE_PROPOSAL', 'DESIGN_FEE', 'PROPOSAL', 'DESIGN_PROPOSAL'] or
+            bool(tokens.get('FEE_NAME')) or
+            bool(tokens.get('FEE_REF')) or
+            bool(tokens.get('PROPOSAL_NUMBER'))
         )
 
         if is_design_doc:
