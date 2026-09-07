@@ -666,6 +666,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 out_list.append(item_dict)
             return out_list
 
+        # Page Budgeting for Carryover Headers (A4 portrait at 0.25in margins)
+        PAGE_1_MAX_ROWS = 42
+        SUBSEQUENT_PAGE_MAX_ROWS = 48
+        current_page_capacity = PAGE_1_MAX_ROWS
+        rows_on_current_page = 0
+
         # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
         if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
             main_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) >= 0]
@@ -721,18 +727,54 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             if table_head_cells:
                 generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
+                rows_on_current_page += 1
             
             if item_row_cells:
+                active_floor = None
                 for item_obj in main_items:
+                    it_fl = str(item_obj.get('floor') or item_obj.get('Floor') or '').strip()
+                    if it_fl:
+                        active_floor = it_fl
+
+                    if rows_on_current_page >= current_page_capacity:
+                        # Carryover block onto next page
+                        if active_floor and fl_header_cells:
+                            carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"}
+                            generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                            rows_on_current_page = 1
+                        else:
+                            rows_on_current_page = 0
+                        
+                        if table_head_cells:
+                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
+                            rows_on_current_page += 1
+                        
+                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
+                    rows_on_current_page += 1
 
             if credit_items and (credit_head_cells or credit_item_cells):
+                if rows_on_current_page + 3 > current_page_capacity:
+                    rows_on_current_page = 0
+                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                 if credit_head_cells:
                     generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
+                    rows_on_current_page += 1
                 target_credit_cell = credit_item_cells or item_row_cells
                 if target_credit_cell:
                     for item_obj in credit_items:
+                        if rows_on_current_page >= current_page_capacity:
+                            if credit_head_cells:
+                                generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
+                                rows_on_current_page = 1
+                            else:
+                                rows_on_current_page = 0
+                            current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                         generated_dynamic_rows.append(('[CREDIT_ITEM_ROW]', target_credit_cell, build_item_ctx(item_obj)))
+                        rows_on_current_page += 1
         else:
             # Grouped Floor / Area template (like Quotation)
             for fl_name, areas in grouped_floors.items():
@@ -741,33 +783,66 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
                 fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
+                # If starting a new floor near bottom of page, start fresh on next page
+                if rows_on_current_page > 0 and (rows_on_current_page + 4 > current_page_capacity):
+                    rows_on_current_page = 0
+                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                 if fl_header_cells:
                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
+                    rows_on_current_page += 1
                 if fl_table_head_cells:
                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
+                    rows_on_current_page += 1
 
                 for ar_name, ar_items in areas.items():
                     ar_subtotal_num = sum(resolve_item_total(it) for it in ar_items)
                     ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
                     ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
+                    # Check page overflow before adding area/items
+                    if rows_on_current_page >= current_page_capacity:
+                        carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                        if fl_header_cells:
+                            generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                        if fl_table_head_cells:
+                            generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
+                        elif table_head_cells:
+                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                        rows_on_current_page = 2
+                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                     if area_row_cells:
                         generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
+                        rows_on_current_page += 1
                     if area_table_head_cells:
                         generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
+                        rows_on_current_page += 1
 
                     if item_row_cells:
                         for item_obj in ar_items:
+                            if rows_on_current_page >= current_page_capacity:
+                                carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                                if fl_header_cells:
+                                    generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                                if fl_table_head_cells:
+                                    generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
+                                rows_on_current_page = 2
+                                current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+
                             item_ctx = {**ar_ctx}
                             for k, v in item_obj.items():
                                 item_ctx[k] = str(v) if v is not None else ''
                             generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
+                            rows_on_current_page += 1
 
                     if area_footer_cells:
                         generated_dynamic_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
+                        rows_on_current_page += 1
 
                 if fl_footer_cells:
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
+                    rows_on_current_page += 1
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
@@ -1253,8 +1328,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     pdf_bytes = None
 
     export_urls = [
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true",
-        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false"
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&fitw=true&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25",
+        f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/export?format=pdf&gid={temp_tab_gid}&portrait=true&size=A4&gridlines=false&top_margin=0.25&bottom_margin=0.25&left_margin=0.25&right_margin=0.25"
     ]
 
     for export_url in export_urls:
