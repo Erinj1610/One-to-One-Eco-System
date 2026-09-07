@@ -603,6 +603,7 @@ class User(Base):
     hashed_password = Column(String, nullable=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     disabled = Column(Boolean, default=False)
+    custom_permissions = Column(JSON, default=dict)
 
 class Quote(Base):
     __tablename__ = "quotes"

@@ -128,6 +128,11 @@ def init_db():
                     conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE;"))
                     conn.commit()
                 print("Database migration: ensured 'disabled' column exists on 'users' table.")
+
+                if 'custom_permissions' not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN custom_permissions JSON DEFAULT '{}';"))
+                    conn.commit()
+                print("Database migration: ensured 'custom_permissions' column exists on 'users' table.")
                 
                 # Migrate orders table to ensure quote_name exists, migrate metadata, then drop order_metadata
                 try:

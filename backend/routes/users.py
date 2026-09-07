@@ -41,6 +41,10 @@ class UserUpdate(BaseModel):
     role_id: Optional[int] = None
     department: Optional[str] = None
     disabled: Optional[bool] = False
+    custom_permissions: Optional[Dict[str, str]] = None
+
+class UserCustomPermissionsUpdate(BaseModel):
+    custom_permissions: Dict[str, str] = {}
 
 class RoleCreate(BaseModel):
     name: str
@@ -59,11 +63,29 @@ def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verif
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     users = db.query(User).all()
+    # Pre-fetch role permissions for efficient lookup
+    role_perms_map: Dict[int, Dict[str, str]] = {}
+    for rp in db.query(RolePermission).all():
+        role_perms_map.setdefault(rp.role_id, {})[rp.section] = rp.permission_level
+
     result = []
     for u in users:
         emp = db.query(Employee).filter(Employee.user_id == u.id).first()
         role = db.query(Role).filter(Role.id == u.role_id).first() if u.role_id else None
         name = emp.name if (emp and emp.name) else (u.email.split("@")[0].replace(".", " ").title())
+        
+        user_custom = u.custom_permissions if isinstance(u.custom_permissions, dict) else {}
+        role_defaults = role_perms_map.get(u.role_id, {}) if u.role_id else {}
+        
+        effective = {}
+        for mod in SYSTEM_MODULES:
+            if mod in user_custom:
+                effective[mod] = user_custom[mod]
+            elif mod in role_defaults:
+                effective[mod] = role_defaults[mod]
+            else:
+                effective[mod] = "Full access" if role and role.name.lower() == "admin" else "View only"
+
         result.append({
             "id": u.id,
             "email": u.email,
@@ -71,9 +93,13 @@ def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verif
             "role_id": u.role_id,
             "name": name,
             "department": emp.department if (emp and emp.department) else "General",
-            "disabled": bool(u.disabled)
+            "disabled": bool(u.disabled),
+            "custom_permissions": user_custom,
+            "custom_override_count": len(user_custom),
+            "effective_permissions": effective
         })
     return result
+
 
 @router.get("/roles", response_model=List[dict])
 def list_roles(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
@@ -360,6 +386,10 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
         if role_record:
             employee.role = role_record.name
 
+    # Update custom_permissions if provided
+    if data.custom_permissions is not None:
+        target_user.custom_permissions = data.custom_permissions
+
     # Sync disabled status with Identity Platform/Firebase Auth
     if firebase_initialized:
         try:
@@ -371,6 +401,29 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
 
     db.commit()
     return {"message": "User updated successfully"}
+
+@router.put("/{user_id}/permissions")
+def update_user_custom_permissions(user_id: int, data: UserCustomPermissionsUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage users")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    clean_perms = {}
+    for mod, lvl in (data.custom_permissions or {}).items():
+        if lvl and lvl in ["Full access", "Can edit", "View only", "No access"]:
+            clean_perms[mod] = lvl
+
+    target_user.custom_permissions = clean_perms
+    db.commit()
+    return {
+        "message": "User permissions updated successfully",
+        "user_id": user_id,
+        "custom_permissions": clean_perms
+    }
+
 
 @router.post("/{user_id}/reset-password")
 def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
