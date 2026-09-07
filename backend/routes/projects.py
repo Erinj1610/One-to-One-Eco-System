@@ -543,6 +543,46 @@ def create_project_design_fee(project_key: str, fee_data: dict, db: Session = De
     db.refresh(new_fee)
     return {"status": "ok", "message": f"Design fee '{fee_ref}' created in database", "id": new_fee.id}
 
+class RelinkDesignSchema(BaseModel):
+    fee_ref: str
+    target_project_key: str
+
+@router.post("/relink-design")
+def relink_design_fee(payload: RelinkDesignSchema, db: Session = Depends(get_db)):
+    clean_ref = payload.fee_ref.strip()
+    target_project = db.query(Project).filter(Project.project_key == payload.target_project_key).first()
+    if not target_project:
+        raise HTTPException(status_code=404, detail="Target project not found")
+        
+    design = db.query(DesignFee).filter(
+        (DesignFee.fee_ref == clean_ref) | (DesignFee.id == (int(clean_ref) if clean_ref.isdigit() else -1))
+    ).first()
+    if not design:
+        raise HTTPException(status_code=404, detail="Design fee not found")
+        
+    old_proj = db.query(Project).filter(
+        (Project.id == design.project_id) | (Project.project_key == design.project_key)
+    ).first() if (design.project_id or design.project_key) else None
+    old_name = old_proj.name if old_proj else ""
+    
+    # Move Google Drive folder atomically
+    try:
+        from services.google_drive_service import move_design_drive_folder
+        move_design_drive_folder(
+            fee_ref=design.fee_ref or clean_ref,
+            old_project_name=old_name,
+            new_project_name=target_project.name,
+            client_name=target_project.client_name or ""
+        )
+    except Exception as drive_err:
+        print(f"Warning: Failed to move design drive folder: {drive_err}")
+        
+    design.project_id = target_project.id
+    design.project_key = target_project.project_key
+    db.commit()
+    db.refresh(design)
+    return {"status": "ok", "message": f"Successfully moved design '{clean_ref}' to '{target_project.name}'"}
+
 @router.delete("/{project_key}")
 def delete_project_relational(project_key: str, db: Session = Depends(get_db)):
     project = db.query(Project).filter(Project.project_key == project_key).first()

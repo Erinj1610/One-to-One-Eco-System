@@ -4,6 +4,77 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import TemplateEditor from './admin/TemplateEditor';
+import { 
+  Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
+  Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
+  Sliders, Grid, List, Layers, ArrowRight, UserPlus, ExternalLink, X,
+  Briefcase, CheckSquare, Sparkles
+} from 'lucide-react';
+
+const MODULE_GROUPS = [
+  {
+    name: 'Studio & Creative Design',
+    modules: ['Design tracker', 'Design fee', 'Projects']
+  },
+  {
+    name: 'Sales & CRM Pipeline',
+    modules: ['Dashboard', 'CRM', 'Pipeline']
+  },
+  {
+    name: 'Procurement & Commerce',
+    modules: ['Products', 'BOQ Maker', 'Orders', 'Invoices']
+  },
+  {
+    name: 'Governance & Administration',
+    modules: ['Time tracking', 'Documents', 'HR & people', 'Reports', 'Support']
+  }
+];
+
+const PERMISSION_LEVELS = ['Full access', 'Can edit', 'View only', 'No access'];
+
+const getRoleBadgeStyle = (roleName) => {
+  const norm = (roleName || '').toLowerCase();
+  if (norm.includes('admin')) {
+    return { bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' };
+  }
+  if (norm.includes('senior')) {
+    return { bg: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' };
+  }
+  if (norm.includes('designer')) {
+    return { bg: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.3)' };
+  }
+  if (norm.includes('coordinator')) {
+    return { bg: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' };
+  }
+  if (norm.includes('showroom')) {
+    return { bg: 'rgba(244, 114, 182, 0.15)', color: '#f472b6', border: '1px solid rgba(244, 114, 182, 0.3)' };
+  }
+  return { bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)' };
+};
+
+const getPermLevelStyle = (level) => {
+  switch (level) {
+    case 'Full access':
+      return { label: 'Full access', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', dot: '#10b981' };
+    case 'Can edit':
+      return { label: 'Can edit', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.25)', dot: '#38bdf8' };
+    case 'View only':
+      return { label: 'View only', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: '1px solid rgba(251, 191, 36, 0.25)', dot: '#fbbf24' };
+    case 'No access':
+    default:
+      return { label: 'No access', color: '#9ca3af', bg: 'rgba(156, 163, 175, 0.08)', border: '1px solid rgba(156, 163, 175, 0.2)', dot: '#6b7280' };
+  }
+};
+
+const getInitials = (name, email) => {
+  if (name && name !== 'Unknown') {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email) return email.slice(0, 2).toUpperCase();
+  return 'U';
+};
 
 const ROLES = ['Admin', 'Senior Designer', 'Designer', 'Coordinator', 'Showroom'];
 const MODULES = ['Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'];
@@ -872,6 +943,26 @@ export default function SettingsPage() {
   const [newPmPhone, setNewPmPhone] = useState('');
   const [editingPmId, setEditingPmId] = useState(null);
 
+  // Roles & Permissions state
+  const [dbRoles, setDbRoles] = useState([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [permissionsData, setPermissionsData] = useState({ roles: [], modules: [], matrix: {} });
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [hasUnsavedPerms, setHasUnsavedPerms] = useState(false);
+  const [savingPerms, setSavingPerms] = useState(false);
+  const [permSuccessMessage, setPermSuccessMessage] = useState('');
+  const [permViewMode, setPermViewMode] = useState('matrix'); // 'matrix' | 'role'
+  const [selectedRoleDetailId, setSelectedRoleDetailId] = useState(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showNewRoleModal, setShowNewRoleModal] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('All');
+  const [userDeptFilter, setUserDeptFilter] = useState('All');
+  const [roleUpdatingUserId, setRoleUpdatingUserId] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
@@ -887,11 +978,183 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchRoles = async () => {
+    setRolesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/roles`);
+      if (res.ok) {
+        const data = await res.json();
+        setDbRoles(data);
+        if (data.length > 0 && !selectedRoleDetailId) {
+          setSelectedRoleDetailId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching roles:", err);
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
+  const fetchPermissions = async () => {
+    setPermissionsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/permissions`);
+      if (res.ok) {
+        const data = await res.json();
+        setPermissionsData(data);
+        setHasUnsavedPerms(false);
+        if (data.roles && data.roles.length > 0 && !selectedRoleDetailId) {
+          setSelectedRoleDetailId(data.roles[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching permissions:", err);
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'Users') {
       fetchUsers();
+      fetchRoles();
+    } else if (activeTab === 'Permissions') {
+      fetchPermissions();
+      fetchRoles();
     }
   }, [activeTab]);
+
+  const handleInlineRoleChange = async (userId, newRoleId) => {
+    const userToUpdate = users.find(u => u.id === userId);
+    if (!userToUpdate) return;
+    setRoleUpdatingUserId(userId);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userToUpdate.name,
+          role_id: parseInt(newRoleId),
+          department: userToUpdate.department,
+          disabled: userToUpdate.disabled
+        })
+      });
+      if (res.ok) {
+        await fetchUsers();
+        await fetchRoles();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Failed to update user role');
+      }
+    } catch (err) {
+      alert(`Error updating role: ${err.message}`);
+    } finally {
+      setRoleUpdatingUserId(null);
+    }
+  };
+
+  const handleToggleUserStatus = async (user) => {
+    const newStatus = !user.disabled;
+    const confirmMsg = newStatus 
+      ? `Disable account access for ${user.name} (${user.email})?`
+      : `Re-activate account for ${user.name} (${user.email})?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: user.name,
+          role_id: user.role_id,
+          department: user.department,
+          disabled: newStatus
+        })
+      });
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        alert('Failed to update account status');
+      }
+    } catch (err) {
+      alert(`Error updating status: ${err.message}`);
+    }
+  };
+
+  const handleSavePermissions = async () => {
+    setSavingPerms(true);
+    setPermSuccessMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matrix: permissionsData.matrix })
+      });
+      if (res.ok) {
+        setHasUnsavedPerms(false);
+        setPermSuccessMessage('Permissions matrix successfully saved to Cloud SQL database!');
+        setTimeout(() => setPermSuccessMessage(''), 4000);
+      } else {
+        alert('Failed to save permissions to database');
+      }
+    } catch (err) {
+      alert(`Error saving permissions: ${err.message}`);
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
+  const handlePermissionCellChange = (roleId, moduleName, newLevel) => {
+    setPermissionsData(prev => {
+      const newMatrix = { ...prev.matrix };
+      const roleKey = String(roleId);
+      newMatrix[roleKey] = {
+        ...(newMatrix[roleKey] || {}),
+        [moduleName]: newLevel
+      };
+      return { ...prev, matrix: newMatrix };
+    });
+    setHasUnsavedPerms(true);
+  };
+
+  const handleBulkSetRolePermissions = (roleId, level) => {
+    if (!window.confirm(`Set all modules for this role to '${level}'?`)) return;
+    setPermissionsData(prev => {
+      const newMatrix = { ...prev.matrix };
+      const roleKey = String(roleId);
+      const rolePerms = { ...(newMatrix[roleKey] || {}) };
+      (prev.modules || []).forEach(mod => {
+        rolePerms[mod] = level;
+      });
+      newMatrix[roleKey] = rolePerms;
+      return { ...prev, matrix: newMatrix };
+    });
+    setHasUnsavedPerms(true);
+  };
+
+  const handleCreateRole = async (e) => {
+    e.preventDefault();
+    if (!newRoleName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newRoleName.trim() })
+      });
+      if (res.ok) {
+        setNewRoleName('');
+        setShowNewRoleModal(false);
+        await fetchRoles();
+        await fetchPermissions();
+      } else {
+        const err = await res.json();
+        alert(err.detail || 'Failed to create role');
+      }
+    } catch (err) {
+      alert(`Error creating role: ${err.message}`);
+    }
+  };
 
   const fetchLookups = async () => {
     setLookupsLoading(true);
@@ -1198,268 +1461,574 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Users' && isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header & KPI Summary */}
           <div>
-            <div className="section-label">System Users</div>
-            <div className="card">
-              <div className="card-body" style={{ padding: 0 }}>
-                {usersLoading ? (
-                  <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>Loading users...</div>
-                ) : (
-                  <table className="table" style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Department</th>
-                        <th>Status</th>
-                        <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map(u => (
-                        <tr key={u.id} style={{ opacity: u.disabled ? 0.6 : 1 }}>
-                          <td style={{ fontWeight: 600 }}>{u.name}</td>
-                          <td>{u.email}</td>
-                          <td>
-                            <span className="badge" style={{ background: 'rgba(224, 153, 36, 0.1)', color: '#e09924', border: '1px solid rgba(224, 153, 36, 0.2)' }}>
-                              {u.role}
-                            </span>
-                          </td>
-                          <td>{u.department}</td>
-                          <td>
-                            <span className="badge" style={{ 
-                              background: u.disabled ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                              color: u.disabled ? '#ef4444' : '#10b981', 
-                              border: u.disabled ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(34, 197, 94, 0.2)' 
-                            }}>
-                              {u.disabled ? 'Disabled' : 'Active'}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <button 
-                              onClick={() => handleEditClick(u)}
-                              style={{ background: 'transparent', border: 'none', color: '#e09924', cursor: 'pointer', fontSize: 11, padding: '4px 6px', marginRight: 4 }}
-                            >
-                              Edit
-                            </button>
-                            <button 
-                              onClick={() => handleResetPassword(u.id, u.email)}
-                              style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 11, padding: '4px 6px', marginRight: 4 }}
-                            >
-                              Reset PW
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteUser(u.id)}
-                              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, padding: '4px 6px' }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-primary)' }}>Team & System Access</h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Manage team accounts, live database roles, security access levels, and account statuses.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => { fetchUsers(); fetchRoles(); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                  title="Refresh user list"
+                >
+                  <RefreshCw size={13} className={usersLoading ? "spin" : ""} /> Refresh
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setInviteForm({ name: '', email: '', role_id: (dbRoles[0]?.id || 3), department: 'Design' });
+                    setInviteError('');
+                    setInviteSuccess('');
+                    setGeneratedLink('');
+                    setShowInviteModal(true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
+                >
+                  <UserPlus size={14} /> + Invite Team Member
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #38bdf8' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Members</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>{users.length}</div>
+                <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>Active in database</div>
+              </div>
+              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #10b981' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Accounts</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+                  {users.filter(u => !u.disabled).length}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Operational logins</div>
+              </div>
+              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #a855f7' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Administrators</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#c084fc', marginTop: '4px' }}>
+                  {users.filter(u => (u.role || '').toLowerCase() === 'admin').length}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Full root privileges</div>
+              </div>
+              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #fbbf24' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>System Roles</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#fbbf24', marginTop: '4px' }}>
+                  {dbRoles.length || 5}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Configured access levels</div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="card" style={{ marginBottom: '16px' }}>
+              <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Search members by name, email, or department..."
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    style={{ paddingLeft: '32px', height: '36px', fontSize: '13px', width: '100%' }}
+                  />
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    className="form-control"
+                    value={userRoleFilter}
+                    onChange={e => setUserRoleFilter(e.target.value)}
+                    style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
+                  >
+                    <option value="All">All Roles ({dbRoles.length})</option>
+                    {dbRoles.map(r => (
+                      <option key={r.id} value={r.name}>{r.name} ({r.user_count})</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    className="form-control"
+                    value={userDeptFilter}
+                    onChange={e => setUserDeptFilter(e.target.value)}
+                    style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
+                  >
+                    <option value="All">All Departments</option>
+                    {Array.from(new Set(users.map(u => u.department).filter(d => d && d !== 'None' && d !== 'General'))).map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
-          <div>
-            {editingUser ? (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div className="section-label" style={{ margin: 0 }}>Edit User</div>
-                  <button 
-                    type="button"
-                    onClick={() => setEditingUser(null)} 
-                    style={{ background: 'rgba(224, 153, 36, 0.1)', border: '1px solid rgba(224, 153, 36, 0.3)', color: '#e09924', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
-                  >
-                    + Invite New User
+          {/* User Table */}
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-body" style={{ padding: 0 }}>
+              {usersLoading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: 'var(--accent)' }} />
+                  Loading team members...
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="table" style={{ margin: 0, width: '100%' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
+                        <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Member</th>
+                        <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Department</th>
+                        <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>System Role (1-Click Reassign)</th>
+                        <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Access Status</th>
+                        <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users
+                        .filter(u => {
+                          const q = userSearch.toLowerCase();
+                          const matchesSearch = !userSearch || 
+                            (u.name || '').toLowerCase().includes(q) ||
+                            (u.email || '').toLowerCase().includes(q) ||
+                            (u.department || '').toLowerCase().includes(q) ||
+                            (u.role || '').toLowerCase().includes(q);
+                          const matchesRole = userRoleFilter === 'All' || (u.role || '').toLowerCase() === userRoleFilter.toLowerCase();
+                          const matchesDept = userDeptFilter === 'All' || (u.department || '').toLowerCase() === userDeptFilter.toLowerCase();
+                          return matchesSearch && matchesRole && matchesDept;
+                        })
+                        .map(u => {
+                          const roleStyle = getRoleBadgeStyle(u.role);
+                          const isUpdatingRole = roleUpdatingUserId === u.id;
+                          return (
+                            <tr 
+                              key={u.id} 
+                              style={{ 
+                                opacity: u.disabled ? 0.6 : 1,
+                                borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                transition: 'background 0.15s ease'
+                              }}
+                            >
+                              {/* User Info & Avatar */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div 
+                                    style={{
+                                      width: '38px',
+                                      height: '38px',
+                                      borderRadius: '50%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '13px',
+                                      fontWeight: 700,
+                                      background: roleStyle.bg,
+                                      color: roleStyle.color,
+                                      border: roleStyle.border,
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    {getInitials(u.name, u.email)}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13.5px' }}>{u.name}</div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Department */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  background: 'rgba(255,255,255,0.05)',
+                                  color: 'var(--text-primary)',
+                                  border: '1px solid rgba(255,255,255,0.08)'
+                                }}>
+                                  {u.department || 'General'}
+                                </span>
+                              </td>
+
+                              {/* Interactive Inline Role Switcher */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <select
+                                    className="form-control"
+                                    value={u.role_id || ''}
+                                    onChange={e => handleInlineRoleChange(u.id, e.target.value)}
+                                    disabled={isUpdatingRole}
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      padding: '4px 8px',
+                                      height: '32px',
+                                      borderRadius: '6px',
+                                      background: roleStyle.bg,
+                                      color: roleStyle.color,
+                                      border: roleStyle.border,
+                                      cursor: 'pointer',
+                                      minWidth: '150px'
+                                    }}
+                                  >
+                                    {dbRoles.map(r => (
+                                      <option key={r.id} value={r.id} style={{ background: '#1e293b', color: '#fff' }}>
+                                        {r.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {isUpdatingRole && <RefreshCw size={12} className="spin" style={{ color: roleStyle.color }} />}
+                                </div>
+                              </td>
+
+                              {/* Access Status */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleUserStatus(u)}
+                                  title={u.disabled ? "Click to enable account" : "Click to suspend account"}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    background: u.disabled ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)',
+                                    color: u.disabled ? '#ef4444' : '#10b981',
+                                    border: u.disabled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.disabled ? '#ef4444' : '#10b981' }} />
+                                  {u.disabled ? 'Suspended' : 'Active'}
+                                </button>
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    onClick={() => handleResetPassword(u.id, u.email)}
+                                    title="Trigger password reset link"
+                                    style={{ fontSize: '11.5px', color: '#38bdf8', padding: '4px 8px' }}
+                                  >
+                                    Reset PW
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    onClick={() => { handleEditClick(u); setShowEditModal(true); }}
+                                    title="Edit user details"
+                                    style={{ fontSize: '11.5px', padding: '4px 8px' }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    title="Delete user"
+                                    style={{ fontSize: '11.5px', color: '#ef4444', padding: '4px 8px' }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* MODAL: INVITE USER */}
+          {showInviteModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', zIndex: 9999, padding: '20px'
+            }}>
+              <div className="card" style={{ width: '100%', maxWidth: '480px', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+                <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <UserPlus size={16} color="var(--accent)" /> Invite Team Member
+                  </div>
+                  <button type="button" onClick={() => setShowInviteModal(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
+                    <X size={18} />
                   </button>
                 </div>
-                <div className="card">
-                  <div className="card-body">
-                    <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>
-                        Editing settings for: <strong>{editingUser.email}</strong>
-                      </div>
-                      
+                <div className="card-body" style={{ padding: '20px' }}>
+                  <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Full Name</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        placeholder="e.g. Jane Doe"
+                        value={inviteForm.name}
+                        onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Email Address</label>
+                      <input
+                        type="email"
+                        className="form-control"
+                        required
+                        placeholder="e.g. jane@1-to-1.world"
+                        value={inviteForm.email}
+                        onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                      />
+                    </div>
+                    <div className="row-2">
                       <div className="form-row">
-                        <label className="form-label">Full Name</label>
-                        <input 
-                          className="form-control" 
-                          required 
-                          value={editForm.name} 
-                          onChange={e => setEditForm(f => ({...f, name: e.target.value}))} 
-                        />
-                      </div>
-                      <div className="form-row">
-                        <label className="form-label">Role</label>
-                        <select 
-                          className="form-control"
-                          value={editForm.role_id}
-                          onChange={e => setEditForm(f => ({...f, role_id: parseInt(e.target.value)}))}
-                        >
-                          <option value={1}>Admin</option>
-                          <option value={2}>Senior Designer</option>
-                          <option value={3}>Designer</option>
-                          <option value={4}>Coordinator</option>
-                          <option value={5}>Showroom</option>
-                        </select>
-                      </div>
-                      <div className="form-row">
-                        <label className="form-label">Department</label>
-                        <input 
-                          className="form-control" 
-                          value={editForm.department} 
-                          onChange={e => setEditForm(f => ({...f, department: e.target.value}))} 
-                        />
-                      </div>
-                      
-                      <div className="form-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                        <input 
-                          type="checkbox" 
-                          id="user-disabled-check"
-                          checked={editForm.disabled} 
-                          onChange={e => setEditForm(f => ({...f, disabled: e.target.checked}))}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <label htmlFor="user-disabled-check" style={{ fontSize: 12, color: '#f3f4f6', cursor: 'pointer', fontWeight: 600 }}>
-                          Disable User (Lock account access)
-                        </label>
-                      </div>
-
-                      {editError && (
-                        <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
-                          {editError}
-                        </div>
-                      )}
-
-                      {editSuccess && (
-                        <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
-                          {editSuccess}
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                        <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                          Save Changes
-                        </button>
-                        <button 
-                          type="button" 
-                          className="btn" 
-                          onClick={() => setEditingUser(null)}
-                          style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="section-label">Invite New User</div>
-                <div className="card">
-                  <div className="card-body">
-                    <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <div className="form-row">
-                        <label className="form-label">Full Name</label>
-                        <input 
-                          className="form-control" 
-                          required 
-                          value={inviteForm.name} 
-                          onChange={e => setInviteForm(f => ({...f, name: e.target.value}))} 
-                        />
-                      </div>
-                      <div className="form-row">
-                        <label className="form-label">Email Address</label>
-                        <input 
-                          type="email"
-                          className="form-control" 
-                          required 
-                          value={inviteForm.email} 
-                          onChange={e => setInviteForm(f => ({...f, email: e.target.value}))} 
-                        />
-                      </div>
-                      <div className="form-row">
-                        <label className="form-label">Role</label>
-                        <select 
+                        <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Initial Role</label>
+                        <select
                           className="form-control"
                           value={inviteForm.role_id}
-                          onChange={e => setInviteForm(f => ({...f, role_id: parseInt(e.target.value)}))}
+                          onChange={e => setInviteForm(f => ({ ...f, role_id: parseInt(e.target.value) }))}
                         >
-                          <option value={1}>Admin</option>
-                          <option value={2}>Senior Designer</option>
-                          <option value={3}>Designer</option>
-                          <option value={4}>Coordinator</option>
-                          <option value={5}>Showroom</option>
+                          {dbRoles.map(r => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="form-row">
-                        <label className="form-label">Department</label>
-                        <input 
-                          className="form-control" 
-                          value={inviteForm.department} 
-                          onChange={e => setInviteForm(f => ({...f, department: e.target.value}))} 
+                        <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Department</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="e.g. Design, Head Office"
+                          value={inviteForm.department}
+                          onChange={e => setInviteForm(f => ({ ...f, department: e.target.value }))}
                         />
                       </div>
+                    </div>
 
-                      {inviteError && (
-                        <div style={{ color: '#f87171', fontSize: 12, marginTop: 4 }}>
-                          {inviteError}
-                        </div>
-                      )}
-
-                      {inviteSuccess && (
-                        <div style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>
-                          {inviteSuccess}
-                        </div>
-                      )}
-
-                      <button 
-                        type="submit" 
-                        className="btn btn-primary" 
-                        style={{ marginTop: 8 }}
-                      >
-                        Send Invitation
-                      </button>
-                    </form>
-
-                    {generatedLink && (
-                      <div style={{ marginTop: 16, padding: 12, background: 'rgba(224, 153, 36, 0.05)', border: '1px solid rgba(224, 153, 36, 0.15)', borderRadius: 8 }}>
-                        <div style={{ fontSize: 11, color: '#e09924', fontWeight: 600, marginBottom: 4 }}>Invitation / Setup Link:</div>
-                        <textarea 
-                          readOnly 
-                          value={generatedLink} 
-                          onClick={e => e.target.select()}
-                          style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
-                        />
-                        <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Copy this link and send it directly to the user so they can set their password.</div>
+                    {inviteError && (
+                      <div style={{ color: '#f87171', fontSize: '12px', padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px' }}>
+                        {inviteError}
                       </div>
                     )}
+
+                    {inviteSuccess && (
+                      <div style={{ color: '#34d399', fontSize: '12px', padding: '8px', background: 'rgba(52, 211, 153, 0.1)', borderRadius: '6px' }}>
+                        {inviteSuccess}
+                      </div>
+                    )}
+
+                    {generatedLink && (
+                      <div style={{ padding: '12px', background: 'rgba(224, 153, 36, 0.08)', border: '1px solid rgba(224, 153, 36, 0.25)', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: '#e09924', fontWeight: 700, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Password Setup / Invite Link:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(generatedLink);
+                              setCopiedLink(true);
+                              setTimeout(() => setCopiedLink(false), 2000);
+                            }}
+                            style={{ background: 'none', border: 'none', color: copiedLink ? '#34d399' : '#e09924', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Copy size={12} /> {copiedLink ? "Copied!" : "Copy Link"}
+                          </button>
+                        </div>
+                        <textarea
+                          readOnly
+                          value={generatedLink}
+                          onClick={e => e.target.select()}
+                          style={{ width: '100%', height: '50px', fontSize: '11px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px', padding: '6px', resize: 'none' }}
+                        />
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                          An email has been dispatched automatically. You can also share this direct setup link manually.
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                      <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '38px', fontWeight: 600 }}>
+                        Send Invitation
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowInviteModal(false)}
+                        style={{ height: '38px' }}
+                      >
+                        {generatedLink ? "Done" : "Cancel"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: EDIT USER */}
+          {showEditModal && editingUser && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', zIndex: 9999, padding: '20px'
+            }}>
+              <div className="card" style={{ width: '100%', maxWidth: '480px', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+                <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Edit3 size={16} color="var(--accent)" /> Edit Member Profile
+                  </div>
+                  <button type="button" onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="card-body" style={{ padding: '20px' }}>
+                  <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Editing account for: <strong style={{ color: 'var(--text-primary)' }}>{editingUser.email}</strong>
+                    </div>
+
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Full Name</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        value={editForm.name}
+                        onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      />
+                    </div>
+                    <div className="row-2">
+                      <div className="form-row">
+                        <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Assigned Role</label>
+                        <select
+                          className="form-control"
+                          value={editForm.role_id}
+                          onChange={e => setEditForm(f => ({ ...f, role_id: parseInt(e.target.value) }))}
+                        >
+                          {dbRoles.map(r => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-row">
+                        <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Department</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editForm.department}
+                          onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      <input
+                        type="checkbox"
+                        id="modal-user-disabled"
+                        checked={editForm.disabled}
+                        onChange={e => setEditForm(f => ({ ...f, disabled: e.target.checked }))}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <label htmlFor="modal-user-disabled" style={{ fontSize: '12px', color: '#f3f4f6', cursor: 'pointer', fontWeight: 600 }}>
+                        Suspend user account (Locks portal login)
+                      </label>
+                    </div>
+
+                    {editError && (
+                      <div style={{ color: '#f87171', fontSize: '12px', padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px' }}>
+                        {editError}
+                      </div>
+                    )}
+                    {editSuccess && (
+                      <div style={{ color: '#34d399', fontSize: '12px', padding: '8px', background: 'rgba(52, 211, 153, 0.1)', borderRadius: '6px' }}>
+                        {editSuccess}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                      <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '38px', fontWeight: 600 }}>
+                        Save Changes
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowEditModal(false)}
+                        style={{ height: '38px' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reset Link Direct Modal */}
+          {resetPwLink && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', zIndex: 9999, padding: '20px'
+            }}>
+              <div className="card" style={{ width: '100%', maxWidth: '460px', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+                <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Key size={16} /> Password Reset Dispatched
+                  </div>
+                  <button type="button" onClick={() => setResetPwLink('')} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="card-body" style={{ padding: '20px' }}>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 12px 0' }}>
+                    The password reset link was generated and dispatched. You can also copy it directly below:
+                  </p>
+                  <textarea
+                    readOnly
+                    value={resetPwLink}
+                    onClick={e => e.target.select()}
+                    style={{ width: '100%', height: '60px', fontSize: '11px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px', padding: '8px', resize: 'none' }}
+                  />
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetPwLink);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2000);
+                      }}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <Copy size={13} /> {copiedLink ? "Copied Link!" : "Copy Setup Link"}
+                    </button>
+                    <button type="button" className="btn" onClick={() => setResetPwLink('')}>
+                      Close
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* Display triggered reset password link if any */}
-            {resetPwLink && (
-              <div style={{ marginTop: 16, padding: 12, background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.15)', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600, marginBottom: 4 }}>Generated Reset Link:</div>
-                <textarea 
-                  readOnly 
-                  value={resetPwLink} 
-                  onClick={e => e.target.select()}
-                  style={{ width: '100%', height: 60, fontSize: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: 4, padding: 4, resize: 'none', outline: 'none' }}
-                />
-                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>The reset email has been sent. You can also copy and send this direct link manually.</div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1758,25 +2327,434 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Permissions' && (
-        <div>
-          <div className="section-label">Role-based access control</div>
-          <div className="perm-roles">
-            {ROLES.map(r => (
-              <button key={r} className={`perm-role-chip ${activeRole === r ? 'active' : ''}`} onClick={() => setActiveRole(r)}>{r}</button>
-            ))}
-          </div>
-          <div className="card">
-            <div className="card-body" style={{ padding: 0 }}>
-              {MODULES.map(mod => (
-                <div key={mod} className="perm-row" style={{ padding: '8px 15px' }}>
-                  <div className="perm-section" style={{ flex: 1, fontSize: 12 }}>{mod}</div>
-                  <select className="form-control" style={{ width: 140 }} defaultValue={activeRole === 'Admin' ? 'Full access' : 'Can edit'}>
-                    <option>Full access</option><option>Can edit</option><option>View only</option><option>No access</option>
-                  </select>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header & Controls */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Shield size={20} color="var(--accent)" /> Role-Based Access Control (RBAC)
+                </h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Configure module-level access permissions across system roles. Changes are stored in Cloud SQL.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* View Switcher */}
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setPermViewMode('matrix')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      border: 'none', cursor: 'pointer',
+                      background: permViewMode === 'matrix' ? 'var(--accent)' : 'transparent',
+                      color: permViewMode === 'matrix' ? '#fff' : 'var(--text-secondary)'
+                    }}
+                  >
+                    <Grid size={13} /> Matrix Grid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermViewMode('role')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      border: 'none', cursor: 'pointer',
+                      background: permViewMode === 'role' ? 'var(--accent)' : 'transparent',
+                      color: permViewMode === 'role' ? '#fff' : 'var(--text-secondary)'
+                    }}
+                  >
+                    <List size={13} /> Role Detail
+                  </button>
                 </div>
-              ))}
+
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowNewRoleModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                >
+                  <Plus size={13} /> + New Role
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSavePermissions}
+                  disabled={savingPerms || !hasUnsavedPerms}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600,
+                    opacity: hasUnsavedPerms ? 1 : 0.6
+                  }}
+                >
+                  {savingPerms ? <RefreshCw size={13} className="spin" /> : <Check size={13} />}
+                  Save Permissions {hasUnsavedPerms ? "*" : ""}
+                </button>
+              </div>
+            </div>
+
+            {/* Notification / Dirty state banner */}
+            {hasUnsavedPerms && (
+              <div style={{
+                padding: '10px 16px', borderRadius: '8px', marginBottom: '16px',
+                background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+              }}>
+                <div style={{ fontSize: '12.5px', color: '#fde047', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={16} color="#eab308" />
+                  <span>You have unsaved changes to role permissions. Remember to click <strong>Save Permissions</strong> to apply changes to Cloud SQL.</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={handleSavePermissions}
+                  disabled={savingPerms}
+                >
+                  {savingPerms ? "Saving..." : "Save Now"}
+                </button>
+              </div>
+            )}
+
+            {permSuccessMessage && (
+              <div style={{
+                padding: '10px 16px', borderRadius: '8px', marginBottom: '16px',
+                background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#34d399', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+                <CheckCircle2 size={16} color="#10b981" />
+                <span>{permSuccessMessage}</span>
+              </div>
+            )}
+
+            {/* Privilege Legend */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px', padding: '10px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700, marginRight: '4px' }}>Access Levels:</span>
+              {PERMISSION_LEVELS.map(lvl => {
+                const s = getPermLevelStyle(lvl);
+                return (
+                  <span key={lvl} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '3px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: 600,
+                    background: s.bg, color: s.color, border: s.border
+                  }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.dot }} />
+                    {lvl}
+                  </span>
+                );
+              })}
             </div>
           </div>
+
+          {/* VIEW 1: MATRIX GRID VIEW */}
+          {permViewMode === 'matrix' && (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div className="card-body" style={{ padding: 0 }}>
+                {permissionsLoading ? (
+                  <div style={{ padding: '50px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <RefreshCw size={24} className="spin" style={{ margin: '0 auto 12px auto', display: 'block', color: 'var(--accent)' }} />
+                    Loading permissions matrix from database...
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ padding: '14px 20px', minWidth: '220px', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            System Feature / Module
+                          </th>
+                          {(permissionsData.roles || []).map(r => {
+                            const rStyle = getRoleBadgeStyle(r.name);
+                            return (
+                              <th key={r.id} style={{ padding: '14px 16px', minWidth: '170px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{
+                                    display: 'inline-block', padding: '4px 10px', borderRadius: '6px',
+                                    fontSize: '12px', fontWeight: 700,
+                                    background: rStyle.bg, color: rStyle.color, border: rStyle.border
+                                  }}>
+                                    {r.name}
+                                  </span>
+                                  {/* Quick set dropdown for role */}
+                                  <select
+                                    className="form-control"
+                                    defaultValue=""
+                                    onChange={e => {
+                                      if (e.target.value) {
+                                        handleBulkSetRolePermissions(r.id, e.target.value);
+                                        e.target.value = "";
+                                      }
+                                    }}
+                                    style={{ height: '24px', fontSize: '10px', padding: '2px 4px', width: '110px', background: 'rgba(0,0,0,0.3)', color: 'var(--text-secondary)', border: '1px dashed rgba(255,255,255,0.15)', cursor: 'pointer' }}
+                                    title="Bulk set all modules for this role"
+                                  >
+                                    <option value="" disabled>Set all...</option>
+                                    {PERMISSION_LEVELS.map(lvl => (
+                                      <option key={lvl} value={lvl}>{lvl}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {MODULE_GROUPS.map((group, gIdx) => (
+                          <React.Fragment key={group.name}>
+                            {/* Group Header Row */}
+                            <tr style={{ background: 'rgba(255,255,255,0.02)', borderTop: gIdx > 0 ? '2px solid var(--border)' : 'none', borderBottom: '1px solid var(--border)' }}>
+                              <td 
+                                colSpan={(permissionsData.roles?.length || 0) + 1} 
+                                style={{ padding: '10px 20px', fontSize: '12px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.5px' }}
+                              >
+                                {group.name}
+                              </td>
+                            </tr>
+
+                            {/* Module Rows */}
+                            {group.modules.map(mod => (
+                              <tr key={mod} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                <td style={{ padding: '12px 20px', fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-secondary)' }} />
+                                    {mod}
+                                  </div>
+                                </td>
+
+                                {(permissionsData.roles || []).map(r => {
+                                  const roleKey = String(r.id);
+                                  const currentLevel = (permissionsData.matrix?.[roleKey]?.[mod]) || 'No access';
+                                  const lvlStyle = getPermLevelStyle(currentLevel);
+
+                                  return (
+                                    <td key={r.id} style={{ padding: '8px 14px', textAlign: 'center' }}>
+                                      <select
+                                        className="form-control"
+                                        value={currentLevel}
+                                        onChange={e => handlePermissionCellChange(r.id, mod, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          maxWidth: '150px',
+                                          height: '32px',
+                                          fontSize: '11.5px',
+                                          fontWeight: 600,
+                                          padding: '2px 8px',
+                                          borderRadius: '6px',
+                                          background: lvlStyle.bg,
+                                          color: lvlStyle.color,
+                                          border: lvlStyle.border,
+                                          cursor: 'pointer',
+                                          margin: '0 auto'
+                                        }}
+                                      >
+                                        {PERMISSION_LEVELS.map(lvl => (
+                                          <option key={lvl} value={lvl} style={{ background: '#1e293b', color: '#fff' }}>
+                                            {lvl}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW 2: ROLE DETAIL INSPECTOR */}
+          {permViewMode === 'role' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '20px', alignItems: 'start' }}>
+              {/* Role Selection Sidebar */}
+              <div className="card" style={{ padding: '12px' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700, padding: '6px 8px', marginBottom: '6px' }}>
+                  Select Role
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {(permissionsData.roles || []).map(r => {
+                    const isSelected = selectedRoleDetailId === r.id;
+                    const rStyle = getRoleBadgeStyle(r.name);
+                    const userCount = users.filter(u => u.role_id === r.id).length;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setSelectedRoleDetailId(r.id)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '10px 12px', borderRadius: '8px', border: isSelected ? rStyle.border : '1px solid transparent',
+                          background: isSelected ? rStyle.bg : 'transparent',
+                          cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{ fontWeight: isSelected ? 700 : 500, color: isSelected ? rStyle.color : 'var(--text-primary)', fontSize: '13px' }}>
+                          {r.name}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '10px' }}>
+                          {userCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modules Inspector for Selected Role */}
+              <div className="card">
+                <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    {(() => {
+                      const selRole = (permissionsData.roles || []).find(r => r.id === selectedRoleDetailId);
+                      const selStyle = getRoleBadgeStyle(selRole?.name);
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{
+                            padding: '4px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: 700,
+                            background: selStyle.bg, color: selStyle.color, border: selStyle.border
+                          }}>
+                            {selRole?.name || 'Selected Role'}
+                          </span>
+                          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                            Module Permission Breakdown
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select
+                      className="form-control"
+                      defaultValue=""
+                      onChange={e => {
+                        if (e.target.value && selectedRoleDetailId) {
+                          handleBulkSetRolePermissions(selectedRoleDetailId, e.target.value);
+                          e.target.value = "";
+                        }
+                      }}
+                      style={{ height: '30px', fontSize: '11.5px', width: '130px' }}
+                    >
+                      <option value="" disabled>Set all to...</option>
+                      {PERMISSION_LEVELS.map(lvl => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {(permissionsData.modules || MODULES).map(mod => {
+                    const roleKey = String(selectedRoleDetailId);
+                    const currentLevel = (permissionsData.matrix?.[roleKey]?.[mod]) || 'No access';
+                    const lvlStyle = getPermLevelStyle(currentLevel);
+
+                    return (
+                      <div 
+                        key={mod} 
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.04)'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{mod}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {currentLevel === 'Full access' && 'Complete read, write, export, and delete administrative control.'}
+                            {currentLevel === 'Can edit' && 'Create and modify records within this module.'}
+                            {currentLevel === 'View only' && 'Read-only viewing. Cannot edit or delete records.'}
+                            {currentLevel === 'No access' && 'Module is hidden and restricted for this role.'}
+                          </div>
+                        </div>
+
+                        <select
+                          className="form-control"
+                          value={currentLevel}
+                          onChange={e => handlePermissionCellChange(selectedRoleDetailId, mod, e.target.value)}
+                          style={{
+                            width: '140px',
+                            height: '32px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            background: lvlStyle.bg,
+                            color: lvlStyle.color,
+                            border: lvlStyle.border,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {PERMISSION_LEVELS.map(lvl => (
+                            <option key={lvl} value={lvl} style={{ background: '#1e293b', color: '#fff' }}>
+                              {lvl}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: CREATE CUSTOM ROLE */}
+          {showNewRoleModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', zIndex: 9999, padding: '20px'
+            }}>
+              <div className="card" style={{ width: '100%', maxWidth: '420px', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+                <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Shield size={16} color="var(--accent)" /> Add Custom Role
+                  </div>
+                  <button type="button" onClick={() => setShowNewRoleModal(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="card-body" style={{ padding: '20px' }}>
+                  <form onSubmit={handleCreateRole} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="form-row">
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>Role Name</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        placeholder="e.g. Estimator, Accountant, Site Lead"
+                        value={newRoleName}
+                        onChange={e => setNewRoleName(e.target.value)}
+                      />
+                    </div>
+                    <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                      The new role will be created in Cloud SQL and initialized with default View Only permissions across modules, which you can customize in the matrix.
+                    </p>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                      <button type="submit" className="btn btn-primary" style={{ flex: 1, height: '38px', fontWeight: 600 }}>
+                        Create Role
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowNewRoleModal(false)}
+                        style={{ height: '38px' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

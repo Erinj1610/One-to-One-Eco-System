@@ -88,6 +88,7 @@ app.include_router(documents_router, prefix="/api/documents", tags=["documents"]
 app.include_router(hr_router, prefix="/api/hr", tags=["hr"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(settings_router, prefix="/api", tags=["settings"], dependencies=[Depends(verify_firebase_token)])
 app.include_router(users_router, prefix="/admin/users", tags=["users"])
+app.include_router(users_router, prefix="/api/admin/users", tags=["users"])
 app.include_router(products_public_router, prefix="/api/products", tags=["products"])
 app.include_router(products_router, prefix="/api/products", tags=["products"])
 app.include_router(lookups_router, prefix="/api/lookups", tags=["lookups"])

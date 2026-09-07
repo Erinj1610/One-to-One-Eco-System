@@ -192,6 +192,106 @@ def run_migrations(db: Session):
             db.rollback()
             print(f"Migration warning (clients.{col_name}): {e}")
 
+    # 5. Ensure standard Roles & RolePermissions exist and seed defaults
+    try:
+        from models.orm_models import Role, RolePermission, User
+        role_count = db.query(Role).count()
+        if role_count == 0:
+            standard_roles = [
+                "Admin",
+                "Senior Designer",
+                "Designer",
+                "Coordinator",
+                "Showroom"
+            ]
+            role_objs = {}
+            for r_name in standard_roles:
+                r_obj = Role(name=r_name)
+                db.add(r_obj)
+                db.commit()
+                db.refresh(r_obj)
+                role_objs[r_name] = r_obj
+
+            # Seed permissions matrix
+            all_modules = [
+                'Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 
+                'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 
+                'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'
+            ]
+            
+            # Role 1: Admin
+            for mod in all_modules:
+                db.add(RolePermission(role_id=role_objs["Admin"].id, section=mod, permission_level="Full access"))
+                
+            # Role 2: Senior Designer
+            senior_designer_levels = {
+                'Design tracker': 'Full access', 'Projects': 'Full access', 'Design fee': 'Full access',
+                'CRM': 'Can edit', 'Pipeline': 'Can edit', 'Products': 'Can edit', 'BOQ Maker': 'Can edit',
+                'Orders': 'Can edit', 'Documents': 'Can edit', 'Time tracking': 'Can edit',
+                'Dashboard': 'View only', 'Invoices': 'View only', 'HR & people': 'View only', 'Reports': 'View only',
+                'Support': 'No access'
+            }
+            for mod, level in senior_designer_levels.items():
+                db.add(RolePermission(role_id=role_objs["Senior Designer"].id, section=mod, permission_level=level))
+
+            # Role 3: Designer
+            designer_levels = {
+                'Design tracker': 'Full access', 'Design fee': 'Full access',
+                'Projects': 'Can edit', 'Products': 'Can edit', 'BOQ Maker': 'Can edit', 'Time tracking': 'Can edit',
+                'Dashboard': 'View only', 'CRM': 'View only', 'Orders': 'View only', 'Documents': 'View only',
+                'Pipeline': 'No access', 'Invoices': 'No access', 'HR & people': 'No access', 'Reports': 'No access',
+                'Support': 'No access'
+            }
+            for mod, level in designer_levels.items():
+                db.add(RolePermission(role_id=role_objs["Designer"].id, section=mod, permission_level=level))
+
+            # Role 4: Coordinator
+            coord_levels = {
+                'Orders': 'Full access', 'Invoices': 'Full access', 'Products': 'Full access',
+                'CRM': 'Can edit', 'Pipeline': 'Can edit', 'Projects': 'Can edit', 'BOQ Maker': 'Can edit',
+                'Documents': 'Can edit', 'Time tracking': 'Can edit',
+                'Dashboard': 'View only', 'Design tracker': 'View only', 'Design fee': 'View only', 'Reports': 'View only',
+                'HR & people': 'No access', 'Support': 'No access'
+            }
+            for mod, level in coord_levels.items():
+                db.add(RolePermission(role_id=role_objs["Coordinator"].id, section=mod, permission_level=level))
+
+            # Role 5: Showroom
+            showroom_levels = {
+                'CRM': 'Can edit', 'Pipeline': 'Can edit', 'Products': 'Can edit',
+                'Dashboard': 'View only', 'Projects': 'View only', 'Orders': 'View only', 'Invoices': 'View only', 'Documents': 'View only',
+                'Design tracker': 'No access', 'Design fee': 'No access', 'BOQ Maker': 'No access', 'Time tracking': 'No access',
+                'HR & people': 'No access', 'Reports': 'No access', 'Support': 'No access'
+            }
+            for mod, level in showroom_levels.items():
+                db.add(RolePermission(role_id=role_objs["Showroom"].id, section=mod, permission_level=level))
+
+            db.commit()
+            print("Successfully seeded standard Roles and RolePermissions into Cloud SQL.")
+
+            # Assign roles to existing users with null role_id
+            admin_role = role_objs.get("Admin")
+            coord_role = role_objs.get("Coordinator")
+            designer_role = role_objs.get("Designer")
+            senior_role = role_objs.get("Senior Designer")
+
+            user_role_map = {
+                "erin.jones@1-to-1.world": admin_role.id if admin_role else None,
+                "dean.boyce@1-to-1.world": senior_role.id if senior_role else None,
+                "michaela.carter@1-to-1.world": designer_role.id if designer_role else None,
+                "adiel.louw@1-to-1.world": coord_role.id if coord_role else None,
+                "najma.smith@1-to-1.world": coord_role.id if coord_role else None,
+            }
+
+            for email, rid in user_role_map.items():
+                if rid:
+                    db.query(User).filter(User.email == email).update({"role_id": rid})
+            db.commit()
+            print("Successfully assigned real roles to existing users.")
+    except Exception as e:
+        db.rollback()
+        print(f"Migration warning (roles/permissions seed): {e}")
+
 def sync_contacts(contacts_list, db: Session):
     """
     Sync JSON contacts to clients and contacts tables.
