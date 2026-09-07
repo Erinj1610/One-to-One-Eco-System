@@ -53,7 +53,7 @@ function PermissionRoute({ module, children }) {
 }
 
 function AppInner({ devBypass, setDevBypass }) {
-  const { user, authLoading } = useAuth();
+  const { user, authLoading, loginMock } = useAuth();
 
   if (authLoading) {
     return (
@@ -67,7 +67,7 @@ function AppInner({ devBypass, setDevBypass }) {
     <BrowserRouter>
       <Routes>
         {/* Public Routes */}
-        <Route path="/login" element={user || devBypass ? <Navigate to="/dashboard" replace /> : <Login onBypass={() => setDevBypass(true)} />} />
+        <Route path="/login" element={user || devBypass ? <Navigate to="/dashboard" replace /> : <Login onBypass={() => { loginMock('erin.jones@1-to-1.world'); setDevBypass(true); }} />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Protected Routes */}

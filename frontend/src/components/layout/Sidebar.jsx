@@ -54,6 +54,7 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
         {sortedSections.map((sec) => {
           // Get visible modules belonging to this section that user has access to
           const secModules = sortedModules.filter(m => {
+            if (m.sectionId !== sec.id) return false;
             if (!m.visible) return false;
             const sysMod = MODULE_ID_TO_SYSTEM_MODULE[m.id] || getSystemModuleForPath(m.path);
             return hasAccess(sysMod);

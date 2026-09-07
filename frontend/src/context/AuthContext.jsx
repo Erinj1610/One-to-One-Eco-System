@@ -150,6 +150,16 @@ export function AuthProvider({ children, devBypass = false }) {
 
   const effectiveIsAdmin = devBypass ? true : (isAdmin || Boolean(userProfile?.is_admin));
 
+  const getPermission = (modName) => {
+    if (!modName || !permissions) return null;
+    if (typeof permissions[modName] === 'string') return permissions[modName];
+    const lower = String(modName).trim().toLowerCase();
+    for (const [k, v] of Object.entries(permissions)) {
+      if (k.trim().toLowerCase() === lower) return v;
+    }
+    return null;
+  };
+
   const hasAccess = (moduleName) => {
     if (!moduleName) return true;
     // Settings is always accessible to Admin users so they can never lock themselves out
@@ -158,8 +168,9 @@ export function AuthProvider({ children, devBypass = false }) {
     }
     
     // Check if an explicit effective permission exists for this module
-    if (permissions && typeof permissions[moduleName] === 'string') {
-      return permissions[moduleName] !== 'No access';
+    const perm = getPermission(moduleName);
+    if (perm) {
+      return perm !== 'No access';
     }
     
     // Fallback: If admin, default to true; otherwise default to true
@@ -168,8 +179,8 @@ export function AuthProvider({ children, devBypass = false }) {
 
   const canEdit = (moduleName) => {
     if (!moduleName) return true;
-    if (permissions && typeof permissions[moduleName] === 'string') {
-      const perm = permissions[moduleName];
+    const perm = getPermission(moduleName);
+    if (perm) {
       return perm === 'Full access' || perm === 'Can edit';
     }
     return Boolean(effectiveIsAdmin);
@@ -177,8 +188,9 @@ export function AuthProvider({ children, devBypass = false }) {
 
   const isReadOnly = (moduleName) => {
     if (!moduleName) return false;
-    if (permissions && typeof permissions[moduleName] === 'string') {
-      return permissions[moduleName] === 'View only';
+    const perm = getPermission(moduleName);
+    if (perm) {
+      return perm === 'View only';
     }
     return false;
   };

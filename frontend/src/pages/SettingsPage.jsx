@@ -1121,6 +1121,9 @@ export default function SettingsPage() {
       if (res.ok) {
         await fetchUsers();
         await fetchRoles();
+        if (refreshPermissions) {
+          try { await refreshPermissions(); } catch (e) { console.error(e); }
+        }
       } else {
         const err = await res.json();
         alert(err.detail || 'Failed to update user role');
@@ -1173,6 +1176,9 @@ export default function SettingsPage() {
         setHasUnsavedPerms(false);
         setPermSuccessMessage('Permissions matrix successfully saved to Cloud SQL database!');
         setTimeout(() => setPermSuccessMessage(''), 4000);
+        if (refreshPermissions) {
+          try { await refreshPermissions(); } catch (e) { console.error(e); }
+        }
       } else {
         alert('Failed to save permissions to database');
       }
@@ -1418,6 +1424,9 @@ export default function SettingsPage() {
       if (res.ok) {
         setEditSuccess(`Successfully updated ${editForm.name}!`);
         fetchUsers();
+        if (refreshPermissions) {
+          try { await refreshPermissions(); } catch (e) { console.error(e); }
+        }
         setTimeout(() => {
           setEditingUser(null);
         }, 1500);

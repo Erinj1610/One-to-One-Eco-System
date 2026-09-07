@@ -71,6 +71,10 @@ def get_current_user_profile(
         if not user:
             user = db.query(User).filter(User.email.ilike(f"%{target_email}%")).first()
 
+    # Link alias admin/staff session emails to the primary administrator user account
+    if not user and target_email in ["admin@onetoone.co.za", "erin@onetoone.co.za", "staff@onetoone.co.za", "admin@1-to-1.world"]:
+        user = db.query(User).filter(User.email.ilike("erin.jones@1-to-1.world")).first()
+
     role_perms_map: Dict[int, Dict[str, str]] = {}
     for rp in db.query(RolePermission).all():
         role_perms_map.setdefault(rp.role_id, {})[rp.section] = rp.permission_level
