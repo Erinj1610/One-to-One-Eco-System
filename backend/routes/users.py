@@ -57,6 +57,56 @@ class PermissionsUpdate(BaseModel):
     permissions: Optional[Dict[str, str]] = None
     matrix: Optional[Dict[str, Dict[str, str]]] = None
 
+@router.get("/me")
+def get_current_user_profile(
+    email: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    current_user: dict = Depends(verify_firebase_token)
+):
+    token_email = (current_user.get("email") or "").strip().lower()
+    target_email = (email or token_email).strip().lower()
+    user = None
+    if target_email:
+        user = db.query(User).filter(User.email.ilike(target_email)).first()
+        if not user:
+            user = db.query(User).filter(User.email.ilike(f"%{target_email}%")).first()
+
+    role_perms_map: Dict[int, Dict[str, str]] = {}
+    for rp in db.query(RolePermission).all():
+        role_perms_map.setdefault(rp.role_id, {})[rp.section] = rp.permission_level
+
+    role = db.query(Role).filter(Role.id == user.role_id).first() if (user and user.role_id) else None
+    is_admin = is_admin_user(db, {"email": target_email, "role": current_user.get("role")})
+    role_name = role.name if role else ("Admin" if is_admin else "User")
+    emp = db.query(Employee).filter(Employee.user_id == user.id).first() if user else None
+    name = emp.name if (emp and emp.name) else (target_email.split("@")[0].replace(".", " ").title() if target_email else "User")
+    
+    user_custom = user.custom_permissions if (user and isinstance(user.custom_permissions, dict)) else {}
+    role_defaults = role_perms_map.get(user.role_id, {}) if (user and user.role_id) else {}
+    
+    effective = {}
+    for mod in SYSTEM_MODULES:
+        if mod in user_custom:
+            effective[mod] = user_custom[mod]
+        elif mod in role_defaults:
+            effective[mod] = role_defaults[mod]
+        else:
+            effective[mod] = "Full access" if is_admin or (role and role.name.lower() == "admin") else "View only"
+
+    return {
+        "id": user.id if user else None,
+        "email": user.email if user else target_email,
+        "name": name,
+        "role": role_name,
+        "role_id": user.role_id if user else None,
+        "department": emp.department if (emp and emp.department) else "General",
+        "is_admin": is_admin,
+        "disabled": bool(user.disabled) if user else False,
+        "custom_permissions": user_custom,
+        "custom_override_count": len(user_custom),
+        "effective_permissions": effective
+    }
+
 @router.get("/", response_model=List[dict])
 def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
     if not is_admin_user(db, current_user):

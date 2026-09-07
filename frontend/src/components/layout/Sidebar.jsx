@@ -1,10 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext';
+import { useAuth } from '../../context/AuthContext';
+import { MODULE_ID_TO_SYSTEM_MODULE, getSystemModuleForPath } from '../../utils/modulePermissions';
 import * as Icons from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleCollapse }) {
   const { moduleConfig } = useStore();
+  const { hasAccess } = useAuth();
 
   const { modules = [], sections = [] } = moduleConfig || {};
 
@@ -49,8 +52,12 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
       
       <div className="sb-nav-list" style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'auto', flex: 1, paddingBottom: '60px' }}>
         {sortedSections.map((sec) => {
-          // Get visible modules belonging to this section
-          const secModules = sortedModules.filter(m => m.sectionId === sec.id && m.visible);
+          // Get visible modules belonging to this section that user has access to
+          const secModules = sortedModules.filter(m => {
+            if (!m.visible) return false;
+            const sysMod = MODULE_ID_TO_SYSTEM_MODULE[m.id] || getSystemModuleForPath(m.path);
+            return hasAccess(sysMod);
+          });
           if (secModules.length === 0) return null;
 
           return (
@@ -76,14 +83,16 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
       </div>
 
       <div className="sb-bottom">
-        <NavLink 
-          to="/settings" 
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? 'Settings' : undefined}
-        >
-          <SettingsIcon size={16} style={{ flexShrink: 0 }} /> 
-          {!isCollapsed && <span>Settings</span>}
-        </NavLink>
+        {hasAccess('Settings') && (
+          <NavLink 
+            to="/settings" 
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            title={isCollapsed ? 'Settings' : undefined}
+          >
+            <SettingsIcon size={16} style={{ flexShrink: 0 }} /> 
+            {!isCollapsed && <span>Settings</span>}
+          </NavLink>
+        )}
 
         {!isCollapsed && (
           <div style={{

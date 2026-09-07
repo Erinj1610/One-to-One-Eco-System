@@ -6,11 +6,12 @@ import {
   LogOut, Shield, ChevronRight, BarChart3
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getSystemModuleForPath } from '../../utils/modulePermissions';
 
 export default function MobileBottomBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, hasAccess } = useAuth();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const tabs = [
@@ -20,6 +21,12 @@ export default function MobileBottomBar() {
     { label: 'Sales', path: '/sales-tracker', icon: TrendingUp, aliases: ['/sales-tracker'] },
     { label: 'More', isMenu: true, icon: Menu }
   ];
+
+  const visibleTabs = tabs.filter(tab => {
+    if (tab.isMenu) return true;
+    const sysMod = getSystemModuleForPath(tab.path);
+    return hasAccess(sysMod);
+  });
 
   const isActive = (tab) => {
     if (tab.isMenu) return showMoreMenu;
@@ -53,10 +60,16 @@ export default function MobileBottomBar() {
     { label: 'System Settings', path: '/settings', icon: Settings, color: '#64748b', desc: 'Deployments, Users & Rules' }
   ];
 
+  const visibleMoreItems = moreItems.filter(item => {
+    if (item.path === '/settings') return isAdmin;
+    const sysMod = getSystemModuleForPath(item.path);
+    return hasAccess(sysMod);
+  });
+
   return (
     <>
       <nav className="mobile-bottom-bar" aria-label="Mobile Navigation">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           const active = isActive(tab);
           return (
@@ -103,7 +116,7 @@ export default function MobileBottomBar() {
 
             {/* CLEAN FULL-WIDTH LIST OF MODULE LINKS */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '18px' }}>
-              {moreItems.map(item => {
+              {visibleMoreItems.map(item => {
                 const Icon = item.icon;
                 const isCurrent = location.pathname.startsWith(item.path);
                 return (

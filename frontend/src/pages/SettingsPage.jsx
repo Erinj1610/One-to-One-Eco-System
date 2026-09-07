@@ -859,7 +859,7 @@ function ReleasesDeploymentManager() {
 }
 
 export default function SettingsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, refreshPermissions } = useAuth();
   const navigate = useNavigate();
 
   const { 
@@ -1052,6 +1052,9 @@ export default function SettingsPage() {
       if (res.ok) {
         setUserPermsSuccess('Permissions saved successfully!');
         await fetchUsers();
+        if (refreshPermissions) {
+          try { await refreshPermissions(); } catch (e) { console.error(e); }
+        }
         setTimeout(() => {
           setUserPermissionsModalUser(null);
           setUserPermsSuccess('');
@@ -1081,6 +1084,9 @@ export default function SettingsPage() {
         setUserPermsForm({});
         setUserPermsSuccess('Reset to role defaults!');
         await fetchUsers();
+        if (refreshPermissions) {
+          try { await refreshPermissions(); } catch (e) { console.error(e); }
+        }
         setTimeout(() => {
           setUserPermissionsModalUser(null);
           setUserPermsSuccess('');
