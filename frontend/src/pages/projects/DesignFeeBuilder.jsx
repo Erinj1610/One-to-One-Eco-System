@@ -1008,7 +1008,7 @@ function DesignFeeBuilder({ isLocked, updateFee, initialLivingArea = 995, initia
                       body: JSON.stringify(tokens)
                     });
                     if (res.ok) {
-                      alert(`🚀 Design Fee Proposal saved successfully to Google Drive Vault!\n\nFolder Path: ${companyName || contactPerson || 'Client'} > ${projectName || 'Project'} > Design Fee Proposal > Latest`);
+                      alert(`🚀 Design Fee Proposal saved successfully to Google Drive!\n\nFolder Path: ${companyName || contactPerson || 'Client'} > ${projectName || 'Project'} > Designs > 04 - Proposals & Contracts`);
                     } else {
                       const errData = await res.json().catch(() => ({}));
                       alert(`Notice: Saved project financials locally, but Drive Vault notice: ${errData.detail || res.statusText}`);

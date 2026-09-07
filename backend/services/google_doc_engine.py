@@ -285,16 +285,69 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             except Exception as e:
                 logger.warning(f"Could not create client shortcut in google_doc_engine: {e}")
         
-        # Design Fee proposals go directly under Project; Orders go inside an "Orders" parent folder under Project
-        if sheet_name == 'DESIGN_FEE_PROPOSAL':
-            doc_parent_folder_id = project_folder_id
+        # Identify whether this is a Design document or Order document
+        s_upper = str(sheet_name or '').upper().strip()
+        doc_type_token = str(tokens.get('DOC_TYPE') or '').upper().strip()
+
+        # 1. Strict Order document classification
+        is_order_doc = (
+            doc_type_token == 'ORDER' or
+            s_upper in [
+                'QUOTATION', 'QUOTE', 'BOQ', 'DEPOSIT_INVOICE', 'FINAL_INVOICE',
+                'BALANCE_INVOICE', 'LIGHTING_SCHEDULE', 'SCHEDULE', 'INVOICE',
+                'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO'
+            ] or
+            bool(tokens.get('ORDER_NUMBER')) or
+            bool(tokens.get('PO_NUMBER'))
+        )
+
+        # 2. Design document classification (only if not an order document)
+        is_design_doc = not is_order_doc and (
+            doc_type_token == 'DESIGN_FEE' or
+            s_upper in ['DESIGN_FEE_PROPOSAL', 'DESIGN_FEE', 'DESIGN_PROPOSAL'] or
+            bool(tokens.get('FEE_REF'))
+        )
+
+        if is_design_doc:
+            designs_parent_id = get_or_create_folder(drive_service, "Designs", project_folder_id)
+            fee_ref = str(tokens.get('FEE_REF') or tokens.get('PROPOSAL_NUMBER') or 'DF-01').strip()
+            fee_name = str(tokens.get('FEE_NAME') or tokens.get('DESIGN_NAME') or doc_folder_name).strip()
+            design_folder_name = f"{fee_ref} - {fee_name}" if (fee_name and fee_name.lower() != fee_ref.lower()) else fee_ref
+            doc_container_folder_id = get_or_create_folder(drive_service, design_folder_name, designs_parent_id)
+
+            # Ensure all 5 standard design subfolders exist inside this design
+            get_or_create_folder(drive_service, "01 - Drawings & CAD", doc_container_folder_id)
+            get_or_create_folder(drive_service, "02 - Project Specifications", doc_container_folder_id)
+            get_or_create_folder(drive_service, "03 - Site Photos & Snags", doc_container_folder_id)
+            destination_subfolder_id = get_or_create_folder(drive_service, "04 - Proposals & Contracts", doc_container_folder_id)
+            get_or_create_folder(drive_service, "05 - Moodboards & Presentations", doc_container_folder_id)
         else:
             orders_parent_id = get_or_create_folder(drive_service, "Orders", project_folder_id)
-            doc_parent_folder_id = orders_parent_id
+            order_identifier = str(order_num or tokens.get('PO_NUMBER') or tokens.get('ORDER_NUMBER') or 'Order').strip()
+            supp_name = str(tokens.get('SUPPLIER_NAME') or tokens.get('SUPPLIER') or '').strip()
+            order_folder_name = f"{order_identifier} - {supp_name}" if supp_name else (str(order_name).strip() if order_name else order_identifier)
+            doc_container_folder_id = get_or_create_folder(drive_service, order_folder_name, orders_parent_id)
 
-        doc_subfolder_id = get_or_create_folder(drive_service, doc_folder_name, doc_parent_folder_id)
-        latest_folder_id = get_or_create_folder(drive_service, "Latest", doc_subfolder_id)
-        history_folder_id = get_or_create_folder(drive_service, "History", doc_subfolder_id)
+            # Ensure 4 standard order subfolders exist
+            boq_sub_id = get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
+            po_sub_id = get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
+            logistics_sub_id = get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
+            invoices_sub_id = get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
+
+            if 'INVOICE' in s_upper or s_upper in ['DEPOSIT_INVOICE', 'FINAL_INVOICE', 'PAYMENT', 'CREDIT_NOTE', 'CREDITNOTE']:
+                destination_subfolder_id = invoices_sub_id
+            elif 'PO' in s_upper or s_upper in ['SUPPLIER_PO', 'PURCHASE_ORDER', 'PURCHASE_ORDERS']:
+                destination_subfolder_id = po_sub_id
+            elif 'DELIVERY' in s_upper or s_upper in ['DELIVERY_NOTE', 'LOGISTICS', 'PACKING_LIST']:
+                destination_subfolder_id = logistics_sub_id
+            else:
+                destination_subfolder_id = boq_sub_id
+
+        # Maintain Latest and History revision containers inside the specific destination subfolder
+        latest_folder_id = get_or_create_folder(drive_service, "Latest", destination_subfolder_id)
+        history_folder_id = get_or_create_folder(drive_service, "History", destination_subfolder_id)
+
+        doc_subfolder_id = doc_container_folder_id
 
         template_file_title = f"[Template] {doc_label} - {doc_folder_name}"
         existing_sheet_id = None
@@ -1224,7 +1277,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
     temp_pdf.write(pdf_bytes)
     temp_pdf.close()
 
-    # Vaulting archival if requested
+    # Vaulting archival into destination standard subfolder with Latest/History versioning
     if is_save_action and 'latest_folder_id' in locals() and 'history_folder_id' in locals():
         try:
             clean_type_title = doc_label.strip()
@@ -1244,14 +1297,13 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             existing_latest = latest_res.get('files', [])
             for ef in existing_latest:
                 if ef['name'].startswith(clean_type_title) or clean_type_title in ef['name']:
-                    # Extract original creation date of the file being moved into History
+                    # Extract creation date of the file being moved into History
                     created_date_str = str(tokens.get('DATE') or '').strip()
                     if not created_date_str and ef.get('createdTime'):
-                        created_date_str = ef['createdTime'][:10]  # Format: YYYY-MM-DD
+                        created_date_str = ef['createdTime'][:10]
                     if not created_date_str:
                         created_date_str = time.strftime('%Y-%m-%d')
 
-                    # Format archived name: Revision - Date Created
                     history_filename = f"{clean_type_title} - {doc_folder_name} (Revision - {created_date_str}).pdf"
                     drive_service.files().update(
                         fileId=ef['id'],
@@ -1274,7 +1326,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 fields='id, webViewLink',
                 supportsAllDrives=True
             ).execute()
-            logger.info(f"Saved newest PDF '{new_vault_filename}' ({uploaded_vault_file.get('id')}) in Latest folder.")
+            logger.info(f"Saved newest PDF '{new_vault_filename}' ({uploaded_vault_file.get('id')}) in Latest folder under {doc_label}.")
         except Exception as vault_err:
             logger.error(f"Error archiving PDF in Drive Vault: {vault_err}")
 
