@@ -1302,7 +1302,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     if not created_date_str and ef.get('createdTime'):
                         created_date_str = ef['createdTime'][:10]
                     if not created_date_str:
-                        import time
                         created_date_str = time.strftime('%Y-%m-%d')
 
                     history_filename = f"{clean_type_title} - {doc_folder_name} (Revision - {created_date_str}).pdf"
