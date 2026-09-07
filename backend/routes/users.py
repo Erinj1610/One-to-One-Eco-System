@@ -17,7 +17,10 @@ SYSTEM_MODULES = [
 
 def is_admin_user(db: Session, current_user: dict) -> bool:
     email = (current_user.get("email") or "").strip().lower()
-    if email in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
+    role_claim = (current_user.get("role") or "").strip().lower()
+    if role_claim == "admin":
+        return True
+    if email in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world", "staff@onetoone.co.za"]:
         return True
     db_user = db.query(User).filter(User.email.ilike(email)).first()
     if db_user and db_user.role_id:
@@ -25,6 +28,7 @@ def is_admin_user(db: Session, current_user: dict) -> bool:
         if role and role.name.lower() == "admin":
             return True
     return False
+
 
 class UserInvite(BaseModel):
     name: str
