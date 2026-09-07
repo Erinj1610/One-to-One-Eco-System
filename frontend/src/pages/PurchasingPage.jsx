@@ -66,6 +66,7 @@ export default function PurchasingPage() {
   const [allocEta, setAllocEta] = useState('');
   const [allocNotes, setAllocNotes] = useState('');
   const [allocFile, setAllocFile] = useState(null);
+  const [showNoDocPrompt, setShowNoDocPrompt] = useState(false);
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
   // Batch Allocation Modal State
@@ -75,6 +76,7 @@ export default function PurchasingPage() {
   const [batchEta, setBatchEta] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
   const [batchFile, setBatchFile] = useState(null);
+  const [showBatchNoDocPrompt, setShowBatchNoDocPrompt] = useState(false);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
   // Smart Bulk PO Allocation Wizard State
@@ -338,8 +340,8 @@ export default function PurchasingPage() {
     setAllocQty(Math.min(needed, available));
   };
 
-  const handleSubmitSingleAllocation = async (e) => {
-    e.preventDefault();
+  const handleSubmitSingleAllocation = async (e, bypassDocPrompt = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!allocTargetItem) return;
 
     if (allocQty <= 0) {
@@ -348,6 +350,22 @@ export default function PurchasingPage() {
     }
     if (allocQty > (allocTargetItem.unallocated_qty || 0)) {
       alert(`Allocation quantity (${allocQty}) exceeds unallocated balance (${allocTargetItem.unallocated_qty}).`);
+      return;
+    }
+
+    if (!selectedCandidateKey) {
+      alert("Please select a target Project Order or choose manual assignment.");
+      return;
+    }
+
+    if (selectedCandidateKey === 'MANUAL' && !manualProjectId) {
+      alert("Please select a target Project to allocate to.");
+      return;
+    }
+
+    // Prompt user if no document file has been attached yet
+    if (!allocFile && !bypassDocPrompt) {
+      setShowNoDocPrompt(true);
       return;
     }
 
@@ -496,12 +514,18 @@ export default function PurchasingPage() {
   };
 
   // Submit Batch Allocation
-  const handleSubmitBatchAllocation = async (e) => {
-    e.preventDefault();
+  const handleSubmitBatchAllocation = async (e, bypassDocPrompt = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!selectedDocument || selectedLineIds.size === 0) return;
 
     if (!batchProjectId) {
       alert("Please select a destination Project.");
+      return;
+    }
+
+    // Prompt user if no document file has been attached yet
+    if (!batchFile && !bypassDocPrompt) {
+      setShowBatchNoDocPrompt(true);
       return;
     }
 
@@ -2739,6 +2763,146 @@ export default function PurchasingPage() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* NO DOCUMENT ATTACHED REMINDER MODAL */}
+      {(showNoDocPrompt || showBatchNoDocPrompt) && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100000,
+          padding: '20px'
+        }}>
+          <div className="card" style={{
+            maxWidth: '480px',
+            width: '100%',
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '10px',
+                background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Attach Supplier PO Document?
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  No file was attached to this allocation.
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '12.5px', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
+              Would you like to attach the <strong>Supplier PO / Confirmation</strong> file now? It will automatically be filed in Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
+            </p>
+
+            {/* Quick Upload Box */}
+            <div style={{
+              background: 'var(--bg-secondary)',
+              border: '1.5px dashed #3b82f6',
+              borderRadius: '8px',
+              padding: '16px',
+              textAlign: 'center'
+            }}>
+              <input
+                type="file"
+                id="reminderPurchasingFileInput"
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                onChange={(e) => {
+                  const f = e.target.files[0] || null;
+                  if (showNoDocPrompt) setAllocFile(f);
+                  if (showBatchNoDocPrompt) setBatchFile(f);
+                }}
+                style={{ display: 'none' }}
+              />
+              <label htmlFor="reminderPurchasingFileInput" style={{ cursor: 'pointer', display: 'block' }}>
+                {(showNoDocPrompt ? allocFile : batchFile) ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#10b981', fontWeight: 700, fontSize: '12px' }}>
+                    <Check size={16} /> Attached: {(showNoDocPrompt ? allocFile : batchFile)?.name}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ color: '#3b82f6', fontSize: '12.5px', fontWeight: 700, marginBottom: '2px' }}>
+                      📁 Click to attach PO document (PDF, PNG, Excel)
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                      Files auto-sync straight to Google Drive
+                    </div>
+                  </div>
+                )}
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => {
+                  if (showNoDocPrompt) {
+                    setShowNoDocPrompt(false);
+                    handleSubmitSingleAllocation(null, true);
+                  } else {
+                    setShowBatchNoDocPrompt(false);
+                    handleSubmitBatchAllocation(null, true);
+                  }
+                }}
+                style={{ fontSize: '12px', color: 'var(--text-secondary)' }}
+              >
+                Continue Without Document
+              </button>
+
+              {(showNoDocPrompt ? allocFile : batchFile) ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => {
+                    if (showNoDocPrompt) {
+                      setShowNoDocPrompt(false);
+                      handleSubmitSingleAllocation(null, true);
+                    } else {
+                      setShowBatchNoDocPrompt(false);
+                      handleSubmitBatchAllocation(null, true);
+                    }
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: '#fff', border: 'none', fontWeight: 700, fontSize: '12px', padding: '7px 16px', borderRadius: '6px'
+                  }}
+                >
+                  Attach & Allocate
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => document.getElementById('reminderPurchasingFileInput')?.click()}
+                  style={{ fontSize: '12px' }}
+                >
+                  Choose File...
+                </button>
+              )}
+            </div>
           </div>
         </div>,
         document.body
