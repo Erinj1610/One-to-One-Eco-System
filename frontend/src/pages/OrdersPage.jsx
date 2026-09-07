@@ -795,11 +795,10 @@ export default function OrdersPage() {
       CLIENT_NAME: clientContact || clientCompany || 'Client Name',
       DATE: orderDate || new Date().toLocaleDateString('en-GB'),
       DOCUMENT_NUMBER: selectedOrderId || 'Q-2026-XXX',
-      PROPOSAL_NUMBER: selectedOrderId || 'Q-2026-XXX',
       ORDER_NUMBER: selectedOrderId || 'Q-2026-XXX',
-      FEE_NAME: quoteName || `Order ${selectedOrderId || 'Q-2026-XXX'}`,
       ORDER_NAME: quoteName || selectedOrderId || '',
       QUOTE_NAME: quoteName || '',
+      DOC_TYPE: 'ORDER',
       ORDER_STATUS: orderStatus || 'Draft',
       
       CLIENT_COMPANY: clientCompany || 'Private Client',

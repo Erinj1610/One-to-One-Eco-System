@@ -21,12 +21,9 @@ ROOT_DRIVE_FOLDER_ID = "0AFF94SUUC_EQUk9PVA"
 PROJECTS_ROOT_NAME = "01 - PROJECTS"
 CLIENTS_ROOT_NAME = "02 - CLIENTS"
 
-# Project-Level Standard Starter Folders
-PROJECT_STANDARD_FOLDERS = [
-    {"name": "01 - Drawings & CAD", "sort": 1},
-    {"name": "02 - Project Specifications", "sort": 2},
-    {"name": "03 - Site Photos & Snags", "sort": 3},
-]
+# Project-Level Standard Starter Folders (Deprecated: Standard subfolders are housed strictly inside each Design package)
+PROJECT_STANDARD_FOLDERS = []
+
 
 # Order-Level Standard Subfolders
 ORDER_STANDARD_SUBFOLDERS = [
@@ -540,17 +537,9 @@ def ensure_order_drive_tree(
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
     project_folder_id = project_folder['id']
 
-    # Ensure standard project subfolders (Drawings, Specs, Photos) and Designs/Orders containers
+    # Ensure Designs & Orders containers under Project
     proj_children = get_subfolders(drive_service, project_folder_id, include_shortcuts=False)
     proj_children_names = {normalize_name(f['name']) for f in proj_children}
-
-    for starter in PROJECT_STANDARD_FOLDERS:
-        s_norm = normalize_name(starter["name"])
-        s_stripped = re.sub(r'^\d+\s*-\s*', '', starter["name"])
-        s_stripped_norm = normalize_name(s_stripped)
-        if not any(s_norm in cn or s_stripped_norm in cn or cn in s_norm for cn in proj_children_names):
-            get_or_create_drive_folder(drive_service, starter["name"], project_folder_id)
-            proj_children_names.add(s_norm)
 
     if not any("design" in cn for cn in proj_children_names):
         get_or_create_drive_folder(drive_service, "Designs", project_folder_id)
@@ -661,17 +650,9 @@ def ensure_design_drive_tree(
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
     project_folder_id = project_folder['id']
 
-    # Ensure standard project subfolders (Drawings, Specs, Photos) and Designs/Orders containers
+    # Ensure Designs & Orders containers under Project
     proj_children = get_subfolders(drive_service, project_folder_id, include_shortcuts=False)
     proj_children_names = {normalize_name(f['name']) for f in proj_children}
-
-    for starter in PROJECT_STANDARD_FOLDERS:
-        s_norm = normalize_name(starter["name"])
-        s_stripped = re.sub(r'^\d+\s*-\s*', '', starter["name"])
-        s_stripped_norm = normalize_name(s_stripped)
-        if not any(s_norm in cn or s_stripped_norm in cn or cn in s_norm for cn in proj_children_names):
-            get_or_create_drive_folder(drive_service, starter["name"], project_folder_id)
-            proj_children_names.add(s_norm)
 
     if not any("order" in cn for cn in proj_children_names):
         get_or_create_drive_folder(drive_service, "Orders", project_folder_id)
@@ -810,32 +791,35 @@ def ensure_project_drive_tree(
         }
     ]
 
-    # 5. Standard Project-Level Folders (Drawings, Specs, Photos)
-    for starter in PROJECT_STANDARD_FOLDERS:
-        s_name = starter["name"]
-        match_key = s_name.lower().strip()
-        matched = proj_children_by_name.get(match_key)
-        if not matched:
-            stripped = re.sub(r'^\d+\s*-\s*', '', match_key)
-            for ex_name, ex_f in proj_children_by_name.items():
-                if stripped in ex_name or ex_name in stripped:
-                    matched = ex_f
-                    break
-
-        if not matched:
-            matched = get_or_create_drive_folder(drive_service, s_name, project_folder_id)
-            proj_children_by_name[match_key] = matched
-
-        folder_nodes.append({
-            "id": matched['id'],
-            "gdrive_folder_id": matched['id'],
-            "name": matched['name'],
-            "parent_id": project_folder_id,
-            "project_gdrive_id": project_folder_id,
-            "type": "project_standard",
-            "sort_order": starter["sort"],
-            "webViewLink": matched.get('webViewLink', '')
-        })
+    # 5. Clean up any empty legacy project-level starter folders (01, 02, 03) from project root
+    legacy_starters = ["01 - drawings & cad", "02 - project specifications", "03 - site photos & snags"]
+    for lk in legacy_starters:
+        lk_stripped = re.sub(r'^\d+\s*-\s*', '', lk)
+        matched_legacy = None
+        for ex_name, ex_f in list(proj_children_by_name.items()):
+            if lk in ex_name or lk_stripped in ex_name:
+                matched_legacy = ex_f
+                break
+        if matched_legacy and matched_legacy.get('id'):
+            leg_id = matched_legacy['id']
+            try:
+                chk_res = drive_service.files().list(
+                    q=f"'{leg_id}' in parents and trashed=false",
+                    corpora='drive',
+                    driveId=ROOT_DRIVE_FOLDER_ID,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageSize=1,
+                    fields="files(id)"
+                ).execute()
+                if len(chk_res.get('files', [])) == 0:
+                    drive_service.files().update(fileId=leg_id, body={'trashed': True}, supportsAllDrives=True).execute()
+                    logger.info(f"Cleaned up empty legacy starter folder '{matched_legacy.get('name')}' ({leg_id}) from project root")
+                    for k, v in list(proj_children_by_name.items()):
+                        if v.get('id') == leg_id:
+                            proj_children_by_name.pop(k, None)
+            except Exception as leg_err:
+                logger.warning(f"Could not check/trash legacy root starter {leg_id}: {leg_err}")
 
     # 6. Ensure "Designs" Parent Folder
     designs_root = proj_children_by_name.get("designs")
@@ -851,7 +835,7 @@ def ensure_project_drive_tree(
         "parent_id": project_folder_id,
         "project_gdrive_id": project_folder_id,
         "type": "design_root",
-        "sort_order": 4,
+        "sort_order": 1,
         "webViewLink": designs_root.get('webViewLink', '')
     })
 
@@ -891,7 +875,7 @@ def ensure_project_drive_tree(
         "parent_id": project_folder_id,
         "project_gdrive_id": project_folder_id,
         "type": "orders_root",
-        "sort_order": 5,
+        "sort_order": 2,
         "webViewLink": orders_root.get('webViewLink', '')
     })
 

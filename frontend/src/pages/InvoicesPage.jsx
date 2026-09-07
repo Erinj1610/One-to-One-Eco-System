@@ -70,6 +70,7 @@ export default function InvoicesPage() {
   const [manualOrderId, setManualOrderId] = useState('');
   const [allocQty, setAllocQty] = useState(1);
   const [allocNotes, setAllocNotes] = useState('');
+  const [allocFile, setAllocFile] = useState(null);
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
   // Batch Allocation Modal State
@@ -77,6 +78,7 @@ export default function InvoicesPage() {
   const [batchProjectId, setBatchProjectId] = useState('');
   const [batchOrderId, setBatchOrderId] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
+  const [batchFile, setBatchFile] = useState(null);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
   // Issue Flagging State
@@ -397,7 +399,24 @@ export default function InvoicesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`🎉 ${data.message || 'Invoice allocated successfully!'}`);
+        const targetOrderId = payload.order_id || manualOrderId;
+        if (allocFile && targetOrderId) {
+          try {
+            const formData = new FormData();
+            formData.append('file', allocFile);
+            await fetch(`${API_BASE}/api/documents/order/${targetOrderId}/upload-category?category=INVOICE`, {
+              method: 'POST',
+              body: formData
+            });
+            triggerToast(`🎉 Allocated & file uploaded to 04 - Invoices & Proof of Payment!`);
+          } catch (uploadErr) {
+            console.warn("Could not upload attached invoice file to Drive:", uploadErr);
+            triggerToast(`🎉 Allocated! (Drive upload note: check file format)`);
+          }
+        } else {
+          triggerToast(`🎉 ${data.message || 'Invoice allocated successfully!'}`);
+        }
+        setAllocFile(null);
         setAllocModalOpen(false);
         fetchSummary();
         fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
@@ -538,7 +557,23 @@ export default function InvoicesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        if (batchFile && batchOrderId) {
+          try {
+            const formData = new FormData();
+            formData.append('file', batchFile);
+            await fetch(`${API_BASE}/api/documents/order/${batchOrderId}/upload-category?category=INVOICE`, {
+              method: 'POST',
+              body: formData
+            });
+            triggerToast(`🎉 Batch allocated & file uploaded to 04 - Invoices & Proof of Payment!`);
+          } catch (uploadErr) {
+            console.warn("Could not upload attached batch file to Drive:", uploadErr);
+            triggerToast(`🎉 Batch allocated! (Drive upload note: check file format)`);
+          }
+        } else {
+          triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        }
+        setBatchFile(null);
         setBatchModalOpen(false);
         setSelectedLineIds(new Set());
         fetchSummary();
@@ -2110,6 +2145,33 @@ export default function InvoicesPage() {
                     onChange={(e) => setBatchNotes(e.target.value)}
                   />
                 </div>
+
+                {/* Optional Document Upload directly into Drive */}
+                <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
+                    📎 Attach Customer Invoice / Credit Note Document (Optional)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                      onChange={(e) => setBatchFile(e.target.files[0] || null)}
+                      style={{ fontSize: '11.5px', color: 'var(--text-primary)' }}
+                    />
+                    {batchFile && (
+                      <button 
+                        type="button" 
+                        className="btn btn-xs btn-ghost text-error" 
+                        onClick={() => setBatchFile(null)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Auto-files directly into Google Drive under <strong>04 - Invoices & Proof of Payment</strong> for this order.
+                  </div>
+                </div>
               </div>
 
               {/* Modal Footer */}
@@ -2357,6 +2419,33 @@ export default function InvoicesPage() {
                     value={allocNotes}
                     onChange={(e) => setAllocNotes(e.target.value)}
                   />
+                </div>
+
+                {/* Optional Document Upload directly into Drive */}
+                <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
+                    📎 Attach Customer Invoice / Credit Note Document (Optional)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                      onChange={(e) => setAllocFile(e.target.files[0] || null)}
+                      style={{ fontSize: '11.5px', color: 'var(--text-primary)' }}
+                    />
+                    {allocFile && (
+                      <button 
+                        type="button" 
+                        className="btn btn-xs btn-ghost text-error" 
+                        onClick={() => setAllocFile(null)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Auto-files directly into Google Drive under <strong>04 - Invoices & Proof of Payment</strong> for this order.
+                  </div>
                 </div>
 
               </div>

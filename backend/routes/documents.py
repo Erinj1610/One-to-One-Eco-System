@@ -2,7 +2,7 @@ import re
 import difflib
 import logging
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -721,6 +721,65 @@ async def upload_file_to_folder(
         return {"message": "File uploaded successfully to Google Drive", "file": uploaded}
     except Exception as e:
         logger.error(f"Upload to Google Drive failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+# --- 6b. Upload File Directly into an Order's Designated Subfolder (PO, Invoice, Logistics, BOQ) ---
+@router.post("/order/{order_id}/upload-category")
+async def upload_file_to_order_category(
+    order_id: str,
+    category: str = Query("PO"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Streams an uploaded document directly into the order's specific standard subfolder:
+    - 'PO' -> '02 - Supplier POs & Confirmations'
+    - 'INVOICE' / 'CREDIT_NOTE' -> '04 - Invoices & Proof of Payment'
+    - 'LOGISTICS' / 'DELIVERY' -> '03 - Logistics (Delivery Notes & Packing Lists)'
+    - 'BOQ' / 'QUOTATION' -> '01 - BOQs & Quotations'
+    """
+    clean_id = (order_id or "").strip()
+    if not clean_id:
+        raise HTTPException(status_code=400, detail="Order ID is required")
+
+    folders = get_order_folders(order_id=clean_id, db=db)
+    if not folders:
+        raise HTTPException(status_code=404, detail=f"Could not provision or find Google Drive folder tree for order {clean_id}")
+
+    cat_upper = (category or "PO").upper().strip()
+    target_name_part = "02 - Supplier POs"
+    if "INVOICE" in cat_upper or "CREDIT" in cat_upper:
+        target_name_part = "04 - Invoices"
+    elif "LOGISTICS" in cat_upper or "DELIVERY" in cat_upper:
+        target_name_part = "03 - Logistics"
+    elif "BOQ" in cat_upper or "QUOTE" in cat_upper or "QUOTATION" in cat_upper:
+        target_name_part = "01 - BOQs"
+
+    target_folder = None
+    for f in folders:
+        f_name = f.get("name", "")
+        if target_name_part.lower() in f_name.lower():
+            target_folder = f
+            break
+
+    target_folder_id = target_folder.get("gdrive_folder_id") if target_folder else folders[0].get("gdrive_folder_id")
+
+    try:
+        contents = await file.read()
+        uploaded = upload_file_to_drive(
+            folder_id=target_folder_id,
+            file_bytes=contents,
+            filename=file.filename or "Uploaded Document",
+            content_type=file.content_type or "application/octet-stream"
+        )
+        return {
+            "message": f"File uploaded successfully to {target_folder.get('name', 'Order')} in Google Drive",
+            "file": uploaded,
+            "folder": target_folder
+        }
+    except Exception as e:
+        logger.error(f"Failed uploading file to order {clean_id} category {category}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 

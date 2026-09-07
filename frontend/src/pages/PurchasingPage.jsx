@@ -65,6 +65,7 @@ export default function PurchasingPage() {
   const [allocQty, setAllocQty] = useState(1);
   const [allocEta, setAllocEta] = useState('');
   const [allocNotes, setAllocNotes] = useState('');
+  const [allocFile, setAllocFile] = useState(null);
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
   // Batch Allocation Modal State
@@ -73,6 +74,7 @@ export default function PurchasingPage() {
   const [batchOrderId, setBatchOrderId] = useState('');
   const [batchEta, setBatchEta] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
+  const [batchFile, setBatchFile] = useState(null);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
 
   // Smart Bulk PO Allocation Wizard State
@@ -394,7 +396,24 @@ export default function PurchasingPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`🎉 ${data.message || 'Allocated successfully!'}`);
+        const targetOrderId = payload.order_id || manualOrderId;
+        if (allocFile && targetOrderId) {
+          try {
+            const formData = new FormData();
+            formData.append('file', allocFile);
+            await fetch(`${API_BASE}/api/documents/order/${targetOrderId}/upload-category?category=PO`, {
+              method: 'POST',
+              body: formData
+            });
+            triggerToast(`🎉 Allocated & file uploaded to 02 - Supplier POs in Drive!`);
+          } catch (uploadErr) {
+            console.warn("Could not upload attached file to Drive:", uploadErr);
+            triggerToast(`🎉 Allocated! (Drive upload note: check file format)`);
+          }
+        } else {
+          triggerToast(`🎉 ${data.message || 'Allocated successfully!'}`);
+        }
+        setAllocFile(null);
         setAllocModalOpen(false);
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
@@ -524,7 +543,23 @@ export default function PurchasingPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        if (batchFile && batchOrderId) {
+          try {
+            const formData = new FormData();
+            formData.append('file', batchFile);
+            await fetch(`${API_BASE}/api/documents/order/${batchOrderId}/upload-category?category=PO`, {
+              method: 'POST',
+              body: formData
+            });
+            triggerToast(`🎉 Batch allocated & file uploaded to 02 - Supplier POs in Drive!`);
+          } catch (uploadErr) {
+            console.warn("Could not upload attached batch file to Drive:", uploadErr);
+            triggerToast(`🎉 Batch allocated! (Drive upload note: check file format)`);
+          }
+        } else {
+          triggerToast(`🎉 ${data.message || 'Batch allocated successfully!'}`);
+        }
+        setBatchFile(null);
         setBatchModalOpen(false);
         setSelectedLineIds(new Set());
         fetchSummary();
@@ -2269,6 +2304,33 @@ export default function PurchasingPage() {
                   </div>
                 </div>
 
+                {/* Optional Document Upload directly into Drive */}
+                <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
+                    📎 Attach Supplier PO / Confirmation Document (Optional)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                      onChange={(e) => setBatchFile(e.target.files[0] || null)}
+                      style={{ fontSize: '11.5px', color: 'var(--text-primary)' }}
+                    />
+                    {batchFile && (
+                      <button 
+                        type="button" 
+                        className="btn btn-xs btn-ghost text-error" 
+                        onClick={() => setBatchFile(null)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Auto-files directly into Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
+                  </div>
+                </div>
+
               </div>
 
               {/* Modal Footer */}
@@ -2583,6 +2645,33 @@ export default function PurchasingPage() {
                       value={allocNotes}
                       onChange={(e) => setAllocNotes(e.target.value)}
                     />
+                  </div>
+                </div>
+
+                {/* Optional Document Upload directly into Drive */}
+                <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
+                    📎 Attach Supplier PO / Confirmation Document (Optional)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                      onChange={(e) => setAllocFile(e.target.files[0] || null)}
+                      style={{ fontSize: '11.5px', color: 'var(--text-primary)' }}
+                    />
+                    {allocFile && (
+                      <button 
+                        type="button" 
+                        className="btn btn-xs btn-ghost text-error" 
+                        onClick={() => setAllocFile(null)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Auto-files directly into Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
                   </div>
                 </div>
 
