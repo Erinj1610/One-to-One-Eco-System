@@ -466,7 +466,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         items_list = tokens.get('items', [])
 
         # Dynamically determine the maximum column count present in this specific template sheet
-        max_col_count = max([len(r_item.get('values', [])) for r_item in row_data] + [10])
+        sheet_props = sp_data['sheets'][0].get('properties', {})
+        grid_props = sheet_props.get('gridProperties', {})
+        grid_col_count = grid_props.get('columnCount', 26)
+        max_col_count = min(grid_col_count, max([len(r_item.get('values', [])) for r_item in row_data] + [1]))
 
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
@@ -666,11 +669,22 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 out_list.append(item_dict)
             return out_list
 
-        # Page Budgeting for Carryover Headers (A4 portrait at 0.25in margins)
-        PAGE_1_MAX_ROWS = 42
-        SUBSEQUENT_PAGE_MAX_ROWS = 48
-        current_page_capacity = PAGE_1_MAX_ROWS
-        rows_on_current_page = 0
+        # Row-weight budgeting helper (accounts for text-wrapping in description / area columns)
+        def get_item_row_weight(it_obj):
+            d_txt = str(it_obj.get('description') or it_obj.get('name') or '').strip()
+            if '\n' in d_txt:
+                return 1.0 + float(d_txt.count('\n'))
+            if len(d_txt) > 145:
+                return 3.0
+            elif len(d_txt) > 95:
+                return 2.0
+            return 1.0
+
+        PAGE_1_ITEM_BUDGET = 36.0
+        SUBSEQUENT_PAGE_ITEM_BUDGET = 45.0
+        current_page_capacity = PAGE_1_ITEM_BUDGET
+        rows_on_current_page = 0.0
+        is_page_1 = True
 
         # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
         if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
@@ -727,7 +741,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             if table_head_cells:
                 generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
-                rows_on_current_page += 1
             
             if item_row_cells:
                 active_floor = None
@@ -736,64 +749,78 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     if it_fl:
                         active_floor = it_fl
 
-                    if rows_on_current_page >= current_page_capacity:
-                        # Carryover block onto next page
+                    it_weight = get_item_row_weight(item_obj)
+
+                    if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                        pad_px = 30 if is_page_1 else 45
+                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
+                        # Start new page with carryover block
+                        carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"} if active_floor else {}
+                        rows_on_current_page = 0.0
+                        is_page_1 = False
+                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+
                         if active_floor and fl_header_cells:
-                            carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"}
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                            rows_on_current_page = 1
-                        else:
-                            rows_on_current_page = 0
+                            rows_on_current_page += 1.0
                         
                         if table_head_cells:
-                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
-                            rows_on_current_page += 1
-                        
-                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
 
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
-                    rows_on_current_page += 1
+                    rows_on_current_page += it_weight
 
             if credit_items and (credit_head_cells or credit_item_cells):
-                if rows_on_current_page + 3 > current_page_capacity:
-                    rows_on_current_page = 0
-                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                target_credit_cell = credit_item_cells or item_row_cells
+                if rows_on_current_page + 3.0 > current_page_capacity and rows_on_current_page > 0:
+                    pad_px = 30 if is_page_1 else 45
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                    rows_on_current_page = 0.0
+                    is_page_1 = False
+                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
 
                 if credit_head_cells:
                     generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                    rows_on_current_page += 1
-                target_credit_cell = credit_item_cells or item_row_cells
+                    rows_on_current_page += 1.0
                 if target_credit_cell:
                     for item_obj in credit_items:
-                        if rows_on_current_page >= current_page_capacity:
+                        it_weight = get_item_row_weight(item_obj)
+                        if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                            pad_px = 30 if is_page_1 else 45
+                            generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                            rows_on_current_page = 0.0
+                            is_page_1 = False
+                            current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                             if credit_head_cells:
                                 generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                                rows_on_current_page = 1
-                            else:
-                                rows_on_current_page = 0
-                            current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                                rows_on_current_page += 1.0
 
                         generated_dynamic_rows.append(('[CREDIT_ITEM_ROW]', target_credit_cell, build_item_ctx(item_obj)))
-                        rows_on_current_page += 1
+                        rows_on_current_page += it_weight
         else:
             # Grouped Floor / Area template (like Quotation)
             for fl_name, areas in grouped_floors.items():
-                fl_items = [it for ar_items in areas.values() for it in ar_items]
-                fl_subtotal_num = sum(resolve_item_total(it) for it in fl_items)
+                fl_subtotal_num = sum(resolve_item_total(it) for ar in areas.values() for it in ar)
                 fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
                 fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
                 # If starting a new floor near bottom of page, start fresh on next page
-                if rows_on_current_page > 0 and (rows_on_current_page + 4 > current_page_capacity):
-                    rows_on_current_page = 0
-                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                if rows_on_current_page > 0 and (rows_on_current_page + 4.0 > current_page_capacity):
+                    pad_px = 30 if is_page_1 else 45
+                    target_c = fl_header_cells or item_row_cells
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                    rows_on_current_page = 0.0
+                    is_page_1 = False
+                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
 
                 if fl_header_cells:
                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
                 if fl_table_head_cells:
                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
 
                 for ar_name, ar_items in areas.items():
                     ar_subtotal_num = sum(resolve_item_total(it) for it in ar_items)
@@ -801,48 +828,66 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
                     # Check page overflow before adding area/items
-                    if rows_on_current_page >= current_page_capacity:
+                    if rows_on_current_page + 2.0 > current_page_capacity and rows_on_current_page > 0:
+                        pad_px = 30 if is_page_1 else 45
+                        target_c = area_row_cells or item_row_cells
+                        generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
                         carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                        rows_on_current_page = 0.0
+                        is_page_1 = False
+                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                         if fl_header_cells:
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
                         if fl_table_head_cells:
                             generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
                         elif table_head_cells:
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                        rows_on_current_page = 2
-                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                            rows_on_current_page += 1.0
 
                     if area_row_cells:
                         generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
                     if area_table_head_cells:
                         generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
 
                     if item_row_cells:
                         for item_obj in ar_items:
-                            if rows_on_current_page >= current_page_capacity:
+                            it_weight = get_item_row_weight(item_obj)
+                            if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                                pad_px = 30 if is_page_1 else 45
+                                generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
                                 carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                                rows_on_current_page = 0.0
+                                is_page_1 = False
+                                current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                                 if fl_header_cells:
                                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                                    rows_on_current_page += 1.0
                                 if fl_table_head_cells:
                                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
-                                rows_on_current_page = 2
-                                current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                                    rows_on_current_page += 1.0
+                                elif table_head_cells:
+                                    generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                                    rows_on_current_page += 1.0
 
                             item_ctx = {**ar_ctx}
                             for k, v in item_obj.items():
                                 item_ctx[k] = str(v) if v is not None else ''
                             generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
-                            rows_on_current_page += 1
+                            rows_on_current_page += it_weight
 
                     if area_footer_cells:
                         generated_dynamic_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
 
                 if fl_footer_cells:
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
@@ -1175,6 +1220,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             # Check if this row is a SPACER row
             if ctx and ctx.get('_is_spacer'):
+                spacer_px = ctx.get('_spacer_height', 10)
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -1184,12 +1230,20 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': 10
+                            'pixelSize': max(1, int(spacer_px))
                         },
                         'fields': 'pixelSize'
                     }
                 })
-                # Clear all text and apply light grey background across all columns for pure 10px SPACER bar
+                # If it's an invisible page-break pad row, background is pure white (no grey bar, no borders)
+                is_pad = ctx.get('_is_pad', False)
+                bg_color = {'red': 1.0, 'green': 1.0, 'blue': 1.0} if is_pad else {'red': 0.90, 'green': 0.90, 'blue': 0.90}
+                cell_fmt = {'backgroundColor': bg_color}
+                fields_str = 'userEnteredValue,userEnteredFormat.backgroundColor'
+                if is_pad:
+                    cell_fmt['borders'] = {}
+                    fields_str = 'userEnteredValue,userEnteredFormat.backgroundColor,userEnteredFormat.borders'
+
                 grid_requests.append({
                     'repeatCell': {
                         'range': {
@@ -1201,11 +1255,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         },
                         'cell': {
                             'userEnteredValue': {'stringValue': ''},
-                            'userEnteredFormat': {
-                                'backgroundColor': {'red': 0.90, 'green': 0.90, 'blue': 0.90}
-                            }
+                            'userEnteredFormat': cell_fmt
                         },
-                        'fields': 'userEnteredValue,userEnteredFormat.backgroundColor'
+                        'fields': fields_str
                     }
                 })
             else:
