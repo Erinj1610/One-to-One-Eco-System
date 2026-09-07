@@ -7,8 +7,8 @@ import {
   AlertCircle, Star, Send, Image as ImageIcon, MessageSquare, 
   Upload, X, ArrowLeft, Trash2, User, FolderKanban,
   RefreshCw, ZoomIn, LayoutGrid, List, Layers, DollarSign,
-  Calendar, MapPin, Tag, ShieldAlert, ArrowRight, Download, Check
 } from 'lucide-react';
+import MobileTicketsViewer from '../components/mobile/MobileTicketsViewer';
 
 const TICKET_TYPES = [
   { label: 'Site Snag / Defect', value: 'Site Snag / Defect', color: 'b-danger', dotColor: '#ef4444' },
@@ -50,6 +50,13 @@ const formatCurrency = (val) => {
 export default function TicketLoggerPage({ initialProjectId = null, embedded = false }) {
   const { user } = useAuth();
   const { projects = {}, projectManagers = [] } = useStore();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const [tickets, setTickets] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -565,6 +572,14 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
     return { total, critical, openAndProgress, awaitingSignoff, resolved, totalCostImpact, totalDelayDays };
   }, [filteredTickets]);
+
+  if (isMobile && !embedded) {
+    return (
+      <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+        <MobileTicketsViewer tickets={tickets} />
+      </div>
+    );
+  }
 
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: embedded ? '100%' : '1600px', margin: '0 auto', padding: embedded ? '0' : '0 8px' }}>

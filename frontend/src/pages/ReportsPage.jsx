@@ -136,6 +136,13 @@ const getFyMonthLabels = (fyStr = '2026-2027') => {
 
 export default function ReportsPage() {
   const { projects } = useStore();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // Selection States
   const [activeReport, setActiveReport] = useState('sales_kpi'); // 'sales_kpi', 'budget_manager', 'operational_kpis', 'stock_valuation'
@@ -1242,20 +1249,37 @@ export default function ReportsPage() {
   const mgmtFyConfig = budgetsConfig[mgmtFy] || { divisions: [], budgetsKPI1: {}, targetsKPI2: {}, targetsKPI3: {}, budgetsKPI4: {} };
 
   return (
-    <div className="animation-fade-in" style={{ padding: '24px', background: 'var(--bg-primary)', minHeight: '100vh', color: 'var(--text-primary)' }}>
+    <div className="animation-fade-in" style={{ padding: isMobile ? '12px 14px 40px' : '24px', background: 'var(--bg-primary)', minHeight: '100vh', color: 'var(--text-primary)' }}>
       
       {/* HEADER CONTROLS (Report view selector dropdown) */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '15px' }}>
-        <div>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: isMobile ? 'flex-start' : 'center', 
+        flexDirection: isMobile ? 'column' : 'row',
+        marginBottom: '20px', 
+        gap: '12px' 
+      }}>
+        <div style={{ width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <BarChart2 size={24} style={{ color: '#3b82f6' }} />
+            <BarChart2 size={22} style={{ color: '#3b82f6', flexShrink: 0 }} />
             <select 
               value={activeReport} 
               onChange={(e) => setActiveReport(e.target.value)} 
-              style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-title)', background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none', padding: 0 }}
+              style={{ 
+                fontSize: isMobile ? '16px' : '20px', 
+                fontWeight: 800, 
+                color: 'var(--text-title)', 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                outline: 'none', 
+                padding: 0,
+                width: '100%'
+              }}
             >
               <option value="sales_kpi">Sales & KPI Ledger Engine</option>
-              <option value="budget_manager">Budget & Target Manager (Historical & YTD)</option>
+              <option value="budget_manager">Budget & Target Manager</option>
               <option value="operational_kpis">Operational KPIs Dashboard</option>
               <option value="stock_valuation">Inventory & Stock Valuation</option>
             </select>

@@ -129,52 +129,92 @@ export default function Dashboard() {
                 View Portfolio <ArrowRight size={12} style={{ marginLeft: '4px' }} />
               </button>
             </div>
-            <table className="table">
-              <colgroup>
-                <col style={{ width: '25%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '14%' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Project Name</th>
-                  <th>Offering</th>
-                  <th>PM</th>
-                  <th>Stage</th>
-                  <th>Deadline</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Outstanding</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeProjects.map(p => (
-                  <tr key={p.key} className="clickable" onClick={() => navigate(`/projects/${p.key}`)}>
-                    <td>
-                      <div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.client}</div>
-                      </div>
-                    </td>
-                    <td>{p.offering}</td>
-                    <td><span className="av" style={{ width: '22px', height: '22px', fontSize: '9px' }}>{p.pm}</span></td>
-                    <td><span className="badge b-default">{p.stage}</span></td>
-                    <td>{p.deadline}</td>
-                    <td>
-                      <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
-                        {p.status || 'Draft'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-warning)' }}>
-                      {p.outstanding}
-                    </td>
+            <div className="desktop-only">
+              <table className="table">
+                <colgroup>
+                  <col style={{ width: '25%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '14%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Project Name</th>
+                    <th>Offering</th>
+                    <th>PM</th>
+                    <th>Stage</th>
+                    <th>Deadline</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Outstanding</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {activeProjects.map(p => (
+                    <tr key={p.key} className="clickable" onClick={() => navigate(`/projects/${p.key}`)}>
+                      <td>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.client}</div>
+                        </div>
+                      </td>
+                      <td>{p.offering}</td>
+                      <td><span className="av" style={{ width: '22px', height: '22px', fontSize: '9px' }}>{p.pm}</span></td>
+                      <td><span className="badge b-default">{p.stage}</span></td>
+                      <td>{p.deadline}</td>
+                      <td>
+                        <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
+                          {p.status || 'Draft'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-warning)' }}>
+                        {p.outstanding}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Touch Feed */}
+            <div className="mobile-only" style={{ padding: '0 14px 14px' }}>
+              {activeProjects.slice(0, 8).map(p => (
+                <div
+                  key={p.key}
+                  onClick={() => navigate(`/projects/${p.key}`)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 0',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      {p.client || 'Client'} • {p.stage || 'In Progress'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-warning)' }}>
+                      {p.outstanding || 'R 0'}
+                    </div>
+                    <span
+                      className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : 'b-warning'}`}
+                      style={{ fontSize: '9px', marginTop: '2px' }}
+                    >
+                      {p.status || 'Active'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Sales Pipeline Opportunity Value */}

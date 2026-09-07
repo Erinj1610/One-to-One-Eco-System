@@ -1,13 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import User, Employee, Role
+from models.orm_models import User, Employee, Role, RolePermission
 from services.firebase_auth import verify_firebase_token, firebase_initialized
 from firebase_admin import auth as firebase_auth
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 router = APIRouter()
+
+SYSTEM_MODULES = [
+    'Dashboard', 'CRM', 'Pipeline', 'Design tracker', 'Projects', 
+    'Design fee', 'Time tracking', 'Products', 'BOQ Maker', 'Orders', 
+    'Invoices', 'Documents', 'HR & people', 'Reports', 'Support'
+]
+
+def is_admin_user(db: Session, current_user: dict) -> bool:
+    email = (current_user.get("email") or "").strip().lower()
+    role_claim = (current_user.get("role") or "").strip().lower()
+    if role_claim == "admin":
+        return True
+    if email in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world", "staff@onetoone.co.za"]:
+        return True
+    db_user = db.query(User).filter(User.email.ilike(email)).first()
+    if db_user and db_user.role_id:
+        role = db.query(Role).filter(Role.id == db_user.role_id).first()
+        if role and role.name.lower() == "admin":
+            return True
+    return False
+
 
 class UserInvite(BaseModel):
     name: str
@@ -20,49 +41,242 @@ class UserUpdate(BaseModel):
     role_id: Optional[int] = None
     department: Optional[str] = None
     disabled: Optional[bool] = False
+    custom_permissions: Optional[Dict[str, str]] = None
+
+class UserCustomPermissionsUpdate(BaseModel):
+    custom_permissions: Dict[str, str] = {}
+
+class RoleCreate(BaseModel):
+    name: str
+
+class RoleUpdate(BaseModel):
+    name: str
+
+class PermissionsUpdate(BaseModel):
+    role_id: Optional[int] = None
+    permissions: Optional[Dict[str, str]] = None
+    matrix: Optional[Dict[str, Dict[str, str]]] = None
+
+@router.get("/me")
+def get_current_user_profile(
+    email: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    current_user: dict = Depends(verify_firebase_token)
+):
+    token_email = (current_user.get("email") or "").strip().lower()
+    target_email = (email or token_email).strip().lower()
+    user = None
+    if target_email:
+        user = db.query(User).filter(User.email.ilike(target_email)).first()
+        if not user:
+            user = db.query(User).filter(User.email.ilike(f"%{target_email}%")).first()
+
+    # Link alias admin/staff session emails to the primary administrator user account
+    if not user and target_email in ["admin@onetoone.co.za", "erin@onetoone.co.za", "staff@onetoone.co.za", "admin@1-to-1.world"]:
+        user = db.query(User).filter(User.email.ilike("erin.jones@1-to-1.world")).first()
+
+    role_perms_map: Dict[int, Dict[str, str]] = {}
+    for rp in db.query(RolePermission).all():
+        role_perms_map.setdefault(rp.role_id, {})[rp.section] = rp.permission_level
+
+    role = db.query(Role).filter(Role.id == user.role_id).first() if (user and user.role_id) else None
+    is_admin = is_admin_user(db, {"email": target_email, "role": current_user.get("role")})
+    role_name = role.name if role else ("Admin" if is_admin else "User")
+    emp = db.query(Employee).filter(Employee.user_id == user.id).first() if user else None
+    name = emp.name if (emp and emp.name) else (target_email.split("@")[0].replace(".", " ").title() if target_email else "User")
+    
+    user_custom = user.custom_permissions if (user and isinstance(user.custom_permissions, dict)) else {}
+    role_defaults = role_perms_map.get(user.role_id, {}) if (user and user.role_id) else {}
+    
+    effective = {}
+    for mod in SYSTEM_MODULES:
+        if mod in user_custom:
+            effective[mod] = user_custom[mod]
+        elif mod in role_defaults:
+            effective[mod] = role_defaults[mod]
+        else:
+            effective[mod] = "Full access" if is_admin or (role and role.name.lower() == "admin") else "View only"
+
+    return {
+        "id": user.id if user else None,
+        "email": user.email if user else target_email,
+        "name": name,
+        "role": role_name,
+        "role_id": user.role_id if user else None,
+        "department": emp.department if (emp and emp.department) else "General",
+        "is_admin": is_admin,
+        "disabled": bool(user.disabled) if user else False,
+        "custom_permissions": user_custom,
+        "custom_override_count": len(user_custom),
+        "effective_permissions": effective
+    }
 
 @router.get("/", response_model=List[dict])
 def list_users(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
-    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
-    is_admin = False
-    if db_user and db_user.role_id:
-        role = db.query(Role).filter(Role.id == db_user.role_id).first()
-        if role and role.name.lower() == "admin":
-            is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
-        is_admin = True
-
-    if not is_admin:
+    if not is_admin_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     users = db.query(User).all()
+    # Pre-fetch role permissions for efficient lookup
+    role_perms_map: Dict[int, Dict[str, str]] = {}
+    for rp in db.query(RolePermission).all():
+        role_perms_map.setdefault(rp.role_id, {})[rp.section] = rp.permission_level
+
     result = []
     for u in users:
         emp = db.query(Employee).filter(Employee.user_id == u.id).first()
         role = db.query(Role).filter(Role.id == u.role_id).first() if u.role_id else None
+        name = emp.name if (emp and emp.name) else (u.email.split("@")[0].replace(".", " ").title())
+        
+        user_custom = u.custom_permissions if isinstance(u.custom_permissions, dict) else {}
+        role_defaults = role_perms_map.get(u.role_id, {}) if u.role_id else {}
+        
+        effective = {}
+        for mod in SYSTEM_MODULES:
+            if mod in user_custom:
+                effective[mod] = user_custom[mod]
+            elif mod in role_defaults:
+                effective[mod] = role_defaults[mod]
+            else:
+                effective[mod] = "Full access" if role and role.name.lower() == "admin" else "View only"
+
         result.append({
             "id": u.id,
             "email": u.email,
             "role": role.name if role else "User",
             "role_id": u.role_id,
-            "name": emp.name if emp else "Unknown",
-            "department": emp.department if emp else "None",
-            "disabled": bool(u.disabled)
+            "name": name,
+            "department": emp.department if (emp and emp.department) else "General",
+            "disabled": bool(u.disabled),
+            "custom_permissions": user_custom,
+            "custom_override_count": len(user_custom),
+            "effective_permissions": effective
         })
     return result
 
+
+@router.get("/roles", response_model=List[dict])
+def list_roles(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    roles = db.query(Role).order_by(Role.id.asc()).all()
+    res = []
+    for r in roles:
+        user_count = db.query(User).filter(User.role_id == r.id).count()
+        res.append({
+            "id": r.id,
+            "name": r.name,
+            "user_count": user_count
+        })
+    return res
+
+@router.post("/roles", status_code=status.HTTP_201_CREATED)
+def create_role(data: RoleCreate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage roles")
+    clean_name = data.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Role name cannot be empty")
+    existing = db.query(Role).filter(Role.name.ilike(clean_name)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Role '{clean_name}' already exists")
+    new_role = Role(name=clean_name)
+    db.add(new_role)
+    db.commit()
+    db.refresh(new_role)
+    # Seed default permissions as 'View only' for all modules
+    for mod in SYSTEM_MODULES:
+        db.add(RolePermission(role_id=new_role.id, section=mod, permission_level="View only"))
+    db.commit()
+    return {"id": new_role.id, "name": new_role.name, "user_count": 0}
+
+@router.put("/roles/{role_id}")
+def update_role(role_id: int, data: RoleUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage roles")
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    clean_name = data.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Role name cannot be empty")
+    role.name = clean_name
+    db.commit()
+    return {"message": "Role updated successfully", "id": role.id, "name": role.name}
+
+@router.delete("/roles/{role_id}")
+def delete_role(role_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage roles")
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    if role.name.lower() == "admin":
+        raise HTTPException(status_code=400, detail="The default Admin role cannot be deleted")
+    user_count = db.query(User).filter(User.role_id == role_id).count()
+    if user_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete role: {user_count} user(s) currently assigned to this role")
+    db.query(RolePermission).filter(RolePermission.role_id == role_id).delete()
+    db.delete(role)
+    db.commit()
+    return {"message": "Role deleted successfully"}
+
+@router.get("/permissions")
+def get_permissions(db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    roles = db.query(Role).order_by(Role.id.asc()).all()
+    perms = db.query(RolePermission).all()
+    
+    matrix = {}
+    for r in roles:
+        matrix[str(r.id)] = {}
+        for mod in SYSTEM_MODULES:
+            matrix[str(r.id)][mod] = "No access"
+            
+    for p in perms:
+        rid = str(p.role_id)
+        if rid in matrix:
+            matrix[rid][p.section] = p.permission_level
+
+    return {
+        "roles": [{"id": r.id, "name": r.name} for r in roles],
+        "modules": SYSTEM_MODULES,
+        "matrix": matrix
+    }
+
+@router.put("/permissions")
+def update_permissions(data: PermissionsUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage permissions")
+        
+    if data.matrix:
+        for rid_str, mod_perms in data.matrix.items():
+            try:
+                rid = int(rid_str)
+            except ValueError:
+                continue
+            for mod, level in mod_perms.items():
+                rp = db.query(RolePermission).filter(RolePermission.role_id == rid, RolePermission.section == mod).first()
+                if rp:
+                    rp.permission_level = level
+                else:
+                    db.add(RolePermission(role_id=rid, section=mod, permission_level=level))
+        db.commit()
+        return {"message": "Permissions matrix updated successfully"}
+
+    elif data.role_id is not None and data.permissions:
+        rid = data.role_id
+        for mod, level in data.permissions.items():
+            rp = db.query(RolePermission).filter(RolePermission.role_id == rid, RolePermission.section == mod).first()
+            if rp:
+                rp.permission_level = level
+            else:
+                db.add(RolePermission(role_id=rid, section=mod, permission_level=level))
+        db.commit()
+        return {"message": f"Permissions updated successfully for role {rid}"}
+
+    raise HTTPException(status_code=400, detail="Invalid permissions payload")
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
-    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
-    is_admin = False
-    if db_user and db_user.role_id:
-        role = db.query(Role).filter(Role.id == db_user.role_id).first()
-        if role and role.name.lower() == "admin":
-            is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
-        is_admin = True
-
-    if not is_admin:
+    if not is_admin_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     existing_user = db.query(User).filter(User.email == invite.email).first()
@@ -147,16 +361,7 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
 
 @router.delete("/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
-    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
-    is_admin = False
-    if db_user and db_user.role_id:
-        role = db.query(Role).filter(Role.id == db_user.role_id).first()
-        if role and role.name.lower() == "admin":
-            is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
-        is_admin = True
-
-    if not is_admin:
+    if not is_admin_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     user_to_delete = db.query(User).filter(User.id == user_id).first()
@@ -206,16 +411,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: dict 
 
 @router.put("/{user_id}")
 def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
-    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
-    is_admin = False
-    if db_user and db_user.role_id:
-        role = db.query(Role).filter(Role.id == db_user.role_id).first()
-        if role and role.name.lower() == "admin":
-            is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
-        is_admin = True
-
-    if not is_admin:
+    if not is_admin_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     target_user = db.query(User).filter(User.id == user_id).first()
@@ -244,6 +440,10 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
         if role_record:
             employee.role = role_record.name
 
+    # Update custom_permissions if provided
+    if data.custom_permissions is not None:
+        target_user.custom_permissions = data.custom_permissions
+
     # Sync disabled status with Identity Platform/Firebase Auth
     if firebase_initialized:
         try:
@@ -256,18 +456,32 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db), c
     db.commit()
     return {"message": "User updated successfully"}
 
+@router.put("/{user_id}/permissions")
+def update_user_custom_permissions(user_id: int, data: UserCustomPermissionsUpdate, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
+    if not is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized to manage users")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    clean_perms = {}
+    for mod, lvl in (data.custom_permissions or {}).items():
+        if lvl and lvl in ["Full access", "Can edit", "View only", "No access"]:
+            clean_perms[mod] = lvl
+
+    target_user.custom_permissions = clean_perms
+    db.commit()
+    return {
+        "message": "User permissions updated successfully",
+        "user_id": user_id,
+        "custom_permissions": clean_perms
+    }
+
+
 @router.post("/{user_id}/reset-password")
 def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_user: dict = Depends(verify_firebase_token)):
-    db_user = db.query(User).filter(User.email == current_user.get("email")).first()
-    is_admin = False
-    if db_user and db_user.role_id:
-        role = db.query(Role).filter(Role.id == db_user.role_id).first()
-        if role and role.name.lower() == "admin":
-            is_admin = True
-    if current_user.get("email") in ["admin@onetoone.co.za", "erin@onetoone.co.za", "erin.jones@1-to-1.world"]:
-        is_admin = True
-
-    if not is_admin:
+    if not is_admin_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to manage users")
 
     target_user = db.query(User).filter(User.id == user_id).first()

@@ -11,6 +11,8 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
+import MobileCrmViewer from '../components/mobile/MobileCrmViewer';
+import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import { API_BASE } from '../api_config';
 
 // Date anchor and comparison helpers
@@ -39,6 +41,13 @@ export default function CrmPage() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Dynamic client types state
   const [clientTypes, setClientTypes] = useState([
@@ -686,6 +695,14 @@ export default function CrmPage() {
 
   // GLOBAL VIEW
   if (!selectedClient) {
+    if (isMobile) {
+      return (
+        <div className="animation-fade-in" style={{ width: '100%', maxWidth: '100%' }}>
+          <MobileCrmViewer contacts={contacts} projects={projects} onRefresh={refreshClients} />
+        </div>
+      );
+    }
+
     return (
       <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
         <div style={{ minWidth: 0, position: 'relative' }}>
@@ -1489,9 +1506,9 @@ export default function CrmPage() {
       {/* Tabs */}
       <div className="card" style={{ marginBottom: '24px' }}>
         <div className="tabs" style={{ borderBottom: 'none', padding: '0 8px' }}>
-          {['overview', 'projects', 'activity', 'financials'].map(tab => (
+          {['overview', 'projects', 'files', 'activity', 'financials'].map(tab => (
             <button key={tab} className={`tab-btn ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-              {tab === 'activity' ? 'Activity Log' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === 'activity' ? 'Activity Log' : tab === 'files' ? '📁 Drive & Files' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -1883,9 +1900,19 @@ export default function CrmPage() {
                  )}
                </tbody>
              </table>
-          </div>
+           </div>
         )}
 
+        {/* TAB: DRIVE & FILES SCOPED TO THIS CLIENT */}
+        {activeTab === 'files' && (
+          <div className="animation-fade-in" style={{ minHeight: '620px' }}>
+            <DriveFileExplorer
+              scope="client"
+              clientId={selectedClient.id}
+              clientName={selectedClient.name}
+            />
+          </div>
+        )}
 
         {/* TAB 4: ACTIVITY LOG */}
         {activeTab === 'activity' && (

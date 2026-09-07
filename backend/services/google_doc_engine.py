@@ -72,6 +72,8 @@ def get_or_create_folder(drive_service, folder_name, parent_folder_id=None):
     try:
         res = drive_service.files().list(
             q=query,
+            corpora='drive',
+            driveId=ROOT_DRIVE_FOLDER_ID,
             fields="files(id, name)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
@@ -273,8 +275,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
     # Vaulting setup if saving
     if is_save_action:
-        client_folder_id = get_or_create_folder(drive_service, client_name, ROOT_DRIVE_FOLDER_ID)
-        project_folder_id = get_or_create_folder(drive_service, project_name, client_folder_id)
+        from services.google_drive_service import get_or_create_root_containers, create_drive_shortcut
+        projects_root, clients_root = get_or_create_root_containers(drive_service)
+        project_folder_id = get_or_create_folder(drive_service, project_name, projects_root['id'])
+        if client_name and client_name.strip() and client_name.strip().lower() != "general clients":
+            try:
+                client_folder_id = get_or_create_folder(drive_service, client_name, clients_root['id'])
+                create_drive_shortcut(drive_service, project_name, project_folder_id, client_folder_id)
+            except Exception as e:
+                logger.warning(f"Could not create client shortcut in google_doc_engine: {e}")
         
         # Design Fee proposals go directly under Project; Orders go inside an "Orders" parent folder under Project
         if sheet_name == 'DESIGN_FEE_PROPOSAL':
@@ -295,6 +304,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             query = f"mimeType='application/vnd.google-apps.spreadsheet' and '{doc_subfolder_id}' in parents and trashed=false"
             existing_res = drive_service.files().list(
                 q=query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
                 fields="files(id, webViewLink, name)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
@@ -1223,6 +1234,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             latest_query = f"'{latest_folder_id}' in parents and trashed=false"
             latest_res = drive_service.files().list(
                 q=latest_query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
                 fields="files(id, name, createdTime)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True

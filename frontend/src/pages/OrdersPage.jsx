@@ -6,6 +6,7 @@ import { useResizableTable } from '../components/common/ResizableTable';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
 import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
+import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -39,7 +40,8 @@ import {
   Download,
   Settings,
   GripVertical,
-  CreditCard
+  CreditCard,
+  Folder
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -3150,6 +3152,13 @@ export default function OrdersPage() {
                 <FileText size={13} /> 📄 Docs & Generator
               </button>
               <button 
+                className={`btn btn-sm ${workspaceSubTab === 'files' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={() => setWorkspaceSubTab('files')}
+              >
+                <Folder size={13} /> 📁 Drive & Files
+              </button>
+              <button 
                 className={`btn btn-sm ${workspaceSubTab === 'payments' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onClick={() => setWorkspaceSubTab('payments')}
@@ -5379,6 +5388,17 @@ export default function OrdersPage() {
               </div>
             )}
 
+            {/* SUB-TAB: GOOGLE DRIVE & FILES SCOPED TO THIS ORDER */}
+            {workspaceSubTab === 'files' && (
+              <div className="animation-fade-in" style={{ padding: '4px 0', minHeight: '620px' }}>
+                <DriveFileExplorer
+                  scope="order"
+                  orderId={selectedOrderId}
+                  orderRef={selectedOrderId}
+                  projectName={selectedProjectKey || ''}
+                />
+              </div>
+            )}
 
             {workspaceSubTab === 'payments' && (
               /* SUB-TAB 3: DEDICATED PALLADIUM PAYMENTS LOG WORKSPACE */

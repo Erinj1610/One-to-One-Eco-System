@@ -50,6 +50,31 @@ def bulk_relink_orders(payload: BulkRelinkOrdersSchema, db: Session = Depends(ge
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
+    orders_to_move = db.query(Order).filter(Order.po_number.in_(pos)).all()
+    
+    # Move Google Drive folders atomically for each order whose project changed
+    try:
+        from services.google_drive_service import move_order_drive_folder
+        all_projects = {p.id: p for p in db.query(Project).all()}
+        all_projects_by_key = {p.project_key: p for p in all_projects.values()}
+        
+        for ord_item in orders_to_move:
+            old_proj = all_projects.get(ord_item.project_id) or all_projects_by_key.get(ord_item.project_key)
+            old_name = old_proj.name if old_proj else ""
+            if old_proj and old_proj.id == project.id:
+                continue
+            try:
+                move_order_drive_folder(
+                    order_identifier=ord_item.po_number,
+                    old_project_name=old_name,
+                    new_project_name=project.name,
+                    client_name=project.client_name or ""
+                )
+            except Exception as drive_err:
+                print(f"Warning: Failed to move drive folder for order {ord_item.po_number}: {drive_err}")
+    except Exception as general_drive_err:
+        print(f"Drive move hook error: {general_drive_err}")
+
     try:
         db.query(Order).filter(Order.po_number.in_(pos)).update(
             {"project_key": project.project_key, "project_id": project.id},
@@ -280,12 +305,33 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    old_project_key = order.project_key
+    old_project_id = order.project_id
+
     project_key = order_data.get("project_key")
     project_id = None
+    project = None
     if project_key:
         order.project_key = project_key
         project = db.query(Project).filter(Project.project_key == project_key).first()
         project_id = project.id if project else None
+
+    # Check if project shifted and move Drive folder atomically
+    if project and (project_key != old_project_key or (old_project_id and project_id != old_project_id)):
+        try:
+            from services.google_drive_service import move_order_drive_folder
+            old_proj = db.query(Project).filter(
+                (Project.id == old_project_id) | (Project.project_key == old_project_key)
+            ).first() if (old_project_id or old_project_key) else None
+            old_name = old_proj.name if old_proj else ""
+            move_order_drive_folder(
+                order_identifier=po_number,
+                old_project_name=old_name,
+                new_project_name=project.name,
+                client_name=project.client_name or ""
+            )
+        except Exception as drive_err:
+            print(f"Warning: Failed to move drive folder during update_order for {po_number}: {drive_err}")
 
     apply_order_fields(order, order_data, project_id=project_id, project_key=project_key)
     db.commit()

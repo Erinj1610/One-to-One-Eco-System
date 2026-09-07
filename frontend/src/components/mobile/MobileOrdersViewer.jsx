@@ -82,11 +82,24 @@ export default function MobileOrdersViewer({ orders = [], onRefresh }) {
             const displayProject = order.projectFullName || order.project_name || order.name || 'Project';
             const displayStatus = order.orderStatus || order.status || 'Pending';
 
-            const items = order.activeOrderItems || order.items || [];
-            const totalRetail = items.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitRetail || i.unit_retail) || 0)), 0);
-            const discountedRetail = Math.max(0, totalRetail * (1 - (Number(order.orderDiscount) || 0) / 100));
-            const valueInclVat = discountedRetail * 1.15;
-            const paid = Number(order.orderPaidAmount || order.paid_amount || 0);
+            const items = Array.isArray(order.activeOrderItems)
+              ? order.activeOrderItems
+              : Array.isArray(order.itemsList)
+              ? order.itemsList
+              : Array.isArray(order.items)
+              ? order.items
+              : [];
+
+            const totalRetail = items.length > 0
+              ? items.reduce((s, i) => s + ((Number(i.qty) || 0) * (Number(i.unitRetail || i.unit_retail || i.price) || 0)), 0)
+              : Number(order.value || order.total || 0);
+
+            const discountedRetail = Number(order.value || 0) > 0 && items.length === 0
+              ? Number(order.value)
+              : Math.max(0, totalRetail * (1 - (Number(order.orderDiscount) || 0) / 100));
+
+            const valueInclVat = order.valueInclVat || (discountedRetail * 1.15);
+            const paid = Number(order.paid || order.orderPaidAmount || order.paid_amount || 0);
             const balance = Math.max(0, valueInclVat - paid);
 
             return (
