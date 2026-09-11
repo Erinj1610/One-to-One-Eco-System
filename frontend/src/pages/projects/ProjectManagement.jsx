@@ -320,8 +320,15 @@ export default function ProjectManagement() {
         const received = item.receivedQty !== undefined ? item.receivedQty : 0;
         const delivered = item.deliveryQty !== undefined ? item.deliveryQty : 0;
         const stockStatus = item.stockStatus !== undefined ? item.stockStatus : '';
+        const stockOnHand = item.stockOnHand !== undefined ? item.stockOnHand : (item.stock_on_hand !== undefined ? item.stock_on_hand : 0);
 
-        totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+        const effectiveProc = stockStatus === 'All Stock on Hand' 
+          ? q 
+          : stockStatus === 'Partial Stock on Hand'
+            ? Math.min(q, (Number(received) || 0) + (Number(stockOnHand) || 0))
+            : (Number(received) || 0);
+
+        totalProcQty += effectiveProc;
         totalInvQty += Number(invoiced) || 0;
         totalDelQty += Number(delivered) || 0;
       });
