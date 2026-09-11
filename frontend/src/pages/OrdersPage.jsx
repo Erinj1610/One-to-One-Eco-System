@@ -3105,7 +3105,7 @@ export default function OrdersPage() {
                     onClick={() => {
                       if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
                     }}
-                    disabled={isSavingOrder || isSyncingVault}
+                    disabled={isSavingOrder || isVaultGenerating}
                   >
                     Close
                   </button>
