@@ -1717,6 +1717,7 @@ export function StoreProvider({ children }) {
             offering: targetProj.offering || 'Signature',
             sqm: String(targetProj.sqm || ''),
             status: targetProj.status || 'On track',
+            start_date: targetProj.start || null,
             deadline: targetProj.deadline || 'TBD',
             complete_status: targetProj.complete || 'Ongoing',
             target_margin: Number(targetProj.targetMargin) || 0.0,
@@ -1757,12 +1758,12 @@ export function StoreProvider({ children }) {
       designFees: project.designFees || [],
       orders: project.orders || [],
       stage: project.stage || 'Stage 1',
-      status: project.status || 'On track',
+      status: project.status || 'Draft',
       targetMargin: project.targetMargin || alertSettings.defaultTargetMargin || 39,
       actualMargin: project.actualMargin || alertSettings.defaultTargetMargin || 39,
       delay: '—',
-      start: project.start || new Date().toISOString().split('T')[0],
-      deadline: project.deadline || 'TBD',
+      start: project.start && project.start !== '—' ? project.start : new Date().toISOString().split('T')[0],
+      deadline: project.deadline && project.deadline !== '—' ? project.deadline : 'TBD',
       daysLeft: '—',
       complete: 'Ongoing',
       isDraft: project.isDraft !== undefined ? project.isDraft : true,
@@ -1786,7 +1787,7 @@ export function StoreProvider({ children }) {
           pm_name: newProj.pm || 'Dani',
           offering: newProj.offering || 'Signature',
           sqm: String(newProj.sqm || ''),
-          status: newProj.status || 'On track',
+          status: newProj.status || 'Draft',
           start_date: newProj.start,
           deadline: newProj.deadline || 'TBD',
           complete_status: newProj.complete || 'Ongoing',
@@ -1805,8 +1806,8 @@ export function StoreProvider({ children }) {
   };
 
   const saveDraftProject = async (oldKey, projectData) => {
-    const rawName = projectData.name || 'unnamed-project';
-    const baseKey = rawName.toLowerCase().trim().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
+    const rawName = (projectData.name || '').trim() || 'unnamed-project';
+    const baseKey = rawName.toLowerCase().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
     let finalKey = baseKey;
     
     let counter = 1;
@@ -1823,18 +1824,9 @@ export function StoreProvider({ children }) {
       key: finalKey,
       isDraft: false,
       stage: projectData.stage || existingDraft.stage || 'Pending',
-      status: projectData.status || existingDraft.status || 'On track',
-      start: projectData.start || existingDraft.start || new Date().toISOString().split('T')[0]
+      status: (projectData.status && projectData.status !== 'Draft') ? projectData.status : 'On track',
+      start: (projectData.start && projectData.start !== '—') ? projectData.start : (existingDraft.start || new Date().toISOString().split('T')[0])
     };
-
-    // Optimistically update React state and ref
-    setProjects(prev => {
-      const next = { ...prev };
-      delete next[oldKey];
-      next[finalKey] = updatedProj;
-      projectsRef.current = next;
-      return next;
-    });
 
     // Save to Cloud SQL database via PUT /api/projects/{oldKey}
     try {
@@ -1848,13 +1840,13 @@ export function StoreProvider({ children }) {
       const payload = {
         name: updatedProj.name,
         project_key: finalKey,
-        client_name: updatedProj.client || '',
-        pm_name: updatedProj.pm || 'Dani',
+        client_name: updatedProj.client || updatedProj.client_name || '',
+        pm_name: updatedProj.pm || updatedProj.pm_name || 'Dani',
         offering: updatedProj.offering || 'Signature',
         sqm: String(updatedProj.sqm || ''),
         status: updatedProj.status || 'On track',
         start_date: updatedProj.start || new Date().toISOString().split('T')[0],
-        deadline: updatedProj.deadline || 'TBD',
+        deadline: updatedProj.deadline && updatedProj.deadline !== '—' ? updatedProj.deadline : 'TBD',
         complete_status: 'Ongoing',
         target_margin: Number(updatedProj.targetMargin) || 39.0,
         actual_margin: Number(updatedProj.actualMargin) || 39.0,
@@ -1871,17 +1863,39 @@ export function StoreProvider({ children }) {
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) {
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        if (resData.project_key) {
+          finalKey = resData.project_key;
+          updatedProj.key = finalKey;
+        }
+      } else {
         console.warn("PUT /api/projects failed, running POST fallback...");
-        await fetch(`${API_BASE}/api/projects/`, {
+        const postRes = await fetch(`${API_BASE}/api/projects/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (postRes.ok) {
+          const postData = await postRes.json().catch(() => ({}));
+          if (postData.project_key) {
+            finalKey = postData.project_key;
+            updatedProj.key = finalKey;
+          }
+        }
       }
     } catch (err) {
       console.error("Error saving project to database:", err);
     }
+
+    // Optimistically update React state and ref after confirming final key
+    setProjects(prev => {
+      const next = { ...prev };
+      delete next[oldKey];
+      next[finalKey] = updatedProj;
+      projectsRef.current = next;
+      return next;
+    });
 
     return finalKey;
   };

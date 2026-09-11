@@ -515,6 +515,7 @@ export default function ProjectList() {
               <button 
                 className="btn btn-primary" 
                 onClick={async () => {
+                  const todayStr = new Date().toISOString().split('T')[0];
                   const newKey = await addProject({
                     name: '',
                     client: '',
@@ -527,10 +528,10 @@ export default function ProjectList() {
                     designFees: [],
                     orders: [],
                     isDraft: true,
-                    stage: '—',
+                    stage: 'Stage 1',
                     status: 'Draft',
-                    start: '—',
-                    deadline: '—'
+                    start: todayStr,
+                    deadline: 'TBD'
                   });
                   if (newKey) {
                     navigate(`/projects/${newKey}`);

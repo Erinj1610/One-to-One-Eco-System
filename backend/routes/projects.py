@@ -429,14 +429,18 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
 
     # If project key changed (e.g. from draft key to final project name key)
     if project_data.project_key and project_data.project_key != project.project_key:
-        new_key = project_data.project_key
-        existing_other = db.query(Project).filter(Project.project_key == new_key, Project.id != project.id).first()
-        if not existing_other:
-            old_pk = project.project_key
-            project.project_key = new_key
-            from models.orm_models import Order, DesignFee
-            db.query(Order).filter(Order.project_key == old_pk).update({"project_key": new_key, "project_name": project_data.name}, synchronize_session=False)
-            db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": new_key}, synchronize_session=False)
+        target_key = project_data.project_key
+        candidate_key = target_key
+        counter = 1
+        while db.query(Project).filter(Project.project_key == candidate_key, Project.id != project.id).first():
+            candidate_key = f"{target_key}-{counter}"
+            counter += 1
+
+        old_pk = project.project_key
+        project.project_key = candidate_key
+        from models.orm_models import Order, DesignFee
+        db.query(Order).filter(Order.project_key == old_pk).update({"project_key": candidate_key, "project_name": project_data.name}, synchronize_session=False)
+        db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": candidate_key}, synchronize_session=False)
 
     project.name = project_data.name
     project.client_name = project_data.client_name
@@ -503,7 +507,7 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
 
     db.commit()
     db.refresh(project)
-    return {"status": "ok", "message": f"Project '{project_key}' updated successfully"}
+    return {"status": "ok", "message": f"Project '{project_key}' updated successfully", "project_key": project.project_key}
 
 @router.post("/{project_key}/design-fee")
 def create_project_design_fee(project_key: str, fee_data: dict, db: Session = Depends(get_db)):
@@ -1466,6 +1470,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             relational_fees = s_fees if s_fees else (fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), []))
 
+            is_draft_proj = bool((p.status and p.status.lower() == "draft") or p_key.startswith("new-project"))
+            proj_status = "Draft" if is_draft_proj else computed_status
+
             projects_dict[p_key] = {
                 "id": p.id,
                 "key": p_key,
@@ -1474,7 +1481,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "pm": p.pm_name,
                 "offering": p.offering,
                 "sqm": p.sqm,
-                "status": computed_status,
+                "status": proj_status,
+                "isDraft": is_draft_proj,
                 "deadline": p.deadline,
                 "start": p.start_date,
                 "complete": p.complete_status,
