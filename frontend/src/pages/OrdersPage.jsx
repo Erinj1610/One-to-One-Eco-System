@@ -800,7 +800,17 @@ export default function OrdersPage() {
     const depositFormatted70 = `R ${(finalTotalInclVat * 0.70).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const depositFormatted100 = `R ${(finalTotalInclVat * 1.00).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const totalPaidNum = Number(orderPaidAmount) || 0;
+    const currentOrderObj = Object.values(projects || {}).flatMap(p => Object.values(p.orders || {})).find(o => o.id === selectedOrderId || o.poNumber === selectedOrderId) || {};
+    const effectivePaidFromOrder = Number(currentOrderObj.paid) || 0;
+    const effectivePaymentsFromOrder = Array.isArray(currentOrderObj.payments) ? currentOrderObj.payments : [];
+
+    const activePaymentsList = (orderPayments && orderPayments.length > 0)
+      ? orderPayments
+      : (effectivePaymentsFromOrder.length > 0 ? effectivePaymentsFromOrder : []);
+    const paidSum = activePaymentsList.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const totalPaidNum = paidSum > 0 
+      ? paidSum 
+      : (Number(orderPaidAmount) > 0 ? Number(orderPaidAmount) : effectivePaidFromOrder);
     const balanceOutstandingNum = Math.max(0, finalTotalInclVat - totalPaidNum);
 
     return {
@@ -884,10 +894,10 @@ export default function OrdersPage() {
       TOTAL_AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       
       items: finalItems,
-      payments: (orderPayments || []).map((p, idx) => ({
+      payments: activePaymentsList.map((p, idx) => ({
         index: (idx + 1).toString(),
-        date: p.date || '',
-        reference: p.reference || '',
+        date: p.date ? (typeof p.date === 'string' && p.date.includes('T') ? p.date.split('T')[0] : p.date) : '',
+        reference: p.receipt_no || p.receiptNo || p.reference || p.notes || (p.id ? `Receipt #${p.id}` : `Payment #${idx + 1}`),
         amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       })),
       floors: (() => {

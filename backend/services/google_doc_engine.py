@@ -518,7 +518,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             '[TABLE_HEADER]', '[TABLE_HEAD]',
             '[ITEM_ROW]', '[ITEM_SUMMARY]',
             '[CREDIT_HEADER]', '[CREDIT_HEAD]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]',
-            '[PAYMENT_ROW]', '[PAYMENT]', '[PAYMENTS]',
             '[AREA_FOOTER]', '[FLOOR_FOOTER]'
         )
         
@@ -590,7 +589,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[ITEM_ROW]', '[ITEM_SUMMARY]')), None)
         credit_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[CREDIT_HEADER]'), None)
         credit_item_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')), None)
-        payment_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[PAYMENT_ROW]'), None)
+        payment_template_row = next(((r_i, cell_objs) for r_i, norm_dir, cell_objs in parsed_rows if norm_dir == '[PAYMENT_ROW]'), None)
+        payment_orig_r_i = payment_template_row[0] if payment_template_row else None
+        payment_template_cells = payment_template_row[1] if payment_template_row else None
 
         # Helper to compute exact line item total from BOQ item objects
         def resolve_item_total(it):
@@ -893,39 +894,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
                     rows_on_current_page += 1.0
 
-        # Generate payment rows if [PAYMENT_ROW] directive is present in template
-        if payment_row_cells:
-            payments_list = tokens.get('payments', [])
-            if not isinstance(payments_list, list):
-                payments_list = []
-            for p_idx, p_obj in enumerate(payments_list):
-                amt_raw = p_obj.get('amount')
-                if amt_raw is not None and str(amt_raw).strip() != '':
-                    amt_str = str(amt_raw).strip()
-                    if not amt_str.startswith('R') and safe_float(amt_str) > 0:
-                        amt_formatted = f"R {safe_float(amt_str):,.2f}"
-                    else:
-                        amt_formatted = amt_str
-                else:
-                    amt_formatted = ''
-                
-                pay_ctx = {
-                    'payment.index': str(p_idx + 1),
-                    'payment.date': str(p_obj.get('date') or ''),
-                    'payment.reference': str(p_obj.get('reference') or ''),
-                    'payment.amount': amt_formatted,
-                    'PAYMENT.INDEX': str(p_idx + 1),
-                    'PAYMENT.DATE': str(p_obj.get('date') or ''),
-                    'PAYMENT.REFERENCE': str(p_obj.get('reference') or ''),
-                    'PAYMENT.AMOUNT': amt_formatted,
-                    '_is_spacer': False
-                }
-                for pk, pv in p_obj.items():
-                    pay_ctx[f"payment.{pk}"] = str(pv) if pv is not None else ''
-                    pay_ctx[f"payment.{pk}".upper()] = str(pv) if pv is not None else ''
-                    pay_ctx[pk] = str(pv) if pv is not None else ''
-                generated_dynamic_rows.append(('[PAYMENT_ROW]', payment_row_cells, pay_ctx))
-
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
         # Construct rowData strictly for generated dynamic rows (starting at len(top_fixed))
@@ -1057,6 +1025,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         new_dyn_count = len(generated_dynamic_rows)
         extra_rows = new_dyn_count - orig_dyn_count
 
+        # Determine extra rows introduced by [PAYMENT_ROW]
+        extra_payment_rows = 0
+        raw_payments = tokens.get('payments', [])
+        payments_list = raw_payments if isinstance(raw_payments, list) else []
+        p_count = len(payments_list)
+        if payment_orig_r_i is not None:
+            if p_count == 0:
+                extra_payment_rows = -1
+            else:
+                extra_payment_rows = p_count - 1
+
         # Determine if order has active discount > 0%
         has_discount = False
         if 'orderDiscount' in tokens:
@@ -1093,7 +1072,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     discount_rows_to_delete.append(orig_r_i)
             for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
                 if is_discount_row(norm_dir, cell_objs):
-                    discount_rows_to_delete.append(orig_r_i + extra_rows)
+                    if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                        discount_rows_to_delete.append(orig_r_i + extra_rows + extra_payment_rows)
+                    else:
+                        discount_rows_to_delete.append(orig_r_i + extra_rows)
 
         grid_requests = []
 
@@ -1197,6 +1179,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -1221,11 +1205,165 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
+        # STEP 5b: Dedicated Payment Block expansion/rendering
+        if payment_orig_r_i is not None and payment_template_cells is not None:
+            current_payment_r = payment_orig_r_i + (extra_rows if payment_orig_r_i >= len(top_fixed) else 0)
+            
+            if p_count == 0:
+                # Option B: Delete template payment row cleanly if order has 0 payments
+                grid_requests.append({
+                    'deleteDimension': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': current_payment_r,
+                            'endIndex': current_payment_r + 1
+                        }
+                    }
+                })
+            else:
+                if p_count > 1:
+                    # Insert p_count - 1 additional rows below current_payment_r
+                    grid_requests.append({
+                        'insertDimension': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': current_payment_r + 1,
+                                'endIndex': current_payment_r + p_count
+                            },
+                            'inheritFromBefore': False
+                        }
+                    })
+                    # Copy-paste styling, merges, and formatting from template payment row into newly created rows
+                    for new_p_i in range(1, p_count):
+                        grid_requests.append({
+                            'copyPaste': {
+                                'source': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': current_payment_r,
+                                    'endRowIndex': current_payment_r + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': max_col_count
+                                },
+                                'destination': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': current_payment_r + new_p_i,
+                                    'endRowIndex': current_payment_r + new_p_i + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': max_col_count
+                                },
+                                'pasteType': 'PASTE_NORMAL'
+                            }
+                        })
+
+                # Maintain exact row height for all payment rows
+                if payment_orig_r_i in exact_row_height_by_index:
+                    grid_requests.append({
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': current_payment_r,
+                                'endIndex': current_payment_r + p_count
+                            },
+                            'properties': {
+                                'pixelSize': exact_row_height_by_index[payment_orig_r_i]
+                            },
+                            'fields': 'pixelSize'
+                        }
+                    })
+
+                # Populate cell values for each payment row (0 to p_count - 1)
+                for p_idx, p_obj in enumerate(payments_list):
+                    target_row_idx = current_payment_r + p_idx
+                    amt_val = p_obj.get('amount')
+                    if amt_val is not None and str(amt_val).strip() != '':
+                        amt_s = str(amt_val).strip()
+                        amt_formatted = f"R {safe_float(amt_s):,.2f}" if not amt_s.startswith('R') and safe_float(amt_s) > 0 else amt_s
+                    else:
+                        amt_formatted = ''
+
+                    date_str = str(p_obj.get('date') or '')
+                    if 'T' in date_str:
+                        date_str = date_str.split('T')[0]
+
+                    ref_str = str(p_obj.get('reference') or p_obj.get('receipt_no') or p_obj.get('receiptNo') or p_obj.get('notes') or '')
+                    method_str = str(p_obj.get('method') or p_obj.get('payment_method') or '')
+                    notes_str = str(p_obj.get('notes') or '')
+
+                    p_tokens = {
+                        'payment.index': str(p_idx + 1),
+                        'payment.date': date_str,
+                        'payment.reference': ref_str,
+                        'payment.receipt_no': ref_str,
+                        'payment.amount': amt_formatted,
+                        'payment.method': method_str,
+                        'payment.notes': notes_str,
+
+                        'PAYMENT.INDEX': str(p_idx + 1),
+                        'PAYMENT.DATE': date_str,
+                        'PAYMENT.REFERENCE': ref_str,
+                        'PAYMENT.RECEIPT_NO': ref_str,
+                        'PAYMENT.AMOUNT': amt_formatted,
+                        'PAYMENT.METHOD': method_str,
+                        'PAYMENT.NOTES': notes_str,
+
+                        'PAYMENT_INDEX': str(p_idx + 1),
+                        'PAYMENT_DATE': date_str,
+                        'PAYMENT_REFERENCE': ref_str,
+                        'PAYMENT_AMOUNT': amt_formatted,
+                        'PAYMENT_METHOD': method_str,
+                        'PAYMENT_NOTES': notes_str,
+
+                        'payment_index': str(p_idx + 1),
+                        'payment_date': date_str,
+                        'payment_reference': ref_str,
+                        'payment_amount': amt_formatted,
+                        'payment_method': method_str,
+                        'payment_notes': notes_str,
+                    }
+                    for pk, pv in p_obj.items():
+                        p_tokens[f"payment.{pk}"] = str(pv) if pv is not None else ''
+                        p_tokens[f"payment.{pk}".upper()] = str(pv) if pv is not None else ''
+                        p_tokens[pk] = str(pv) if pv is not None else ''
+                        p_tokens[pk.upper()] = str(pv) if pv is not None else ''
+                    p_lower_tokens = {k.lower(): v for k, v in p_tokens.items()}
+
+                    for c_i, c_obj in enumerate(payment_template_cells):
+                        user_val = c_obj.get('userEnteredValue', {})
+                        formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                        if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                            cell_str = clean_block_tags(str(formatted_val))
+                            new_str = cell_str
+                            for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                                raw_match = m.group(0)
+                                token_key = (m.group(1) or m.group(2) or '').strip()
+                                sub_val = str(p_tokens.get(token_key, p_lower_tokens.get(token_key.lower(), tokens.get(token_key, tokens.get(token_key.lower(), '')))))
+                                new_str = new_str.replace(raw_match, sub_val)
+                            cleaned_pay_cell = clean_block_tags(new_str)
+                            grid_requests.append({
+                                'updateCells': {
+                                    'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_pay_cell}}]}],
+                                    'fields': 'userEnteredValue',
+                                    'start': {
+                                        'sheetId': temp_tab_gid,
+                                        'rowIndex': target_row_idx,
+                                        'columnIndex': c_i
+                                    }
+                                }
+                            })
+
         # STEP 6: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
-            actual_r_idx = orig_r_i + extra_rows
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
+            if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                actual_r_idx = orig_r_i + extra_rows + extra_payment_rows
+            else:
+                actual_r_idx = orig_r_i + extra_rows
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -1370,7 +1508,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
-            actual_r_idx = orig_r_i + extra_rows
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
+            if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                actual_r_idx = orig_r_i + extra_rows + extra_payment_rows
+            else:
+                actual_r_idx = orig_r_i + extra_rows
             if orig_r_i in exact_row_height_by_index:
                 grid_requests.append({
                     'updateDimensionProperties': {
