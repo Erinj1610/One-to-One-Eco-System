@@ -115,11 +115,28 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 def init_db():
     from database.cloud_sql import engine, Base, SessionLocal
     from models.orm_models import Project, ProjectFolder, Product, ProductFile, Supplier, LookupValue, PalladiumPOLine, PalladiumGRNLine, ProcurementAllocation
+    from sqlalchemy import text, inspect
     try:
+        # 1. Fast synchronous check for critical columns so requests never crash with UndefinedColumn
+        try:
+            with engine.connect() as quick_conn:
+                insp = inspect(engine)
+                if 'orders' in insp.get_table_names():
+                    o_cols = [c['name'] for c in insp.get_columns('orders')]
+                    if 'vat_percentage' not in o_cols:
+                        quick_conn.execute(text("ALTER TABLE orders ADD COLUMN vat_percentage FLOAT DEFAULT 15.0;"))
+                        quick_conn.commit()
+                if 'order_items' in insp.get_table_names():
+                    oi_cols = [c['name'] for c in insp.get_columns('order_items')]
+                    if 'stock_available' not in oi_cols:
+                        quick_conn.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
+                        quick_conn.commit()
+        except Exception as quick_err:
+            print(f"Quick migration notice: {quick_err}")
+
         Base.metadata.create_all(bind=engine)
         
         # Run migration to add disabled column if it doesn't exist
-        from sqlalchemy import text, inspect
         try:
             with engine.connect() as conn:
                 inspector = inspect(engine)
@@ -771,8 +788,29 @@ def init_db():
     except Exception as e:
         print(f"DB Init Error: {e}")
 
+def run_quick_schema_check():
+    from database.cloud_sql import engine
+    from sqlalchemy import text, inspect
+    try:
+        with engine.connect() as conn:
+            insp = inspect(engine)
+            tables = insp.get_table_names()
+            if 'orders' in tables:
+                o_cols = [c['name'] for c in insp.get_columns('orders')]
+                if 'vat_percentage' not in o_cols:
+                    conn.execute(text("ALTER TABLE orders ADD COLUMN vat_percentage FLOAT DEFAULT 15.0;"))
+                    conn.commit()
+            if 'order_items' in tables:
+                oi_cols = [c['name'] for c in insp.get_columns('order_items')]
+                if 'stock_available' not in oi_cols:
+                    conn.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
+                    conn.commit()
+    except Exception as e:
+        print(f"Schema check error: {e}")
+
 @app.on_event("startup")
 async def startup_event():
+    run_quick_schema_check()
     import threading
     threading.Thread(target=init_db, daemon=True).start()
     try:
