@@ -518,6 +518,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             '[TABLE_HEADER]', '[TABLE_HEAD]',
             '[ITEM_ROW]', '[ITEM_SUMMARY]',
             '[CREDIT_HEADER]', '[CREDIT_HEAD]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]',
+            '[PAYMENT_ROW]', '[PAYMENT]', '[PAYMENTS]',
             '[AREA_FOOTER]', '[FLOOR_FOOTER]'
         )
         
@@ -546,6 +547,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 norm_dir = col_a_val
             elif col_a_val in ('[CREDIT_ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]'):
                 norm_dir = col_a_val
+            elif col_a_val in ('[PAYMENT_ROW]', '[PAYMENT]', '[PAYMENTS]'):
+                norm_dir = '[PAYMENT_ROW]'
             elif col_a_val in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
                 norm_dir = '[DISCOUNT_ROW]'
             else:
@@ -587,6 +590,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[ITEM_ROW]', '[ITEM_SUMMARY]')), None)
         credit_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[CREDIT_HEADER]'), None)
         credit_item_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')), None)
+        payment_row_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[PAYMENT_ROW]'), None)
 
         # Helper to compute exact line item total from BOQ item objects
         def resolve_item_total(it):
@@ -888,6 +892,39 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 if fl_footer_cells:
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
                     rows_on_current_page += 1.0
+
+        # Generate payment rows if [PAYMENT_ROW] directive is present in template
+        if payment_row_cells:
+            payments_list = tokens.get('payments', [])
+            if not isinstance(payments_list, list):
+                payments_list = []
+            for p_idx, p_obj in enumerate(payments_list):
+                amt_raw = p_obj.get('amount')
+                if amt_raw is not None and str(amt_raw).strip() != '':
+                    amt_str = str(amt_raw).strip()
+                    if not amt_str.startswith('R') and safe_float(amt_str) > 0:
+                        amt_formatted = f"R {safe_float(amt_str):,.2f}"
+                    else:
+                        amt_formatted = amt_str
+                else:
+                    amt_formatted = ''
+                
+                pay_ctx = {
+                    'payment.index': str(p_idx + 1),
+                    'payment.date': str(p_obj.get('date') or ''),
+                    'payment.reference': str(p_obj.get('reference') or ''),
+                    'payment.amount': amt_formatted,
+                    'PAYMENT.INDEX': str(p_idx + 1),
+                    'PAYMENT.DATE': str(p_obj.get('date') or ''),
+                    'PAYMENT.REFERENCE': str(p_obj.get('reference') or ''),
+                    'PAYMENT.AMOUNT': amt_formatted,
+                    '_is_spacer': False
+                }
+                for pk, pv in p_obj.items():
+                    pay_ctx[f"payment.{pk}"] = str(pv) if pv is not None else ''
+                    pay_ctx[f"payment.{pk}".upper()] = str(pv) if pv is not None else ''
+                    pay_ctx[pk] = str(pv) if pv is not None else ''
+                generated_dynamic_rows.append(('[PAYMENT_ROW]', payment_row_cells, pay_ctx))
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
