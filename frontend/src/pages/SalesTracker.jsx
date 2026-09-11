@@ -4211,7 +4211,7 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#4ade80', fontWeight: 600 }}>Proc:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.round(((item.receivedQty || 0) / (item.qty || 1)) * 100)}%`))}
+                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.min(100, Math.round((((item.receivedQty || 0) + (item.stockStatus === 'Partial Stock on Hand' ? (Number(item.stockOnHand ?? item.stock_on_hand) || 0) : 0)) / (item.qty || 1)) * 100))}%`))}
                                           </span>
                                         </div>
                                         {/* Invoiced Badge */}
