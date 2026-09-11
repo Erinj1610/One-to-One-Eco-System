@@ -2300,7 +2300,7 @@ export default function OrdersPage() {
       if (errors.length > 0) {
         alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
       } else {
-        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
+        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive (Documents/Latest).\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
       }
     } catch (vaultErr) {
       alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);

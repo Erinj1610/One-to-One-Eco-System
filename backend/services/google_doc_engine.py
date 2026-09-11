@@ -329,20 +329,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             order_folder_name = f"{order_identifier} - {supp_name}" if supp_name else (str(order_name).strip() if order_name else order_identifier)
             doc_container_folder_id = get_or_create_folder(drive_service, order_folder_name, orders_parent_id)
 
-            # Ensure 4 standard order subfolders exist
-            boq_sub_id = get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
-            po_sub_id = get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
-            logistics_sub_id = get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
-            invoices_sub_id = get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
+            # Ensure unified Documents folder exists for all order documents
+            documents_sub_id = get_or_create_folder(drive_service, "Documents", doc_container_folder_id)
+            get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
+            get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
+            get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
+            get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
 
-            if 'INVOICE' in s_upper or s_upper in ['DEPOSIT_INVOICE', 'FINAL_INVOICE', 'PAYMENT', 'CREDIT_NOTE', 'CREDITNOTE']:
-                destination_subfolder_id = invoices_sub_id
-            elif 'PO' in s_upper or s_upper in ['SUPPLIER_PO', 'PURCHASE_ORDER', 'PURCHASE_ORDERS']:
-                destination_subfolder_id = po_sub_id
-            elif 'DELIVERY' in s_upper or s_upper in ['DELIVERY_NOTE', 'LOGISTICS', 'PACKING_LIST']:
-                destination_subfolder_id = logistics_sub_id
-            else:
-                destination_subfolder_id = boq_sub_id
+            # Route all generated customer/order documents to the unified Documents folder
+            destination_subfolder_id = documents_sub_id
 
         # Maintain Latest and History revision containers inside the specific destination subfolder
         latest_folder_id = get_or_create_folder(drive_service, "Latest", destination_subfolder_id)
@@ -1603,8 +1598,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             ).execute()
             
             existing_latest = latest_res.get('files', [])
+            type_prefix = f"{clean_type_title.lower()} -"
             for ef in existing_latest:
-                if ef['name'].startswith(clean_type_title) or clean_type_title in ef['name']:
+                ef_lower = ef['name'].lower()
+                if ef_lower.startswith(type_prefix) or ef_lower.startswith(f"{clean_type_title.lower()} "):
                     # Extract creation date of the file being moved into History
                     created_date_str = str(tokens.get('DATE') or '').strip()
                     if not created_date_str and ef.get('createdTime'):
