@@ -114,10 +114,18 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             ProcurementAllocation.status == "Active"
         ).all()
 
-        alloc_map = {}
+        # Active allocations mapping: map by line_id and by doc_no
+        alloc_by_line = {}
+        alloc_by_doc_and_sku = {}
         for a in active_allocs:
-            k = (a.source_doc_no, a.sku)
-            alloc_map[k] = alloc_map.get(k, 0.0) + float(a.allocated_qty or 0.0)
+            if a.source_line_id:
+                alloc_by_line[a.source_line_id] = alloc_by_line.get(a.source_line_id, 0.0) + float(a.allocated_qty or 0.0)
+            else:
+                k = (a.source_doc_no, a.sku)
+                alloc_by_doc_and_sku[k] = alloc_by_doc_and_sku.get(k, 0.0) + float(a.allocated_qty or 0.0)
+
+        # Work on a copy of legacy doc_sku pools so they get consumed across duplicate lines instead of repeated
+        rem_legacy = dict(alloc_by_doc_and_sku)
 
         # Aggregate documents
         doc_stats = {}
@@ -135,7 +143,19 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             
             line_qty = abs(float(line.qty or 0.0))
             line_val = float(line.line_total_excl or 0.0)
-            allocated = min(line_qty, alloc_map.get((doc_no, line.item_code), 0.0))
+
+            # Direct line allocation first
+            allocated = min(line_qty, alloc_by_line.get(line.id, 0.0))
+            rem_needed = max(0.0, line_qty - allocated)
+
+            # Fallback legacy allocation
+            if rem_needed > 0:
+                k = (doc_no, line.item_code)
+                avail_legacy = rem_legacy.get(k, 0.0)
+                if avail_legacy > 0:
+                    take = min(rem_needed, avail_legacy)
+                    allocated += take
+                    rem_legacy[k] = avail_legacy - take
             
             doc_stats[doc_no]["total_qty"] += line_qty
             doc_stats[doc_no]["allocated_qty"] += allocated
@@ -226,10 +246,17 @@ def list_invoicing_documents(
             ProcurementAllocation.status == "Active"
         ).all()
 
-        alloc_map = {}
+        # Active allocations mapping: map by line_id and by doc_no
+        alloc_by_line = {}
+        alloc_by_doc_and_sku = {}
         for a in active_allocs:
-            k = (a.source_doc_no, a.sku)
-            alloc_map[k] = alloc_map.get(k, 0.0) + float(a.allocated_qty or 0.0)
+            if a.source_line_id:
+                alloc_by_line[a.source_line_id] = alloc_by_line.get(a.source_line_id, 0.0) + float(a.allocated_qty or 0.0)
+            else:
+                k = (a.source_doc_no, a.sku)
+                alloc_by_doc_and_sku[k] = alloc_by_doc_and_sku.get(k, 0.0) + float(a.allocated_qty or 0.0)
+
+        rem_legacy = dict(alloc_by_doc_and_sku)
 
         # Load open issues
         open_issues = db.query(AllocationIssue).filter(
@@ -267,7 +294,19 @@ def list_invoicing_documents(
                 }
             
             line_qty = abs(float(line.qty or 0.0))
-            allocated = min(line_qty, alloc_map.get((d_no, line.item_code), 0.0))
+
+            # Direct line allocation first
+            allocated = min(line_qty, alloc_by_line.get(line.id, 0.0))
+            rem_needed = max(0.0, line_qty - allocated)
+
+            # Fallback legacy allocation
+            if rem_needed > 0:
+                k = (d_no, line.item_code)
+                avail_legacy = rem_legacy.get(k, 0.0)
+                if avail_legacy > 0:
+                    take = min(rem_needed, avail_legacy)
+                    allocated += take
+                    rem_legacy[k] = avail_legacy - take
 
             docs_grouped[d_no]["lines_count"] += 1
             docs_grouped[d_no]["total_qty"] += line_qty
@@ -369,21 +408,33 @@ def get_invoicing_document_details(
             ProcurementAllocation.status == "Active"
         ).all()
 
-        alloc_by_sku = {}
+        # Separate allocations: those with source_line_id vs legacy without source_line_id
+        alloc_by_line_id = {}
+        legacy_alloc_by_sku = {}
         for a in allocs:
-            alloc_by_sku.setdefault(a.sku, []).append({
+            alloc_dict = {
+                "id": a.id,
                 "allocation_id": a.id,
+                "source_line_id": a.source_line_id,
                 "project_id": a.project_id,
                 "project_name": a.project_name,
                 "order_id": a.order_id,
                 "order_item_id": a.order_item_id,
                 "fitting_code": a.fitting_code,
-                "allocated_qty": a.allocated_qty,
-                "unit_cost": a.unit_cost,
+                "allocated_qty": float(a.allocated_qty or 0.0),
+                "unit_cost": float(a.unit_cost or 0.0),
                 "allocated_by": a.allocated_by_name,
                 "allocated_at": a.allocated_at.isoformat() if a.allocated_at else None,
                 "notes": a.notes
-            })
+            }
+            if a.source_line_id is not None:
+                alloc_by_line_id.setdefault(a.source_line_id, []).append(alloc_dict)
+            else:
+                legacy_alloc_by_sku.setdefault(a.sku, []).append(alloc_dict)
+
+        # Build line-level allocations accurately
+        # If any legacy allocations exist, distribute them greedily across lines matching the SKU
+        remaining_legacy_sku_allocs = {sku: list(al_list) for sku, al_list in legacy_alloc_by_sku.items()}
 
         parsed_lines = []
         doc_total_qty = 0.0
@@ -398,8 +449,32 @@ def get_invoicing_document_details(
         for line in lines:
             line_qty = abs(float(line.qty or 0.0))
             line_sku = line.item_code
-            sku_allocs = alloc_by_sku.get(line_sku, [])
-            total_alloc_qty = sum(float(a["allocated_qty"] or 0) for a in sku_allocs)
+            
+            line_allocs = list(alloc_by_line_id.get(line.id, []))
+            current_allocated = sum(a["allocated_qty"] for a in line_allocs)
+
+            # If line still needs allocation and there are legacy allocations for this SKU, distribute
+            needed = max(0.0, line_qty - current_allocated)
+            if needed > 0 and line_sku in remaining_legacy_sku_allocs:
+                avail_legacy = remaining_legacy_sku_allocs[line_sku]
+                while needed > 0 and avail_legacy:
+                    cand = avail_legacy[0]
+                    cand_qty = cand["allocated_qty"]
+                    if cand_qty <= needed:
+                        line_allocs.append(cand)
+                        current_allocated += cand_qty
+                        needed -= cand_qty
+                        avail_legacy.pop(0)
+                    else:
+                        # Slice legacy allocation
+                        allocated_piece = dict(cand)
+                        allocated_piece["allocated_qty"] = needed
+                        line_allocs.append(allocated_piece)
+                        current_allocated += needed
+                        cand["allocated_qty"] -= needed
+                        needed = 0.0
+
+            total_alloc_qty = current_allocated
             unalloc_qty = max(0.0, line_qty - total_alloc_qty)
 
             if line_qty <= 0 or total_alloc_qty >= line_qty:
@@ -436,7 +511,7 @@ def get_invoicing_document_details(
                 "allocated_qty": total_alloc_qty,
                 "unallocated_qty": unalloc_qty,
                 "status": l_status,
-                "allocations": sku_allocs
+                "allocations": line_allocs
             })
 
         final_doc_val = round(doc_subtotal, 2) if doc_subtotal != 0 else round(doc_total_val, 2)
@@ -708,9 +783,16 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             ).all()
             matched_item = find_best_item_match(proj_items, sku)
 
+        source_line_id = payload.get("source_line_id")
+        try:
+            source_line_id = int(source_line_id) if source_line_id is not None else None
+        except (ValueError, TypeError):
+            source_line_id = None
+
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
             source_doc_no=source_doc_no,
+            source_line_id=source_line_id,
             sku=sku,
             project_id=real_proj_id,
             project_name=real_proj_name,
@@ -806,9 +888,16 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 elif proj_items:
                     matched_item = find_best_item_match(proj_items, sku)
 
+            item_source_line_id = it.get("source_line_id")
+            try:
+                item_source_line_id = int(item_source_line_id) if item_source_line_id is not None else None
+            except (ValueError, TypeError):
+                item_source_line_id = None
+
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
                 source_doc_no=source_doc_no,
+                source_line_id=item_source_line_id,
                 sku=sku,
                 project_id=real_proj_id,
                 project_name=real_proj_name,
