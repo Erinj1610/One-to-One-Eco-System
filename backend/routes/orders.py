@@ -435,6 +435,112 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
     return res
 
 
+@router.post("/{po_number}/items/batch")
+def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], db: Session = Depends(get_db)):
+    """
+    High-performance batch upsert for order line items in a single database transaction.
+    Replaces 300+ individual HTTP calls with 1 fast call.
+    """
+    if not items_data:
+        return {"status": "ok", "saved_count": 0}
+
+    incoming_ids = [str(it.id) for it in items_data if it.id]
+    existing_records = {it.id: it for it in db.query(OrderItem).filter(OrderItem.id.in_(incoming_ids)).all()}
+
+    for item_data in items_data:
+        str_id = str(item_data.id)
+        if str_id in existing_records:
+            existing = existing_records[str_id]
+            existing.order_id = po_number
+            existing.qty = item_data.qty
+            existing.type = item_data.type
+            existing.one_one_code = item_data.one_one_code
+            existing.code = item_data.code
+            existing.description = item_data.description
+            existing.floor = item_data.floor
+            existing.area = item_data.area
+            existing.dimming = item_data.dimming
+            existing.brand = item_data.brand
+            existing.supplier = item_data.supplier
+            existing.unit_cost = item_data.unit_cost
+            existing.unit_trade = item_data.unit_trade
+            existing.unit_retail = item_data.unit_retail
+            existing.selection = item_data.selection
+            existing.stock_status = item_data.stock_status
+            existing.eta = item_data.eta
+            existing.po_ref = item_data.po_ref
+            existing.po_qty_ordered = item_data.po_qty_ordered
+            existing.po_eta = item_data.po_eta
+            existing.invoice_qty = item_data.invoice_qty
+            existing.po_supplier = item_data.po_supplier
+            existing.po_date = item_data.po_date
+            existing.received_qty = item_data.received_qty
+            existing.received_date = item_data.received_date
+            existing.invoice_ref = item_data.invoice_ref
+            existing.invoice_date = item_data.invoice_date
+            existing.invoice_value = item_data.invoice_value
+            existing.delivery_qty = item_data.delivery_qty
+            existing.delivery_date = item_data.delivery_date
+            existing.delivery_status = item_data.delivery_status
+            existing.delivery_history = json.dumps(item_data.delivery_history) if item_data.delivery_history else "[]"
+            existing.purchase_history = json.dumps(item_data.purchase_history) if item_data.purchase_history else "[]"
+            existing.receiving_history = json.dumps(item_data.receiving_history) if item_data.receiving_history else "[]"
+            existing.invoice_history = json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]"
+            existing.stock_on_hand = item_data.stock_on_hand
+            existing.stock_available = item_data.stock_available
+            existing.is_credit = item_data.is_credit
+            existing.item_type = item_data.item_type
+            existing.sort_order = item_data.sort_order
+        else:
+            new_item = OrderItem(
+                id=str_id,
+                order_id=po_number,
+                qty=item_data.qty,
+                type=item_data.type,
+                one_one_code=item_data.one_one_code,
+                code=item_data.code,
+                description=item_data.description,
+                floor=item_data.floor,
+                area=item_data.area,
+                dimming=item_data.dimming,
+                brand=item_data.brand,
+                supplier=item_data.supplier,
+                unit_cost=item_data.unit_cost,
+                unit_trade=item_data.unit_trade,
+                unit_retail=item_data.unit_retail,
+                selection=item_data.selection,
+                stock_status=item_data.stock_status,
+                eta=item_data.eta,
+                po_ref=item_data.po_ref,
+                po_qty_ordered=item_data.po_qty_ordered,
+                po_eta=item_data.po_eta,
+                invoice_qty=item_data.invoice_qty,
+                po_supplier=item_data.po_supplier,
+                po_date=item_data.po_date,
+                received_qty=item_data.received_qty,
+                received_date=item_data.received_date,
+                invoice_ref=item_data.invoice_ref,
+                invoice_date=item_data.invoice_date,
+                invoice_value=item_data.invoice_value,
+                delivery_qty=item_data.delivery_qty,
+                delivery_date=item_data.delivery_date,
+                delivery_status=item_data.delivery_status,
+                delivery_history=json.dumps(item_data.delivery_history) if item_data.delivery_history else "[]",
+                purchase_history=json.dumps(item_data.purchase_history) if item_data.purchase_history else "[]",
+                receiving_history=json.dumps(item_data.receiving_history) if item_data.receiving_history else "[]",
+                invoice_history=json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]",
+                stock_on_hand=item_data.stock_on_hand,
+                stock_available=item_data.stock_available,
+                is_credit=item_data.is_credit,
+                item_type=item_data.item_type,
+                sort_order=item_data.sort_order
+            )
+            db.add(new_item)
+
+    db.commit()
+    return {"status": "ok", "saved_count": len(items_data)}
+
+
 @router.post("/{po_number}/items")
 def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = Depends(get_db)):
     # Check if duplicate ID - if so, update gracefully (idempotent create)
