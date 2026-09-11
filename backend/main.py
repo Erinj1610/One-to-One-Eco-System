@@ -283,7 +283,7 @@ def init_db():
                 except Exception as proj_alter_err:
                     print(f"Database migration projects columns (info): {proj_alter_err}")
                 
-                # Migrate orders table to ensure pm_name and deposit_percentage exist
+                # Migrate orders table to ensure pm_name, deposit_percentage, and vat_percentage exist
                 try:
                     order_cols = [c['name'] for c in inspector.get_columns('orders')]
                     if 'pm_name' not in order_cols:
@@ -294,6 +294,10 @@ def init_db():
                         conn.execute(text("ALTER TABLE orders ADD COLUMN deposit_percentage FLOAT;"))
                         conn.commit()
                         print("Database migration: ensured 'deposit_percentage' column exists on 'orders' table.")
+                    if 'vat_percentage' not in order_cols:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN vat_percentage FLOAT DEFAULT 15.0;"))
+                        conn.commit()
+                        print("Database migration: ensured 'vat_percentage' column exists on 'orders' table.")
                 except Exception as alter_err:
                     print(f"Database migration orders columns (info/critical): {alter_err}")
 

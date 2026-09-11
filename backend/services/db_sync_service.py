@@ -116,6 +116,9 @@ def run_migrations(db: Session):
         if 'invoice_history' not in cols:
             db.execute(text("ALTER TABLE order_items ADD COLUMN invoice_history JSON;"))
             db.commit()
+        if 'stock_available' not in cols:
+            db.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
+            db.commit()
     except Exception as e:
         db.rollback()
         print(f"Migration warning (order_items columns alter): {e}")
@@ -161,7 +164,8 @@ def run_migrations(db: Session):
         ("project_class", "VARCHAR"),
         ("division", "VARCHAR"),
         ("pf_number", "VARCHAR"),
-        ("discount", "FLOAT DEFAULT 0.0")
+        ("discount", "FLOAT DEFAULT 0.0"),
+        ("vat_percentage", "FLOAT DEFAULT 15.0")
     ]
     for col_name, col_type in order_columns:
         try:
