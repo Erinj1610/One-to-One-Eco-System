@@ -2646,18 +2646,41 @@ export default function TakeoffSpecEngine({
                                     </div>
                                   </div>
 
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                    {(() => {
+                                      const avail = product.stock_available !== undefined && product.stock_available !== null
+                                        ? Number(product.stock_available)
+                                        : (product.stock_on_hand !== undefined && product.stock_on_hand !== null
+                                            ? Number(product.stock_on_hand)
+                                            : (product.stock_level !== undefined ? Number(product.stock_level) : 0));
+                                      return (
+                                        <span 
+                                          title={`Available Stock: ${avail}`}
+                                          style={{ 
+                                            fontSize: '10.5px', 
+                                            fontWeight: 700, 
+                                            padding: '2px 7px', 
+                                            borderRadius: '4px', 
+                                            background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                            color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          {avail} Avail
+                                        </span>
+                                      );
+                                    })()}
                                     <button 
                                       className="btn btn-secondary btn-xs"
                                       onClick={() => openCatalogPicker(tag, 'product', 'All')}
-                                      style={{ fontSize: '11px' }}
+                                      style={{ fontSize: '11px', width: '100%' }}
                                     >
                                       Change
                                     </button>
                                     <button 
                                       className="btn btn-ghost btn-xs"
                                       onClick={() => handleInspectItem(product, tag)}
-                                      style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                      style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                     >
                                       <Eye size={11} /> Specs
                                     </button>
@@ -2873,6 +2896,29 @@ export default function TakeoffSpecEngine({
                                               <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {acc.name || acc.client_description}
                                               </span>
+                                              {(() => {
+                                                const avail = acc.stock_available !== undefined && acc.stock_available !== null
+                                                  ? Number(acc.stock_available)
+                                                  : (acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+                                                      ? Number(acc.stock_on_hand)
+                                                      : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_available ?? acc.product?.stock_level ?? 0)));
+                                                return (
+                                                  <span 
+                                                    title={`Available Stock: ${avail}`}
+                                                    style={{ 
+                                                      fontSize: '9.5px', 
+                                                      fontWeight: 700, 
+                                                      padding: '1px 5px', 
+                                                      borderRadius: '3px', 
+                                                      background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                                      color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                                      flexShrink: 0
+                                                    }}
+                                                  >
+                                                    {avail} Avail
+                                                  </span>
+                                                );
+                                              })()}
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                               <button 
@@ -3191,25 +3237,48 @@ export default function TakeoffSpecEngine({
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                      {(() => {
+                                        const avail = ledCfg.profileProduct.stock_available !== undefined && ledCfg.profileProduct.stock_available !== null
+                                          ? Number(ledCfg.profileProduct.stock_available)
+                                          : (ledCfg.profileProduct.stock_on_hand !== undefined && ledCfg.profileProduct.stock_on_hand !== null
+                                              ? Number(ledCfg.profileProduct.stock_on_hand)
+                                              : (ledCfg.profileProduct.stock_level !== undefined ? Number(ledCfg.profileProduct.stock_level) : 0));
+                                        return (
+                                          <span 
+                                            title={`Available Stock: ${avail}`}
+                                            style={{ 
+                                              fontSize: '10.5px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 7px', 
+                                              borderRadius: '4px', 
+                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {avail} Avail
+                                          </span>
+                                        );
+                                      })()}
                                       <button 
                                         className="btn btn-secondary btn-xs"
                                         onClick={() => openCatalogPicker(tag, 'led_profile', 'Linear')}
-                                        style={{ fontSize: '11px' }}
+                                        style={{ fontSize: '11px', width: '100%' }}
                                       >
                                         Change
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleInspectItem(ledCfg.profileProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                       >
                                         <Eye size={11} /> Specs
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleClearLedComponent(tag, 'profile')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                         title="Clear profile"
                                       >
                                         <Trash2 size={11} /> Clear
@@ -3356,25 +3425,48 @@ export default function TakeoffSpecEngine({
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                      {(() => {
+                                        const avail = ledCfg.stripProduct.stock_available !== undefined && ledCfg.stripProduct.stock_available !== null
+                                          ? Number(ledCfg.stripProduct.stock_available)
+                                          : (ledCfg.stripProduct.stock_on_hand !== undefined && ledCfg.stripProduct.stock_on_hand !== null
+                                              ? Number(ledCfg.stripProduct.stock_on_hand)
+                                              : (ledCfg.stripProduct.stock_level !== undefined ? Number(ledCfg.stripProduct.stock_level) : 0));
+                                        return (
+                                          <span 
+                                            title={`Available Stock: ${avail}`}
+                                            style={{ 
+                                              fontSize: '10.5px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 7px', 
+                                              borderRadius: '4px', 
+                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {avail} Avail
+                                          </span>
+                                        );
+                                      })()}
                                       <button 
                                         className="btn btn-secondary btn-xs"
                                         onClick={() => openCatalogPicker(tag, 'led_strip', 'LEDStrip')}
-                                        style={{ fontSize: '11px' }}
+                                        style={{ fontSize: '11px', width: '100%' }}
                                       >
                                         Change
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleInspectItem(ledCfg.stripProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                       >
                                         <Eye size={11} /> Specs
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleClearLedComponent(tag, 'strip')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                         title="Clear strip"
                                       >
                                         <Trash2 size={11} /> Clear
@@ -3521,25 +3613,48 @@ export default function TakeoffSpecEngine({
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                      {(() => {
+                                        const avail = ledCfg.driverProduct.stock_available !== undefined && ledCfg.driverProduct.stock_available !== null
+                                          ? Number(ledCfg.driverProduct.stock_available)
+                                          : (ledCfg.driverProduct.stock_on_hand !== undefined && ledCfg.driverProduct.stock_on_hand !== null
+                                              ? Number(ledCfg.driverProduct.stock_on_hand)
+                                              : (ledCfg.driverProduct.stock_level !== undefined ? Number(ledCfg.driverProduct.stock_level) : 0));
+                                        return (
+                                          <span 
+                                            title={`Available Stock: ${avail}`}
+                                            style={{ 
+                                              fontSize: '10.5px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 7px', 
+                                              borderRadius: '4px', 
+                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {avail} Avail
+                                          </span>
+                                        );
+                                      })()}
                                       <button 
                                         className="btn btn-secondary btn-xs"
                                         onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
-                                        style={{ fontSize: '11px' }}
+                                        style={{ fontSize: '11px', width: '100%' }}
                                       >
                                         Change
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleInspectItem(ledCfg.driverProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                       >
                                         <Eye size={11} /> Specs
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleClearLedComponent(tag, 'driver')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                         title="Clear driver"
                                       >
                                         <Trash2 size={11} /> Clear
@@ -3655,6 +3770,29 @@ export default function TakeoffSpecEngine({
                                             <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                               {acc.name || acc.client_description}
                                             </span>
+                                            {(() => {
+                                              const avail = acc.stock_available !== undefined && acc.stock_available !== null
+                                                ? Number(acc.stock_available)
+                                                : (acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+                                                    ? Number(acc.stock_on_hand)
+                                                    : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_available ?? acc.product?.stock_level ?? 0)));
+                                              return (
+                                                <span 
+                                                  title={`Available Stock: ${avail}`}
+                                                  style={{ 
+                                                    fontSize: '9.5px', 
+                                                    fontWeight: 700, 
+                                                    padding: '1px 5px', 
+                                                    borderRadius: '3px', 
+                                                    background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                                    color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                                    flexShrink: 0
+                                                  }}
+                                                >
+                                                  {avail} Avail
+                                                </span>
+                                              );
+                                            })()}
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <button 
@@ -3956,25 +4094,48 @@ export default function TakeoffSpecEngine({
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                      {(() => {
+                                        const avail = trackCfg.railProduct.stock_available !== undefined && trackCfg.railProduct.stock_available !== null
+                                          ? Number(trackCfg.railProduct.stock_available)
+                                          : (trackCfg.railProduct.stock_on_hand !== undefined && trackCfg.railProduct.stock_on_hand !== null
+                                              ? Number(trackCfg.railProduct.stock_on_hand)
+                                              : (trackCfg.railProduct.stock_level !== undefined ? Number(trackCfg.railProduct.stock_level) : 0));
+                                        return (
+                                          <span 
+                                            title={`Available Stock: ${avail}`}
+                                            style={{ 
+                                              fontSize: '10.5px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 7px', 
+                                              borderRadius: '4px', 
+                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {avail} Avail
+                                          </span>
+                                        );
+                                      })()}
                                       <button 
                                         className="btn btn-secondary btn-xs"
                                         onClick={() => openCatalogPicker(tag, 'track_rail', 'Track')}
-                                        style={{ fontSize: '11px' }}
+                                        style={{ fontSize: '11px', width: '100%' }}
                                       >
                                         Change
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleInspectItem(trackCfg.railProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                       >
                                         <Eye size={11} /> Specs
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleClearTrackComponent(tag, 'rail')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                         title="Clear rail"
                                       >
                                         <Trash2 size={11} /> Clear
@@ -4123,6 +4284,30 @@ export default function TakeoffSpecEngine({
                                                   {sp.product.brand}
                                                 </span>
                                               )}
+                                              {(() => {
+                                                const p = sp.product || sp;
+                                                const avail = p.stock_available !== undefined && p.stock_available !== null
+                                                  ? Number(p.stock_available)
+                                                  : (p.stock_on_hand !== undefined && p.stock_on_hand !== null
+                                                      ? Number(p.stock_on_hand)
+                                                      : (p.stock_level !== undefined ? Number(p.stock_level) : 0));
+                                                return (
+                                                  <span 
+                                                    title={`Available Stock: ${avail}`}
+                                                    style={{ 
+                                                      fontSize: '9.5px', 
+                                                      fontWeight: 700, 
+                                                      padding: '1px 5px', 
+                                                      borderRadius: '3px', 
+                                                      background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                                      color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                                      whiteSpace: 'nowrap'
+                                                    }}
+                                                  >
+                                                    {avail} Avail
+                                                  </span>
+                                                );
+                                              })()}
                                             </div>
                                             <div style={{ fontSize: '11.5px', color: 'var(--text-primary)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                               {sp.name || sp.product?.client_description || sp.product?.name}
@@ -4282,25 +4467,48 @@ export default function TakeoffSpecEngine({
                                       </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                      {(() => {
+                                        const avail = trackCfg.driverProduct.stock_available !== undefined && trackCfg.driverProduct.stock_available !== null
+                                          ? Number(trackCfg.driverProduct.stock_available)
+                                          : (trackCfg.driverProduct.stock_on_hand !== undefined && trackCfg.driverProduct.stock_on_hand !== null
+                                              ? Number(trackCfg.driverProduct.stock_on_hand)
+                                              : (trackCfg.driverProduct.stock_level !== undefined ? Number(trackCfg.driverProduct.stock_level) : 0));
+                                        return (
+                                          <span 
+                                            title={`Available Stock: ${avail}`}
+                                            style={{ 
+                                              fontSize: '10.5px', 
+                                              fontWeight: 700, 
+                                              padding: '2px 7px', 
+                                              borderRadius: '4px', 
+                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {avail} Avail
+                                          </span>
+                                        );
+                                      })()}
                                       <button 
                                         className="btn btn-secondary btn-xs"
                                         onClick={() => openCatalogPicker(tag, 'track_driver', 'Accessory')}
-                                        style={{ fontSize: '11px' }}
+                                        style={{ fontSize: '11px', width: '100%' }}
                                       >
                                         Change
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleInspectItem(trackCfg.driverProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                       >
                                         <Eye size={11} /> Specs
                                       </button>
                                       <button 
                                         className="btn btn-ghost btn-xs"
                                         onClick={() => handleClearTrackComponent(tag, 'driver')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
                                         title="Clear driver"
                                       >
                                         <Trash2 size={11} /> Clear
@@ -4416,6 +4624,29 @@ export default function TakeoffSpecEngine({
                                             <span style={{ fontSize: '11.5px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                               {acc.name || acc.client_description}
                                             </span>
+                                            {(() => {
+                                              const avail = acc.stock_available !== undefined && acc.stock_available !== null
+                                                ? Number(acc.stock_available)
+                                                : (acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+                                                    ? Number(acc.stock_on_hand)
+                                                    : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_available ?? acc.product?.stock_level ?? 0)));
+                                              return (
+                                                <span 
+                                                  title={`Available Stock: ${avail}`}
+                                                  style={{ 
+                                                    fontSize: '9.5px', 
+                                                    fontWeight: 700, 
+                                                    padding: '1px 5px', 
+                                                    borderRadius: '3px', 
+                                                    background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
+                                                    color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
+                                                    flexShrink: 0
+                                                  }}
+                                                >
+                                                  {avail} Avail
+                                                </span>
+                                              );
+                                            })()}
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <button 

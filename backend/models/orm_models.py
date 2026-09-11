@@ -288,6 +288,7 @@ class Order(Base):
     division = Column(String, nullable=True)
     pf_number = Column(String, nullable=True)
     discount = Column(Float, default=0.0)
+    vat_percentage = Column(Float, default=15.0, nullable=True)
 
 
 
@@ -332,6 +333,7 @@ class OrderItem(Base):
     receiving_history = Column(JSON, nullable=True)
     invoice_history = Column(JSON, nullable=True)
     stock_on_hand = Column(Integer, default=0)
+    stock_available = Column(Float, default=0.0, nullable=True)
     is_credit = Column(Boolean, default=False, nullable=True)
     item_type = Column(String, default="Hardware", nullable=True)
     sort_order = Column(Integer, default=0, nullable=True)

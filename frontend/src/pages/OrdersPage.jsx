@@ -443,6 +443,7 @@ export default function OrdersPage() {
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState(0);
+  const [orderVatPercent, setOrderVatPercent] = useState(15);
   const [orderDepositPercent, setOrderDepositPercent] = useState(null);
   const [orderSupplier, setSupplier] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
@@ -1424,6 +1425,13 @@ export default function OrdersPage() {
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
+    if (order.vatPercentage !== undefined && order.vatPercentage !== null) {
+      setOrderVatPercent(Number(order.vatPercentage));
+    } else if (order.vat_percentage !== undefined && order.vat_percentage !== null) {
+      setOrderVatPercent(Number(order.vat_percentage));
+    } else {
+      setOrderVatPercent(15);
+    }
     if (order.depositPercentage !== undefined && order.depositPercentage !== null) {
       setOrderDepositPercent(Number(order.depositPercentage));
     } else if (order.deposit_percentage !== undefined && order.deposit_percentage !== null) {
@@ -1593,7 +1601,7 @@ export default function OrdersPage() {
 
     let nextRow = row;
     let nextCol = col;
-    const maxCols = 10; // 0 to 10
+    const maxCols = 12; // 0 to 12
 
     if (e.key === 'ArrowUp') {
       nextRow = Math.max(0, row - 1);
@@ -1632,7 +1640,7 @@ export default function OrdersPage() {
       }
     } else if (e.key === 'Tab') {
       const lastRowIdx = activeOrderItems.length - 1;
-      const lastColIdx = 10;
+      const lastColIdx = 12;
       if (row === lastRowIdx && col === lastColIdx && !e.shiftKey) {
         e.preventDefault();
         handleAddSpreadsheetRow();
@@ -1671,6 +1679,22 @@ export default function OrdersPage() {
     }
   };
 
+  const EDITABLE_COLUMNS = [
+    'qty',         // 0
+    'oneOneCode',  // 1
+    'type',        // 2
+    'code',        // 3
+    'description', // 4
+    'floor',       // 5
+    'area',        // 6
+    'dimming',     // 7
+    'brand',       // 8
+    'supplier',    // 9
+    'unitCost',    // 10
+    'unitRetail',  // 11
+    'eta'          // 12
+  ];
+
   // Excel/Google Sheets copy/paste parsing
   const handleGridPaste = (e) => {
     const target = e.target;
@@ -1678,6 +1702,7 @@ export default function OrdersPage() {
 
     const startRow = parseInt(target.getAttribute('data-row'), 10);
     const startCol = parseInt(target.getAttribute('data-col'), 10);
+    const targetField = target.getAttribute('data-field');
 
     const clipboardData = e.clipboardData || window.clipboardData;
     if (!clipboardData) return;
@@ -1686,22 +1711,27 @@ export default function OrdersPage() {
     const lines = pastedText.split(/\r?\n/).filter(line => line.length > 0);
     if (lines.length === 0) return;
 
-    e.preventDefault();
+    // Single-cell paste handler (e.g. pasting text into ETA, Description, Supplier, or Cost)
+    if (lines.length === 1 && !pastedText.includes('\t')) {
+      if (targetField && !isNaN(startRow) && activeOrderItems[startRow]) {
+        e.preventDefault();
+        const itemId = activeOrderItems[startRow].id;
+        let cleanedVal = pastedText.trim();
+        if (['qty', 'unitCost', 'unitRetail'].includes(targetField)) {
+          cleanedVal = Number(cleanedVal.replace(/[^0-9.-]/g, '')) || 0;
+          if (targetField === 'unitCost' || targetField === 'unitRetail') {
+            handlePriceEdit(itemId, targetField, cleanedVal, activeOrderItems[startRow].code);
+          } else {
+            handleUpdateSpreadsheetCell(itemId, targetField, cleanedVal);
+          }
+        } else {
+          handleUpdateSpreadsheetCell(itemId, targetField, cleanedVal);
+        }
+        return;
+      }
+    }
 
-    const fieldsOrder = [
-      'qty',
-      'oneOneCode',
-      'type',
-      'code',
-      'description',
-      'floor',
-      'area',
-      'dimming',
-      'brand',
-      'unitCost',
-      'unitRetail',
-      'stockStatus'
-    ];
+    e.preventDefault();
 
     let updatedItems = [...activeOrderItems];
 
@@ -1721,12 +1751,13 @@ export default function OrdersPage() {
           area: 'TBD Area',
           dimming: 'Non-dim',
           brand: 'Delta Light',
-          supplier: orderSupplier,
+          supplier: orderSupplier || '',
           unitCost: 100,
           unitTrade: 130,
           unitRetail: 150,
           selection: 'Selection',
-          stockStatus: 'Ordered'
+          stockStatus: 'Ordered',
+          eta: '4 weeks'
         };
         updatedItems.push(newRow);
       }
@@ -1735,8 +1766,8 @@ export default function OrdersPage() {
 
       cells.forEach((cellVal, colOffset) => {
         const targetColIdx = startCol + colOffset;
-        if (targetColIdx < fieldsOrder.length) {
-          const fieldName = fieldsOrder[targetColIdx];
+        if (targetColIdx < EDITABLE_COLUMNS.length) {
+          const fieldName = EDITABLE_COLUMNS[targetColIdx];
           let cleanedVal = cellVal.trim();
 
           if (['qty', 'unitCost', 'unitRetail'].includes(fieldName)) {
@@ -2022,7 +2053,8 @@ export default function OrdersPage() {
     const paidSum = (orderPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const effectivePaid = paidSum > 0 ? paidSum : (Number(orderPaidAmount) > 0 ? Number(orderPaidAmount) : (Number(existingOrder.paid) || 0));
     const effectivePayments = (orderPayments && orderPayments.length > 0) ? orderPayments : (existingOrder.payments || []);
-    const finalGrossWithVat = discountedValue * 1.15;
+    const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+    const finalGrossWithVat = discountedValue * (1 + (effectiveVatPercent / 100));
     const balanceOutstanding = Math.max(0, finalGrossWithVat - effectivePaid);
     const defaultDepositRate = (finalGrossWithVat < 10000 && finalGrossWithVat > 0) ? 100 : 70;
     const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
@@ -2045,6 +2077,8 @@ export default function OrdersPage() {
       value: Math.round(discountedValue),
       costValue: Math.round(totalCostTotal),
       discount: Number(orderDiscount) || 0,
+      vatPercentage: effectiveVatPercent,
+      vat_percentage: effectiveVatPercent,
       depositPercentage: effectiveDepositPercent,
       deposit_percentage: effectiveDepositPercent,
       depositValue: calculatedDepositValue,
@@ -3664,7 +3698,8 @@ export default function OrdersPage() {
                   const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade || item.unit_trade) || 0)), 0);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                  const finalGrossInclVat = discountedRetail * 1.15;
+                  const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+                  const finalGrossInclVat = discountedRetail * (1 + (effectiveVatPercent / 100));
                   const balanceOutstanding = Math.max(0, finalGrossInclVat - Number(orderPaidAmount));
 
                   const defaultDepositRate = (finalGrossInclVat < 10000 && finalGrossInclVat > 0) ? 100 : 70;
@@ -3698,7 +3733,7 @@ export default function OrdersPage() {
                   return (
                     <>
                       {/* VITAL METRICS CARD GRID */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', marginBottom: '20px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', marginBottom: '20px' }}>
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Price</span>
                           <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalCost).toLocaleString()}</span>
@@ -3719,7 +3754,7 @@ export default function OrdersPage() {
                             <input 
                               type="number"
                               className="form-control"
-                              style={{ padding: '2px 6px', fontSize: '13px', width: '60px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                              style={{ padding: '2px 6px', fontSize: '13px', width: '56px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                               value={orderDiscount}
                               onChange={e => setOrderDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                             />
@@ -3728,10 +3763,57 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>Reduces final retail price</span>
                         </div>
 
+                        {/* VAT RATE (%) */}
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>VAT Rate (%)</span>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: effectiveVatPercent === 0 ? 'var(--text-warning)' : 'var(--text-info)' }}>
+                              {effectiveVatPercent === 0 ? '0% (Export)' : `${effectiveVatPercent}%`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                            <input 
+                              type="number"
+                              min="0"
+                              max="100"
+                              className="form-control"
+                              style={{ padding: '2px 4px', fontSize: '13px', width: '48px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
+                              value={effectiveVatPercent}
+                              onChange={e => setOrderVatPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                            />
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>%</span>
+                            <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}>
+                              <button 
+                                type="button"
+                                title="Zero VAT (Foreign currency / Export)"
+                                onClick={() => setOrderVatPercent(0)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveVatPercent === 0 ? 'rgba(245, 158, 11, 0.15)' : 'transparent', color: effectiveVatPercent === 0 ? 'var(--text-warning)' : 'var(--text-secondary)', border: '1px solid var(--border)', fontWeight: effectiveVatPercent === 0 ? 700 : 400 }}
+                              >
+                                0%
+                              </button>
+                              <button 
+                                type="button"
+                                title="Standard 15% VAT"
+                                onClick={() => setOrderVatPercent(15)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveVatPercent === 15 ? 'rgba(59, 130, 246, 0.15)' : 'transparent', color: effectiveVatPercent === 15 ? 'var(--text-info)' : 'var(--text-secondary)', border: '1px solid var(--border)', fontWeight: effectiveVatPercent === 15 ? 700 : 400 }}
+                              >
+                                15%
+                              </button>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>
+                            {effectiveVatPercent === 0 ? 'Zero-rated (No VAT)' : 'Standard 15% VAT'}
+                          </span>
+                        </div>
+
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Final Client Price</span>
                           <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-info)', display: 'block', margin: '4px 0' }}>R {Math.round(discountedRetail).toLocaleString()}</span>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>VAT EXCLUDED</span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                            {effectiveVatPercent === 0 ? 'VAT EXEMPT (0%)' : 'VAT EXCLUDED'}
+                          </span>
                         </div>
 
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -3747,7 +3829,7 @@ export default function OrdersPage() {
                               min="0"
                               max="100"
                               className="form-control"
-                              style={{ padding: '2px 4px', fontSize: '13px', width: '54px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
+                              style={{ padding: '2px 4px', fontSize: '13px', width: '50px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
                               value={effectiveDepositPercent}
                               onChange={e => setOrderDepositPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                             />
@@ -3774,7 +3856,7 @@ export default function OrdersPage() {
                             </div>
                           </div>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>
-                            Due: R {Math.round(calculatedDepositVal).toLocaleString()} (incl VAT)
+                            Due: R {Math.round(calculatedDepositVal).toLocaleString()} {effectiveVatPercent === 0 ? '(0% VAT)' : '(incl VAT)'}
                           </span>
                         </div>
 
@@ -3869,8 +3951,8 @@ export default function OrdersPage() {
                                   Margin
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
                                 </th>
-                                <th style={{ width: widths.stock, position: 'relative' }}>
-                                  Stock
+                                <th style={{ width: widths.stock, position: 'relative' }} title="Available stock quantity in inventory">
+                                  Avail Stock
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
                                 </th>
                                 <th style={{ width: widths.eta, position: 'relative' }}>
@@ -4165,7 +4247,7 @@ export default function OrdersPage() {
                                         value={item.supplier || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'supplier', e.target.value)}
                                         data-row={index}
-                                        data-col={15}
+                                        data-col={9}
                                         data-field="supplier"
                                       />
                                     </td>
@@ -4179,7 +4261,7 @@ export default function OrdersPage() {
                                         value={item.unitCost}
                                         onChange={e => handlePriceEdit(item.id, 'unitCost', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={9}
+                                        data-col={10}
                                         data-field="unitCost"
                                       />
                                     </td>
@@ -4193,7 +4275,7 @@ export default function OrdersPage() {
                                         value={item.unitRetail}
                                         onChange={e => handlePriceEdit(item.id, 'unitRetail', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={10}
+                                        data-col={11}
                                         data-field="unitRetail"
                                       />
                                     </td>
@@ -4208,11 +4290,24 @@ export default function OrdersPage() {
                                       {Math.round(lineMargin)}%
                                     </td>
 
-                                    {/* STOCK STATUS (Stock on hand) */}
-                                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '13.5px' }}>
+                                    {/* STOCK STATUS (Available Stock) */}
+                                    <td style={{ textAlign: 'center', fontWeight: 600, fontSize: '13px' }}>
                                       {(() => {
-                                        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
-                                        return catalogItem ? `${catalogItem.stockQty} Qty` : '—';
+                                        const avail = item.stock_available !== undefined && item.stock_available !== null
+                                          ? Number(item.stock_available)
+                                          : (item.stock_on_hand !== undefined && item.stock_on_hand !== null
+                                              ? Number(item.stock_on_hand)
+                                              : (item.stockQty !== undefined ? Number(item.stockQty) : null));
+                                        if (avail === null || isNaN(avail)) {
+                                          const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+                                          if (catalogItem) return <span style={{ color: 'var(--text-success)' }}>{catalogItem.stockQty} Avail</span>;
+                                          return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+                                        }
+                                        return (
+                                          <span style={{ color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
+                                            {avail} Avail
+                                          </span>
+                                        );
                                       })()}
                                     </td>
 
@@ -4225,7 +4320,7 @@ export default function OrdersPage() {
                                         value={item.eta || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
                                         data-row={index}
-                                        data-col={14}
+                                        data-col={12}
                                         data-field="eta"
                                       />
                                     </td>

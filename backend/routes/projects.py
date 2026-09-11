@@ -1196,10 +1196,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
             total_credited_excl = round(sum(abs(float(cn.get("totalValue", 0) or cn.get("value", 0) or 0)) for cn in credit_notes_parsed), 2)
-            total_credited_incl = round(total_credited_excl * 1.15, 2)
+            vat_pct = float(order.vat_percentage) if getattr(order, 'vat_percentage', None) is not None else 15.0
+            vat_mult = 1.0 + (vat_pct / 100.0)
+            total_credited_incl = round(total_credited_excl * vat_mult, 2)
 
             order_val_excl = float(order.value or 0.0)
-            order_val_incl = round(order_val_excl * 1.15, 2)
+            order_val_incl = round(order_val_excl * vat_mult, 2)
 
             net_order_val_excl = max(0.0, round(order_val_excl - total_credited_excl, 2))
             net_order_val_incl = max(0.0, round(order_val_incl - total_credited_incl, 2))
@@ -1236,6 +1238,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,
                 "payments": payments_parsed,
+                "vatPercentage": vat_pct,
+                "vat_percentage": vat_pct,
                 "depositPercentage": order.deposit_percentage,
                 "depositValue": order.deposit_value,
                 "depositInvoiceSent": order.deposit_invoice_sent,
