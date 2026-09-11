@@ -425,7 +425,9 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             item_dict['first_fix'] = prod.first_fix
             item_dict['local_or_import'] = prod.local_or_import
             item_dict['stock_available'] = getattr(prod, 'stock_available', None) if getattr(prod, 'stock_available', None) is not None else (getattr(prod, 'stock_on_hand', None) if getattr(prod, 'stock_on_hand', None) is not None else prod.stock_level or 0)
+            item_dict['stockAvailable'] = item_dict['stock_available']
             item_dict['stock_on_hand'] = getattr(prod, 'stock_on_hand', None) if getattr(prod, 'stock_on_hand', None) is not None else (prod.stock_level or 0)
+            item_dict['stockOnHand'] = item_dict['stock_on_hand']
             if not item_dict.get('one_one_code') and prod.one_to_one_code:
                 item_dict['one_one_code'] = prod.one_to_one_code
 

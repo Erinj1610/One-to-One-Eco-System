@@ -150,17 +150,28 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
         if (res.ok) {
           const data = await res.json();
           const items = Array.isArray(data) ? data : (data.items || []);
-          const mapped = items.map(p => ({
-            code: p.sku,
-            description: p.client_description || p.name || '',
-            client_description: p.client_description || '',
-            brand: p.brand || '',
-            dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
-            unitCost: p.cost_price || 0,
-            unitRetail: p.retail_price || p.trade_price || 0,
-            stockQty: p.stock_level || 0,
-            eta: p.lead_time || '4 weeks'
-          }));
+          const mapped = items.map(p => {
+            const availStock = p.stock_available !== undefined && p.stock_available !== null
+              ? p.stock_available
+              : (p.stock_on_hand !== undefined && p.stock_on_hand !== null ? p.stock_on_hand : (p.stock_level || 0));
+            const onHandStock = p.stock_on_hand !== undefined && p.stock_on_hand !== null ? p.stock_on_hand : (p.stock_level || 0);
+            return {
+              code: p.sku,
+              description: p.client_description || p.name || '',
+              client_description: p.client_description || '',
+              brand: p.brand || '',
+              supplier: p.supplier || p.supplier_name || '',
+              dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
+              unitCost: p.cost_price || 0,
+              unitRetail: p.retail_price || p.trade_price || 0,
+              stock_available: availStock,
+              stockAvailable: availStock,
+              stock_on_hand: onHandStock,
+              stockOnHand: onHandStock,
+              stockQty: availStock,
+              eta: p.lead_time || '4 weeks'
+            };
+          });
           setApiProducts(mapped);
         }
       } catch (err) {
@@ -1413,14 +1424,19 @@ export default function OrdersPage() {
     setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
     const loadedItems = (order.itemsList || []).map(item => {
-      if (!item.eta) {
+      let etaVal = item.eta;
+      if (!etaVal) {
         const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
-        return {
-          ...item,
-          eta: catalogItem ? catalogItem.eta : '4 weeks'
-        };
+        etaVal = catalogItem ? catalogItem.eta : '4 weeks';
       }
-      return item;
+      return {
+        ...item,
+        eta: etaVal,
+        stock_available: item.stock_available ?? item.stockAvailable,
+        stockAvailable: item.stock_available ?? item.stockAvailable,
+        stock_on_hand: item.stock_on_hand ?? item.stockOnHand,
+        stockOnHand: item.stock_on_hand ?? item.stockOnHand
+      };
     });
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
     setActiveOrderItems(loadedItems);
@@ -1794,6 +1810,8 @@ export default function OrdersPage() {
     if (!selectedProduct) return;
     setActiveOrderItems(prev => prev.map(item => {
       if (item.id === itemId) {
+        const availStock = selectedProduct.stock_available ?? selectedProduct.stockAvailable ?? selectedProduct.stock_on_hand ?? selectedProduct.stockOnHand ?? selectedProduct.stockQty ?? 0;
+        const onHandStock = selectedProduct.stock_on_hand ?? selectedProduct.stockOnHand ?? selectedProduct.stockQty ?? 0;
         return {
           ...item,
           code: selectedProduct.code,
@@ -1803,7 +1821,12 @@ export default function OrdersPage() {
           unitCost: Number(selectedProduct.unitCost) || 0,
           unitRetail: Number(selectedProduct.unitRetail) || 0,
           eta: selectedProduct.eta || '4 weeks',
-          supplier: selectedProduct.supplier || ''
+          supplier: selectedProduct.supplier || '',
+          stock_available: availStock,
+          stockAvailable: availStock,
+          stock_on_hand: onHandStock,
+          stockOnHand: onHandStock,
+          stockQty: availStock
         };
       }
       return item;
@@ -1828,6 +1851,14 @@ export default function OrdersPage() {
 
   const handleAddProductToOrder = (product) => {
     const newId = 'I-' + Date.now();
+    const availStock = product.stock_available !== undefined && product.stock_available !== null
+      ? Number(product.stock_available)
+      : (product.stock_on_hand !== undefined && product.stock_on_hand !== null
+          ? Number(product.stock_on_hand)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0));
+    const onHandStock = product.stock_on_hand !== undefined && product.stock_on_hand !== null
+      ? Number(product.stock_on_hand)
+      : (product.stock_level !== undefined ? Number(product.stock_level) : 0);
     const newRow = {
       id: newId,
       qty: 1,
@@ -1844,13 +1875,18 @@ export default function OrdersPage() {
       unitTrade: product.trade_price || 0,
       unitRetail: product.retail_price || 0,
       selection: product.selection || 'Selection',
-      stockStatus: product.stock_level > 0 ? 'Stock' : 'Ordered',
+      stockStatus: availStock > 0 ? 'Stock' : 'Ordered',
       eta: product.lead_time || '4 weeks',
       foh_code_description: product.foh_code_description || '',
       wetworks: product.wetworks || '',
       image_url: product.image_url || '',
       technical_image_url: product.technical_image_url || '',
-      spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
+      spec_sheet_url: product.qr_link || product.spec_sheet_url || '',
+      stock_available: availStock,
+      stockAvailable: availStock,
+      stock_on_hand: onHandStock,
+      stockOnHand: onHandStock,
+      stockQty: availStock
     };
     setActiveOrderItems(prev => [...prev, newRow]);
     alert(`Added "${product.one_to_one_code || product.sku || product.name}" to the order!`);
@@ -2181,6 +2217,7 @@ export default function OrdersPage() {
           receiving_history: Array.isArray(item.receivingHistory || item.receiving_history) ? (item.receivingHistory || item.receiving_history) : [],
           invoice_history: Array.isArray(item.invoiceHistory || item.invoice_history) ? (item.invoiceHistory || item.invoice_history) : [],
           stock_on_hand: Math.round(Number(item.stockOnHand || item.stock_on_hand) || 0),
+          stock_available: Number(item.stock_available ?? item.stockAvailable ?? 0),
           is_credit: !!(item.isCredit || item.is_credit),
           item_type: item.itemType || item.item_type || "Hardware",
           sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0)
@@ -4293,14 +4330,15 @@ export default function OrdersPage() {
                                     {/* STOCK STATUS (Available Stock) */}
                                     <td style={{ textAlign: 'center', fontWeight: 600, fontSize: '13px' }}>
                                       {(() => {
-                                        const avail = item.stock_available !== undefined && item.stock_available !== null
-                                          ? Number(item.stock_available)
-                                          : (item.stock_on_hand !== undefined && item.stock_on_hand !== null
-                                              ? Number(item.stock_on_hand)
-                                              : (item.stockQty !== undefined ? Number(item.stockQty) : null));
+                                        const rawAvail = item.stock_available ?? item.stockAvailable ?? item.stock_on_hand ?? item.stockOnHand ?? item.stockQty;
+                                        let avail = (rawAvail !== undefined && rawAvail !== null && rawAvail !== '') ? Number(rawAvail) : null;
                                         if (avail === null || isNaN(avail)) {
                                           const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
-                                          if (catalogItem) return <span style={{ color: 'var(--text-success)' }}>{catalogItem.stockQty} Avail</span>;
+                                          if (catalogItem) {
+                                            avail = Number(catalogItem.stockQty);
+                                          }
+                                        }
+                                        if (avail === null || isNaN(avail)) {
                                           return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
                                         }
                                         return (

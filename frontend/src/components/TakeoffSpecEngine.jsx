@@ -1199,7 +1199,11 @@ export default function TakeoffSpecEngine({
         selection: 'Profile',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.profileProduct?.image_url || ''
+        image_url: ledCfg.profileProduct?.image_url || '',
+        stock_available: ledCfg.profileProduct?.stock_available ?? ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
+        stockAvailable: ledCfg.profileProduct?.stock_available ?? ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
+        stock_on_hand: ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
+        stockOnHand: ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0
       });
 
       // 2. LED Strip Tape
@@ -1224,7 +1228,11 @@ export default function TakeoffSpecEngine({
         selection: 'Strip',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.stripProduct?.image_url || ''
+        image_url: ledCfg.stripProduct?.image_url || '',
+        stock_available: ledCfg.stripProduct?.stock_available ?? ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
+        stockAvailable: ledCfg.stripProduct?.stock_available ?? ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
+        stock_on_hand: ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
+        stockOnHand: ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0
       });
 
       // 3. LED Driver / Power Supply
@@ -1249,7 +1257,11 @@ export default function TakeoffSpecEngine({
         selection: 'Driver',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.driverProduct?.image_url || ''
+        image_url: ledCfg.driverProduct?.image_url || '',
+        stock_available: ledCfg.driverProduct?.stock_available ?? ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
+        stockAvailable: ledCfg.driverProduct?.stock_available ?? ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
+        stock_on_hand: ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
+        stockOnHand: ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0
       });
 
       // 4. Dynamic Accessories / End Caps
@@ -1279,7 +1291,11 @@ export default function TakeoffSpecEngine({
             selection: 'Accessory',
             stockStatus: 'Stock',
             eta: '2 weeks',
-            image_url: acc.image_url || ''
+            image_url: acc.image_url || '',
+            stock_available: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+            stockAvailable: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+            stock_on_hand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0,
+            stockOnHand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0
           });
         });
       } else {
@@ -1339,7 +1355,11 @@ export default function TakeoffSpecEngine({
         selection: 'Track Rail',
         stockStatus: 'Stock',
         eta: '3 weeks',
-        image_url: trackCfg.railProduct?.image_url || ''
+        image_url: trackCfg.railProduct?.image_url || '',
+        stock_available: trackCfg.railProduct?.stock_available ?? trackCfg.railProduct?.stock_on_hand ?? trackCfg.railProduct?.stock_level ?? 0,
+        stockAvailable: trackCfg.railProduct?.stock_available ?? trackCfg.railProduct?.stock_on_hand ?? trackCfg.railProduct?.stock_level ?? 0,
+        stock_on_hand: trackCfg.railProduct?.stock_on_hand ?? trackCfg.railProduct?.stock_level ?? 0,
+        stockOnHand: trackCfg.railProduct?.stock_on_hand ?? trackCfg.railProduct?.stock_level ?? 0
       });
 
       // 2. Track-Mounted Spotlights / Luminaires
@@ -1367,7 +1387,11 @@ export default function TakeoffSpecEngine({
             selection: 'Track Luminaire',
             stockStatus: 'Stock',
             eta: '3 weeks',
-            image_url: spot.image_url || ''
+            image_url: spot.image_url || '',
+            stock_available: spot.stock_available ?? spot.stock_on_hand ?? spot.stock_level ?? spot.product?.stock_available ?? spot.product?.stock_on_hand ?? 0,
+            stockAvailable: spot.stock_available ?? spot.stock_on_hand ?? spot.stock_level ?? spot.product?.stock_available ?? spot.product?.stock_on_hand ?? 0,
+            stock_on_hand: spot.stock_on_hand ?? spot.stock_level ?? spot.product?.stock_on_hand ?? 0,
+            stockOnHand: spot.stock_on_hand ?? spot.stock_level ?? spot.product?.stock_on_hand ?? 0
           });
         });
       }
@@ -1395,7 +1419,11 @@ export default function TakeoffSpecEngine({
           selection: 'Driver',
           stockStatus: 'Stock',
           eta: '3 weeks',
-          image_url: trackCfg.driverProduct?.image_url || ''
+          image_url: trackCfg.driverProduct?.image_url || '',
+          stock_available: trackCfg.driverProduct?.stock_available ?? trackCfg.driverProduct?.stock_on_hand ?? trackCfg.driverProduct?.stock_level ?? 0,
+          stockAvailable: trackCfg.driverProduct?.stock_available ?? trackCfg.driverProduct?.stock_on_hand ?? trackCfg.driverProduct?.stock_level ?? 0,
+          stock_on_hand: trackCfg.driverProduct?.stock_on_hand ?? trackCfg.driverProduct?.stock_level ?? 0,
+          stockOnHand: trackCfg.driverProduct?.stock_on_hand ?? trackCfg.driverProduct?.stock_level ?? 0
         });
       }
 
@@ -1426,7 +1454,11 @@ export default function TakeoffSpecEngine({
             selection: 'Accessory',
             stockStatus: 'Stock',
             eta: '3 weeks',
-            image_url: acc.image_url || ''
+            image_url: acc.image_url || '',
+            stock_available: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+            stockAvailable: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+            stock_on_hand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0,
+            stockOnHand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0
           });
         });
       } else {
@@ -1486,7 +1518,23 @@ export default function TakeoffSpecEngine({
         wetworks: product.wetworks || '',
         image_url: product.image_url || '',
         technical_image_url: product.technical_image_url || '',
-        spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
+        spec_sheet_url: product.qr_link || product.spec_sheet_url || '',
+        stock_available: product.stock_available !== undefined && product.stock_available !== null
+          ? Number(product.stock_available)
+          : (product.stock_on_hand !== undefined && product.stock_on_hand !== null
+              ? Number(product.stock_on_hand)
+              : (product.stock_level !== undefined ? Number(product.stock_level) : 0)),
+        stockAvailable: product.stock_available !== undefined && product.stock_available !== null
+          ? Number(product.stock_available)
+          : (product.stock_on_hand !== undefined && product.stock_on_hand !== null
+              ? Number(product.stock_on_hand)
+              : (product.stock_level !== undefined ? Number(product.stock_level) : 0)),
+        stock_on_hand: product.stock_on_hand !== undefined && product.stock_on_hand !== null
+          ? Number(product.stock_on_hand)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0),
+        stockOnHand: product.stock_on_hand !== undefined && product.stock_on_hand !== null
+          ? Number(product.stock_on_hand)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0)
       };
     };
 
@@ -1519,7 +1567,23 @@ export default function TakeoffSpecEngine({
         wetworks: acc.wetworks || '',
         image_url: acc.image_url || '',
         technical_image_url: acc.technical_image_url || '',
-        spec_sheet_url: acc.qr_link || acc.spec_sheet_url || ''
+        spec_sheet_url: acc.qr_link || acc.spec_sheet_url || '',
+        stock_available: acc.stock_available !== undefined && acc.stock_available !== null
+          ? Number(acc.stock_available)
+          : (acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+              ? Number(acc.stock_on_hand)
+              : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0))),
+        stockAvailable: acc.stock_available !== undefined && acc.stock_available !== null
+          ? Number(acc.stock_available)
+          : (acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+              ? Number(acc.stock_on_hand)
+              : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0))),
+        stock_on_hand: acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+          ? Number(acc.stock_on_hand)
+          : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_on_hand ?? 0)),
+        stockOnHand: acc.stock_on_hand !== undefined && acc.stock_on_hand !== null
+          ? Number(acc.stock_on_hand)
+          : (acc.stock_level !== undefined ? Number(acc.stock_level) : (acc.product?.stock_on_hand ?? 0))
       };
     };
 
