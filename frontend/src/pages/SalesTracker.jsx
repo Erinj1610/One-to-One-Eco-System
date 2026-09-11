@@ -201,7 +201,7 @@ const getItemDefaults = (item) => {
     resolved.stockStatus = '';
   }
   if (resolved.stockOnHand === undefined) {
-    resolved.stockOnHand = 0;
+    resolved.stockOnHand = item.stock_on_hand !== undefined ? item.stock_on_hand : 0;
   }
   
   return resolved;
@@ -725,9 +725,15 @@ export default function SalesTracker() {
 
       const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
       const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
-      const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+      const stockOnHand = item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0;
 
-      totalProcQty += stockStatus === 'All Stock on Hand' ? q : (Number(received) || 0);
+      const effectiveProc = stockStatus === 'All Stock on Hand' 
+        ? q 
+        : stockStatus === 'Partial Stock on Hand' 
+          ? Math.min(q, (Number(received) || 0) + (Number(stockOnHand) || 0))
+          : (Number(received) || 0);
+
+      totalProcQty += effectiveProc;
       totalInvQty += Number(invoiced) || 0;
       totalDelQty += Number(delivered) || 0;
     });
@@ -4211,7 +4217,7 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(74, 222, 128, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#4ade80', fontWeight: 600 }}>Proc:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.min(100, Math.round((((item.receivedQty || 0) + (item.stockStatus === 'Partial Stock on Hand' ? (Number(item.stockOnHand ?? item.stock_on_hand) || 0) : 0)) / (item.qty || 1)) * 100))}%`))}
+                                            {item.is_credit ? '—' : ((item.itemType || item.item_type) === 'Service' ? '100%' : (item.stockStatus === 'All Stock on Hand' ? '100%' : `${Math.min(100, Math.round((((Number(item.receivedQty) || 0) + (Number(item.stockOnHand ?? item.stock_on_hand) || 0)) / (Number(item.qty) || 1)) * 100))}%`))}
                                           </span>
                                         </div>
                                         {/* Invoiced Badge */}
