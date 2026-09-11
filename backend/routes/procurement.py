@@ -913,16 +913,7 @@ def allocate_procurement_item(
             ).all()
             matched_item = find_best_item_match(proj_items, sku)
 
-        # Fallback cross-project SKU match if target project has no matching items
-        if not matched_item:
-            cand_items = db.query(OrderItem).all()
-            matched_item = find_best_item_match(cand_items, sku)
-            if matched_item and matched_item.order_id:
-                p_slug = str(matched_item.order_id).split("--")[0]
-                found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                if found_proj:
-                    real_proj_id = found_proj.id
-                    real_proj_name = found_proj.name
+        # Fallback cross-project SKU match removed: items must never cross projects or auto-create lines
 
         # Resolve order DB ID safely without crashing on string PO numbers
         resolved_order_db_id = None
@@ -1104,18 +1095,9 @@ def batch_allocate_procurement_items(
             elif proj_items:
                 matched_item = find_best_item_match(proj_items, sku)
 
-            # Fallback cross-project match if not found in selected project
+            # Strict scope: never cross-match to other projects or create orphan lines
             item_proj_id = real_proj_id
             item_proj_name = real_proj_name
-            if not matched_item:
-                all_items = db.query(OrderItem).all()
-                matched_item = find_best_item_match(all_items, sku)
-                if matched_item and matched_item.order_id:
-                    p_slug = str(matched_item.order_id).split("--")[0]
-                    found_proj = db.query(Project).filter(Project.project_key == p_slug).first()
-                    if found_proj:
-                        item_proj_id = found_proj.id
-                        item_proj_name = found_proj.name
 
             # Resolve order DB ID safely without crashing on string PO numbers
             resolved_order_db_id = None
@@ -1222,11 +1204,28 @@ def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, ca
     """
     Safely removes cancelled allocations from OrderItem purchase_history / receiving_history
     and recalculates po_qty_ordered, po_ref, dates, and ETAs.
+    Guarantees safe JSON parsing so string representations never crash with 'str' object has no attribute 'get'.
     """
     if not item:
         return
+
+    def parse_hist_safely(raw_val):
+        if not raw_val:
+            return []
+        if isinstance(raw_val, list):
+            return [h for h in raw_val if isinstance(h, dict)]
+        if isinstance(raw_val, str):
+            try:
+                import json
+                parsed = json.loads(raw_val)
+                if isinstance(parsed, list):
+                    return [h for h in parsed if isinstance(h, dict)]
+            except Exception:
+                return []
+        return []
+
     # PO
-    cur_p = list(item.purchase_history or [])
+    cur_p = parse_hist_safely(item.purchase_history)
     new_p = [
         h for h in cur_p
         if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
@@ -1249,7 +1248,7 @@ def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, ca
         item.po_qty_ordered = 0
 
     # GRN
-    cur_r = list(item.receiving_history or [])
+    cur_r = parse_hist_safely(item.receiving_history)
     new_r = [
         h for h in cur_r
         if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids

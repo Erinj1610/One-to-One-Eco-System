@@ -690,6 +690,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
         orders = db.query(Order).all()
         order_items = db.query(OrderItem).all()
 
+        # Build bidirectional mapping between Order.id (int) and Order.po_number (slug)
+        order_id_to_slug = {}
+        order_slug_to_id = {}
+        for o in orders:
+            if o.id and o.po_number:
+                order_id_to_slug[str(o.id)] = str(o.po_number)
+                order_slug_to_id[str(o.po_number)] = str(o.id)
+
         # Pre-load active procurement allocations for live PO & GRN document mapping
         import re
         active_allocations = db.query(ProcurementAllocation).filter(ProcurementAllocation.status == "Active").all()
@@ -702,7 +710,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
         for a in active_allocations:
             if a.order_id:
-                alloc_by_order_id.setdefault(str(a.order_id), []).append(a)
+                raw_oid = str(a.order_id)
+                alloc_by_order_id.setdefault(raw_oid, []).append(a)
+                if raw_oid in order_id_to_slug:
+                    alloc_by_order_id.setdefault(order_id_to_slug[raw_oid], []).append(a)
+                elif raw_oid in order_slug_to_id:
+                    alloc_by_order_id.setdefault(order_slug_to_id[raw_oid], []).append(a)
             if a.order_item_id:
                 alloc_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if a.project_id:
@@ -882,6 +895,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             del_hist = parse_history(item.delivery_history)
             pur_hist = parse_history(item.purchase_history)
             rec_hist = parse_history(item.receiving_history)
+            inv_hist_raw = parse_history(item.invoice_history)
 
             item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
 
@@ -980,6 +994,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 rec_date = item.received_date
 
             # 3. Derive authentic invoice allocations dynamically from ProcurementAllocation
+            item_order_keys = {str(item.order_id)} if item.order_id else set()
+            if item.order_id and str(item.order_id) in order_slug_to_id:
+                item_order_keys.add(order_slug_to_id[str(item.order_id)])
+            elif item.order_id and str(item.order_id) in order_id_to_slug:
+                item_order_keys.add(order_id_to_slug[str(item.order_id)])
+
             item_inv_allocs = [
                 a for a in alloc_by_item_id.get(str(item.id), [])
                 if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
@@ -987,7 +1007,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             if not item_inv_allocs and item_norm_skus:
                 for s in item_norm_skus:
                     for a in alloc_by_sku_inv.get(s, []):
-                        if (a.order_id and str(a.order_id) == str(item.order_id)) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
+                        if (a.order_id and str(a.order_id) in item_order_keys) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
                             if a not in item_inv_allocs:
                                 item_inv_allocs.append(a)
 
@@ -1023,11 +1043,11 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 inv_date = dyn_inv_date
                 inv_val = round(dyn_inv_val, 2)
             else:
-                inv_hist = []
-                inv_qty = 0
-                inv_ref = ""
-                inv_date = ""
-                inv_val = 0.0
+                inv_hist = inv_hist_raw
+                inv_qty = item.invoice_qty or 0
+                inv_ref = item.invoice_ref or ""
+                inv_date = item.invoice_date or ""
+                inv_val = float(item.invoice_value or 0.0)
 
             # Derive authentic live stock available & on hand
             matched_prod = None

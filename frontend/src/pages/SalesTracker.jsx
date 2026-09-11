@@ -137,11 +137,11 @@ const getItemDefaults = (item) => {
     resolved.poDate = pHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
     resolved.poEta = pHistory.map(h => h.eta).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
   } else {
-    resolved.poRef = '';
-    resolved.poSupplier = '';
-    resolved.poDate = '';
-    resolved.poQtyOrdered = 0;
-    resolved.poEta = '';
+    resolved.poRef = item.poRef || item.po_ref || '';
+    resolved.poSupplier = item.poSupplier || item.po_supplier || item.supplier || '';
+    resolved.poDate = item.poDate || item.po_date || '';
+    resolved.poQtyOrdered = Number(item.poQtyOrdered ?? item.po_qty_ordered ?? 0);
+    resolved.poEta = item.poEta || item.po_eta || '';
   }
   
   // Phase 2: Receiving Phase
@@ -151,9 +151,9 @@ const getItemDefaults = (item) => {
     resolved.receivedRef = Array.from(new Set(rHistory.map(h => h.ref).filter(Boolean))).join('; ');
     resolved.receivedDate = rHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
   } else {
-    resolved.receivedQty = 0;
-    resolved.receivedRef = '';
-    resolved.receivedDate = '';
+    resolved.receivedQty = Number(item.receivedQty ?? item.received_qty ?? 0);
+    resolved.receivedRef = item.receivedRef || item.received_ref || '';
+    resolved.receivedDate = item.receivedDate || item.received_date || '';
   }
   
   // Phase 3: Invoicing Phase
@@ -164,10 +164,10 @@ const getItemDefaults = (item) => {
     resolved.invoiceDate = iHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
     resolved.invoiceValue = iHistory.reduce((sum, h) => sum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(resolved.unitRetail) || 0)), 0);
   } else {
-    resolved.invoiceQty = 0;
-    resolved.invoiceRef = '';
-    resolved.invoiceDate = '';
-    resolved.invoiceValue = 0;
+    resolved.invoiceQty = Number(item.invoiceQty ?? item.invoice_qty ?? 0);
+    resolved.invoiceRef = item.invoiceRef || item.invoice_ref || '';
+    resolved.invoiceDate = item.invoiceDate || item.invoice_date || '';
+    resolved.invoiceValue = Number(item.invoiceValue ?? item.invoice_value ?? 0);
   }
   
   // Process delivery history if exists to sync with warehouse documents
