@@ -295,7 +295,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             s_upper in [
                 'QUOTATION', 'QUOTE', 'BOQ', 'DEPOSIT_INVOICE', 'FINAL_INVOICE',
                 'BALANCE_INVOICE', 'LIGHTING_SCHEDULE', 'SCHEDULE', 'INVOICE',
-                'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO'
+                'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO',
+                'STATEMENT', 'PROGRESS_STATEMENT'
             ]
         )
 

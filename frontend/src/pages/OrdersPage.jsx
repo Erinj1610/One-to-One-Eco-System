@@ -41,7 +41,11 @@ import {
   Settings,
   GripVertical,
   CreditCard,
-  Folder
+  Folder,
+  CheckSquare,
+  Square,
+  Check,
+  Loader2
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -2072,18 +2076,137 @@ export default function OrdersPage() {
   };
 
   const [isSavingOrder, setIsSavingOrder] = useState(false);
-  const [isSyncingVault, setIsSyncingVault] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
 
-  // Save the spreadsheet and update the global store context
-  const handleSaveOrderSpreadsheet = async (syncVault = false) => {
-    if (isSavingOrder || isSyncingVault) return;
+  // Document selection modal states
+  const [showDocVaultModal, setShowDocVaultModal] = useState(false);
+  const [selectedVaultDocs, setSelectedVaultDocs] = useState([
+    'QUOTATION', 'BOQ', 'LIGHTING_SCHEDULE', 'DEPOSIT_INVOICE', 'BALANCE_INVOICE', 'TAX_INVOICE', 'STATEMENT'
+  ]);
+  const [isVaultGenerating, setIsVaultGenerating] = useState(false);
+  const [vaultProgress, setVaultProgress] = useState({});
+  const [isVaultComplete, setIsVaultComplete] = useState(false);
 
-    if (syncVault) {
-      setIsSyncingVault(true);
-    } else {
-      setIsSavingOrder(true);
+  // Comprehensive order documents registry
+  const getAllAvailableOrderDocs = () => {
+    const standardDocs = [
+      { id: 'QUOTATION', name: 'Quotation (Summarized)', subtitle: 'Standard client quotation with summarized line items and pricing' },
+      { id: 'BOQ', name: 'BOQ (Bill of Quantities)', subtitle: 'Detailed item breakdown with unit cost, trade, retail & total prices' },
+      { id: 'LIGHTING_SCHEDULE', name: 'Lighting Schedule', subtitle: 'Technical schedule with area, dimming, brands and fixture specifications' },
+      { id: 'DEPOSIT_INVOICE', name: 'Deposit Invoice (Pro-Forma)', subtitle: 'Initial deposit request billing based on configured deposit rate' },
+      { id: 'BALANCE_INVOICE', name: 'Balance Invoice', subtitle: 'Outstanding balance billing for final client payment' },
+      { id: 'TAX_INVOICE', name: 'Tax Invoice (Full)', subtitle: 'Full tax invoice with detailed VAT calculations and company billing details' },
+      { id: 'STATEMENT', name: 'Progress Statement', subtitle: 'Statement of account showing recorded payments and balance ledger' }
+    ];
+
+    if (liveCustomDocs && typeof liveCustomDocs === 'object' && Object.keys(liveCustomDocs).length > 0) {
+      const customEntries = Object.values(liveCustomDocs)
+        .filter(cd => cd && (cd.id || cd.name))
+        .filter(cd => !standardDocs.some(sd => sd.id.toLowerCase() === (cd.id || cd.name).toLowerCase()))
+        .map(cd => ({
+          id: (cd.id || cd.name).toUpperCase(),
+          name: cd.name || cd.id,
+          subtitle: cd.description || 'Custom configured template'
+        }));
+      return [...standardDocs, ...customEntries];
     }
+    return standardDocs;
+  };
+
+  const handleToggleSelectAllVaultDocs = () => {
+    const allDocs = getAllAvailableOrderDocs();
+    if (selectedVaultDocs.length === allDocs.length) {
+      setSelectedVaultDocs([]);
+    } else {
+      setSelectedVaultDocs(allDocs.map(d => d.id));
+    }
+  };
+
+  const handleToggleVaultDoc = (docId) => {
+    setSelectedVaultDocs(prev => 
+      prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
+    );
+  };
+
+  const handleOpenVaultModal = () => {
+    const allDocs = getAllAvailableOrderDocs();
+    if (!selectedVaultDocs || selectedVaultDocs.length === 0) {
+      setSelectedVaultDocs(allDocs.map(d => d.id));
+    }
+    setIsVaultGenerating(false);
+    setIsVaultComplete(false);
+    setVaultProgress({});
+    setShowDocVaultModal(true);
+  };
+
+  const handleExecuteVaultGeneration = async () => {
+    if (selectedVaultDocs.length === 0 || isVaultGenerating) return;
+    setIsVaultGenerating(true);
+    setIsVaultComplete(false);
+
+    // Initial status: all selected docs are 'generating'
+    const initialProg = {};
+    selectedVaultDocs.forEach(d => {
+      initialProg[d] = { status: 'generating' };
+    });
+    setVaultProgress(initialProg);
+
+    // 1. First save order & line items to Cloud SQL database silently
+    try {
+      await handleSaveOrderSpreadsheet(false, true);
+    } catch (dbErr) {
+      console.error("Database save before vault sync notice:", dbErr);
+    }
+
+    // 2. Build complete order document tokens
+    const vaultTokens = buildOrderDocumentTokens();
+
+    // 3. Parallel execution using Promise.allSettled across all selected document types
+    const docPromises = selectedVaultDocs.map(async (docType) => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/generate/${docType}?is_save_action=true`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vaultTokens)
+        });
+        if (res.ok) {
+          setVaultProgress(prev => ({
+            ...prev,
+            [docType]: { status: 'done' }
+          }));
+          return { docType, success: true };
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.detail || res.statusText || 'Generation failed';
+          setVaultProgress(prev => ({
+            ...prev,
+            [docType]: { status: 'error', errorMsg: errMsg }
+          }));
+          return { docType, success: false, error: errMsg };
+        }
+      } catch (e) {
+        setVaultProgress(prev => ({
+          ...prev,
+          [docType]: { status: 'error', errorMsg: e.message }
+        }));
+        return { docType, success: false, error: e.message };
+      }
+    });
+
+    await Promise.allSettled(docPromises);
+    setIsVaultGenerating(false);
+    setIsVaultComplete(true);
+  };
+
+  // Save the spreadsheet and update the global store context
+  const handleSaveOrderSpreadsheet = async (syncVault = false, silent = false) => {
+    if (syncVault) {
+      handleOpenVaultModal();
+      return;
+    }
+
+    if (isSavingOrder) return;
+    setIsSavingOrder(true);
 
     // Locate source project
     let sourceProjectKey = selectedProjectKey;
@@ -2259,53 +2382,10 @@ export default function OrdersPage() {
       await refreshProjects();
     }
 
-    if (!syncVault) {
-      setIsSavingOrder(false);
+    setIsSavingOrder(false);
+    if (!silent) {
       setSaveSuccessMsg('✓ Order & items saved successfully!');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
-      return;
-    }
-
-    // Trigger Drive vault save with visible feedback
-    try {
-      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-      const vaultTokens = buildOrderDocumentTokens();
-
-      let successCount = 0;
-      let errors = [];
-
-      for (const dType of orderDocTypes) {
-        try {
-          const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vaultTokens)
-          });
-          if (res.ok) {
-            successCount++;
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            errors.push(`${dType}: ${errData.detail || res.statusText || 'Failed'}`);
-          }
-        } catch (e) {
-          errors.push(`${dType}: ${e.message}`);
-        }
-      }
-
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-      const orderMarginPct = totalRetail > 0 ? Math.round(((totalRetail - totalCost) / totalRetail) * 100) : 0;
-
-      if (errors.length > 0) {
-        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
-      } else {
-        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive (Documents/Latest).\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
-      }
-    } catch (vaultErr) {
-      alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
-    } finally {
-      setIsSyncingVault(false);
     }
   };
 
@@ -3033,8 +3113,8 @@ export default function OrdersPage() {
                   <button 
                     className="btn btn-secondary btn-sm" 
                     onClick={() => handleSaveOrderSpreadsheet(false)}
-                    disabled={isSavingOrder || isSyncingVault}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                    disabled={isSavingOrder || isVaultGenerating}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isVaultGenerating) ? 'not-allowed' : 'pointer' }}
                     title="Instantly save all edits, line items, and pricing to database without Google Drive sync"
                   >
                     <Save size={14} /> {isSavingOrder ? 'Saving...' : 'Save & Update'}
@@ -3042,12 +3122,12 @@ export default function OrdersPage() {
 
                   <button 
                     className="btn btn-primary btn-sm" 
-                    onClick={() => handleSaveOrderSpreadsheet(true)}
-                    disabled={isSavingOrder || isSyncingVault}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
-                    title="Save order to database and generate Quotation, Invoice, BOQ & Schedule on Google Drive"
+                    onClick={handleOpenVaultModal}
+                    disabled={isSavingOrder || isVaultGenerating}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isVaultGenerating) ? 'not-allowed' : 'pointer' }}
+                    title="Select and generate order documents to Google Drive (Documents/Latest)"
                   >
-                    <FileText size={14} /> {isSyncingVault ? '⏳ Generating Docs...' : 'Save & Document'}
+                    <FileText size={14} /> {isVaultGenerating ? '⏳ Generating Docs...' : 'Save & Document'}
                   </button>
                 </div>
               </div>
@@ -6777,6 +6857,336 @@ export default function OrdersPage() {
               >
                 + Add to Order
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DOCUMENT SELECTION & GOOGLE DRIVE VAULT MODAL */}
+      {showDocVaultModal && (
+        <div 
+          className="modal-backdrop" 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            background: 'rgba(0, 0, 0, 0.65)', 
+            backdropFilter: 'blur(5px)', 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            zIndex: 1300 
+          }}
+          onClick={() => { if (!isVaultGenerating) setShowDocVaultModal(false); }}
+        >
+          <div 
+            className="modal-container" 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '14px', 
+              width: '580px', 
+              maxWidth: '92vw', 
+              maxHeight: '90vh', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              boxShadow: '0 16px 40px rgba(0,0,0,0.35)', 
+              overflow: 'hidden' 
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* MODAL HEADER */}
+            <div 
+              className="modal-header" 
+              style={{ 
+                padding: '16px 20px', 
+                borderBottom: '1px solid var(--border)', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                background: 'var(--bg-secondary)' 
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} color="var(--color-primary)" />
+                  <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {isVaultComplete 
+                      ? '✓ Documents Vaulted Successfully' 
+                      : isVaultGenerating 
+                        ? '⏳ Compiling & Saving Documents to Drive...' 
+                        : 'Select Documents to Save to Google Drive'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                  {isVaultComplete
+                    ? 'All generated PDFs are ready in Google Drive: Documents / Latest'
+                    : isVaultGenerating
+                      ? 'Generating high-res PDFs in parallel and uploading to Documents / Latest...'
+                      : `Target Folder: Orders / ${selectedOrderId || 'Order'} / Documents / Latest`}
+                </div>
+              </div>
+              {!isVaultGenerating && (
+                <button 
+                  type="button" 
+                  className="btn btn-ghost btn-sm" 
+                  style={{ padding: '4px 8px', fontSize: '16px', lineHeight: 1 }} 
+                  onClick={() => setShowDocVaultModal(false)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* MODAL BODY */}
+            <div className="modal-body" style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* SELECT ALL TOOLBAR (Shown before generation) */}
+              {!isVaultGenerating && !isVaultComplete && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  background: 'var(--bg-secondary)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '8px' 
+                }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={handleToggleSelectAllVaultDocs}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      fontWeight: 600, 
+                      fontSize: '12px', 
+                      cursor: 'pointer',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    {selectedVaultDocs.length === getAllAvailableOrderDocs().length ? (
+                      <>
+                        <CheckSquare size={16} color="var(--color-primary)" />
+                        <span>Deselect All</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square size={16} color="var(--text-tertiary)" />
+                        <span>Select All Documents</span>
+                      </>
+                    )}
+                  </button>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-info)' }}>
+                    {selectedVaultDocs.length} of {getAllAvailableOrderDocs().length} Selected
+                  </span>
+                </div>
+              )}
+
+              {/* DOCUMENT CHECKLIST OR PROGRESS LIST */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {getAllAvailableOrderDocs().map(doc => {
+                  const isChecked = selectedVaultDocs.includes(doc.id);
+                  const prog = vaultProgress[doc.id];
+                  
+                  // If generating or complete, only display the documents that were selected
+                  if ((isVaultGenerating || isVaultComplete) && !isChecked) return null;
+
+                  return (
+                    <div 
+                      key={doc.id}
+                      onClick={() => {
+                        if (!isVaultGenerating && !isVaultComplete) {
+                          handleToggleVaultDoc(doc.id);
+                        }
+                      }}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        padding: '10px 14px', 
+                        borderRadius: '8px', 
+                        border: '1px solid', 
+                        borderColor: isChecked ? 'var(--border-info)' : 'var(--border)', 
+                        background: isChecked ? 'rgba(59, 130, 246, 0.04)' : 'var(--bg-secondary)', 
+                        cursor: (isVaultGenerating || isVaultComplete) ? 'default' : 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                        {!isVaultGenerating && !isVaultComplete && (
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={() => handleToggleVaultDoc(doc.id)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+                          />
+                        )}
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {doc.name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {doc.subtitle}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* STATUS BADGE WHEN GENERATING / COMPLETED */}
+                      {(isVaultGenerating || isVaultComplete) && (
+                        <div>
+                          {prog?.status === 'done' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(16, 185, 129, 0.12)', 
+                              color: 'var(--text-success)' 
+                            }}>
+                              <Check size={13} /> Saved to Drive
+                            </span>
+                          )}
+                          {prog?.status === 'generating' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '6px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(59, 130, 246, 0.12)', 
+                              color: 'var(--color-primary)' 
+                            }}>
+                              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating...
+                            </span>
+                          )}
+                          {prog?.status === 'error' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(239, 68, 68, 0.12)', 
+                              color: 'var(--text-danger)' 
+                            }} title={prog.errorMsg}>
+                              <AlertCircle size={13} /> {prog.errorMsg || 'Failed'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* PROGRESS BAR WHEN GENERATING */}
+              {isVaultGenerating && (() => {
+                const total = selectedVaultDocs.length;
+                const completed = Object.values(vaultProgress).filter(p => p.status === 'done' || p.status === 'error').length;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                return (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      <span>Parallel Progress</span>
+                      <span>{completed} of {total} completed ({pct}%)</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--color-primary)', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* COMPLETION BANNER */}
+              {isVaultComplete && (
+                <div style={{ 
+                  background: 'rgba(16, 185, 129, 0.08)', 
+                  border: '1px solid rgba(16, 185, 129, 0.3)', 
+                  borderRadius: '8px', 
+                  padding: '12px 16px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  marginTop: '8px' 
+                }}>
+                  <CheckCircle size={22} color="var(--text-success)" style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)' }}>
+                      All {selectedVaultDocs.length} Documents Saved to Google Drive!
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Stored under: <code>Orders / {selectedOrderId} / Documents / Latest /</code>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div 
+              className="modal-footer" 
+              style={{ 
+                padding: '12px 20px', 
+                background: 'var(--bg-secondary)', 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: '10px', 
+                borderTop: '1px solid var(--border)' 
+              }}
+            >
+              {!isVaultGenerating && !isVaultComplete && (
+                <>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm" 
+                    onClick={() => setShowDocVaultModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm" 
+                    onClick={handleExecuteVaultGeneration}
+                    disabled={selectedVaultDocs.length === 0}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: selectedVaultDocs.length === 0 ? 'not-allowed' : 'pointer' }}
+                  >
+                    <FileText size={14} /> Generate & Save to Drive ({selectedVaultDocs.length})
+                  </button>
+                </>
+              )}
+
+              {isVaultGenerating && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary btn-sm" 
+                  disabled 
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'not-allowed' }}
+                >
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Generating in Parallel... Please wait
+                </button>
+              )}
+
+              {isVaultComplete && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => setShowDocVaultModal(false)}
+                  style={{ minWidth: '90px' }}
+                >
+                  ✓ Done
+                </button>
+              )}
             </div>
           </div>
         </div>
