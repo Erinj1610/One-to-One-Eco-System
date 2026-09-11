@@ -805,8 +805,104 @@ def run_quick_schema_check():
                 if 'stock_available' not in oi_cols:
                     conn.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
                     conn.commit()
+
+        # Synchronous Auto-Healing for orphaned allocations (e.g. LED: prefix mismatches like IN-000000164)
+        heal_orphaned_allocations()
     except Exception as e:
-        print(f"Schema check error: {e}")
+        print(f"Schema check / healing error: {e}")
+
+def heal_orphaned_allocations():
+    """
+    Scans for active ProcurementAllocations where order_item_id IS NULL and order_id IS NOT NULL.
+    Uses supplier prefix-stripping matching to link to the proper OrderItem and recalculates
+    invoicing / purchase histories so no manual unallocating or reallocating is ever required.
+    Runs synchronously on container boot for both Staging and Main.
+    """
+    from database.cloud_sql import SessionLocal
+    from models.orm_models import ProcurementAllocation, OrderItem, Order
+    from routes.invoicing import find_best_item_match as inv_match, recalc_order_item_invoicing
+    from datetime import datetime, timezone
+
+    db = SessionLocal()
+    try:
+        orphans = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.status == "Active",
+            ProcurementAllocation.order_item_id.is_(None),
+            ProcurementAllocation.order_id.isnot(None)
+        ).all()
+
+        if not orphans:
+            return
+
+        print(f"Startup Auto-Healing: Found {len(orphans)} orphaned active allocations. Attempting repair...")
+        repaired_items = set()
+        for alloc in orphans:
+            ord_id = alloc.order_id
+            ord_obj = None
+            if str(ord_id).isdigit():
+                ord_obj = db.query(Order).filter(Order.id == int(ord_id)).first()
+            if not ord_obj:
+                ord_obj = db.query(Order).filter(Order.po_number == str(ord_id)).first()
+
+            cand_items = []
+            if ord_obj:
+                cand_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+            elif alloc.project_id:
+                cand_items = db.query(OrderItem).filter(
+                    OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == alloc.project_id).all()] + 
+                                           [o.po_number for o in db.query(Order).filter(Order.project_id == alloc.project_id).all() if o.po_number])
+                ).all()
+
+            if cand_items and alloc.sku:
+                matched_item = inv_match(cand_items, alloc.sku)
+                if matched_item:
+                    alloc.order_item_id = str(matched_item.id)
+                    alloc.fitting_code = matched_item.code or alloc.fitting_code
+                    db.flush()
+
+                    if alloc.allocation_type == "INVOICE":
+                        repaired_items.add(matched_item)
+                    elif alloc.allocation_type == "PO":
+                        # Repair PO purchase history
+                        matched_item.po_ref = alloc.source_doc_no
+                        matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(alloc.allocated_qty or 0)
+                        p_hist = list(matched_item.purchase_history or [])
+                        p_hist.append({
+                            "id": alloc.source_doc_no,
+                            "ref": alloc.source_doc_no,
+                            "qty": alloc.allocated_qty,
+                            "cost": alloc.unit_cost,
+                            "supplier": alloc.vendor_name,
+                            "date": str(alloc.doc_date).split("T")[0] if alloc.doc_date else datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                            "eta": alloc.eta,
+                            "by": alloc.allocated_by_name or "Startup Healing"
+                        })
+                        matched_item.purchase_history = p_hist
+                    elif alloc.allocation_type == "GRN":
+                        # Repair GRN receiving history
+                        matched_item.received_qty = (matched_item.received_qty or 0) + int(alloc.allocated_qty or 0)
+                        r_hist = list(matched_item.receiving_history or [])
+                        r_hist.append({
+                            "id": alloc.source_doc_no,
+                            "ref": alloc.source_doc_no,
+                            "qty": alloc.allocated_qty,
+                            "supplier": alloc.vendor_name,
+                            "date": str(alloc.doc_date).split("T")[0] if alloc.doc_date else datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                            "by": alloc.allocated_by_name or "Startup Healing"
+                        })
+                        matched_item.receiving_history = r_hist
+
+        for it in repaired_items:
+            recalc_order_item_invoicing(db, it)
+
+        db.commit()
+        print(f"Startup Auto-Healing: Successfully healed orphaned allocations ({len(orphans)} processed).")
+    except Exception as heal_err:
+        db.rollback()
+        print(f"Startup Auto-Healing notice: {heal_err}")
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 async def startup_event():
