@@ -725,6 +725,7 @@ export default function SalesTracker() {
 
       const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
       const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
+      const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
       const stockOnHand = item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0;
 
       const effectiveProc = stockStatus === 'All Stock on Hand' 
