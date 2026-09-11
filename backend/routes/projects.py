@@ -429,14 +429,18 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
 
     # If project key changed (e.g. from draft key to final project name key)
     if project_data.project_key and project_data.project_key != project.project_key:
-        new_key = project_data.project_key
-        existing_other = db.query(Project).filter(Project.project_key == new_key, Project.id != project.id).first()
-        if not existing_other:
-            old_pk = project.project_key
-            project.project_key = new_key
-            from models.orm_models import Order, DesignFee
-            db.query(Order).filter(Order.project_key == old_pk).update({"project_key": new_key, "project_name": project_data.name}, synchronize_session=False)
-            db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": new_key}, synchronize_session=False)
+        target_key = project_data.project_key
+        candidate_key = target_key
+        counter = 1
+        while db.query(Project).filter(Project.project_key == candidate_key, Project.id != project.id).first():
+            candidate_key = f"{target_key}-{counter}"
+            counter += 1
+
+        old_pk = project.project_key
+        project.project_key = candidate_key
+        from models.orm_models import Order, DesignFee
+        db.query(Order).filter(Order.project_key == old_pk).update({"project_key": candidate_key, "project_full_name": project_data.name}, synchronize_session=False)
+        db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": candidate_key}, synchronize_session=False)
 
     project.name = project_data.name
     project.client_name = project_data.client_name
@@ -503,7 +507,7 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
 
     db.commit()
     db.refresh(project)
-    return {"status": "ok", "message": f"Project '{project_key}' updated successfully"}
+    return {"status": "ok", "message": f"Project '{project_key}' updated successfully", "project_key": project.project_key}
 
 @router.post("/{project_key}/design-fee")
 def create_project_design_fee(project_key: str, fee_data: dict, db: Session = Depends(get_db)):
@@ -679,7 +683,8 @@ def list_quotes(project_id: int, db: Session = Depends(get_db)):
 @router.get("/all")
 def list_all_projects_relational(db: Session = Depends(get_db)):
     import json
-    from models.orm_models import Order, OrderItem, ProcurementAllocation, OrderPaymentAllocation, PalladiumInvoiceLine
+    import copy
+    from models.orm_models import Order, OrderItem, ProcurementAllocation, OrderPaymentAllocation, PalladiumInvoiceLine, Product
     try:
         projects = db.query(Project).all()
         orders = db.query(Order).all()
@@ -750,6 +755,108 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "unit_price_excl": float(pil.unit_price_excl or 0.0),
                 "line_total_excl": float(pil.line_total_excl or 0.0)
             }
+
+        # Pre-load products dictionary for live available stock and stock-on-hand lookup
+        products_raw = db.query(
+            Product.id,
+            Product.sku,
+            Product.one_to_one_code,
+            Product.stock_available,
+            Product.stock_on_hand,
+            Product.stock_allocated,
+            Product.stock_level
+        ).all()
+
+        products_by_id = {}
+        products_by_sku = {}
+
+        for p in products_raw:
+            p_dict = {
+                "id": p.id,
+                "sku": p.sku,
+                "one_to_one_code": p.one_to_one_code,
+                "stock_available": float(p.stock_available) if p.stock_available is not None else float(p.stock_level or 0),
+                "stock_on_hand": float(p.stock_on_hand) if p.stock_on_hand is not None else float(p.stock_level or 0),
+                "stock_allocated": float(p.stock_allocated or 0.0),
+                "stock_level": int(p.stock_level or 0)
+            }
+            products_by_id[p.id] = p_dict
+            if p.sku:
+                norm = re.sub(r'[^A-Za-z0-9]', '', str(p.sku)).upper()
+                if norm:
+                    products_by_sku[norm] = p_dict
+            if p.one_to_one_code:
+                norm_oto = re.sub(r'[^A-Za-z0-9]', '', str(p.one_to_one_code)).upper()
+                if norm_oto:
+                    products_by_sku[norm_oto] = p_dict
+
+        # Helper to dynamically synchronize takeoffData specifications with live product stock
+        def enrich_takeoff_stock(td):
+            if not td:
+                return td
+            is_str = False
+            parsed_td = td
+            if isinstance(td, str):
+                try:
+                    parsed_td = json.loads(td)
+                    is_str = True
+                except Exception:
+                    return td
+            if not isinstance(parsed_td, dict):
+                return td
+
+            td_copy = copy.deepcopy(parsed_td)
+
+            def sync_prod_stock(prod_obj):
+                if not isinstance(prod_obj, dict):
+                    return
+                matched = None
+                pid = prod_obj.get("id")
+                if pid and pid in products_by_id:
+                    matched = products_by_id[pid]
+                if not matched:
+                    sku = prod_obj.get("sku") or prod_obj.get("code")
+                    if sku:
+                        norm = re.sub(r'[^A-Za-z0-9]', '', str(sku)).upper()
+                        matched = products_by_sku.get(norm)
+                if not matched:
+                    oto = prod_obj.get("one_to_one_code") or prod_obj.get("oneOneCode")
+                    if oto:
+                        norm = re.sub(r'[^A-Za-z0-9]', '', str(oto)).upper()
+                        matched = products_by_sku.get(norm)
+                if matched:
+                    prod_obj["stock_available"] = matched["stock_available"]
+                    prod_obj["stockAvailable"] = matched["stock_available"]
+                    prod_obj["stock_on_hand"] = matched["stock_on_hand"]
+                    prod_obj["stockOnHand"] = matched["stock_on_hand"]
+                    prod_obj["stock_allocated"] = matched["stock_allocated"]
+                    prod_obj["stock_level"] = matched["stock_level"]
+
+            specs = td_copy.get("specifications")
+            if isinstance(specs, dict):
+                for tag, spec_data in specs.items():
+                    if not isinstance(spec_data, dict):
+                        continue
+                    sync_prod_stock(spec_data.get("product"))
+                    for acc in spec_data.get("accessories", []) or []:
+                        sync_prod_stock(acc)
+                        if isinstance(acc, dict) and isinstance(acc.get("product"), dict):
+                            sync_prod_stock(acc["product"])
+                    led_cfg = spec_data.get("ledConfig")
+                    if isinstance(led_cfg, dict):
+                        sync_prod_stock(led_cfg.get("profileProduct"))
+                        sync_prod_stock(led_cfg.get("stripProduct"))
+                        sync_prod_stock(led_cfg.get("driverProduct"))
+                    track_cfg = spec_data.get("trackConfig")
+                    if isinstance(track_cfg, dict):
+                        sync_prod_stock(track_cfg.get("railProduct"))
+                        sync_prod_stock(track_cfg.get("driverProduct"))
+                        for spot in track_cfg.get("spots", []) or []:
+                            sync_prod_stock(spot)
+                            if isinstance(spot, dict) and isinstance(spot.get("product"), dict):
+                                sync_prod_stock(spot["product"])
+
+            return td_copy
 
         # Group items by order ID (excluding obsolete manual credits)
         items_by_order = {}
@@ -922,6 +1029,22 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 inv_date = ""
                 inv_val = 0.0
 
+            # Derive authentic live stock available & on hand
+            matched_prod = None
+            if item.code:
+                norm_c = re.sub(r'[^A-Za-z0-9]', '', str(item.code)).upper()
+                matched_prod = products_by_sku.get(norm_c)
+            if not matched_prod and item.one_one_code:
+                norm_o = re.sub(r'[^A-Za-z0-9]', '', str(item.one_one_code)).upper()
+                matched_prod = products_by_sku.get(norm_o)
+
+            if matched_prod:
+                live_avail = matched_prod["stock_available"]
+                live_on_hand = matched_prod["stock_on_hand"]
+            else:
+                live_avail = float(item.stock_available) if item.stock_available is not None else float(item.stock_on_hand or 0)
+                live_on_hand = float(item.stock_on_hand or 0)
+
             items_by_order[item.order_id].append({
                 "id": item.id,
                 "qty": item.qty,
@@ -961,7 +1084,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "purchaseHistory": po_hist,
                 "receivingHistory": rec_hist,
                 "invoiceHistory": inv_hist,
-                "stockOnHand": item.stock_on_hand
+                "stock_available": live_avail,
+                "stockAvailable": live_avail,
+                "stock_on_hand": live_on_hand,
+                "stockOnHand": live_on_hand
             })
 
 
@@ -1196,10 +1322,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             effective_paid = round(sum(float(p.get("amount", 0) or 0) for p in payments_parsed), 2)
             total_credited_excl = round(sum(abs(float(cn.get("totalValue", 0) or cn.get("value", 0) or 0)) for cn in credit_notes_parsed), 2)
-            total_credited_incl = round(total_credited_excl * 1.15, 2)
+            vat_pct = float(order.vat_percentage) if getattr(order, 'vat_percentage', None) is not None else 15.0
+            vat_mult = 1.0 + (vat_pct / 100.0)
+            total_credited_incl = round(total_credited_excl * vat_mult, 2)
 
             order_val_excl = float(order.value or 0.0)
-            order_val_incl = round(order_val_excl * 1.15, 2)
+            order_val_incl = round(order_val_excl * vat_mult, 2)
 
             net_order_val_excl = max(0.0, round(order_val_excl - total_credited_excl, 2))
             net_order_val_incl = max(0.0, round(order_val_incl - total_credited_incl, 2))
@@ -1236,6 +1364,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "quotationSentDate": order.quotation_sent_date,
                 "pfDate": order.pf_date,
                 "payments": payments_parsed,
+                "vatPercentage": vat_pct,
+                "vat_percentage": vat_pct,
                 "depositPercentage": order.deposit_percentage,
                 "depositValue": order.deposit_value,
                 "depositInvoiceSent": order.deposit_invoice_sent,
@@ -1268,7 +1398,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "division": order.division,
                 "pfNumber": order.pf_number,
                 "discount": order.discount or 0.0,
-                "takeoffData": order.takeoff_data
+                "takeoffData": enrich_takeoff_stock(order.takeoff_data)
             }
             orders_by_project[order.project_key].append(order_dict)
 
@@ -1340,6 +1470,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             relational_fees = s_fees if s_fees else (fees_by_project.get(p_key, []) or fees_by_project.get(str(p.id), []))
 
+            is_draft_proj = bool((p.status and p.status.lower() == "draft") or p_key.startswith("new-project"))
+            proj_status = "Draft" if is_draft_proj else computed_status
+
             projects_dict[p_key] = {
                 "id": p.id,
                 "key": p_key,
@@ -1348,7 +1481,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "pm": p.pm_name,
                 "offering": p.offering,
                 "sqm": p.sqm,
-                "status": computed_status,
+                "status": proj_status,
+                "isDraft": is_draft_proj,
                 "deadline": p.deadline,
                 "start": p.start_date,
                 "complete": p.complete_status,

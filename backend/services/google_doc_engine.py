@@ -295,7 +295,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             s_upper in [
                 'QUOTATION', 'QUOTE', 'BOQ', 'DEPOSIT_INVOICE', 'FINAL_INVOICE',
                 'BALANCE_INVOICE', 'LIGHTING_SCHEDULE', 'SCHEDULE', 'INVOICE',
-                'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO'
+                'TAX_INVOICE', 'PRO_FORMA_INVOICE', 'PURCHASE_ORDER', 'SUPPLIER_PO',
+                'STATEMENT', 'PROGRESS_STATEMENT'
             ]
         )
 
@@ -329,20 +330,15 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             order_folder_name = f"{order_identifier} - {supp_name}" if supp_name else (str(order_name).strip() if order_name else order_identifier)
             doc_container_folder_id = get_or_create_folder(drive_service, order_folder_name, orders_parent_id)
 
-            # Ensure 4 standard order subfolders exist
-            boq_sub_id = get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
-            po_sub_id = get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
-            logistics_sub_id = get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
-            invoices_sub_id = get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
+            # Ensure unified Documents folder exists for all order documents
+            documents_sub_id = get_or_create_folder(drive_service, "Documents", doc_container_folder_id)
+            get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
+            get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
+            get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
+            get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
 
-            if 'INVOICE' in s_upper or s_upper in ['DEPOSIT_INVOICE', 'FINAL_INVOICE', 'PAYMENT', 'CREDIT_NOTE', 'CREDITNOTE']:
-                destination_subfolder_id = invoices_sub_id
-            elif 'PO' in s_upper or s_upper in ['SUPPLIER_PO', 'PURCHASE_ORDER', 'PURCHASE_ORDERS']:
-                destination_subfolder_id = po_sub_id
-            elif 'DELIVERY' in s_upper or s_upper in ['DELIVERY_NOTE', 'LOGISTICS', 'PACKING_LIST']:
-                destination_subfolder_id = logistics_sub_id
-            else:
-                destination_subfolder_id = boq_sub_id
+            # Route all generated customer/order documents to the unified Documents folder
+            destination_subfolder_id = documents_sub_id
 
         # Maintain Latest and History revision containers inside the specific destination subfolder
         latest_folder_id = get_or_create_folder(drive_service, "Latest", destination_subfolder_id)
@@ -466,7 +462,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         items_list = tokens.get('items', [])
 
         # Dynamically determine the maximum column count present in this specific template sheet
-        max_col_count = max([len(r_item.get('values', [])) for r_item in row_data] + [10])
+        sheet_props = sp_data['sheets'][0].get('properties', {})
+        grid_props = sheet_props.get('gridProperties', {})
+        grid_col_count = grid_props.get('columnCount', 26)
+        max_col_count = min(grid_col_count, max([len(r_item.get('values', [])) for r_item in row_data] + [1]))
 
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
@@ -543,6 +542,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 norm_dir = col_a_val
             elif col_a_val in ('[CREDIT_ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]'):
                 norm_dir = col_a_val
+            elif col_a_val in ('[PAYMENT_ROW]', '[PAYMENT]', '[PAYMENTS]'):
+                norm_dir = '[PAYMENT_ROW]'
             elif col_a_val in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
                 norm_dir = '[DISCOUNT_ROW]'
             else:
@@ -584,6 +585,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         item_row_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[ITEM_ROW]', '[ITEM_SUMMARY]')), None)
         credit_head_cells = next((cells for _, d, cells in dynamic_template_rows if d == '[CREDIT_HEADER]'), None)
         credit_item_cells = next((cells for _, d, cells in dynamic_template_rows if d in ('[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')), None)
+        payment_template_row = next(((r_i, cell_objs) for r_i, norm_dir, cell_objs in parsed_rows if norm_dir == '[PAYMENT_ROW]'), None)
+        payment_orig_r_i = payment_template_row[0] if payment_template_row else None
+        payment_template_cells = payment_template_row[1] if payment_template_row else None
 
         # Helper to compute exact line item total from BOQ item objects
         def resolve_item_total(it):
@@ -666,11 +670,22 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                 out_list.append(item_dict)
             return out_list
 
-        # Page Budgeting for Carryover Headers (A4 portrait at 0.25in margins)
-        PAGE_1_MAX_ROWS = 42
-        SUBSEQUENT_PAGE_MAX_ROWS = 48
-        current_page_capacity = PAGE_1_MAX_ROWS
-        rows_on_current_page = 0
+        # Row-weight budgeting helper (accounts for text-wrapping in description / area columns)
+        def get_item_row_weight(it_obj):
+            d_txt = str(it_obj.get('description') or it_obj.get('name') or '').strip()
+            if '\n' in d_txt:
+                return 1.0 + float(d_txt.count('\n'))
+            if len(d_txt) > 145:
+                return 3.0
+            elif len(d_txt) > 95:
+                return 2.0
+            return 1.0
+
+        PAGE_1_ITEM_BUDGET = 36.0
+        SUBSEQUENT_PAGE_ITEM_BUDGET = 45.0
+        current_page_capacity = PAGE_1_ITEM_BUDGET
+        rows_on_current_page = 0.0
+        is_page_1 = True
 
         # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
         if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
@@ -727,7 +742,6 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             if table_head_cells:
                 generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
-                rows_on_current_page += 1
             
             if item_row_cells:
                 active_floor = None
@@ -736,64 +750,78 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     if it_fl:
                         active_floor = it_fl
 
-                    if rows_on_current_page >= current_page_capacity:
-                        # Carryover block onto next page
+                    it_weight = get_item_row_weight(item_obj)
+
+                    if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                        pad_px = 30 if is_page_1 else 45
+                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
+                        # Start new page with carryover block
+                        carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"} if active_floor else {}
+                        rows_on_current_page = 0.0
+                        is_page_1 = False
+                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+
                         if active_floor and fl_header_cells:
-                            carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"}
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                            rows_on_current_page = 1
-                        else:
-                            rows_on_current_page = 0
+                            rows_on_current_page += 1.0
                         
                         if table_head_cells:
-                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
-                            rows_on_current_page += 1
-                        
-                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
 
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
-                    rows_on_current_page += 1
+                    rows_on_current_page += it_weight
 
             if credit_items and (credit_head_cells or credit_item_cells):
-                if rows_on_current_page + 3 > current_page_capacity:
-                    rows_on_current_page = 0
-                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                target_credit_cell = credit_item_cells or item_row_cells
+                if rows_on_current_page + 3.0 > current_page_capacity and rows_on_current_page > 0:
+                    pad_px = 30 if is_page_1 else 45
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                    rows_on_current_page = 0.0
+                    is_page_1 = False
+                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
 
                 if credit_head_cells:
                     generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                    rows_on_current_page += 1
-                target_credit_cell = credit_item_cells or item_row_cells
+                    rows_on_current_page += 1.0
                 if target_credit_cell:
                     for item_obj in credit_items:
-                        if rows_on_current_page >= current_page_capacity:
+                        it_weight = get_item_row_weight(item_obj)
+                        if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                            pad_px = 30 if is_page_1 else 45
+                            generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                            rows_on_current_page = 0.0
+                            is_page_1 = False
+                            current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                             if credit_head_cells:
                                 generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                                rows_on_current_page = 1
-                            else:
-                                rows_on_current_page = 0
-                            current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                                rows_on_current_page += 1.0
 
                         generated_dynamic_rows.append(('[CREDIT_ITEM_ROW]', target_credit_cell, build_item_ctx(item_obj)))
-                        rows_on_current_page += 1
+                        rows_on_current_page += it_weight
         else:
             # Grouped Floor / Area template (like Quotation)
             for fl_name, areas in grouped_floors.items():
-                fl_items = [it for ar_items in areas.values() for it in ar_items]
-                fl_subtotal_num = sum(resolve_item_total(it) for it in fl_items)
+                fl_subtotal_num = sum(resolve_item_total(it) for ar in areas.values() for it in ar)
                 fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
                 fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
                 # If starting a new floor near bottom of page, start fresh on next page
-                if rows_on_current_page > 0 and (rows_on_current_page + 4 > current_page_capacity):
-                    rows_on_current_page = 0
-                    current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                if rows_on_current_page > 0 and (rows_on_current_page + 4.0 > current_page_capacity):
+                    pad_px = 30 if is_page_1 else 45
+                    target_c = fl_header_cells or item_row_cells
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                    rows_on_current_page = 0.0
+                    is_page_1 = False
+                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
 
                 if fl_header_cells:
                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
                 if fl_table_head_cells:
                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
 
                 for ar_name, ar_items in areas.items():
                     ar_subtotal_num = sum(resolve_item_total(it) for it in ar_items)
@@ -801,48 +829,66 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
 
                     # Check page overflow before adding area/items
-                    if rows_on_current_page >= current_page_capacity:
+                    if rows_on_current_page + 2.0 > current_page_capacity and rows_on_current_page > 0:
+                        pad_px = 30 if is_page_1 else 45
+                        target_c = area_row_cells or item_row_cells
+                        generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
                         carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                        rows_on_current_page = 0.0
+                        is_page_1 = False
+                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                         if fl_header_cells:
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
                         if fl_table_head_cells:
                             generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
+                            rows_on_current_page += 1.0
                         elif table_head_cells:
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                        rows_on_current_page = 2
-                        current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                            rows_on_current_page += 1.0
 
                     if area_row_cells:
                         generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
                     if area_table_head_cells:
                         generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
 
                     if item_row_cells:
                         for item_obj in ar_items:
-                            if rows_on_current_page >= current_page_capacity:
+                            it_weight = get_item_row_weight(item_obj)
+                            if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
+                                pad_px = 30 if is_page_1 else 45
+                                generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+
                                 carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
+                                rows_on_current_page = 0.0
+                                is_page_1 = False
+                                current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
                                 if fl_header_cells:
                                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                                    rows_on_current_page += 1.0
                                 if fl_table_head_cells:
                                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
-                                rows_on_current_page = 2
-                                current_page_capacity = SUBSEQUENT_PAGE_MAX_ROWS
+                                    rows_on_current_page += 1.0
+                                elif table_head_cells:
+                                    generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                                    rows_on_current_page += 1.0
 
                             item_ctx = {**ar_ctx}
                             for k, v in item_obj.items():
                                 item_ctx[k] = str(v) if v is not None else ''
                             generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
-                            rows_on_current_page += 1
+                            rows_on_current_page += it_weight
 
                     if area_footer_cells:
                         generated_dynamic_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
-                        rows_on_current_page += 1
+                        rows_on_current_page += 1.0
 
                 if fl_footer_cells:
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
-                    rows_on_current_page += 1
+                    rows_on_current_page += 1.0
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
@@ -975,6 +1021,17 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         new_dyn_count = len(generated_dynamic_rows)
         extra_rows = new_dyn_count - orig_dyn_count
 
+        # Determine extra rows introduced by [PAYMENT_ROW]
+        extra_payment_rows = 0
+        raw_payments = tokens.get('payments', [])
+        payments_list = raw_payments if isinstance(raw_payments, list) else []
+        p_count = len(payments_list)
+        if payment_orig_r_i is not None:
+            if p_count == 0:
+                extra_payment_rows = -1
+            else:
+                extra_payment_rows = p_count - 1
+
         # Determine if order has active discount > 0%
         has_discount = False
         if 'orderDiscount' in tokens:
@@ -1011,7 +1068,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                     discount_rows_to_delete.append(orig_r_i)
             for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
                 if is_discount_row(norm_dir, cell_objs):
-                    discount_rows_to_delete.append(orig_r_i + extra_rows)
+                    if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                        discount_rows_to_delete.append(orig_r_i + extra_rows + extra_payment_rows)
+                    else:
+                        discount_rows_to_delete.append(orig_r_i + extra_rows)
 
         grid_requests = []
 
@@ -1115,6 +1175,8 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -1139,11 +1201,165 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         }
                     })
 
+        # STEP 5b: Dedicated Payment Block expansion/rendering
+        if payment_orig_r_i is not None and payment_template_cells is not None:
+            current_payment_r = payment_orig_r_i + (extra_rows if payment_orig_r_i >= len(top_fixed) else 0)
+            
+            if p_count == 0:
+                # Option B: Delete template payment row cleanly if order has 0 payments
+                grid_requests.append({
+                    'deleteDimension': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': current_payment_r,
+                            'endIndex': current_payment_r + 1
+                        }
+                    }
+                })
+            else:
+                if p_count > 1:
+                    # Insert p_count - 1 additional rows below current_payment_r
+                    grid_requests.append({
+                        'insertDimension': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': current_payment_r + 1,
+                                'endIndex': current_payment_r + p_count
+                            },
+                            'inheritFromBefore': False
+                        }
+                    })
+                    # Copy-paste styling, merges, and formatting from template payment row into newly created rows
+                    for new_p_i in range(1, p_count):
+                        grid_requests.append({
+                            'copyPaste': {
+                                'source': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': current_payment_r,
+                                    'endRowIndex': current_payment_r + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': max_col_count
+                                },
+                                'destination': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': current_payment_r + new_p_i,
+                                    'endRowIndex': current_payment_r + new_p_i + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': max_col_count
+                                },
+                                'pasteType': 'PASTE_NORMAL'
+                            }
+                        })
+
+                # Maintain exact row height for all payment rows
+                if payment_orig_r_i in exact_row_height_by_index:
+                    grid_requests.append({
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': current_payment_r,
+                                'endIndex': current_payment_r + p_count
+                            },
+                            'properties': {
+                                'pixelSize': exact_row_height_by_index[payment_orig_r_i]
+                            },
+                            'fields': 'pixelSize'
+                        }
+                    })
+
+                # Populate cell values for each payment row (0 to p_count - 1)
+                for p_idx, p_obj in enumerate(payments_list):
+                    target_row_idx = current_payment_r + p_idx
+                    amt_val = p_obj.get('amount')
+                    if amt_val is not None and str(amt_val).strip() != '':
+                        amt_s = str(amt_val).strip()
+                        amt_formatted = f"R {safe_float(amt_s):,.2f}" if not amt_s.startswith('R') and safe_float(amt_s) > 0 else amt_s
+                    else:
+                        amt_formatted = ''
+
+                    date_str = str(p_obj.get('date') or '')
+                    if 'T' in date_str:
+                        date_str = date_str.split('T')[0]
+
+                    ref_str = str(p_obj.get('reference') or p_obj.get('receipt_no') or p_obj.get('receiptNo') or p_obj.get('notes') or '')
+                    method_str = str(p_obj.get('method') or p_obj.get('payment_method') or '')
+                    notes_str = str(p_obj.get('notes') or '')
+
+                    p_tokens = {
+                        'payment.index': str(p_idx + 1),
+                        'payment.date': date_str,
+                        'payment.reference': ref_str,
+                        'payment.receipt_no': ref_str,
+                        'payment.amount': amt_formatted,
+                        'payment.method': method_str,
+                        'payment.notes': notes_str,
+
+                        'PAYMENT.INDEX': str(p_idx + 1),
+                        'PAYMENT.DATE': date_str,
+                        'PAYMENT.REFERENCE': ref_str,
+                        'PAYMENT.RECEIPT_NO': ref_str,
+                        'PAYMENT.AMOUNT': amt_formatted,
+                        'PAYMENT.METHOD': method_str,
+                        'PAYMENT.NOTES': notes_str,
+
+                        'PAYMENT_INDEX': str(p_idx + 1),
+                        'PAYMENT_DATE': date_str,
+                        'PAYMENT_REFERENCE': ref_str,
+                        'PAYMENT_AMOUNT': amt_formatted,
+                        'PAYMENT_METHOD': method_str,
+                        'PAYMENT_NOTES': notes_str,
+
+                        'payment_index': str(p_idx + 1),
+                        'payment_date': date_str,
+                        'payment_reference': ref_str,
+                        'payment_amount': amt_formatted,
+                        'payment_method': method_str,
+                        'payment_notes': notes_str,
+                    }
+                    for pk, pv in p_obj.items():
+                        p_tokens[f"payment.{pk}"] = str(pv) if pv is not None else ''
+                        p_tokens[f"payment.{pk}".upper()] = str(pv) if pv is not None else ''
+                        p_tokens[pk] = str(pv) if pv is not None else ''
+                        p_tokens[pk.upper()] = str(pv) if pv is not None else ''
+                    p_lower_tokens = {k.lower(): v for k, v in p_tokens.items()}
+
+                    for c_i, c_obj in enumerate(payment_template_cells):
+                        user_val = c_obj.get('userEnteredValue', {})
+                        formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
+                        if formatted_val and ("{{" in str(formatted_val) or "{?" in str(formatted_val)):
+                            cell_str = clean_block_tags(str(formatted_val))
+                            new_str = cell_str
+                            for m in re.finditer(r'\{\{([^}]+)\}\}|\{\?([^?]+)\?\}', cell_str):
+                                raw_match = m.group(0)
+                                token_key = (m.group(1) or m.group(2) or '').strip()
+                                sub_val = str(p_tokens.get(token_key, p_lower_tokens.get(token_key.lower(), tokens.get(token_key, tokens.get(token_key.lower(), '')))))
+                                new_str = new_str.replace(raw_match, sub_val)
+                            cleaned_pay_cell = clean_block_tags(new_str)
+                            grid_requests.append({
+                                'updateCells': {
+                                    'rows': [{'values': [{'userEnteredValue': {'stringValue': cleaned_pay_cell}}]}],
+                                    'fields': 'userEnteredValue',
+                                    'start': {
+                                        'sheetId': temp_tab_gid,
+                                        'rowIndex': target_row_idx,
+                                        'columnIndex': c_i
+                                    }
+                                }
+                            })
+
         # STEP 6: Targeted token updates for bottom_fixed summary rows (SUBTOTAL, DISCOUNT, VAT, TOTAL_RETAIL, DEPOSIT)
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
-            actual_r_idx = orig_r_i + extra_rows
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
+            if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                actual_r_idx = orig_r_i + extra_rows + extra_payment_rows
+            else:
+                actual_r_idx = orig_r_i + extra_rows
             for c_i, c_obj in enumerate(cell_objs):
                 user_val = c_obj.get('userEnteredValue', {})
                 formatted_val = c_obj.get('formattedValue', '') or user_val.get('stringValue', '')
@@ -1175,6 +1391,7 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
 
             # Check if this row is a SPACER row
             if ctx and ctx.get('_is_spacer'):
+                spacer_px = ctx.get('_spacer_height', 10)
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -1184,12 +1401,20 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                             'endIndex': actual_row_i + 1
                         },
                         'properties': {
-                            'pixelSize': 10
+                            'pixelSize': max(1, int(spacer_px))
                         },
                         'fields': 'pixelSize'
                     }
                 })
-                # Clear all text and apply light grey background across all columns for pure 10px SPACER bar
+                # If it's an invisible page-break pad row, background is pure white (no grey bar, no borders)
+                is_pad = ctx.get('_is_pad', False)
+                bg_color = {'red': 1.0, 'green': 1.0, 'blue': 1.0} if is_pad else {'red': 0.90, 'green': 0.90, 'blue': 0.90}
+                cell_fmt = {'backgroundColor': bg_color}
+                fields_str = 'userEnteredValue,userEnteredFormat.backgroundColor'
+                if is_pad:
+                    cell_fmt['borders'] = {}
+                    fields_str = 'userEnteredValue,userEnteredFormat.backgroundColor,userEnteredFormat.borders'
+
                 grid_requests.append({
                     'repeatCell': {
                         'range': {
@@ -1201,11 +1426,9 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
                         },
                         'cell': {
                             'userEnteredValue': {'stringValue': ''},
-                            'userEnteredFormat': {
-                                'backgroundColor': {'red': 0.90, 'green': 0.90, 'blue': 0.90}
-                            }
+                            'userEnteredFormat': cell_fmt
                         },
-                        'fields': 'userEnteredValue,userEnteredFormat.backgroundColor'
+                        'fields': fields_str
                     }
                 })
             else:
@@ -1281,7 +1504,12 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
-            actual_r_idx = orig_r_i + extra_rows
+            if payment_orig_r_i is not None and orig_r_i == payment_orig_r_i:
+                continue
+            if payment_orig_r_i is not None and orig_r_i > payment_orig_r_i:
+                actual_r_idx = orig_r_i + extra_rows + extra_payment_rows
+            else:
+                actual_r_idx = orig_r_i + extra_rows
             if orig_r_i in exact_row_height_by_index:
                 grid_requests.append({
                     'updateDimensionProperties': {
@@ -1371,8 +1599,10 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
             ).execute()
             
             existing_latest = latest_res.get('files', [])
+            type_prefix = f"{clean_type_title.lower()} -"
             for ef in existing_latest:
-                if ef['name'].startswith(clean_type_title) or clean_type_title in ef['name']:
+                ef_lower = ef['name'].lower()
+                if ef_lower.startswith(type_prefix) or ef_lower.startswith(f"{clean_type_title.lower()} "):
                     # Extract creation date of the file being moved into History
                     created_date_str = str(tokens.get('DATE') or '').strip()
                     if not created_date_str and ef.get('createdTime'):

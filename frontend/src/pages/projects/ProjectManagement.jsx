@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { calculateProjectStageAndProgress } from './ProjectList';
 import { useStore } from '../../context/StoreContext';
@@ -133,6 +133,8 @@ export default function ProjectManagement() {
   }, [location.state]);
 
   const p = projects[id];
+  const initializedProjectIdRef = useRef(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
   const [overviewForm, setOverviewForm] = useState({
     name: '',
@@ -164,51 +166,107 @@ export default function ProjectManagement() {
 
   useEffect(() => {
     if (p) {
-      setOverviewForm({
-        name: p.name || '',
-        client: p.client || p.client_name || '',
-        clientCompany: p.clientCompany || '',
-        clientEmail: p.clientEmail || '',
-        clientPhone: p.clientPhone || '',
-        projectType: p.projectType || 'Design & Orders',
-        pm: p.pm || 'Dani',
-        start: formatDateForInput(p.start),
-        deadline: formatDateForInput(p.deadline),
-        sqm: p.sqm || '',
-        targetMargin: p.targetMargin || alertSettings?.defaultTargetMargin || 39,
-        delay: p.delay || 'None',
-        architectName: p.architectName || '',
-        architectCompany: p.architectCompany || '',
-        architectEmail: p.architectEmail || '',
-        architectPhone: p.architectPhone || '',
-        contractorName: p.contractorName || '',
-        contractorCompany: p.contractorCompany || '',
-        contractorEmail: p.contractorEmail || '',
-        contractorPhone: p.contractorPhone || '',
-        billingName: p.billingName || '',
-        billingEmail: p.billingEmail || '',
-        billingPhone: p.billingPhone || '',
-        billingDetails: p.billingDetails || '',
-        deliveryAddress: p.deliveryAddress || ''
-      });
+      // Only initialize overviewForm if we switched projects or haven't initialized yet
+      if (initializedProjectIdRef.current !== id) {
+        initializedProjectIdRef.current = id;
+        const isDraftName = p.name && (p.name.startsWith('new-project') || p.name === id);
+        setOverviewForm({
+          name: isDraftName ? '' : (p.name || ''),
+          client: p.client || p.client_name || '',
+          clientCompany: p.clientCompany || '',
+          clientEmail: p.clientEmail || '',
+          clientPhone: p.clientPhone || '',
+          projectType: p.projectType || 'Design & Orders',
+          pm: p.pm || 'Dani',
+          start: formatDateForInput(p.start) || new Date().toISOString().split('T')[0],
+          deadline: formatDateForInput(p.deadline),
+          sqm: p.sqm || '',
+          targetMargin: p.targetMargin || alertSettings?.defaultTargetMargin || 39,
+          delay: p.delay || 'None',
+          architectName: p.architectName || '',
+          architectCompany: p.architectCompany || '',
+          architectEmail: p.architectEmail || '',
+          architectPhone: p.architectPhone || '',
+          contractorName: p.contractorName || '',
+          contractorCompany: p.contractorCompany || '',
+          contractorEmail: p.contractorEmail || '',
+          contractorPhone: p.contractorPhone || '',
+          billingName: p.billingName || '',
+          billingEmail: p.billingEmail || '',
+          billingPhone: p.billingPhone || '',
+          billingDetails: p.billingDetails || '',
+          deliveryAddress: p.deliveryAddress || ''
+        });
+      }
     }
-  }, [p?.id, p?.key, p?.client, p?.client_name, p?.name]);
+  }, [id, p]);
 
   const handleSaveOverview = async () => {
     if (!p) return;
-    try {
-      setSaveStatus('saving');
-      await updateProject(id, {
-        ...overviewForm,
-        client: overviewForm.client,
-        client_name: overviewForm.client
-      });
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (err) {
-      console.error("Error saving project:", err);
-      setSaveStatus('error');
-      alert(`Save failed: ${err.message || 'Could not commit to database'}`);
+    const isDraft = p.isDraft || id.startsWith('new-project');
+
+    if (isDraft) {
+      const trimmedName = overviewForm.name?.trim();
+      const trimmedClient = overviewForm.client?.trim();
+
+      if (!trimmedName) {
+        alert("Please enter a Project Name to save!");
+        return;
+      }
+      if (!trimmedClient) {
+        alert("Please enter a Client Name to save!");
+        return;
+      }
+
+      try {
+        setIsSavingDraft(true);
+        setSaveStatus('saving');
+        const finalKey = await saveDraftProject(id, {
+          ...overviewForm,
+          name: trimmedName,
+          client: trimmedClient,
+          client_name: trimmedClient,
+          pm: overviewForm.pm || 'Dani',
+          pm_name: overviewForm.pm || 'Dani',
+          sqm: overviewForm.sqm || '1,000',
+          targetMargin: overviewForm.targetMargin || 39,
+          actualMargin: overviewForm.targetMargin || 39,
+          projectType: overviewForm.projectType || 'Design & Orders',
+          start: overviewForm.start || new Date().toISOString().split('T')[0],
+          deadline: overviewForm.deadline || 'TBD',
+          status: 'On track',
+          stage: 'Pending'
+        });
+
+        setSaveStatus('saved');
+        setIsSavingDraft(false);
+        if (finalKey) {
+          initializedProjectIdRef.current = finalKey;
+          navigate(`/projects/${finalKey}`, { replace: true });
+        }
+        setTimeout(() => setSaveStatus(''), 3000);
+      } catch (err) {
+        console.error("Error saving draft project:", err);
+        setSaveStatus('error');
+        setIsSavingDraft(false);
+        alert(`Save failed: ${err.message || 'Could not commit to database'}`);
+      }
+    } else {
+      try {
+        setSaveStatus('saving');
+        await updateProject(id, {
+          ...overviewForm,
+          client: overviewForm.client,
+          client_name: overviewForm.client,
+          pm_name: overviewForm.pm
+        });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(''), 3000);
+      } catch (err) {
+        console.error("Error saving project:", err);
+        setSaveStatus('error');
+        alert(`Save failed: ${err.message || 'Could not commit to database'}`);
+      }
     }
   };
 
@@ -539,6 +597,18 @@ export default function ProjectManagement() {
   }, [id, p?.status, orders]);
 
   if (!p) {
+    if (isSavingDraft) {
+      return (
+        <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+            Finalizing & Creating Project...
+          </div>
+          <p style={{ fontSize: '13px' }}>
+            Saving project details to database and transitioning...
+          </p>
+        </div>
+      );
+    }
     if (id === '[object Promise]' || id === 'undefined' || !id) {
       setTimeout(() => navigate('/projects'), 50);
       return <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>Redirecting to Projects...</div>;
@@ -826,7 +896,7 @@ export default function ProjectManagement() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
             <Lightbulb size={22} color="var(--text-info)" style={{ filter: 'drop-shadow(0 2px 8px rgba(24,95,165,0.2))' }} />
-            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{p.name || 'Draft Project'}</span>
+            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{overviewForm.name || (p.name?.startsWith('new-project') ? 'New Project Draft' : p.name) || 'Draft Project'}</span>
             <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status || 'Draft'}</span>
             <span className="badge b-info" style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.projectType}</span>
           </div>
@@ -958,7 +1028,7 @@ export default function ProjectManagement() {
                   type="button"
                   className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
                   onClick={handleSaveOverview}
-                  disabled={saveStatus === 'saving'}
+                  disabled={saveStatus === 'saving' || isSavingDraft}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -971,7 +1041,13 @@ export default function ProjectManagement() {
                   }}
                 >
                   <Save size={14} />
-                  <span>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved to Database ✓' : 'Save Project Details'}</span>
+                  <span>
+                    {saveStatus === 'saving' || isSavingDraft 
+                      ? 'Saving...' 
+                      : saveStatus === 'saved' 
+                      ? 'Saved to Database ✓' 
+                      : (p.isDraft || id.startsWith('new-project') ? 'Save & Create Project' : 'Save Project Details')}
+                  </span>
                 </button>
               </div>
 
@@ -988,6 +1064,7 @@ export default function ProjectManagement() {
                     <input 
                       type="text" 
                       className="form-control" 
+                      placeholder="e.g. Villa Bella"
                       value={overviewForm.name} 
                       onChange={(e) => setOverviewForm(prev => ({ ...prev, name: e.target.value }))} 
                     />
@@ -1562,63 +1639,32 @@ export default function ProjectManagement() {
                 </div>
               </div>
 
-              {p.isDraft && (
-                <button 
-                  className="btn btn-primary" 
-                  style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: '13px', fontWeight: 600 }}
-                  onClick={async () => {
-                    if (!p.name?.trim()) {
-                      alert("Please enter a Project Name to save!");
-                      return;
-                    }
-                    if (!p.client?.trim()) {
-                      alert("Please enter a Client Name to save!");
-                      return;
-                    }
-                    const finalKey = await saveDraftProject(id, {
-                      name: p.name,
-                      client: p.client,
-                      sqm: p.sqm || '1,000',
-                      pm: p.pm,
-                      offering: p.offering,
-                      targetMargin: p.targetMargin || 39,
-                      projectType: p.projectType || 'Design & Orders',
-                      start: new Date().toISOString().split('T')[0],
-                      deadline: p.deadline === '—' || !p.deadline ? '' : p.deadline,
-                      status: 'On track',
-                      stage: 'Pending'
-                    });
-                    alert("Project created successfully!");
-                    if (finalKey) {
-                      navigate(`/projects/${finalKey}`);
-                    }
-                  }}
-                >
-                  Save & Create Project
-                </button>
-              )}
-              {!p.isDraft && (
-                <button 
-                  type="button"
-                  className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
-                  onClick={handleSaveOverview}
-                  disabled={saveStatus === 'saving'}
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'center', 
-                    padding: '12px', 
-                    fontSize: '14px', 
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
-                  }}
-                >
-                  <Save size={16} />
-                  <span>{saveStatus === 'saving' ? 'Saving to Database...' : saveStatus === 'saved' ? 'Changes Saved to Database ✓' : 'Save Project Details'}</span>
-                </button>
-              )}
+              <button 
+                type="button"
+                className={`btn ${saveStatus === 'saved' ? 'btn-success' : 'btn-primary'}`}
+                onClick={handleSaveOverview}
+                disabled={saveStatus === 'saving' || isSavingDraft}
+                style={{ 
+                  width: '100%', 
+                  justifyContent: 'center', 
+                  padding: '12px', 
+                  fontSize: '14px', 
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                }}
+              >
+                <Save size={16} />
+                <span>
+                  {saveStatus === 'saving' || isSavingDraft 
+                    ? (p.isDraft || id.startsWith('new-project') ? 'Creating Project in Database...' : 'Saving to Database...') 
+                    : saveStatus === 'saved' 
+                    ? 'Changes Saved to Database ✓' 
+                    : (p.isDraft || id.startsWith('new-project') ? 'Save & Create Project' : 'Save Project Details')}
+                </span>
+              </button>
               
               <button 
                 type="button"

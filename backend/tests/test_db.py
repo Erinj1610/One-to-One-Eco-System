@@ -145,5 +145,38 @@ def test_order_client_override(db_session):
     assert order.client_phone == "+27821234567"
     assert order.client_email == "john@client.com"
 
+def test_order_vat_percentage_and_item_stock_available(db_session):
+    from models.orm_models import Order, OrderItem
+    project = Project(name="Zero VAT Luxury Villa", project_key="zero-vat-villa")
+    db_session.add(project)
+    db_session.commit()
 
+    order = Order(
+        project_id=project.id,
+        project_key=project.project_key,
+        po_number="PO-2026-VAT-0",
+        vat_percentage=0.0,
+        value=50000.0,
+        status="Approved"
+    )
+    db_session.add(order)
+    db_session.commit()
+    db_session.refresh(order)
 
+    assert order.vat_percentage == 0.0
+
+    item = OrderItem(
+        id="I-VAT-01",
+        order_id="PO-2026-VAT-0",
+        qty=10,
+        type="DL-SPOT",
+        description="Spotlight with Available Stock",
+        unit_cost=500.0,
+        unit_retail=900.0,
+        stock_available=45.0
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    assert item.stock_available == 45.0

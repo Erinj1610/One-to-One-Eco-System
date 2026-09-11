@@ -142,6 +142,7 @@ class OrderItemSchema(BaseModel):
     receiving_history: Optional[List[Any]] = []
     invoice_history: Optional[List[Any]] = []
     stock_on_hand: int = 0
+    stock_available: Optional[float] = 0.0
     is_credit: Optional[bool] = False
     item_type: Optional[str] = "Hardware"
     sort_order: Optional[int] = 0
@@ -198,6 +199,10 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
     if "orderDate" in order_data: order.order_date = order_data.get("orderDate")
     if "quotationSentDate" in order_data: order.quotation_sent_date = order_data.get("quotationSentDate")
     if "pfDate" in order_data: order.pf_date = order_data.get("pfDate")
+    if "vatPercentage" in order_data and order_data.get("vatPercentage") is not None:
+        order.vat_percentage = float(order_data.get("vatPercentage"))
+    elif "vat_percentage" in order_data and order_data.get("vat_percentage") is not None:
+        order.vat_percentage = float(order_data.get("vat_percentage"))
     if "depositPercentage" in order_data and order_data.get("depositPercentage") is not None:
         order.deposit_percentage = float(order_data.get("depositPercentage"))
     elif "deposit_percentage" in order_data and order_data.get("deposit_percentage") is not None:
@@ -419,6 +424,10 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             item_dict['red_list'] = prod.red_list
             item_dict['first_fix'] = prod.first_fix
             item_dict['local_or_import'] = prod.local_or_import
+            item_dict['stock_available'] = getattr(prod, 'stock_available', None) if getattr(prod, 'stock_available', None) is not None else (getattr(prod, 'stock_on_hand', None) if getattr(prod, 'stock_on_hand', None) is not None else prod.stock_level or 0)
+            item_dict['stockAvailable'] = item_dict['stock_available']
+            item_dict['stock_on_hand'] = getattr(prod, 'stock_on_hand', None) if getattr(prod, 'stock_on_hand', None) is not None else (prod.stock_level or 0)
+            item_dict['stockOnHand'] = item_dict['stock_on_hand']
             if not item_dict.get('one_one_code') and prod.one_to_one_code:
                 item_dict['one_one_code'] = prod.one_to_one_code
 
@@ -467,6 +476,7 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         existing.receiving_history = json.dumps(item_data.receiving_history)
         existing.invoice_history = json.dumps(item_data.invoice_history)
         existing.stock_on_hand = item_data.stock_on_hand
+        existing.stock_available = item_data.stock_available
         existing.is_credit = item_data.is_credit
         existing.item_type = item_data.item_type
         existing.sort_order = item_data.sort_order
@@ -512,6 +522,7 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         receiving_history=json.dumps(item_data.receiving_history),
         invoice_history=json.dumps(item_data.invoice_history),
         stock_on_hand=item_data.stock_on_hand,
+        stock_available=item_data.stock_available,
         is_credit=item_data.is_credit,
         item_type=item_data.item_type,
         sort_order=item_data.sort_order

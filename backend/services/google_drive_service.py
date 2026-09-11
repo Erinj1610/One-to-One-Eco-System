@@ -27,6 +27,7 @@ PROJECT_STANDARD_FOLDERS = []
 
 # Order-Level Standard Subfolders
 ORDER_STANDARD_SUBFOLDERS = [
+    {"name": "Documents", "sort": 0},
     {"name": "01 - BOQs & Quotations", "sort": 1},
     {"name": "02 - Supplier POs & Confirmations", "sort": 2},
     {"name": "03 - Logistics (Delivery Notes & Packing Lists)", "sort": 3},

@@ -41,7 +41,11 @@ import {
   Settings,
   GripVertical,
   CreditCard,
-  Folder
+  Folder,
+  CheckSquare,
+  Square,
+  Check,
+  Loader2
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -150,17 +154,28 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
         if (res.ok) {
           const data = await res.json();
           const items = Array.isArray(data) ? data : (data.items || []);
-          const mapped = items.map(p => ({
-            code: p.sku,
-            description: p.client_description || p.name || '',
-            client_description: p.client_description || '',
-            brand: p.brand || '',
-            dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
-            unitCost: p.cost_price || 0,
-            unitRetail: p.retail_price || p.trade_price || 0,
-            stockQty: p.stock_level || 0,
-            eta: p.lead_time || '4 weeks'
-          }));
+          const mapped = items.map(p => {
+            const availStock = p.stock_available !== undefined && p.stock_available !== null
+              ? p.stock_available
+              : (p.stock_on_hand !== undefined && p.stock_on_hand !== null ? p.stock_on_hand : (p.stock_level || 0));
+            const onHandStock = p.stock_on_hand !== undefined && p.stock_on_hand !== null ? p.stock_on_hand : (p.stock_level || 0);
+            return {
+              code: p.sku,
+              description: p.client_description || p.name || '',
+              client_description: p.client_description || '',
+              brand: p.brand || '',
+              supplier: p.supplier || p.supplier_name || '',
+              dimming: p.dimming_protocol || p.dimmable || 'Non-dim',
+              unitCost: p.cost_price || 0,
+              unitRetail: p.retail_price || p.trade_price || 0,
+              stock_available: availStock,
+              stockAvailable: availStock,
+              stock_on_hand: onHandStock,
+              stockOnHand: onHandStock,
+              stockQty: availStock,
+              eta: p.lead_time || '4 weeks'
+            };
+          });
           setApiProducts(mapped);
         }
       } catch (err) {
@@ -443,6 +458,7 @@ export default function OrdersPage() {
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
   const [orderDiscount, setOrderDiscount] = useState(0);
+  const [orderVatPercent, setOrderVatPercent] = useState(15);
   const [orderDepositPercent, setOrderDepositPercent] = useState(null);
   const [orderSupplier, setSupplier] = useState('');
   const [orderStatus, setOrderStatus] = useState('');
@@ -736,8 +752,9 @@ export default function OrdersPage() {
     const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
     const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
     const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-    const vatAmount = discountedRetail * 0.15;
-    const finalTotalInclVat = discountedRetail * 1.15;
+    const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+    const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+    const finalTotalInclVat = discountedRetail + vatAmount;
 
     const finalItems = activeOrderItems.map((item, idx) => ({
       index: (idx + 1).toString(),
@@ -787,7 +804,17 @@ export default function OrdersPage() {
     const depositFormatted70 = `R ${(finalTotalInclVat * 0.70).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const depositFormatted100 = `R ${(finalTotalInclVat * 1.00).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const totalPaidNum = Number(orderPaidAmount) || 0;
+    const currentOrderObj = Object.values(projects || {}).flatMap(p => Object.values(p.orders || {})).find(o => o.id === selectedOrderId || o.poNumber === selectedOrderId) || {};
+    const effectivePaidFromOrder = Number(currentOrderObj.paid) || 0;
+    const effectivePaymentsFromOrder = Array.isArray(currentOrderObj.payments) ? currentOrderObj.payments : [];
+
+    const activePaymentsList = (orderPayments && orderPayments.length > 0)
+      ? orderPayments
+      : (effectivePaymentsFromOrder.length > 0 ? effectivePaymentsFromOrder : []);
+    const paidSum = activePaymentsList.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const totalPaidNum = paidSum > 0 
+      ? paidSum 
+      : (Number(orderPaidAmount) > 0 ? Number(orderPaidAmount) : effectivePaidFromOrder);
     const balanceOutstandingNum = Math.max(0, finalTotalInclVat - totalPaidNum);
 
     return {
@@ -831,7 +858,17 @@ export default function OrdersPage() {
       DISCOUNT_PERCENT: `${orderDiscount || 0}%`,
       DISCOUNT_PERCENTAGE: `${orderDiscount || 0}%`,
       orderDiscount: Number(orderDiscount) || 0,
+      VAT_PERCENT: `${effectiveVatPercent}%`,
+      VAT_PERCENTAGE: `${effectiveVatPercent}%`,
+      VAT_RATE: `${effectiveVatPercent}%`,
+      VAT_RATE_NUM: effectiveVatPercent,
       VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_VALUE: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_TOTAL: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_AMOUNT_NUM: vatAmount,
+      SUBTOTAL_EXCL_VAT: `R ${discountedRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_INCL_VAT: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
@@ -861,10 +898,10 @@ export default function OrdersPage() {
       TOTAL_AMOUNT_PAID: `R ${totalPaidNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       
       items: finalItems,
-      payments: (orderPayments || []).map((p, idx) => ({
+      payments: activePaymentsList.map((p, idx) => ({
         index: (idx + 1).toString(),
-        date: p.date || '',
-        reference: p.reference || '',
+        date: p.date ? (typeof p.date === 'string' && p.date.includes('T') ? p.date.split('T')[0] : p.date) : '',
+        reference: p.receipt_no || p.receiptNo || p.reference || p.notes || (p.id ? `Receipt #${p.id}` : `Payment #${idx + 1}`),
         amount: `R ${(Number(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       })),
       floors: (() => {
@@ -1412,18 +1449,30 @@ export default function OrdersPage() {
     setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
     const loadedItems = (order.itemsList || []).map(item => {
-      if (!item.eta) {
+      let etaVal = item.eta;
+      if (!etaVal) {
         const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
-        return {
-          ...item,
-          eta: catalogItem ? catalogItem.eta : '4 weeks'
-        };
+        etaVal = catalogItem ? catalogItem.eta : '4 weeks';
       }
-      return item;
+      return {
+        ...item,
+        eta: etaVal,
+        stock_available: item.stock_available ?? item.stockAvailable,
+        stockAvailable: item.stock_available ?? item.stockAvailable,
+        stock_on_hand: item.stock_on_hand ?? item.stockOnHand,
+        stockOnHand: item.stock_on_hand ?? item.stockOnHand
+      };
     });
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
     setActiveOrderItems(loadedItems);
     setOrderDiscount(order.discount || 0);
+    if (order.vatPercentage !== undefined && order.vatPercentage !== null) {
+      setOrderVatPercent(Number(order.vatPercentage));
+    } else if (order.vat_percentage !== undefined && order.vat_percentage !== null) {
+      setOrderVatPercent(Number(order.vat_percentage));
+    } else {
+      setOrderVatPercent(15);
+    }
     if (order.depositPercentage !== undefined && order.depositPercentage !== null) {
       setOrderDepositPercent(Number(order.depositPercentage));
     } else if (order.deposit_percentage !== undefined && order.deposit_percentage !== null) {
@@ -1593,7 +1642,7 @@ export default function OrdersPage() {
 
     let nextRow = row;
     let nextCol = col;
-    const maxCols = 10; // 0 to 10
+    const maxCols = 12; // 0 to 12
 
     if (e.key === 'ArrowUp') {
       nextRow = Math.max(0, row - 1);
@@ -1632,7 +1681,7 @@ export default function OrdersPage() {
       }
     } else if (e.key === 'Tab') {
       const lastRowIdx = activeOrderItems.length - 1;
-      const lastColIdx = 10;
+      const lastColIdx = 12;
       if (row === lastRowIdx && col === lastColIdx && !e.shiftKey) {
         e.preventDefault();
         handleAddSpreadsheetRow();
@@ -1671,6 +1720,22 @@ export default function OrdersPage() {
     }
   };
 
+  const EDITABLE_COLUMNS = [
+    'qty',         // 0
+    'oneOneCode',  // 1
+    'type',        // 2
+    'code',        // 3
+    'description', // 4
+    'floor',       // 5
+    'area',        // 6
+    'dimming',     // 7
+    'brand',       // 8
+    'supplier',    // 9
+    'unitCost',    // 10
+    'unitRetail',  // 11
+    'eta'          // 12
+  ];
+
   // Excel/Google Sheets copy/paste parsing
   const handleGridPaste = (e) => {
     const target = e.target;
@@ -1678,6 +1743,7 @@ export default function OrdersPage() {
 
     const startRow = parseInt(target.getAttribute('data-row'), 10);
     const startCol = parseInt(target.getAttribute('data-col'), 10);
+    const targetField = target.getAttribute('data-field');
 
     const clipboardData = e.clipboardData || window.clipboardData;
     if (!clipboardData) return;
@@ -1686,22 +1752,27 @@ export default function OrdersPage() {
     const lines = pastedText.split(/\r?\n/).filter(line => line.length > 0);
     if (lines.length === 0) return;
 
-    e.preventDefault();
+    // Single-cell paste handler (e.g. pasting text into ETA, Description, Supplier, or Cost)
+    if (lines.length === 1 && !pastedText.includes('\t')) {
+      if (targetField && !isNaN(startRow) && activeOrderItems[startRow]) {
+        e.preventDefault();
+        const itemId = activeOrderItems[startRow].id;
+        let cleanedVal = pastedText.trim();
+        if (['qty', 'unitCost', 'unitRetail'].includes(targetField)) {
+          cleanedVal = Number(cleanedVal.replace(/[^0-9.-]/g, '')) || 0;
+          if (targetField === 'unitCost' || targetField === 'unitRetail') {
+            handlePriceEdit(itemId, targetField, cleanedVal, activeOrderItems[startRow].code);
+          } else {
+            handleUpdateSpreadsheetCell(itemId, targetField, cleanedVal);
+          }
+        } else {
+          handleUpdateSpreadsheetCell(itemId, targetField, cleanedVal);
+        }
+        return;
+      }
+    }
 
-    const fieldsOrder = [
-      'qty',
-      'oneOneCode',
-      'type',
-      'code',
-      'description',
-      'floor',
-      'area',
-      'dimming',
-      'brand',
-      'unitCost',
-      'unitRetail',
-      'stockStatus'
-    ];
+    e.preventDefault();
 
     let updatedItems = [...activeOrderItems];
 
@@ -1721,12 +1792,13 @@ export default function OrdersPage() {
           area: 'TBD Area',
           dimming: 'Non-dim',
           brand: 'Delta Light',
-          supplier: orderSupplier,
+          supplier: orderSupplier || '',
           unitCost: 100,
           unitTrade: 130,
           unitRetail: 150,
           selection: 'Selection',
-          stockStatus: 'Ordered'
+          stockStatus: 'Ordered',
+          eta: '4 weeks'
         };
         updatedItems.push(newRow);
       }
@@ -1735,8 +1807,8 @@ export default function OrdersPage() {
 
       cells.forEach((cellVal, colOffset) => {
         const targetColIdx = startCol + colOffset;
-        if (targetColIdx < fieldsOrder.length) {
-          const fieldName = fieldsOrder[targetColIdx];
+        if (targetColIdx < EDITABLE_COLUMNS.length) {
+          const fieldName = EDITABLE_COLUMNS[targetColIdx];
           let cleanedVal = cellVal.trim();
 
           if (['qty', 'unitCost', 'unitRetail'].includes(fieldName)) {
@@ -1763,6 +1835,8 @@ export default function OrdersPage() {
     if (!selectedProduct) return;
     setActiveOrderItems(prev => prev.map(item => {
       if (item.id === itemId) {
+        const availStock = selectedProduct.stock_available ?? selectedProduct.stockAvailable ?? selectedProduct.stock_on_hand ?? selectedProduct.stockOnHand ?? selectedProduct.stockQty ?? 0;
+        const onHandStock = selectedProduct.stock_on_hand ?? selectedProduct.stockOnHand ?? selectedProduct.stockQty ?? 0;
         return {
           ...item,
           code: selectedProduct.code,
@@ -1772,7 +1846,12 @@ export default function OrdersPage() {
           unitCost: Number(selectedProduct.unitCost) || 0,
           unitRetail: Number(selectedProduct.unitRetail) || 0,
           eta: selectedProduct.eta || '4 weeks',
-          supplier: selectedProduct.supplier || ''
+          supplier: selectedProduct.supplier || '',
+          stock_available: availStock,
+          stockAvailable: availStock,
+          stock_on_hand: onHandStock,
+          stockOnHand: onHandStock,
+          stockQty: availStock
         };
       }
       return item;
@@ -1797,6 +1876,14 @@ export default function OrdersPage() {
 
   const handleAddProductToOrder = (product) => {
     const newId = 'I-' + Date.now();
+    const availStock = product.stock_available !== undefined && product.stock_available !== null
+      ? Number(product.stock_available)
+      : (product.stock_on_hand !== undefined && product.stock_on_hand !== null
+          ? Number(product.stock_on_hand)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0));
+    const onHandStock = product.stock_on_hand !== undefined && product.stock_on_hand !== null
+      ? Number(product.stock_on_hand)
+      : (product.stock_level !== undefined ? Number(product.stock_level) : 0);
     const newRow = {
       id: newId,
       qty: 1,
@@ -1813,13 +1900,18 @@ export default function OrdersPage() {
       unitTrade: product.trade_price || 0,
       unitRetail: product.retail_price || 0,
       selection: product.selection || 'Selection',
-      stockStatus: product.stock_level > 0 ? 'Stock' : 'Ordered',
+      stockStatus: availStock > 0 ? 'Stock' : 'Ordered',
       eta: product.lead_time || '4 weeks',
       foh_code_description: product.foh_code_description || '',
       wetworks: product.wetworks || '',
       image_url: product.image_url || '',
       technical_image_url: product.technical_image_url || '',
-      spec_sheet_url: product.qr_link || product.spec_sheet_url || ''
+      spec_sheet_url: product.qr_link || product.spec_sheet_url || '',
+      stock_available: availStock,
+      stockAvailable: availStock,
+      stock_on_hand: onHandStock,
+      stockOnHand: onHandStock,
+      stockQty: availStock
     };
     setActiveOrderItems(prev => [...prev, newRow]);
     alert(`Added "${product.one_to_one_code || product.sku || product.name}" to the order!`);
@@ -1984,18 +2076,137 @@ export default function OrdersPage() {
   };
 
   const [isSavingOrder, setIsSavingOrder] = useState(false);
-  const [isSyncingVault, setIsSyncingVault] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
 
-  // Save the spreadsheet and update the global store context
-  const handleSaveOrderSpreadsheet = async (syncVault = false) => {
-    if (isSavingOrder || isSyncingVault) return;
+  // Document selection modal states
+  const [showDocVaultModal, setShowDocVaultModal] = useState(false);
+  const [selectedVaultDocs, setSelectedVaultDocs] = useState([
+    'QUOTATION', 'BOQ', 'LIGHTING_SCHEDULE', 'DEPOSIT_INVOICE', 'BALANCE_INVOICE', 'TAX_INVOICE', 'STATEMENT'
+  ]);
+  const [isVaultGenerating, setIsVaultGenerating] = useState(false);
+  const [vaultProgress, setVaultProgress] = useState({});
+  const [isVaultComplete, setIsVaultComplete] = useState(false);
 
-    if (syncVault) {
-      setIsSyncingVault(true);
-    } else {
-      setIsSavingOrder(true);
+  // Comprehensive order documents registry
+  const getAllAvailableOrderDocs = () => {
+    const standardDocs = [
+      { id: 'QUOTATION', name: 'Quotation (Summarized)', subtitle: 'Standard client quotation with summarized line items and pricing' },
+      { id: 'BOQ', name: 'BOQ (Bill of Quantities)', subtitle: 'Detailed item breakdown with unit cost, trade, retail & total prices' },
+      { id: 'LIGHTING_SCHEDULE', name: 'Lighting Schedule', subtitle: 'Technical schedule with area, dimming, brands and fixture specifications' },
+      { id: 'DEPOSIT_INVOICE', name: 'Deposit Invoice (Pro-Forma)', subtitle: 'Initial deposit request billing based on configured deposit rate' },
+      { id: 'BALANCE_INVOICE', name: 'Balance Invoice', subtitle: 'Outstanding balance billing for final client payment' },
+      { id: 'TAX_INVOICE', name: 'Tax Invoice (Full)', subtitle: 'Full tax invoice with detailed VAT calculations and company billing details' },
+      { id: 'STATEMENT', name: 'Progress Statement', subtitle: 'Statement of account showing recorded payments and balance ledger' }
+    ];
+
+    if (liveCustomDocs && typeof liveCustomDocs === 'object' && Object.keys(liveCustomDocs).length > 0) {
+      const customEntries = Object.values(liveCustomDocs)
+        .filter(cd => cd && (cd.id || cd.name))
+        .filter(cd => !standardDocs.some(sd => sd.id.toLowerCase() === (cd.id || cd.name).toLowerCase()))
+        .map(cd => ({
+          id: (cd.id || cd.name).toUpperCase(),
+          name: cd.name || cd.id,
+          subtitle: cd.description || 'Custom configured template'
+        }));
+      return [...standardDocs, ...customEntries];
     }
+    return standardDocs;
+  };
+
+  const handleToggleSelectAllVaultDocs = () => {
+    const allDocs = getAllAvailableOrderDocs();
+    if (selectedVaultDocs.length === allDocs.length) {
+      setSelectedVaultDocs([]);
+    } else {
+      setSelectedVaultDocs(allDocs.map(d => d.id));
+    }
+  };
+
+  const handleToggleVaultDoc = (docId) => {
+    setSelectedVaultDocs(prev => 
+      prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
+    );
+  };
+
+  const handleOpenVaultModal = () => {
+    const allDocs = getAllAvailableOrderDocs();
+    if (!selectedVaultDocs || selectedVaultDocs.length === 0) {
+      setSelectedVaultDocs(allDocs.map(d => d.id));
+    }
+    setIsVaultGenerating(false);
+    setIsVaultComplete(false);
+    setVaultProgress({});
+    setShowDocVaultModal(true);
+  };
+
+  const handleExecuteVaultGeneration = async () => {
+    if (selectedVaultDocs.length === 0 || isVaultGenerating) return;
+    setIsVaultGenerating(true);
+    setIsVaultComplete(false);
+
+    // Initial status: all selected docs are 'generating'
+    const initialProg = {};
+    selectedVaultDocs.forEach(d => {
+      initialProg[d] = { status: 'generating' };
+    });
+    setVaultProgress(initialProg);
+
+    // 1. First save order & line items to Cloud SQL database silently
+    try {
+      await handleSaveOrderSpreadsheet(false, true);
+    } catch (dbErr) {
+      console.error("Database save before vault sync notice:", dbErr);
+    }
+
+    // 2. Build complete order document tokens
+    const vaultTokens = buildOrderDocumentTokens();
+
+    // 3. Parallel execution using Promise.allSettled across all selected document types
+    const docPromises = selectedVaultDocs.map(async (docType) => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/generate/${docType}?is_save_action=true`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(vaultTokens)
+        });
+        if (res.ok) {
+          setVaultProgress(prev => ({
+            ...prev,
+            [docType]: { status: 'done' }
+          }));
+          return { docType, success: true };
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.detail || res.statusText || 'Generation failed';
+          setVaultProgress(prev => ({
+            ...prev,
+            [docType]: { status: 'error', errorMsg: errMsg }
+          }));
+          return { docType, success: false, error: errMsg };
+        }
+      } catch (e) {
+        setVaultProgress(prev => ({
+          ...prev,
+          [docType]: { status: 'error', errorMsg: e.message }
+        }));
+        return { docType, success: false, error: e.message };
+      }
+    });
+
+    await Promise.allSettled(docPromises);
+    setIsVaultGenerating(false);
+    setIsVaultComplete(true);
+  };
+
+  // Save the spreadsheet and update the global store context
+  const handleSaveOrderSpreadsheet = async (syncVault = false, silent = false) => {
+    if (syncVault) {
+      handleOpenVaultModal();
+      return;
+    }
+
+    if (isSavingOrder) return;
+    setIsSavingOrder(true);
 
     // Locate source project
     let sourceProjectKey = selectedProjectKey;
@@ -2022,7 +2233,8 @@ export default function OrdersPage() {
     const paidSum = (orderPayments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const effectivePaid = paidSum > 0 ? paidSum : (Number(orderPaidAmount) > 0 ? Number(orderPaidAmount) : (Number(existingOrder.paid) || 0));
     const effectivePayments = (orderPayments && orderPayments.length > 0) ? orderPayments : (existingOrder.payments || []);
-    const finalGrossWithVat = discountedValue * 1.15;
+    const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+    const finalGrossWithVat = discountedValue * (1 + (effectiveVatPercent / 100));
     const balanceOutstanding = Math.max(0, finalGrossWithVat - effectivePaid);
     const defaultDepositRate = (finalGrossWithVat < 10000 && finalGrossWithVat > 0) ? 100 : 70;
     const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
@@ -2045,6 +2257,8 @@ export default function OrdersPage() {
       value: Math.round(discountedValue),
       costValue: Math.round(totalCostTotal),
       discount: Number(orderDiscount) || 0,
+      vatPercentage: effectiveVatPercent,
+      vat_percentage: effectiveVatPercent,
       depositPercentage: effectiveDepositPercent,
       deposit_percentage: effectiveDepositPercent,
       depositValue: calculatedDepositValue,
@@ -2147,6 +2361,7 @@ export default function OrdersPage() {
           receiving_history: Array.isArray(item.receivingHistory || item.receiving_history) ? (item.receivingHistory || item.receiving_history) : [],
           invoice_history: Array.isArray(item.invoiceHistory || item.invoice_history) ? (item.invoiceHistory || item.invoice_history) : [],
           stock_on_hand: Math.round(Number(item.stockOnHand || item.stock_on_hand) || 0),
+          stock_available: Number(item.stock_available ?? item.stockAvailable ?? 0),
           is_credit: !!(item.isCredit || item.is_credit),
           item_type: item.itemType || item.item_type || "Hardware",
           sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0)
@@ -2167,53 +2382,10 @@ export default function OrdersPage() {
       await refreshProjects();
     }
 
-    if (!syncVault) {
-      setIsSavingOrder(false);
+    setIsSavingOrder(false);
+    if (!silent) {
       setSaveSuccessMsg('✓ Order & items saved successfully!');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
-      return;
-    }
-
-    // Trigger Drive vault save with visible feedback
-    try {
-      const orderDocTypes = ['QUOTATION', 'DEPOSIT_INVOICE', 'BOQ', 'LIGHTING_SCHEDULE'];
-      const vaultTokens = buildOrderDocumentTokens();
-
-      let successCount = 0;
-      let errors = [];
-
-      for (const dType of orderDocTypes) {
-        try {
-          const res = await fetch(`${API_BASE}/admin/generate/${dType}?is_save_action=true`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vaultTokens)
-          });
-          if (res.ok) {
-            successCount++;
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            errors.push(`${dType}: ${errData.detail || res.statusText || 'Failed'}`);
-          }
-        } catch (e) {
-          errors.push(`${dType}: ${e.message}`);
-        }
-      }
-
-      const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-      const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-      const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-      const orderMarginPct = totalRetail > 0 ? Math.round(((totalRetail - totalCost) / totalRetail) * 100) : 0;
-
-      if (errors.length > 0) {
-        alert(`Order Synced to Database!\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.\n\n⚠️ Drive Vault Notice:\n` + errors.join('\n'));
-      } else {
-        alert(`Order & Google Drive Vault Synced Successfully!\n- Created/updated ${successCount} order document PDFs in Shared Drive.\n- Billed Value: R ${Math.round(discountedRetail).toLocaleString()}\n- Calculated order margin: ${orderMarginPct}%.`);
-      }
-    } catch (vaultErr) {
-      alert(`Order Saved, but Drive Vault encountered an error: ${vaultErr.message}`);
-    } finally {
-      setIsSyncingVault(false);
     }
   };
 
@@ -2933,7 +3105,7 @@ export default function OrdersPage() {
                     onClick={() => {
                       if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
                     }}
-                    disabled={isSavingOrder || isSyncingVault}
+                    disabled={isSavingOrder || isVaultGenerating}
                   >
                     Close
                   </button>
@@ -2941,8 +3113,8 @@ export default function OrdersPage() {
                   <button 
                     className="btn btn-secondary btn-sm" 
                     onClick={() => handleSaveOrderSpreadsheet(false)}
-                    disabled={isSavingOrder || isSyncingVault}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
+                    disabled={isSavingOrder || isVaultGenerating}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isVaultGenerating) ? 'not-allowed' : 'pointer' }}
                     title="Instantly save all edits, line items, and pricing to database without Google Drive sync"
                   >
                     <Save size={14} /> {isSavingOrder ? 'Saving...' : 'Save & Update'}
@@ -2950,12 +3122,12 @@ export default function OrdersPage() {
 
                   <button 
                     className="btn btn-primary btn-sm" 
-                    onClick={() => handleSaveOrderSpreadsheet(true)}
-                    disabled={isSavingOrder || isSyncingVault}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isSyncingVault) ? 'not-allowed' : 'pointer' }}
-                    title="Save order to database and generate Quotation, Invoice, BOQ & Schedule on Google Drive"
+                    onClick={handleOpenVaultModal}
+                    disabled={isSavingOrder || isVaultGenerating}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (isSavingOrder || isVaultGenerating) ? 'not-allowed' : 'pointer' }}
+                    title="Select and generate order documents to Google Drive (Documents/Latest)"
                   >
-                    <FileText size={14} /> {isSyncingVault ? '⏳ Generating Docs...' : 'Save & Document'}
+                    <FileText size={14} /> {isVaultGenerating ? '⏳ Generating Docs...' : 'Save & Document'}
                   </button>
                 </div>
               </div>
@@ -3664,7 +3836,8 @@ export default function OrdersPage() {
                   const totalTrade = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitTrade || item.unit_trade) || 0)), 0);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
                   const overallMargin = discountedRetail > 0 ? Math.round(((discountedRetail - totalCost) / discountedRetail) * 100) : 0;
-                  const finalGrossInclVat = discountedRetail * 1.15;
+                  const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+                  const finalGrossInclVat = discountedRetail * (1 + (effectiveVatPercent / 100));
                   const balanceOutstanding = Math.max(0, finalGrossInclVat - Number(orderPaidAmount));
 
                   const defaultDepositRate = (finalGrossInclVat < 10000 && finalGrossInclVat > 0) ? 100 : 70;
@@ -3698,7 +3871,7 @@ export default function OrdersPage() {
                   return (
                     <>
                       {/* VITAL METRICS CARD GRID */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px', marginBottom: '20px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', marginBottom: '20px' }}>
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Cost Price</span>
                           <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', margin: '4px 0' }}>R {Math.round(totalCost).toLocaleString()}</span>
@@ -3719,7 +3892,7 @@ export default function OrdersPage() {
                             <input 
                               type="number"
                               className="form-control"
-                              style={{ padding: '2px 6px', fontSize: '13px', width: '60px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
+                              style={{ padding: '2px 6px', fontSize: '13px', width: '56px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
                               value={orderDiscount}
                               onChange={e => setOrderDiscount(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                             />
@@ -3728,10 +3901,57 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>Reduces final retail price</span>
                         </div>
 
+                        {/* VAT RATE (%) */}
+                        <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>VAT Rate (%)</span>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: effectiveVatPercent === 0 ? 'var(--text-warning)' : 'var(--text-info)' }}>
+                              {effectiveVatPercent === 0 ? '0% (Export)' : `${effectiveVatPercent}%`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                            <input 
+                              type="number"
+                              min="0"
+                              max="100"
+                              className="form-control"
+                              style={{ padding: '2px 4px', fontSize: '13px', width: '48px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
+                              value={effectiveVatPercent}
+                              onChange={e => setOrderVatPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                            />
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>%</span>
+                            <div style={{ display: 'flex', gap: '2px', marginLeft: 'auto' }}>
+                              <button 
+                                type="button"
+                                title="Zero VAT (Foreign currency / Export)"
+                                onClick={() => setOrderVatPercent(0)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveVatPercent === 0 ? 'rgba(245, 158, 11, 0.15)' : 'transparent', color: effectiveVatPercent === 0 ? 'var(--text-warning)' : 'var(--text-secondary)', border: '1px solid var(--border)', fontWeight: effectiveVatPercent === 0 ? 700 : 400 }}
+                              >
+                                0%
+                              </button>
+                              <button 
+                                type="button"
+                                title="Standard 15% VAT"
+                                onClick={() => setOrderVatPercent(15)}
+                                className="btn btn-ghost btn-xs"
+                                style={{ padding: '1px 3px', fontSize: '9.5px', height: '22px', background: effectiveVatPercent === 15 ? 'rgba(59, 130, 246, 0.15)' : 'transparent', color: effectiveVatPercent === 15 ? 'var(--text-info)' : 'var(--text-secondary)', border: '1px solid var(--border)', fontWeight: effectiveVatPercent === 15 ? 700 : 400 }}
+                              >
+                                15%
+                              </button>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>
+                            {effectiveVatPercent === 0 ? 'Zero-rated (No VAT)' : 'Standard 15% VAT'}
+                          </span>
+                        </div>
+
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Final Client Price</span>
                           <span style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-info)', display: 'block', margin: '4px 0' }}>R {Math.round(discountedRetail).toLocaleString()}</span>
-                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>VAT EXCLUDED</span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                            {effectiveVatPercent === 0 ? 'VAT EXEMPT (0%)' : 'VAT EXCLUDED'}
+                          </span>
                         </div>
 
                         <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -3747,7 +3967,7 @@ export default function OrdersPage() {
                               min="0"
                               max="100"
                               className="form-control"
-                              style={{ padding: '2px 4px', fontSize: '13px', width: '54px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
+                              style={{ padding: '2px 4px', fontSize: '13px', width: '50px', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)', fontWeight: 700 }}
                               value={effectiveDepositPercent}
                               onChange={e => setOrderDepositPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
                             />
@@ -3774,7 +3994,7 @@ export default function OrdersPage() {
                             </div>
                           </div>
                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>
-                            Due: R {Math.round(calculatedDepositVal).toLocaleString()} (incl VAT)
+                            Due: R {Math.round(calculatedDepositVal).toLocaleString()} {effectiveVatPercent === 0 ? '(0% VAT)' : '(incl VAT)'}
                           </span>
                         </div>
 
@@ -3869,8 +4089,8 @@ export default function OrdersPage() {
                                   Margin
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('margin', e)} />
                                 </th>
-                                <th style={{ width: widths.stock, position: 'relative' }}>
-                                  Stock
+                                <th style={{ width: widths.stock, position: 'relative' }} title="Available stock quantity in inventory">
+                                  Avail Stock
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('stock', e)} />
                                 </th>
                                 <th style={{ width: widths.eta, position: 'relative' }}>
@@ -4165,7 +4385,7 @@ export default function OrdersPage() {
                                         value={item.supplier || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'supplier', e.target.value)}
                                         data-row={index}
-                                        data-col={15}
+                                        data-col={9}
                                         data-field="supplier"
                                       />
                                     </td>
@@ -4179,7 +4399,7 @@ export default function OrdersPage() {
                                         value={item.unitCost}
                                         onChange={e => handlePriceEdit(item.id, 'unitCost', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={9}
+                                        data-col={10}
                                         data-field="unitCost"
                                       />
                                     </td>
@@ -4193,7 +4413,7 @@ export default function OrdersPage() {
                                         value={item.unitRetail}
                                         onChange={e => handlePriceEdit(item.id, 'unitRetail', e.target.value, item.code)}
                                         data-row={index}
-                                        data-col={10}
+                                        data-col={11}
                                         data-field="unitRetail"
                                       />
                                     </td>
@@ -4208,11 +4428,25 @@ export default function OrdersPage() {
                                       {Math.round(lineMargin)}%
                                     </td>
 
-                                    {/* STOCK STATUS (Stock on hand) */}
-                                    <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', fontSize: '13.5px' }}>
+                                    {/* STOCK STATUS (Available Stock) */}
+                                    <td style={{ textAlign: 'center', fontWeight: 600, fontSize: '13px' }}>
                                       {(() => {
-                                        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
-                                        return catalogItem ? `${catalogItem.stockQty} Qty` : '—';
+                                        const rawAvail = item.stock_available ?? item.stockAvailable ?? item.stock_on_hand ?? item.stockOnHand ?? item.stockQty;
+                                        let avail = (rawAvail !== undefined && rawAvail !== null && rawAvail !== '') ? Number(rawAvail) : null;
+                                        if (avail === null || isNaN(avail)) {
+                                          const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+                                          if (catalogItem) {
+                                            avail = Number(catalogItem.stockQty);
+                                          }
+                                        }
+                                        if (avail === null || isNaN(avail)) {
+                                          return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+                                        }
+                                        return (
+                                          <span style={{ color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)' }}>
+                                            {avail} Avail
+                                          </span>
+                                        );
                                       })()}
                                     </td>
 
@@ -4225,7 +4459,7 @@ export default function OrdersPage() {
                                         value={item.eta || ''}
                                         onChange={e => handleUpdateSpreadsheetCell(item.id, 'eta', e.target.value)}
                                         data-row={index}
-                                        data-col={14}
+                                        data-col={12}
                                         data-field="eta"
                                       />
                                     </td>
@@ -6623,6 +6857,336 @@ export default function OrdersPage() {
               >
                 + Add to Order
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DOCUMENT SELECTION & GOOGLE DRIVE VAULT MODAL */}
+      {showDocVaultModal && (
+        <div 
+          className="modal-backdrop" 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            background: 'rgba(0, 0, 0, 0.65)', 
+            backdropFilter: 'blur(5px)', 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            zIndex: 1300 
+          }}
+          onClick={() => { if (!isVaultGenerating) setShowDocVaultModal(false); }}
+        >
+          <div 
+            className="modal-container" 
+            style={{ 
+              background: 'var(--bg-primary)', 
+              border: '1px solid var(--border)', 
+              borderRadius: '14px', 
+              width: '580px', 
+              maxWidth: '92vw', 
+              maxHeight: '90vh', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              boxShadow: '0 16px 40px rgba(0,0,0,0.35)', 
+              overflow: 'hidden' 
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* MODAL HEADER */}
+            <div 
+              className="modal-header" 
+              style={{ 
+                padding: '16px 20px', 
+                borderBottom: '1px solid var(--border)', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                background: 'var(--bg-secondary)' 
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} color="var(--color-primary)" />
+                  <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {isVaultComplete 
+                      ? '✓ Documents Vaulted Successfully' 
+                      : isVaultGenerating 
+                        ? '⏳ Compiling & Saving Documents to Drive...' 
+                        : 'Select Documents to Save to Google Drive'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                  {isVaultComplete
+                    ? 'All generated PDFs are ready in Google Drive: Documents / Latest'
+                    : isVaultGenerating
+                      ? 'Generating high-res PDFs in parallel and uploading to Documents / Latest...'
+                      : `Target Folder: Orders / ${selectedOrderId || 'Order'} / Documents / Latest`}
+                </div>
+              </div>
+              {!isVaultGenerating && (
+                <button 
+                  type="button" 
+                  className="btn btn-ghost btn-sm" 
+                  style={{ padding: '4px 8px', fontSize: '16px', lineHeight: 1 }} 
+                  onClick={() => setShowDocVaultModal(false)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* MODAL BODY */}
+            <div className="modal-body" style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* SELECT ALL TOOLBAR (Shown before generation) */}
+              {!isVaultGenerating && !isVaultComplete && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  background: 'var(--bg-secondary)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '8px' 
+                }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={handleToggleSelectAllVaultDocs}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      fontWeight: 600, 
+                      fontSize: '12px', 
+                      cursor: 'pointer',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    {selectedVaultDocs.length === getAllAvailableOrderDocs().length ? (
+                      <>
+                        <CheckSquare size={16} color="var(--color-primary)" />
+                        <span>Deselect All</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square size={16} color="var(--text-tertiary)" />
+                        <span>Select All Documents</span>
+                      </>
+                    )}
+                  </button>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-info)' }}>
+                    {selectedVaultDocs.length} of {getAllAvailableOrderDocs().length} Selected
+                  </span>
+                </div>
+              )}
+
+              {/* DOCUMENT CHECKLIST OR PROGRESS LIST */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {getAllAvailableOrderDocs().map(doc => {
+                  const isChecked = selectedVaultDocs.includes(doc.id);
+                  const prog = vaultProgress[doc.id];
+                  
+                  // If generating or complete, only display the documents that were selected
+                  if ((isVaultGenerating || isVaultComplete) && !isChecked) return null;
+
+                  return (
+                    <div 
+                      key={doc.id}
+                      onClick={() => {
+                        if (!isVaultGenerating && !isVaultComplete) {
+                          handleToggleVaultDoc(doc.id);
+                        }
+                      }}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        padding: '10px 14px', 
+                        borderRadius: '8px', 
+                        border: '1px solid', 
+                        borderColor: isChecked ? 'var(--border-info)' : 'var(--border)', 
+                        background: isChecked ? 'rgba(59, 130, 246, 0.04)' : 'var(--bg-secondary)', 
+                        cursor: (isVaultGenerating || isVaultComplete) ? 'default' : 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                        {!isVaultGenerating && !isVaultComplete && (
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={() => handleToggleVaultDoc(doc.id)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--color-primary)' }}
+                          />
+                        )}
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {doc.name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {doc.subtitle}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* STATUS BADGE WHEN GENERATING / COMPLETED */}
+                      {(isVaultGenerating || isVaultComplete) && (
+                        <div>
+                          {prog?.status === 'done' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(16, 185, 129, 0.12)', 
+                              color: 'var(--text-success)' 
+                            }}>
+                              <Check size={13} /> Saved to Drive
+                            </span>
+                          )}
+                          {prog?.status === 'generating' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '6px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(59, 130, 246, 0.12)', 
+                              color: 'var(--color-primary)' 
+                            }}>
+                              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating...
+                            </span>
+                          )}
+                          {prog?.status === 'error' && (
+                            <span style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px', 
+                              padding: '3px 10px', 
+                              borderRadius: '20px', 
+                              fontSize: '11px', 
+                              fontWeight: 600, 
+                              background: 'rgba(239, 68, 68, 0.12)', 
+                              color: 'var(--text-danger)' 
+                            }} title={prog.errorMsg}>
+                              <AlertCircle size={13} /> {prog.errorMsg || 'Failed'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* PROGRESS BAR WHEN GENERATING */}
+              {isVaultGenerating && (() => {
+                const total = selectedVaultDocs.length;
+                const completed = Object.values(vaultProgress).filter(p => p.status === 'done' || p.status === 'error').length;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                return (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      <span>Parallel Progress</span>
+                      <span>{completed} of {total} completed ({pct}%)</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--color-primary)', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* COMPLETION BANNER */}
+              {isVaultComplete && (
+                <div style={{ 
+                  background: 'rgba(16, 185, 129, 0.08)', 
+                  border: '1px solid rgba(16, 185, 129, 0.3)', 
+                  borderRadius: '8px', 
+                  padding: '12px 16px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  marginTop: '8px' 
+                }}>
+                  <CheckCircle size={22} color="var(--text-success)" style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)' }}>
+                      All {selectedVaultDocs.length} Documents Saved to Google Drive!
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Stored under: <code>Orders / {selectedOrderId} / Documents / Latest /</code>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div 
+              className="modal-footer" 
+              style={{ 
+                padding: '12px 20px', 
+                background: 'var(--bg-secondary)', 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                gap: '10px', 
+                borderTop: '1px solid var(--border)' 
+              }}
+            >
+              {!isVaultGenerating && !isVaultComplete && (
+                <>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm" 
+                    onClick={() => setShowDocVaultModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm" 
+                    onClick={handleExecuteVaultGeneration}
+                    disabled={selectedVaultDocs.length === 0}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: selectedVaultDocs.length === 0 ? 'not-allowed' : 'pointer' }}
+                  >
+                    <FileText size={14} /> Generate & Save to Drive ({selectedVaultDocs.length})
+                  </button>
+                </>
+              )}
+
+              {isVaultGenerating && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary btn-sm" 
+                  disabled 
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'not-allowed' }}
+                >
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Generating in Parallel... Please wait
+                </button>
+              )}
+
+              {isVaultComplete && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => setShowDocVaultModal(false)}
+                  style={{ minWidth: '90px' }}
+                >
+                  ✓ Done
+                </button>
+              )}
             </div>
           </div>
         </div>
