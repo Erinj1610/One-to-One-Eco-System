@@ -354,7 +354,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
 
 export default function OrdersPage() {
   const { 
-    projects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
+    projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
     refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
@@ -2402,11 +2402,23 @@ export default function OrdersPage() {
     setTakeoffData(newTakeoffData);
     if (!selectedOrderId) return;
     try {
-      await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+      const putRes = await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ takeoffData: newTakeoffData, takeoff_data: newTakeoffData })
       });
+      if (!putRes.ok && putRes.status === 404) {
+        await fetch(`${API_BASE}/api/orders/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_key: selectedProjectKey || 'direct-client',
+            po_number: selectedOrderId,
+            takeoffData: newTakeoffData,
+            takeoff_data: newTakeoffData
+          })
+        });
+      }
       // Also update projects store
       setProjects(prev => {
         const next = { ...prev };

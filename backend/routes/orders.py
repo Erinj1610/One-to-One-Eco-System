@@ -164,9 +164,24 @@ def list_orders(db: Session = Depends(get_db)):
     orders = db.query(Order).all()
     return orders
 
+def find_order_by_identifier(identifier: str, db: Session):
+    clean_id = str(identifier).strip()
+    # Try exact po_number
+    order = db.query(Order).filter(Order.po_number == clean_id).first()
+    if order:
+        return order
+    # Try numeric ID if digits
+    if clean_id.isdigit():
+        order = db.query(Order).filter(Order.id == int(clean_id)).first()
+        if order:
+            return order
+    # Try quote_name
+    order = db.query(Order).filter(Order.quote_name == clean_id).first()
+    return order
+
 @router.get("/{po_number}")
 def get_order(po_number: str, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.po_number == po_number).first()
+    order = find_order_by_identifier(po_number, db)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
@@ -306,7 +321,7 @@ def create_order(order_data: dict, db: Session = Depends(get_db)):
 
 @router.put("/{po_number}")
 def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.po_number == po_number).first()
+    order = find_order_by_identifier(po_number, db)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
@@ -448,6 +463,14 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
         return {"status": "ok", "saved_count": 0}
 
     incoming_ids = [str(it.id) for it in items_data if it.id]
+    
+    # Prune any items belonging to this order that were deleted from the UI
+    if incoming_ids:
+        db.query(OrderItem).filter(
+            (OrderItem.order_id == po_number) | (OrderItem.order_id == po_number.strip()),
+            ~OrderItem.id.in_(incoming_ids)
+        ).delete(synchronize_session=False)
+
     existing_records = {it.id: it for it in db.query(OrderItem).filter(OrderItem.id.in_(incoming_ids)).all()}
 
     for item_data in items_data:
