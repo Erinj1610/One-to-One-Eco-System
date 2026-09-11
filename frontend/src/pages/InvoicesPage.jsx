@@ -738,7 +738,7 @@ export default function InvoicesPage() {
 
   // Unallocate Entire Line (All allocations for a specific line item)
   const handleUnallocateLine = async (line, docNo) => {
-    const allocIds = (line.allocations || []).map(a => a.id).filter(Boolean);
+    const allocIds = (line.allocations || []).map(a => a.id || a.allocation_id).filter(Boolean);
     if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
       return;
     }
