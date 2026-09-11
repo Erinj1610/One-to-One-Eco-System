@@ -1050,6 +1050,10 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 inv_val = float(item.invoice_value or 0.0)
 
             # Derive authentic live stock available & on hand
+            # Priority: OrderItem explicit saved value -> Product catalog fallback -> 0
+            item_soh = float(item.stock_on_hand) if item.stock_on_hand is not None else None
+            item_avail = float(item.stock_available) if item.stock_available is not None else None
+
             matched_prod = None
             if item.code:
                 norm_c = re.sub(r'[^A-Za-z0-9]', '', str(item.code)).upper()
@@ -1058,12 +1062,19 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 norm_o = re.sub(r'[^A-Za-z0-9]', '', str(item.one_one_code)).upper()
                 matched_prod = products_by_sku.get(norm_o)
 
-            if matched_prod:
-                live_avail = matched_prod["stock_available"]
-                live_on_hand = matched_prod["stock_on_hand"]
+            if item_soh is not None:
+                live_on_hand = item_soh
+            elif matched_prod and matched_prod.get("stock_on_hand") is not None:
+                live_on_hand = float(matched_prod["stock_on_hand"])
             else:
-                live_avail = float(item.stock_available) if item.stock_available is not None else float(item.stock_on_hand or 0)
-                live_on_hand = float(item.stock_on_hand or 0)
+                live_on_hand = 0.0
+
+            if item_avail is not None:
+                live_avail = item_avail
+            elif matched_prod and matched_prod.get("stock_available") is not None:
+                live_avail = float(matched_prod["stock_available"])
+            else:
+                live_avail = live_on_hand
 
             items_by_order[item.order_id].append({
                 "id": item.id,
