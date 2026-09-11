@@ -748,8 +748,9 @@ export default function OrdersPage() {
     const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
     const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
     const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-    const vatAmount = discountedRetail * 0.15;
-    const finalTotalInclVat = discountedRetail * 1.15;
+    const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+    const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+    const finalTotalInclVat = discountedRetail + vatAmount;
 
     const finalItems = activeOrderItems.map((item, idx) => ({
       index: (idx + 1).toString(),
@@ -843,7 +844,17 @@ export default function OrdersPage() {
       DISCOUNT_PERCENT: `${orderDiscount || 0}%`,
       DISCOUNT_PERCENTAGE: `${orderDiscount || 0}%`,
       orderDiscount: Number(orderDiscount) || 0,
+      VAT_PERCENT: `${effectiveVatPercent}%`,
+      VAT_PERCENTAGE: `${effectiveVatPercent}%`,
+      VAT_RATE: `${effectiveVatPercent}%`,
+      VAT_RATE_NUM: effectiveVatPercent,
       VAT_AMOUNT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_VALUE: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_TOTAL: `R ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      VAT_AMOUNT_NUM: vatAmount,
+      SUBTOTAL_EXCL_VAT: `R ${discountedRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      TOTAL_INCL_VAT: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       TOTAL_RETAIL: `R ${finalTotalInclVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       TOTAL_COST: `R ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       MARGIN_PERCENT: totalRetail > 0 ? `${Math.round(((totalRetail - totalCost) / totalRetail) * 100)}%` : '0%',
