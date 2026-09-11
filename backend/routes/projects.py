@@ -439,7 +439,7 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
         old_pk = project.project_key
         project.project_key = candidate_key
         from models.orm_models import Order, DesignFee
-        db.query(Order).filter(Order.project_key == old_pk).update({"project_key": candidate_key, "project_name": project_data.name}, synchronize_session=False)
+        db.query(Order).filter(Order.project_key == old_pk).update({"project_key": candidate_key, "project_full_name": project_data.name}, synchronize_session=False)
         db.query(DesignFee).filter(DesignFee.project_key == old_pk).update({"project_key": candidate_key}, synchronize_session=False)
 
     project.name = project_data.name
