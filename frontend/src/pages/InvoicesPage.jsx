@@ -743,9 +743,12 @@ export default function InvoicesPage() {
       return;
     }
     try {
-      const payload = allocIds.length > 0
-        ? { allocation_ids: allocIds }
-        : { document_no: docNo, skus: [line.item_code] };
+      const payload = {
+        document_no: docNo,
+        source_line_id: line.line_id,
+        skus: [line.item_code],
+        allocation_ids: allocIds
+      };
 
       const res = await fetch(`${API_BASE}/api/invoicing/batch-unallocate`, {
         method: 'POST',

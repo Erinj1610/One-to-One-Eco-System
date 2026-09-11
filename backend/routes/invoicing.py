@@ -789,6 +789,20 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         except (ValueError, TypeError):
             source_line_id = None
 
+        # Deactivate any existing active allocation for this document & line to prevent duplicate inflation
+        existing_q = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.source_doc_no == source_doc_no,
+            ProcurementAllocation.status == "Active"
+        )
+        if source_line_id is not None:
+            existing_q = existing_q.filter(ProcurementAllocation.source_line_id == source_line_id)
+        else:
+            existing_q = existing_q.filter(ProcurementAllocation.sku == sku)
+        existing_allocs = existing_q.all()
+        for ea in existing_allocs:
+            ea.status = "Cancelled"
+
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
             source_doc_no=source_doc_no,
@@ -894,6 +908,20 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             except (ValueError, TypeError):
                 item_source_line_id = None
 
+            # Deactivate any existing active allocation for this document & line/item to avoid duplicates
+            existing_q = db.query(ProcurementAllocation).filter(
+                ProcurementAllocation.allocation_type == "INVOICE",
+                ProcurementAllocation.source_doc_no == source_doc_no,
+                ProcurementAllocation.status == "Active"
+            )
+            if item_source_line_id is not None:
+                existing_q = existing_q.filter(ProcurementAllocation.source_line_id == item_source_line_id)
+            else:
+                existing_q = existing_q.filter(ProcurementAllocation.sku == sku)
+            existing_allocs = existing_q.all()
+            for ea in existing_allocs:
+                ea.status = "Cancelled"
+
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
                 source_doc_no=source_doc_no,
@@ -962,13 +990,26 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
     # Filter strictly for non-credit invoices (IN-...)
     inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
 
+    # Deduplicate allocations originating from the same document & line/item so duplicates are never summed twice
+    unique_inv_allocs = []
+    seen_keys = set()
+    for a in inv_allocs:
+        # Use source_line_id if available, otherwise doc + sku + allocated_qty
+        dedup_key = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+        if dedup_key in seen_keys:
+            # Auto-deactivate stale duplicate row in database
+            a.status = "Cancelled"
+            continue
+        seen_keys.add(dedup_key)
+        unique_inv_allocs.append(a)
+
     new_hist = []
     total_qty = 0.0
     total_val = 0.0
     refs = set()
     latest_date = None
 
-    for a in inv_allocs:
+    for a in unique_inv_allocs:
         qty_val = float(a.allocated_qty or 0.0)
         cost_val = float(a.unit_cost or 0.0)
 
@@ -1064,6 +1105,7 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
     try:
         allocation_ids = payload.get("allocation_ids") or []
         document_no = payload.get("document_no")
+        source_line_id = payload.get("source_line_id")
         skus = payload.get("skus") or []
 
         query = db.query(ProcurementAllocation).filter(
@@ -1071,17 +1113,40 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
             ProcurementAllocation.status == "Active"
         )
 
+        filter_conditions = []
         if allocation_ids:
             clean_ids = [int(i) for i in allocation_ids if str(i).isdigit()]
             if clean_ids:
-                query = query.filter(ProcurementAllocation.id.in_(clean_ids))
-        elif document_no:
-            query = query.filter(ProcurementAllocation.source_doc_no == str(document_no).strip())
+                filter_conditions.append(ProcurementAllocation.id.in_(clean_ids))
+
+        if document_no:
+            doc_str = str(document_no).strip()
+            if source_line_id is not None:
+                try:
+                    s_lid = int(source_line_id)
+                    filter_conditions.append(
+                        and_(
+                            ProcurementAllocation.source_doc_no == doc_str,
+                            ProcurementAllocation.source_line_id == s_lid
+                        )
+                    )
+                except (ValueError, TypeError):
+                    pass
             if skus:
                 clean_skus = [str(s).strip().upper() for s in skus if s]
-                query = query.filter(func.upper(ProcurementAllocation.sku).in_(clean_skus))
-        else:
+                filter_conditions.append(
+                    and_(
+                        ProcurementAllocation.source_doc_no == doc_str,
+                        func.upper(ProcurementAllocation.sku).in_(clean_skus)
+                    )
+                )
+            elif not allocation_ids and source_line_id is None:
+                filter_conditions.append(ProcurementAllocation.source_doc_no == doc_str)
+
+        if not filter_conditions:
             raise HTTPException(status_code=400, detail="Missing allocation_ids or document_no.")
+
+        query = query.filter(or_(*filter_conditions))
 
         allocs_to_cancel = query.all()
         if not allocs_to_cancel:
