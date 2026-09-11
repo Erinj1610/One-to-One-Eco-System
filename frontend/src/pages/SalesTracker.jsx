@@ -1670,7 +1670,118 @@ export default function SalesTracker() {
 
     updateProject(selectedProjectKey, 'actualMargin', blendedMargin);
 
-    alert(`Quotation Workspace Brain Synced!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
+    // PERSIST DIRECTLY TO CLOUD SQL (Items batch & Order metadata)
+    (async () => {
+      try {
+        const itemsPayload = activeOrderItems.map((item, idx) => ({
+          id: String(item.id),
+          qty: Math.round(Number(item.qty) || 0),
+          type: item.type || null,
+          one_one_code: item.oneOneCode || item.one_one_code || null,
+          code: item.code || null,
+          description: item.description || null,
+          floor: item.floor || null,
+          area: item.area || null,
+          dimming: item.dimming || null,
+          brand: item.brand || null,
+          supplier: item.supplier || null,
+          unit_cost: Number(item.unitCost || item.unit_cost) || 0.0,
+          unit_trade: Number(item.unitTrade || item.unit_trade) || 0.0,
+          unit_retail: Number(item.unitRetail || item.unit_retail) || 0.0,
+          selection: item.selection || null,
+          stock_status: item.stockStatus || item.stock_status || null,
+          eta: item.eta || null,
+          po_ref: item.poRef || item.po_ref || null,
+          po_qty_ordered: Math.round(Number(item.poQtyOrdered || item.po_qty_ordered) || 0),
+          po_eta: item.poEta || item.po_eta || null,
+          invoice_qty: Math.round(Number(item.invoiceQty || item.invoice_qty) || 0),
+          po_supplier: item.poSupplier || item.po_supplier || null,
+          po_date: item.poDate || item.po_date || null,
+          received_qty: Math.round(Number(item.receivedQty || item.received_qty) || 0),
+          received_date: item.receivedDate || item.received_date || null,
+          invoice_ref: item.invoiceRef || item.invoice_ref || null,
+          invoice_date: item.invoiceDate || item.invoice_date || null,
+          invoice_value: Number(item.invoiceValue || item.invoice_value) || 0.0,
+          delivery_qty: Math.round(Number(item.deliveryQty || item.delivery_qty) || 0),
+          delivery_date: item.deliveryDate || item.delivery_date || null,
+          delivery_status: item.deliveryStatus || item.delivery_status || null,
+          delivery_history: Array.isArray(item.deliveryHistory || item.delivery_history) ? (item.deliveryHistory || item.delivery_history) : [],
+          purchase_history: Array.isArray(item.purchaseHistory || item.purchase_history) ? (item.purchaseHistory || item.purchase_history) : [],
+          receiving_history: Array.isArray(item.receivingHistory || item.receiving_history) ? (item.receivingHistory || item.receiving_history) : [],
+          invoice_history: Array.isArray(item.invoiceHistory || item.invoice_history) ? (item.invoiceHistory || item.invoice_history) : [],
+          stock_on_hand: Math.round(Number(item.stockOnHand !== undefined ? item.stockOnHand : (item.stock_on_hand || 0))),
+          stock_available: Number(item.stock_available ?? item.stockAvailable ?? 0),
+          is_credit: !!(item.isCredit || item.is_credit),
+          item_type: item.itemType || item.item_type || "Hardware",
+          sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : idx)) || 0)
+        }));
+
+        await fetch(`${API_BASE}/api/orders/${selectedOrderId}/items/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemsPayload)
+        });
+
+        // Also persist order header updates to database
+        const targetOrder = updatedOrders.find(o => o.id === selectedOrderId);
+        if (targetOrder) {
+          await fetch(`${API_BASE}/api/orders/${selectedOrderId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: targetOrder.status,
+              eta: targetOrder.eta,
+              supplier: targetOrder.supplier,
+              discount: targetOrder.discount,
+              vat_percentage: targetOrder.vatRate,
+              clientCompany: targetOrder.clientCompany,
+              clientContact: targetOrder.clientContact,
+              clientPhone: targetOrder.clientPhone,
+              clientEmail: targetOrder.clientEmail,
+              projectFullName: targetOrder.projectFullName,
+              projectTier: targetOrder.projectTier,
+              projectSize: targetOrder.projectSize,
+              electrician: targetOrder.electrician,
+              electricianPhone: targetOrder.electricianPhone,
+              contractor: targetOrder.contractor,
+              contractorPhone: targetOrder.contractorPhone,
+              interiorDesigner: targetOrder.interiorDesigner,
+              interiorDesignerPhone: targetOrder.interiorDesignerPhone,
+              oneOneRep: targetOrder.oneOneRep,
+              pmName: targetOrder.pmName,
+              pmPhone: targetOrder.pmPhone,
+              pmEmail: targetOrder.pmEmail,
+              deliveryAddress: targetOrder.deliveryAddress,
+              billingDetails: targetOrder.billingDetails,
+              orderDate: targetOrder.orderDate,
+              quotationSentDate: targetOrder.quotationSentDate,
+              projectClass: targetOrder.projectClass,
+              fileSource: targetOrder.fileSource,
+              pfNumber: targetOrder.pfNumber,
+              pfDate: targetOrder.pfDate,
+              depositInvoiceSent: targetOrder.depositInvoiceSent,
+              pfInvoiceSentDate: targetOrder.pfInvoiceSentDate,
+              commissionValue: targetOrder.commissionValue,
+              depositPaymentDate: targetOrder.depositPaymentDate,
+              balancePaymentDate: targetOrder.balancePaymentDate,
+              ongoingTime: targetOrder.ongoingTime,
+              latestStatementSentDate: targetOrder.latestStatementSentDate,
+              progressPaymentDateSent: targetOrder.progressPaymentDateSent,
+              dateCompleted: targetOrder.dateCompleted,
+              paymentResponse: targetOrder.paymentResponse
+            })
+          });
+        }
+
+        if (refreshProjects) {
+          await refreshProjects();
+        }
+      } catch (saveErr) {
+        console.error("Error persisting Sales Tracker spreadsheet to Cloud SQL:", saveErr);
+      }
+    })();
+
+    alert(`Quotation Workspace Brain Synced & Saved to Cloud SQL!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
     setSelectedOrderId(null);
   };
 

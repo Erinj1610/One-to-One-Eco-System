@@ -18,15 +18,25 @@ from models.orm_models import (
 )
 import re
 
+PREFIX_REGEX = re.compile(r'^(?:LED:|1A-|PC-|ATZ-)\s*', re.IGNORECASE)
+
+def strip_sku_prefix(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    clean = str(s).strip()
+    return PREFIX_REGEX.sub('', clean).strip()
+
 def normalize_sku(s: Optional[str]) -> str:
     if not s:
         return ""
-    return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+    stripped = strip_sku_prefix(s)
+    return re.sub(r'[^A-Za-z0-9]', '', stripped).upper()
 
 def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
     if not target_sku or not cand_items:
         return None
     clean_sku = str(target_sku).strip().upper()
+    stripped_target = strip_sku_prefix(target_sku).upper()
     norm_sku = normalize_sku(target_sku)
     
     # Tier 1: Exact code or one_one_code match
@@ -34,6 +44,14 @@ def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Option
         if (it.code and it.code.strip().upper() == clean_sku) or \
            (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
             return it
+
+    # Tier 1b: Exact match after stripping supplier prefix (e.g. LED:ATOZCLINEMED1 -> ATOZCLINEMED1)
+    if stripped_target:
+        for it in cand_items:
+            it_code = strip_sku_prefix(it.code).upper() if it.code else ""
+            it_ooc = strip_sku_prefix(it.one_one_code).upper() if it.one_one_code else ""
+            if (it_code and it_code == stripped_target) or (it_ooc and it_ooc == stripped_target):
+                return it
 
     # Tier 2: Normalized alphanumeric match (ignores dots, dashes, slashes, spaces)
     if norm_sku:
@@ -44,7 +62,7 @@ def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Option
 
     # Tier 3: Substring / description match
     for it in cand_items:
-        if it.description and clean_sku in it.description.upper():
+        if it.description and (clean_sku in it.description.upper() or (stripped_target and stripped_target in it.description.upper())):
             return it
         if it.description and norm_sku and norm_sku in normalize_sku(it.description):
             return it
@@ -902,8 +920,18 @@ def allocate_procurement_item(
 
         # 2. Auto-match OrderItem
         matched_item = None
+        target_ord = None
+        if order_id:
+            if str(order_id).isdigit():
+                target_ord = db.query(Order).filter(Order.id == int(order_id)).first()
+            if not target_ord:
+                target_ord = db.query(Order).filter(Order.po_number == str(order_id)).first()
+
         if order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+        elif target_ord:
+            proj_items = db.query(OrderItem).filter(OrderItem.order_id.in_([target_ord.po_number, str(target_ord.id)])).all()
+            matched_item = find_best_item_match(proj_items, sku)
         elif proj:
             proj_items = db.query(OrderItem).filter(
                 or_(
@@ -1063,17 +1091,24 @@ def batch_allocate_procurement_items(
         real_proj_id = proj.id if proj else (int(project_id_input) if str(project_id_input).isdigit() else 1)
         real_proj_name = proj.name if proj else (project_name or f"Project #{real_proj_id}")
 
-        # Preload project order items for fast SKU auto-matching
+        # Preload project or order items for fast SKU auto-matching
         proj_items = []
-        if proj:
+        target_ord_obj = None
+        if order_id:
+            if str(order_id).isdigit():
+                target_ord_obj = db.query(Order).filter(Order.id == int(order_id)).first()
+            if not target_ord_obj:
+                target_ord_obj = db.query(Order).filter(Order.po_number == str(order_id)).first()
+
+        if target_ord_obj:
+            proj_items = db.query(OrderItem).filter(OrderItem.order_id.in_([target_ord_obj.po_number, str(target_ord_obj.id)])).all()
+        elif proj:
             proj_items = db.query(OrderItem).filter(
                 or_(
                     OrderItem.order_id.ilike(f"{proj.project_key}%"),
                     OrderItem.order_id.in_([str(o.id) for o in db.query(Order).filter(Order.project_id == real_proj_id).all()])
                 )
             ).all()
-
-        p_orders = db.query(Order).filter(Order.project_id == real_proj_id).all() if proj else []
 
         count_allocated = 0
         for it in items:
@@ -1082,33 +1117,26 @@ def batch_allocate_procurement_items(
             unit_cost = float(it.get("unit_cost") or 0.0)
             order_item_id = it.get("order_item_id")
             fitting_code = it.get("fitting_code") or sku
+            is_service = bool(it.get("is_service"))
+            ignore = bool(it.get("ignore"))
 
-            if not sku or allocated_qty <= 0:
+            if ignore or not sku or allocated_qty <= 0:
                 continue
 
-            clean_sku = sku.strip().upper()
-
-            # Auto-match OrderItem in project
+            # Auto-match OrderItem in project / order
             matched_item = None
-            if order_item_id:
-                matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-            elif proj_items:
-                matched_item = find_best_item_match(proj_items, sku)
+            if not is_service:
+                if order_item_id:
+                    matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+                elif proj_items:
+                    matched_item = find_best_item_match(proj_items, sku)
 
             # Strict scope: never cross-match to other projects or create orphan lines
             item_proj_id = real_proj_id
             item_proj_name = real_proj_name
 
-            # Resolve order DB ID safely without crashing on string PO numbers
-            resolved_order_db_id = None
-            if order_id:
-                if str(order_id).isdigit():
-                    resolved_order_db_id = int(order_id)
-                else:
-                    ord_match = db.query(Order).filter(Order.po_number == str(order_id)).first()
-                    if ord_match:
-                        resolved_order_db_id = ord_match.id
-
+            # Resolve order DB ID safely without crashing or bleeding into other orders
+            resolved_order_db_id = target_ord_obj.id if target_ord_obj else None
             if matched_item and not resolved_order_db_id:
                 if matched_item.order_id:
                     if str(matched_item.order_id).isdigit():
@@ -1117,8 +1145,6 @@ def batch_allocate_procurement_items(
                         ord_match = db.query(Order).filter(Order.po_number == str(matched_item.order_id)).first()
                         if ord_match:
                             resolved_order_db_id = ord_match.id
-                elif p_orders:
-                    resolved_order_db_id = p_orders[0].id
 
             alloc = ProcurementAllocation(
                 allocation_type=allocation_type,
@@ -1127,8 +1153,8 @@ def batch_allocate_procurement_items(
                 project_id=item_proj_id,
                 project_name=item_proj_name,
                 order_id=resolved_order_db_id,
-                order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
-                fitting_code=fitting_code or (matched_item.code if matched_item else sku),
+                order_item_id=str(matched_item.id) if matched_item else None,
+                fitting_code=fitting_code or (matched_item.code if matched_item else ("Service / Fee" if is_service else sku)),
                 allocated_qty=allocated_qty,
                 unit_cost=unit_cost,
                 vendor_name=vendor_name,

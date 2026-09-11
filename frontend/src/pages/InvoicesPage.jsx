@@ -10,6 +10,59 @@ import {
   CheckCircle2, Clock, Trash2, Package, CheckSquare, Square, DollarSign, Receipt
 } from 'lucide-react';
 
+const PREFIX_REGEX = /^(?:LED:|1A-|PC-|ATZ-)\s*/i;
+
+const stripSkuPrefix = (s) => {
+  if (!s) return '';
+  return String(s).trim().replace(PREFIX_REGEX, '').trim();
+};
+
+const normalizeSku = (s) => {
+  if (!s) return '';
+  return stripSkuPrefix(s).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+};
+
+const matchSkuToOrderItem = (sku, candItems) => {
+  if (!sku || !candItems || candItems.length === 0) return null;
+  const cleanSku = String(sku).trim().toUpperCase();
+  const strippedTarget = stripSkuPrefix(sku).toUpperCase();
+  const normSku = normalizeSku(sku);
+
+  // Tier 1: Exact code or one_one_code match
+  for (const it of candItems) {
+    const code = String(it.code || '').trim().toUpperCase();
+    const ooc = String(it.oneOneCode || it.one_one_code || '').trim().toUpperCase();
+    if ((code && code === cleanSku) || (ooc && ooc === cleanSku)) return it;
+  }
+
+  // Tier 1b: Stripped prefix match (e.g. LED:ATOZCLINEMED1 -> ATOZCLINEMED1)
+  if (strippedTarget) {
+    for (const it of candItems) {
+      const code = stripSkuPrefix(it.code || '').toUpperCase();
+      const ooc = stripSkuPrefix(it.oneOneCode || it.one_one_code || '').toUpperCase();
+      if ((code && code === strippedTarget) || (ooc && ooc === strippedTarget)) return it;
+    }
+  }
+
+  // Tier 2: Normalized alphanumeric match
+  if (normSku) {
+    for (const it of candItems) {
+      const codeNorm = normalizeSku(it.code || '');
+      const oocNorm = normalizeSku(it.oneOneCode || it.one_one_code || '');
+      if ((codeNorm && codeNorm === normSku) || (oocNorm && oocNorm === normSku)) return it;
+    }
+  }
+
+  // Tier 3: Substring / description match
+  for (const it of candItems) {
+    const desc = String(it.description || '').toUpperCase();
+    if (desc && (desc.includes(cleanSku) || (strippedTarget && desc.includes(strippedTarget)))) return it;
+    if (desc && normSku && normalizeSku(desc).includes(normSku)) return it;
+  }
+
+  return null;
+};
+
 export default function InvoicesPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +135,19 @@ export default function InvoicesPage() {
   const [batchFile, setBatchFile] = useState(null);
   const [showBatchNoDocPrompt, setShowBatchNoDocPrompt] = useState(false);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
+  const [batchLineMappings, setBatchLineMappings] = useState({}); // { [line_id]: { type: 'item'|'service'|'ignore', orderItemId?: string } }
+
+  const selectedBatchOrder = useMemo(() => {
+    if (!batchProjectId || !batchOrderId) return null;
+    const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId || p.name === batchProjectId);
+    if (!proj) return null;
+    return (proj.orders || []).find(o => String(o.id) === String(batchOrderId) || String(o.poNumber) === String(batchOrderId) || String(o.dbId) === String(batchOrderId)) || null;
+  }, [projects, batchProjectId, batchOrderId]);
+
+  const targetOrderItems = useMemo(() => {
+    return selectedBatchOrder?.itemsList || [];
+  }, [selectedBatchOrder]);
+
 
   // Issue Flagging State
   const [issueModalOpen, setIssueModalOpen] = useState(false);
@@ -554,6 +620,40 @@ export default function InvoicesPage() {
       return;
     }
 
+    const itemsPayload = [];
+    for (const l of selectedLines) {
+      const override = batchLineMappings[l.line_id];
+      if (override?.type === 'ignore') {
+        continue;
+      }
+      
+      const isService = override?.type === 'service';
+      let mappedItemId = null;
+      if (!isService) {
+        if (override?.type === 'item' && override.orderItemId) {
+          mappedItemId = override.orderItemId;
+        } else if (targetOrderItems.length > 0) {
+          const autoMatch = matchSkuToOrderItem(l.item_code, targetOrderItems);
+          if (autoMatch) mappedItemId = autoMatch.id;
+        }
+      }
+
+      itemsPayload.push({
+        source_line_id: l.line_id,
+        sku: l.item_code,
+        allocated_qty: Number(l.unallocated_qty || 1),
+        unit_cost: Number(l.unit_price_excl || 0),
+        fitting_code: l.item_code,
+        order_item_id: mappedItemId,
+        is_service: isService
+      });
+    }
+
+    if (itemsPayload.length === 0) {
+      alert("All selected lines were marked as ignored or skipped. Nothing to allocate.");
+      return;
+    }
+
     const payload = {
       source_doc_no: selectedDocument.document_no,
       doc_date: selectedDocument.transaction_date,
@@ -562,14 +662,8 @@ export default function InvoicesPage() {
       project_name: proj?.name || batchProjectId,
       order_id: batchOrderId || null,
       allocated_by_name: 'Staff',
-      notes: batchNotes || `Batch allocated ${selectedLines.length} invoice items`,
-      items: selectedLines.map(l => ({
-        source_line_id: l.line_id,
-        sku: l.item_code,
-        allocated_qty: Number(l.unallocated_qty || 1),
-        unit_cost: Number(l.unit_price_excl || 0),
-        fitting_code: l.item_code
-      }))
+      notes: batchNotes || `Batch allocated ${itemsPayload.length} invoice items`,
+      items: itemsPayload
     };
 
     setIsSavingBatchAlloc(true);
@@ -2124,36 +2218,212 @@ export default function InvoicesPage() {
                   </div>
                 </div>
 
-                {/* Items Being Allocated List */}
-                <div>
-                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                    Lines to be Allocated ({selectedLineIds.size}):
-                  </div>
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-card, #ffffff)' }}>
-                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>SKU</th>
-                          <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Description</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>Qty</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Unit Excl</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Total Excl</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id)).map(l => (
-                          <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{l.item_code}</td>
-                            <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
-                            <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>R {Number(l.unit_price_excl || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                {/* Items Being Allocated List with Interactive Matching */}
+                {(() => {
+                  const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id));
+                  let validCount = 0;
+                  let hasUnmatched = false;
+
+                  const linesWithStatus = selectedLines.map(l => {
+                    const override = batchLineMappings[l.line_id];
+                    let status = 'unmatched';
+                    let matchedItem = null;
+
+                    if (override?.type === 'ignore') {
+                      status = 'ignored';
+                    } else if (override?.type === 'service') {
+                      status = 'service';
+                      validCount++;
+                    } else if (override?.type === 'item') {
+                      status = 'manual';
+                      matchedItem = targetOrderItems.find(i => String(i.id) === String(override.orderItemId));
+                      validCount++;
+                    } else if (targetOrderItems.length > 0) {
+                      const auto = matchSkuToOrderItem(l.item_code, targetOrderItems);
+                      if (auto) {
+                        status = 'matched';
+                        matchedItem = auto;
+                        validCount++;
+                      } else {
+                        hasUnmatched = true;
+                      }
+                    } else {
+                      validCount++;
+                    }
+                    return { line: l, status, matchedItem, override };
+                  });
+
+                  const isOrderSelected = Boolean(batchOrderId && targetOrderItems.length > 0);
+                  const isAllocationBlocked = isOrderSelected && validCount === 0;
+
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          Lines to be Allocated ({selectedLineIds.size}):
+                        </div>
+                        {isOrderSelected && (
+                          <div style={{ fontSize: '11px', color: isAllocationBlocked ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                            {validCount} of {selectedLines.length} lines ready to allocate
+                          </div>
+                        )}
+                      </div>
+
+                      {isAllocationBlocked && (
+                        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '8px', padding: '10px 14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '11.5px' }}>
+                          <AlertTriangle size={16} />
+                          <span><strong>Allocation Blocked:</strong> None of the selected invoice items belong to this order. Please map at least one line, or select the correct destination order.</span>
+                        </div>
+                      )}
+
+                      {isOrderSelected && hasUnmatched && !isAllocationBlocked && (
+                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#d97706', fontSize: '11px' }}>
+                          <Sparkles size={14} />
+                          <span>Some items do not match order SKUs. Map them below, mark as Service/Fee, or choose Skip.</span>
+                        </div>
+                      )}
+
+                      <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-card, #ffffff)' }}>
+                        <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                              <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>SKU</th>
+                              <th style={{ padding: '8px 10px', color: 'var(--text-primary)' }}>Description</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>Qty</th>
+                              <th style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>Total Excl</th>
+                              {isOrderSelected && (
+                                <th style={{ padding: '8px 10px', color: 'var(--text-primary)', minWidth: '220px' }}>Order Item Mapping</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {linesWithStatus.map(({ line: l, status, matchedItem }) => (
+                              <tr key={l.line_id} style={{ borderBottom: '1px solid var(--border)', opacity: status === 'ignored' ? 0.45 : 1 }}>
+                                <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{l.item_code}</td>
+                                <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>R {Number((l.unallocated_qty || 0) * (l.unit_price_excl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                {isOrderSelected && (
+                                  <td style={{ padding: '6px 10px' }}>
+                                    {status === 'matched' && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid #10b981', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 700 }}>
+                                          ✓ Matched: {matchedItem?.code || matchedItem?.oneOneCode}
+                                        </span>
+                                        <button 
+                                          type="button" 
+                                          className="btn btn-xs btn-ghost" 
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          onClick={() => setBatchLineMappings(prev => ({ ...prev, [l.line_id]: { type: 'unmatched' } }))}
+                                        >
+                                          Edit
+                                        </button>
+                                      </div>
+                                    )}
+                                    {status === 'manual' && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 700 }}>
+                                          🔗 Mapped: {matchedItem?.code || 'Custom Line'}
+                                        </span>
+                                        <button 
+                                          type="button" 
+                                          className="btn btn-xs btn-ghost" 
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          onClick={() => setBatchLineMappings(prev => {
+                                            const next = { ...prev };
+                                            delete next[l.line_id];
+                                            return next;
+                                          })}
+                                        >
+                                          Reset
+                                        </button>
+                                      </div>
+                                    )}
+                                    {status === 'service' && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <span style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', border: '1px solid #a855f7', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 700 }}>
+                                          🏷️ Non-Itemised Service / Fee
+                                        </span>
+                                        <button 
+                                          type="button" 
+                                          className="btn btn-xs btn-ghost" 
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          onClick={() => setBatchLineMappings(prev => {
+                                            const next = { ...prev };
+                                            delete next[l.line_id];
+                                            return next;
+                                          })}
+                                        >
+                                          Reset
+                                        </button>
+                                      </div>
+                                    )}
+                                    {status === 'ignored' && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <span style={{ background: 'rgba(107, 114, 128, 0.15)', color: 'var(--text-secondary)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 600 }}>
+                                          ✕ Skipped
+                                        </span>
+                                        <button 
+                                          type="button" 
+                                          className="btn btn-xs btn-ghost" 
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                          onClick={() => setBatchLineMappings(prev => {
+                                            const next = { ...prev };
+                                            delete next[l.line_id];
+                                            return next;
+                                          })}
+                                        >
+                                          Include
+                                        </button>
+                                      </div>
+                                    )}
+                                    {status === 'unmatched' && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                          <select 
+                                            style={{ fontSize: '10.5px', height: '24px', flex: 1, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                                            className="form-control"
+                                            onChange={(e) => {
+                                              if (e.target.value) {
+                                                setBatchLineMappings(prev => ({ ...prev, [l.line_id]: { type: 'item', orderItemId: e.target.value } }));
+                                              }
+                                            }}
+                                            defaultValue=""
+                                          >
+                                            <option value="">-- Map to Order Line --</option>
+                                            {targetOrderItems.map(it => (
+                                              <option key={it.id} value={it.id}>{it.code || it.oneOneCode} ({it.description?.slice(0, 18)})</option>
+                                            ))}
+                                          </select>
+                                          <button 
+                                            type="button"
+                                            className="btn btn-xs btn-ghost"
+                                            style={{ fontSize: '9.5px', padding: '2px 5px', border: '1px solid var(--border)', whiteSpace: 'nowrap' }}
+                                            onClick={() => setBatchLineMappings(prev => ({ ...prev, [l.line_id]: { type: 'service' } }))}
+                                          >
+                                            Service
+                                          </button>
+                                          <button 
+                                            type="button"
+                                            className="btn btn-xs btn-ghost text-error"
+                                            style={{ fontSize: '9.5px', padding: '2px 5px', border: '1px solid var(--border)', whiteSpace: 'nowrap' }}
+                                            onClick={() => setBatchLineMappings(prev => ({ ...prev, [l.line_id]: { type: 'ignore' } }))}
+                                          >
+                                            Skip
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Internal Notes */}
                 <div>
@@ -2215,15 +2485,40 @@ export default function InvoicesPage() {
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-sm btn-primary" 
-                  disabled={isSavingBatchAlloc || !batchProjectId}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-                >
-                  {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                  Confirm Batch Allocation ({selectedLineIds.size} lines)
-                </button>
+                {(() => {
+                  const selectedLines = (selectedDocument.lines || []).filter(l => selectedLineIds.has(l.line_id));
+                  let validCount = 0;
+                  selectedLines.forEach(l => {
+                    const override = batchLineMappings[l.line_id];
+                    if (override?.type === 'service' || override?.type === 'item') {
+                      validCount++;
+                    } else if (!override && targetOrderItems.length > 0) {
+                      if (matchSkuToOrderItem(l.item_code, targetOrderItems)) validCount++;
+                    } else if (!batchOrderId) {
+                      validCount++;
+                    }
+                  });
+                  const isBlocked = Boolean(batchOrderId && targetOrderItems.length > 0 && validCount === 0);
+
+                  return (
+                    <button 
+                      type="submit" 
+                      className="btn btn-sm btn-primary" 
+                      disabled={isSavingBatchAlloc || !batchProjectId || isBlocked}
+                      style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        fontWeight: 700,
+                        background: isBlocked ? '#9ca3af' : undefined,
+                        cursor: isBlocked ? 'not-allowed' : undefined
+                      }}
+                    >
+                      {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                      {isBlocked ? 'Allocation Blocked (0 Lines Mapped)' : `Confirm Batch Allocation (${validCount} lines)`}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>

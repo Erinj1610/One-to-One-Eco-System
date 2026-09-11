@@ -17,15 +17,25 @@ from models.orm_models import (
 from services.palladium_sync import sync_palladium_sales_invoices
 import re
 
+PREFIX_REGEX = re.compile(r'^(?:LED:|1A-|PC-|ATZ-)\s*', re.IGNORECASE)
+
+def strip_sku_prefix(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    clean = str(s).strip()
+    return PREFIX_REGEX.sub('', clean).strip()
+
 def normalize_sku(s: Optional[str]) -> str:
     if not s:
         return ""
-    return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+    stripped = strip_sku_prefix(s)
+    return re.sub(r'[^A-Za-z0-9]', '', stripped).upper()
 
 def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
     if not target_sku or not cand_items:
         return None
     clean_sku = str(target_sku).strip().upper()
+    stripped_target = strip_sku_prefix(target_sku).upper()
     norm_sku = normalize_sku(target_sku)
     
     # Tier 1: Exact code or one_one_code match
@@ -33,6 +43,14 @@ def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Option
         if (it.code and it.code.strip().upper() == clean_sku) or \
            (it.one_one_code and it.one_one_code.strip().upper() == clean_sku):
             return it
+
+    # Tier 1b: Exact match after stripping supplier prefix (e.g. LED:ATOZCLINEMED1 -> ATOZCLINEMED1)
+    if stripped_target:
+        for it in cand_items:
+            it_code = strip_sku_prefix(it.code).upper() if it.code else ""
+            it_ooc = strip_sku_prefix(it.one_one_code).upper() if it.one_one_code else ""
+            if (it_code and it_code == stripped_target) or (it_ooc and it_ooc == stripped_target):
+                return it
 
     # Tier 2: Normalized alphanumeric match (ignores dots, dashes, slashes, spaces)
     if norm_sku:
@@ -43,12 +61,13 @@ def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Option
 
     # Tier 3: Substring / description match
     for it in cand_items:
-        if it.description and clean_sku in it.description.upper():
+        if it.description and (clean_sku in it.description.upper() or (stripped_target and stripped_target in it.description.upper())):
             return it
         if it.description and norm_sku and norm_sku in normalize_sku(it.description):
             return it
 
     return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -679,8 +698,7 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         if not matched_item and ord_obj:
             order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
             matched_item = find_best_item_match(order_items, sku)
-
-        if not matched_item and real_proj_id:
+        elif not matched_item and not ord_obj and real_proj_id:
             proj_items = db.query(OrderItem).filter(
                 or_(
                     OrderItem.order_id.ilike(f"{proj.project_key}%") if (proj and proj.project_key) else False,
@@ -775,15 +793,18 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             unit_cost = float(it.get("unit_cost") or 0.0)
             order_item_id = it.get("order_item_id")
             fitting_code = it.get("fitting_code") or sku
+            is_service = bool(it.get("is_service"))
+            ignore = bool(it.get("ignore"))
 
-            if not sku or allocated_qty <= 0:
+            if ignore or not sku or allocated_qty <= 0:
                 continue
 
             matched_item = None
-            if order_item_id:
-                matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
-            elif proj_items:
-                matched_item = find_best_item_match(proj_items, sku)
+            if not is_service:
+                if order_item_id:
+                    matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+                elif proj_items:
+                    matched_item = find_best_item_match(proj_items, sku)
 
             alloc = ProcurementAllocation(
                 allocation_type="INVOICE",
@@ -792,15 +813,15 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 project_id=real_proj_id,
                 project_name=real_proj_name,
                 order_id=resolved_item_order_id,
-                order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
-                fitting_code=fitting_code or (matched_item.code if matched_item else sku),
+                order_item_id=str(matched_item.id) if matched_item else None,
+                fitting_code=fitting_code or (matched_item.code if matched_item else ("Service / Fee" if is_service else sku)),
                 allocated_qty=allocated_qty,
                 unit_cost=unit_cost,
                 doc_date=str(doc_date) if doc_date else None,
                 allocated_by_name=allocated_by,
                 allocated_at=datetime.now(timezone.utc),
                 status="Active",
-                notes=notes
+                notes=f"{notes} (Service/Fee)" if is_service else notes
             )
             db.add(alloc)
             db.flush()
