@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import Order, OrderItem, Project
+from models.orm_models import Order, OrderItem, Project, ProcurementAllocation
 from pydantic import BaseModel
 from typing import Optional, List, Any
 import json
+import re
 
 router = APIRouter()
 
@@ -104,6 +105,109 @@ def bulk_rename_orders(payload: BulkRenameOrdersSchema, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
         
     return {"message": f"Successfully renamed {len(pos)} orders"}
+
+@router.post("/{po_number}/sync-invoicing")
+def sync_order_invoicing(po_number: str, db: Session = Depends(get_db)):
+    """
+    Synchronizes static OrderItem columns (invoice_qty, invoice_history, invoice_ref, invoice_date, invoice_value)
+    strictly from active, deduplicated ProcurementAllocation records in Cloud SQL.
+    If no active invoice allocations exist, static columns are reset to 0/empty.
+    """
+    items = db.query(OrderItem).filter(OrderItem.order_id == po_number).all()
+    if not items:
+        return {"status": "ok", "message": "No items found for order", "synced_count": 0}
+
+    order_obj = db.query(Order).filter(Order.po_number == po_number).first()
+    if not order_obj and po_number.isdigit():
+        order_obj = db.query(Order).filter(Order.id == int(po_number)).first()
+
+    valid_order_keys = {str(po_number).strip()}
+    if order_obj:
+        if order_obj.id is not None:
+            valid_order_keys.add(str(order_obj.id))
+        if order_obj.po_number:
+            valid_order_keys.add(str(order_obj.po_number).strip())
+
+    item_ids = [str(item.id) for item in items]
+    raw_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.status == "Active"
+    ).all()
+
+    inv_allocs_by_item_id = {}
+    inv_allocs_by_sku = {}
+    for a in raw_allocs:
+        if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
+            continue
+        if a.order_item_id and str(a.order_item_id) in item_ids:
+            inv_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
+        if a.sku:
+            norm = re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper()
+            if norm:
+                inv_allocs_by_sku.setdefault(norm, []).append(a)
+
+    synced_count = 0
+    for item in items:
+        item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
+        matched_allocs = list(inv_allocs_by_item_id.get(str(item.id), []))
+        if not matched_allocs and item_norm_skus:
+            for s in item_norm_skus:
+                for a in inv_allocs_by_sku.get(s, []):
+                    if (a.order_id and str(a.order_id) in valid_order_keys) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
+                        if a not in matched_allocs:
+                            matched_allocs.append(a)
+
+        unique_allocs = []
+        seen_keys = set()
+        for a in matched_allocs:
+            k = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+            if k not in seen_keys:
+                seen_keys.add(k)
+                unique_allocs.append(a)
+
+        if unique_allocs:
+            dyn_inv_hist = []
+            dyn_inv_qty = 0
+            dyn_inv_val = 0.0
+            dyn_inv_refs = set()
+            dyn_inv_date = None
+            for a in unique_allocs:
+                q_val = float(a.allocated_qty or 0.0)
+                c_val = float(a.unit_cost or item.unit_retail or 0.0)
+                dyn_inv_qty += int(round(q_val))
+                dyn_inv_val += q_val * c_val
+                if a.source_doc_no:
+                    dyn_inv_refs.add(str(a.source_doc_no))
+                if a.doc_date:
+                    dyn_inv_date = str(a.doc_date).split("T")[0]
+                dyn_inv_hist.append({
+                    "id": a.source_doc_no,
+                    "ref": a.source_doc_no,
+                    "allocation_id": a.id,
+                    "qty": q_val,
+                    "unitPrice": c_val,
+                    "total": round(q_val * c_val, 2),
+                    "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                    "by": a.allocated_by_name or "Staff",
+                    "type": "Invoice"
+                })
+            item.invoice_history = json.dumps(dyn_inv_hist)
+            item.invoice_qty = dyn_inv_qty
+            item.invoice_value = round(dyn_inv_val, 2)
+            item.invoice_ref = "; ".join(sorted(dyn_inv_refs)) if dyn_inv_refs else None
+            item.invoice_date = dyn_inv_date
+        else:
+            item.invoice_history = "[]"
+            item.invoice_qty = 0
+            item.invoice_value = 0.0
+            item.invoice_ref = None
+            item.invoice_date = None
+
+        db.add(item)
+        synced_count += 1
+
+    db.commit()
+    return {"status": "ok", "message": f"Successfully synced invoicing for {synced_count} items", "synced_count": synced_count}
 
 class OrderItemSchema(BaseModel):
     id: str
@@ -388,6 +492,36 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         if p.one_to_one_code:
             prods_by_1to1[p.one_to_one_code.strip().upper()] = p
 
+    # Pre-fetch order details and active invoice allocations for this order to derive live authentic invoice status
+    order_obj = db.query(Order).filter(Order.po_number == po_number).first()
+    if not order_obj and po_number.isdigit():
+        order_obj = db.query(Order).filter(Order.id == int(po_number)).first()
+
+    valid_order_keys = {str(po_number).strip()}
+    if order_obj:
+        if order_obj.id is not None:
+            valid_order_keys.add(str(order_obj.id))
+        if order_obj.po_number:
+            valid_order_keys.add(str(order_obj.po_number).strip())
+
+    item_ids = [str(item.id) for item in items]
+    raw_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.status == "Active"
+    ).all()
+
+    inv_allocs_by_item_id = {}
+    inv_allocs_by_sku = {}
+    for a in raw_allocs:
+        if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
+            continue
+        if a.order_item_id and str(a.order_item_id) in item_ids:
+            inv_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
+        if a.sku:
+            norm = re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper()
+            if norm:
+                inv_allocs_by_sku.setdefault(norm, []).append(a)
+
     res = []
     for item in items:
         def parse_history(h_val):
@@ -404,12 +538,82 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         del_hist = parse_history(item.delivery_history)
         pur_hist = parse_history(item.purchase_history)
         rec_hist = parse_history(item.receiving_history)
-        inv_hist = parse_history(item.invoice_history)
+
+        # Dynamically compute authentic invoice allocations from ProcurementAllocation
+        item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
+        matched_allocs = list(inv_allocs_by_item_id.get(str(item.id), []))
+        if not matched_allocs and item_norm_skus:
+            for s in item_norm_skus:
+                for a in inv_allocs_by_sku.get(s, []):
+                    if (a.order_id and str(a.order_id) in valid_order_keys) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
+                        if a not in matched_allocs:
+                            matched_allocs.append(a)
+
+        # Deduplicate allocations by document and line ID (or doc, sku, qty)
+        unique_allocs = []
+        seen_keys = set()
+        for a in matched_allocs:
+            k = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+            if k not in seen_keys:
+                seen_keys.add(k)
+                unique_allocs.append(a)
+
+        if unique_allocs:
+            dyn_inv_hist = []
+            dyn_inv_qty = 0
+            dyn_inv_val = 0.0
+            dyn_inv_refs = set()
+            dyn_inv_date = None
+            for a in unique_allocs:
+                q_val = float(a.allocated_qty or 0.0)
+                c_val = float(a.unit_cost or item.unit_retail or 0.0)
+                dyn_inv_qty += int(round(q_val))
+                dyn_inv_val += q_val * c_val
+                if a.source_doc_no:
+                    dyn_inv_refs.add(str(a.source_doc_no))
+                if a.doc_date:
+                    dyn_inv_date = str(a.doc_date).split("T")[0]
+                dyn_inv_hist.append({
+                    "id": a.source_doc_no,
+                    "ref": a.source_doc_no,
+                    "allocation_id": a.id,
+                    "qty": q_val,
+                    "unitPrice": c_val,
+                    "total": round(q_val * c_val, 2),
+                    "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                    "by": a.allocated_by_name or "Staff",
+                    "type": "Invoice"
+                })
+            calc_inv_hist = dyn_inv_hist
+            calc_inv_qty = dyn_inv_qty
+            calc_inv_val = round(dyn_inv_val, 2)
+            calc_inv_ref = "; ".join(sorted(dyn_inv_refs)) if dyn_inv_refs else None
+            calc_inv_date = dyn_inv_date
+        else:
+            calc_inv_hist = []
+            calc_inv_qty = 0
+            calc_inv_val = 0.0
+            calc_inv_ref = None
+            calc_inv_date = None
+
+        # Auto-heal static OrderItem row if Cloud SQL contains stale doubled/unallocated values
+        if (item.invoice_qty or 0) != calc_inv_qty or (item.invoice_ref or None) != calc_inv_ref or round(float(item.invoice_value or 0.0), 2) != calc_inv_val:
+            item.invoice_qty = calc_inv_qty
+            item.invoice_value = calc_inv_val
+            item.invoice_ref = calc_inv_ref
+            item.invoice_date = calc_inv_date
+            item.invoice_history = json.dumps(calc_inv_hist)
+            db.add(item)
+
         item_dict = item.__dict__.copy()
         item_dict['delivery_history'] = del_hist
         item_dict['purchase_history'] = pur_hist
         item_dict['receiving_history'] = rec_hist
-        item_dict['invoice_history'] = inv_hist
+        item_dict['invoice_history'] = calc_inv_hist
+        item_dict['invoice_qty'] = calc_inv_qty
+        item_dict['invoice_value'] = calc_inv_val
+        item_dict['invoice_ref'] = calc_inv_ref
+        item_dict['invoice_date'] = calc_inv_date
         if '_sa_instance_state' in item_dict:
             del item_dict['_sa_instance_state']
 
@@ -450,6 +654,11 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
                 item_dict['one_one_code'] = prod.one_to_one_code
 
         res.append(item_dict)
+    
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
     return res
 
 
@@ -473,8 +682,22 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
 
     existing_records = {it.id: it for it in db.query(OrderItem).filter(OrderItem.id.in_(incoming_ids)).all()}
 
+    # Query active allocations for these items to avoid stale frontend snapshots overwriting dynamic values
+    raw_active_inv = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.status == "Active"
+    ).all()
+    active_inv_by_item = {}
+    for a in raw_active_inv:
+        if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
+            continue
+        if a.order_item_id:
+            active_inv_by_item.setdefault(str(a.order_item_id), []).append(a)
+
     for item_data in items_data:
         str_id = str(item_data.id)
+        has_active_allocs = str_id in active_inv_by_item and len(active_inv_by_item[str_id]) > 0
+
         if str_id in existing_records:
             existing = existing_records[str_id]
             existing.order_id = po_number
@@ -497,27 +720,43 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.po_ref = item_data.po_ref
             existing.po_qty_ordered = item_data.po_qty_ordered
             existing.po_eta = item_data.po_eta
-            existing.invoice_qty = item_data.invoice_qty
             existing.po_supplier = item_data.po_supplier
             existing.po_date = item_data.po_date
             existing.received_qty = item_data.received_qty
             existing.received_date = item_data.received_date
-            existing.invoice_ref = item_data.invoice_ref
-            existing.invoice_date = item_data.invoice_date
-            existing.invoice_value = item_data.invoice_value
             existing.delivery_qty = item_data.delivery_qty
             existing.delivery_date = item_data.delivery_date
             existing.delivery_status = item_data.delivery_status
             existing.delivery_history = json.dumps(item_data.delivery_history) if item_data.delivery_history else "[]"
             existing.purchase_history = json.dumps(item_data.purchase_history) if item_data.purchase_history else "[]"
             existing.receiving_history = json.dumps(item_data.receiving_history) if item_data.receiving_history else "[]"
-            existing.invoice_history = json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]"
+            
+            # If item has active invoice allocations or is unallocated, don't let stale frontend values overwrite
+            if not has_active_allocs:
+                existing.invoice_qty = 0
+                existing.invoice_ref = None
+                existing.invoice_date = None
+                existing.invoice_value = 0.0
+                existing.invoice_history = "[]"
+            else:
+                existing.invoice_qty = item_data.invoice_qty
+                existing.invoice_ref = item_data.invoice_ref
+                existing.invoice_date = item_data.invoice_date
+                existing.invoice_value = item_data.invoice_value
+                existing.invoice_history = json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]"
+
             existing.stock_on_hand = item_data.stock_on_hand
             existing.stock_available = item_data.stock_available
             existing.is_credit = item_data.is_credit
             existing.item_type = item_data.item_type
             existing.sort_order = item_data.sort_order
         else:
+            inv_qty_to_set = item_data.invoice_qty if has_active_allocs else 0
+            inv_ref_to_set = item_data.invoice_ref if has_active_allocs else None
+            inv_date_to_set = item_data.invoice_date if has_active_allocs else None
+            inv_val_to_set = item_data.invoice_value if has_active_allocs else 0.0
+            inv_hist_to_set = json.dumps(item_data.invoice_history) if (has_active_allocs and item_data.invoice_history) else "[]"
+
             new_item = OrderItem(
                 id=str_id,
                 order_id=po_number,
@@ -540,21 +779,21 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
                 po_ref=item_data.po_ref,
                 po_qty_ordered=item_data.po_qty_ordered,
                 po_eta=item_data.po_eta,
-                invoice_qty=item_data.invoice_qty,
+                invoice_qty=inv_qty_to_set,
                 po_supplier=item_data.po_supplier,
                 po_date=item_data.po_date,
                 received_qty=item_data.received_qty,
                 received_date=item_data.received_date,
-                invoice_ref=item_data.invoice_ref,
-                invoice_date=item_data.invoice_date,
-                invoice_value=item_data.invoice_value,
+                invoice_ref=inv_ref_to_set,
+                invoice_date=inv_date_to_set,
+                invoice_value=inv_val_to_set,
                 delivery_qty=item_data.delivery_qty,
                 delivery_date=item_data.delivery_date,
                 delivery_status=item_data.delivery_status,
                 delivery_history=json.dumps(item_data.delivery_history) if item_data.delivery_history else "[]",
                 purchase_history=json.dumps(item_data.purchase_history) if item_data.purchase_history else "[]",
                 receiving_history=json.dumps(item_data.receiving_history) if item_data.receiving_history else "[]",
-                invoice_history=json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]",
+                invoice_history=inv_hist_to_set,
                 stock_on_hand=item_data.stock_on_hand,
                 stock_available=item_data.stock_available,
                 is_credit=item_data.is_credit,
@@ -571,6 +810,13 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
 def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = Depends(get_db)):
     # Check if duplicate ID - if so, update gracefully (idempotent create)
     existing = db.query(OrderItem).filter(OrderItem.id == item_data.id).first()
+    # Check if this item has active invoice allocations
+    has_active_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.order_item_id == str(item_data.id),
+        ProcurementAllocation.status == "Active"
+    ).first() is not None
+
     if existing:
         existing.order_id = po_number
         existing.qty = item_data.qty
@@ -592,21 +838,28 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         existing.po_ref = item_data.po_ref
         existing.po_qty_ordered = item_data.po_qty_ordered
         existing.po_eta = item_data.po_eta
-        existing.invoice_qty = item_data.invoice_qty
+        if not has_active_allocs:
+            existing.invoice_qty = 0
+            existing.invoice_ref = None
+            existing.invoice_date = None
+            existing.invoice_value = 0.0
+            existing.invoice_history = "[]"
+        else:
+            existing.invoice_qty = item_data.invoice_qty
+            existing.invoice_ref = item_data.invoice_ref
+            existing.invoice_date = item_data.invoice_date
+            existing.invoice_value = item_data.invoice_value
+            existing.invoice_history = json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]"
         existing.po_supplier = item_data.po_supplier
         existing.po_date = item_data.po_date
         existing.received_qty = item_data.received_qty
         existing.received_date = item_data.received_date
-        existing.invoice_ref = item_data.invoice_ref
-        existing.invoice_date = item_data.invoice_date
-        existing.invoice_value = item_data.invoice_value
         existing.delivery_qty = item_data.delivery_qty
         existing.delivery_date = item_data.delivery_date
         existing.delivery_status = item_data.delivery_status
         existing.delivery_history = json.dumps(item_data.delivery_history)
         existing.purchase_history = json.dumps(item_data.purchase_history)
         existing.receiving_history = json.dumps(item_data.receiving_history)
-        existing.invoice_history = json.dumps(item_data.invoice_history)
         existing.stock_on_hand = item_data.stock_on_hand
         existing.stock_available = item_data.stock_available
         existing.is_credit = item_data.is_credit
@@ -638,21 +891,21 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         po_ref=item_data.po_ref,
         po_qty_ordered=item_data.po_qty_ordered,
         po_eta=item_data.po_eta,
-        invoice_qty=item_data.invoice_qty,
+        invoice_qty=item_data.invoice_qty if has_active_allocs else 0,
         po_supplier=item_data.po_supplier,
         po_date=item_data.po_date,
         received_qty=item_data.received_qty,
         received_date=item_data.received_date,
-        invoice_ref=item_data.invoice_ref,
-        invoice_date=item_data.invoice_date,
-        invoice_value=item_data.invoice_value,
+        invoice_ref=item_data.invoice_ref if has_active_allocs else None,
+        invoice_date=item_data.invoice_date if has_active_allocs else None,
+        invoice_value=item_data.invoice_value if has_active_allocs else 0.0,
         delivery_qty=item_data.delivery_qty,
         delivery_date=item_data.delivery_date,
         delivery_status=item_data.delivery_status,
         delivery_history=json.dumps(item_data.delivery_history),
         purchase_history=json.dumps(item_data.purchase_history),
         receiving_history=json.dumps(item_data.receiving_history),
-        invoice_history=json.dumps(item_data.invoice_history),
+        invoice_history=json.dumps(item_data.invoice_history) if (has_active_allocs and item_data.invoice_history) else "[]",
         stock_on_hand=item_data.stock_on_hand,
         stock_available=item_data.stock_available,
         is_credit=item_data.is_credit,
@@ -689,21 +942,36 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
     item.po_ref = item_data.po_ref
     item.po_qty_ordered = item_data.po_qty_ordered
     item.po_eta = item_data.po_eta
-    item.invoice_qty = item_data.invoice_qty
+    # Protect invoice metrics against stale frontend snapshots
+    has_active_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.allocation_type == "INVOICE",
+        ProcurementAllocation.order_item_id == str(item.id),
+        ProcurementAllocation.status == "Active"
+    ).first() is not None
+
+    if not has_active_allocs:
+        item.invoice_qty = 0
+        item.invoice_ref = None
+        item.invoice_date = None
+        item.invoice_value = 0.0
+        item.invoice_history = "[]"
+    else:
+        item.invoice_qty = item_data.invoice_qty
+        item.invoice_ref = item_data.invoice_ref
+        item.invoice_date = item_data.invoice_date
+        item.invoice_value = item_data.invoice_value
+        item.invoice_history = json.dumps(item_data.invoice_history) if item_data.invoice_history else "[]"
+
     item.po_supplier = item_data.po_supplier
     item.po_date = item_data.po_date
     item.received_qty = item_data.received_qty
     item.received_date = item_data.received_date
-    item.invoice_ref = item_data.invoice_ref
-    item.invoice_date = item_data.invoice_date
-    item.invoice_value = item_data.invoice_value
     item.delivery_qty = item_data.delivery_qty
     item.delivery_date = item_data.delivery_date
     item.delivery_status = item_data.delivery_status
     item.delivery_history = json.dumps(item_data.delivery_history)
     item.purchase_history = json.dumps(item_data.purchase_history)
     item.receiving_history = json.dumps(item_data.receiving_history)
-    item.invoice_history = json.dumps(item_data.invoice_history)
     item.stock_on_hand = item_data.stock_on_hand
     item.is_credit = item_data.is_credit
     item.item_type = item_data.item_type

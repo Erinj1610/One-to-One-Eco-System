@@ -970,16 +970,19 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
     for an OrderItem strictly from active Tax Invoices (IN-...) in Cloud SQL.
     Credit Notes (CN-...) are tracked in the order's Credits ledger and do not reduce invoice_qty to 0.
     """
+    # Strictly match active Tax Invoices allocated to this specific OrderItem
     active_allocs = db.query(ProcurementAllocation).filter(
         ProcurementAllocation.allocation_type == "INVOICE",
         ProcurementAllocation.order_item_id == str(item.id),
         ProcurementAllocation.status == "Active"
     ).all()
 
-    if not active_allocs and (item.code or item.one_one_code):
+    # If no direct allocation by order_item_id, only match unlinked allocations if they explicitly match the item's order_id
+    if not active_allocs and item.order_id and (item.code or item.one_one_code):
         active_allocs = db.query(ProcurementAllocation).filter(
             ProcurementAllocation.allocation_type == "INVOICE",
             ProcurementAllocation.order_item_id.is_(None),
+            ProcurementAllocation.order_id.in_([str(item.order_id), int(item.order_id) if str(item.order_id).isdigit() else -1]),
             or_(
                 ProcurementAllocation.sku == item.code,
                 ProcurementAllocation.sku == item.one_one_code
