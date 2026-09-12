@@ -1011,13 +1011,22 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                             if a not in item_inv_allocs:
                                 item_inv_allocs.append(a)
 
-            if item_inv_allocs:
+            # Deduplicate allocations by document and line ID to avoid counting duplicates
+            unique_inv_allocs = []
+            seen_inv_keys = set()
+            for a in item_inv_allocs:
+                k = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+                if k not in seen_inv_keys:
+                    seen_inv_keys.add(k)
+                    unique_inv_allocs.append(a)
+
+            if unique_inv_allocs:
                 dynamic_inv_hist = []
                 dyn_inv_qty = 0
                 dyn_inv_val = 0.0
                 dyn_inv_refs = set()
                 dyn_inv_date = None
-                for a in item_inv_allocs:
+                for a in unique_inv_allocs:
                     q_val = float(a.allocated_qty or 0.0)
                     c_val = float(a.unit_cost or item.unit_retail or 0.0)
                     dyn_inv_qty += int(round(q_val))
@@ -1043,11 +1052,12 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 inv_date = dyn_inv_date
                 inv_val = round(dyn_inv_val, 2)
             else:
-                inv_hist = inv_hist_raw
-                inv_qty = item.invoice_qty or 0
-                inv_ref = item.invoice_ref or ""
-                inv_date = item.invoice_date or ""
-                inv_val = float(item.invoice_value or 0.0)
+                # If there are no active invoice allocations, invoice metrics must be zero
+                inv_hist = []
+                inv_qty = 0
+                inv_ref = ""
+                inv_date = ""
+                inv_val = 0.0
 
             # Derive authentic live stock available & on hand
             # Priority: OrderItem explicit saved value -> Product catalog fallback -> 0
