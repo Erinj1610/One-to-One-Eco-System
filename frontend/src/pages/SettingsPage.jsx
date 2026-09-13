@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import TemplateEditor from './admin/TemplateEditor';
+import WorkflowManager from './admin/WorkflowManager';
 import { 
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
@@ -880,10 +881,10 @@ export default function SettingsPage() {
 
   const availableTabs = isAdmin
     ? (isStaging 
-        ? ['General', 'Users & Permissions', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-        : ['General', 'Users & Permissions', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        ? ['General', 'Users & Permissions', 'Workflow Stages', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        : ['General', 'Users & Permissions', 'Workflow Stages', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
       )
-    : ['General', 'Users & Permissions', 'Rate card', 'Alerts', 'Integrations'];
+    : ['General', 'Users & Permissions', 'Workflow Stages', 'Rate card', 'Alerts', 'Integrations'];
 
 
   const [activeTab, setActiveTab] = useState('General');
@@ -1545,6 +1546,10 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'Workflow Stages' && (
+        <WorkflowManager />
       )}
 
       {(activeTab === 'Users & Permissions' || activeTab === 'Users') && isAdmin && (

@@ -853,6 +853,43 @@ class AllocationIssue(Base):
     resolved_by = Column(String, nullable=True)
 
 
+class WorkflowStage(Base):
+    __tablename__ = "workflow_stages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)                    # e.g. "Procurement / Purchasing"
+    slug = Column(String, unique=True, index=True)           # e.g. "procurement"
+    order_index = Column(Integer, default=0)
+    default_role = Column(String, nullable=True)             # e.g. "Purchasing", "Design", "Accounts"
+    color = Column(String, default="#3b82f6")                # Hex color tag
+    icon = Column(String, default="CheckCircle")             # Lucide icon name
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WorkflowTicket(Base):
+    __tablename__ = "workflow_tickets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
+    project_key = Column(String, index=True, nullable=False) # e.g. "villa_clifton"
+    stage_id = Column(Integer, ForeignKey("workflow_stages.id", ondelete="SET NULL"), nullable=True)
+    stage_name = Column(String, index=True, nullable=False)   # Name at the time of routing
+    assigned_to = Column(String, index=True, nullable=True)  # User name or email
+    assigned_role = Column(String, index=True, nullable=True) # Department / Role e.g. "Purchasing"
+    routed_by = Column(String, nullable=True)                # User who routed this ticket
+    action_note = Column(Text, nullable=True)                # Explanation / instructions
+    target_module = Column(String, default="sales-tracker")  # e.g. "sales-tracker", "takeoff", "orders"
+    target_tab = Column(String, nullable=True)               # e.g. "purchasing", "invoicing"
+    priority = Column(String, default="Normal")              # "Normal", "Urgent", "Low"
+    status = Column(String, default="pending", index=True)   # "pending", "in_progress", "completed"
+    created_at = Column(DateTime, default=datetime.utcnow, index=True) # Indexed for strict FIFO
+    completed_at = Column(DateTime, nullable=True)
+    completed_by = Column(String, nullable=True)
+
+
+
 
 
 

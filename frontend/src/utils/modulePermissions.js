@@ -21,6 +21,7 @@ export const SYSTEM_MODULES = [
 ];
 
 export const PATH_TO_MODULE = {
+  '/workspace': 'Dashboard',
   '/dashboard': 'Dashboard',
   '/crm': 'CRM',
   '/pipeline': 'Pipeline',
@@ -45,6 +46,7 @@ export const PATH_TO_MODULE = {
 };
 
 export const MODULE_ID_TO_SYSTEM_MODULE = {
+  'workspace': 'Dashboard',
   'dashboard': 'Dashboard',
   'crm': 'CRM',
   'pipeline': 'Pipeline',

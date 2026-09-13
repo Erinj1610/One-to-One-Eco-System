@@ -15,6 +15,7 @@ import DesignFeePage from './pages/DesignFeePage';
 import DesignPage from './pages/DesignPage';
 import TemplateEditor from './pages/admin/TemplateEditor';
 import SalesTracker from './pages/SalesTracker';
+import MyWorkspace from './pages/MyWorkspace';
 
 // All portal modules
 import CrmPage from './pages/CrmPage';
@@ -73,6 +74,7 @@ function AppInner({ devBypass, setDevBypass }) {
         {/* Protected Routes */}
         <Route path="/" element={user || devBypass ? <AppLayout /> : <Navigate to="/login" replace />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="workspace" element={<MyWorkspace />} />
           <Route path="dashboard" element={<PermissionRoute module="Dashboard"><Dashboard /></PermissionRoute>} />
           <Route path="tracker" element={<PermissionRoute module="Design tracker"><DesignTracker /></PermissionRoute>} />
           <Route path="projects" element={<PermissionRoute module="Projects"><ProjectList /></PermissionRoute>} />

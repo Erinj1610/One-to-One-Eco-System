@@ -1198,6 +1198,7 @@ export function StoreProvider({ children }) {
   const [alertSettings, setAlertSettings] = useState(defaultSettings);
 
   const defaultModules = [
+    { id: 'workspace', label: 'My Workspace', icon: 'Inbox', path: '/workspace', sectionId: 'general', visible: true, order: -1 },
     { id: 'dashboard', label: 'Dashboard', icon: 'Home', path: '/dashboard', sectionId: 'general', visible: true, order: 0 },
     { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm', sectionId: 'clients_sales', visible: true, order: 1 },
     { id: 'projects', label: 'Projects', icon: 'Layout', path: '/projects', sectionId: 'projects_sec', visible: true, order: 2 },
