@@ -4161,7 +4161,7 @@ export default function SalesTracker() {
                               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
                                 <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
                                 <th style={{ width: '100px' }}>1:1 Code</th>
-                                <th style={{ width: '80px' }}>Type Code</th>
+                                <th style={{ width: '55px', textAlign: 'center' }} title="Plan Drawing Breakdown">Plans</th>
                                 <th style={{ width: '130px' }}>Item Code</th>
                                 <th style={{ width: '250px' }}>Description</th>
                                 <th style={{ width: '90px', textAlign: 'right' }}>Unit Retail</th>
@@ -4251,7 +4251,7 @@ export default function SalesTracker() {
                                   >
                                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                                     <td style={{ fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
-                                    <td style={{ fontFamily: 'monospace' }}>
+                                    <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                                       {item.planBreakdown && item.planBreakdown.length > 0 ? (
                                         <button
                                           type="button"
@@ -4260,28 +4260,26 @@ export default function SalesTracker() {
                                             e.stopPropagation();
                                             setPlanBreakdownModalItem(item);
                                           }}
-                                          title="Click to view plan code breakdown and location details"
+                                          title={`View Plan Locations: ${item.type || '—'}`}
                                           style={{
-                                            padding: '2px 6px',
-                                            fontSize: '11px',
-                                            fontFamily: 'monospace',
-                                            fontWeight: 600,
+                                            padding: '3px 7px',
+                                            fontSize: '12px',
                                             color: 'var(--text-info)',
-                                            background: 'rgba(59, 130, 246, 0.08)',
+                                            background: 'rgba(59, 130, 246, 0.1)',
                                             borderRadius: '4px',
-                                            border: '1px solid rgba(59, 130, 246, 0.25)',
+                                            border: '1px solid rgba(59, 130, 246, 0.3)',
                                             cursor: 'pointer',
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: '4px',
-                                            textDecoration: 'none'
+                                            justifyContent: 'center',
+                                            minHeight: '24px',
+                                            height: '24px'
                                           }}
                                         >
-                                          <span>{item.type || '—'}</span>
-                                          <span style={{ fontSize: '9px', opacity: 0.7 }}>🔍</span>
+                                          🔍
                                         </button>
                                       ) : (
-                                        item.type || '—'
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>—</span>
                                       )}
                                     </td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
