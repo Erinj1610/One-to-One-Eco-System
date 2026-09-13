@@ -1,13 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useStore } from '../../context/StoreContext';
 import { useAuth } from '../../context/AuthContext';
+import { API_BASE } from '../../api_config';
 import { MODULE_ID_TO_SYSTEM_MODULE, getSystemModuleForPath } from '../../utils/modulePermissions';
 import * as Icons from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleCollapse }) {
   const { moduleConfig } = useStore();
-  const { hasAccess } = useAuth();
+  const { hasAccess, user } = useAuth();
+  const [queueCount, setQueueCount] = useState(0);
+
+  useEffect(() => {
+    const fetchQueueCount = async () => {
+      try {
+        const userParam = user?.name || user?.email ? `?user_email=${encodeURIComponent(user?.email || '')}&user_name=${encodeURIComponent(user?.name || '')}` : '';
+        const res = await fetch(`${API_BASE}/api/workflow/my-queue${userParam}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) setQueueCount(data.length);
+        }
+      } catch (err) {}
+    };
+
+    fetchQueueCount();
+    const interval = setInterval(fetchQueueCount, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const { modules = [], sections = [] } = moduleConfig || {};
 
@@ -72,9 +91,28 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
                     to={item.path} 
                     className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                     title={isCollapsed ? item.label : undefined}
+                    style={{ position: 'relative' }}
                   >
                     <IconComponent size={16} style={{ flexShrink: 0 }} /> 
-                    {!isCollapsed && <span>{item.label}</span>}
+                    {!isCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+                    {item.id === 'workspace' && queueCount > 0 && (
+                      <span 
+                        style={{
+                          background: '#ef4444',
+                          color: '#ffffff',
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          borderRadius: '10px',
+                          padding: isCollapsed ? '2px 5px' : '1px 6px',
+                          position: isCollapsed ? 'absolute' : 'relative',
+                          top: isCollapsed ? '4px' : 'unset',
+                          right: isCollapsed ? '4px' : 'unset',
+                          lineHeight: 1
+                        }}
+                      >
+                        {queueCount}
+                      </span>
+                    )}
                   </NavLink>
                 );
               })}

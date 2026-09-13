@@ -3,6 +3,8 @@ import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import MobileSalesViewer from '../components/mobile/MobileSalesViewer';
+import UniversalWorkflowBar from '../components/workflow/UniversalWorkflowBar';
+import { useAuth } from '../context/AuthContext';
 
 
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -208,6 +210,7 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
+  const { user } = useAuth();
   const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -3707,6 +3710,17 @@ export default function SalesTracker() {
         <div className="card" style={{ border: '1.5px solid var(--border)', width: '100%', minWidth: 0 }}>
           <div className="card-body" style={{ padding: 'clamp(14px, 1.4vw, 24px)' }}>
             
+            {/* UNIVERSAL PROJECT WORKFLOW HANDOVER BAR */}
+            {selectedProjectKey && (
+              <UniversalWorkflowBar 
+                projectKey={selectedProjectKey} 
+                currentUser={user} 
+                onRouted={() => {
+                  refreshProjects();
+                }} 
+              />
+            )}
+
             {/* WORKSPACE TOP NAV HEADER: 2-TIER FLUID PROPORTIONAL FLOW */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '16px', width: '100%' }}>
               
