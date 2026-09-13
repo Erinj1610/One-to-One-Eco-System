@@ -979,16 +979,33 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
 
     # If no direct allocation by order_item_id, only match unlinked allocations if they explicitly match the item's order_id
     if not active_allocs and item.order_id and (item.code or item.one_one_code):
-        active_allocs = db.query(ProcurementAllocation).filter(
-            ProcurementAllocation.allocation_type == "INVOICE",
-            ProcurementAllocation.order_item_id.is_(None),
-            ProcurementAllocation.order_id.in_([str(item.order_id), int(item.order_id) if str(item.order_id).isdigit() else -1]),
-            or_(
-                ProcurementAllocation.sku == item.code,
-                ProcurementAllocation.sku == item.one_one_code
-            ),
-            ProcurementAllocation.status == "Active"
-        ).all()
+        sku_filter = or_(
+            ProcurementAllocation.sku == item.code,
+            ProcurementAllocation.sku == item.one_one_code
+        )
+        # Handle numeric vs string slug order_id safely for PostgreSQL integer column
+        if str(item.order_id).isdigit():
+            active_allocs = db.query(ProcurementAllocation).filter(
+                ProcurementAllocation.allocation_type == "INVOICE",
+                ProcurementAllocation.order_item_id.is_(None),
+                ProcurementAllocation.order_id == int(item.order_id),
+                sku_filter,
+                ProcurementAllocation.status == "Active"
+            ).all()
+        else:
+            # If item.order_id is a slug like "2138-house-bryson--general-lighting-", match by project if possible
+            order_prefix = str(item.order_id).split('--')[0] if '--' in str(item.order_id) else str(item.order_id)
+            matched_proj = db.query(Project).filter(
+                (Project.project_key == order_prefix) | (Project.name == order_prefix)
+            ).first()
+            if matched_proj:
+                active_allocs = db.query(ProcurementAllocation).filter(
+                    ProcurementAllocation.allocation_type == "INVOICE",
+                    ProcurementAllocation.order_item_id.is_(None),
+                    ProcurementAllocation.project_id == matched_proj.id,
+                    sku_filter,
+                    ProcurementAllocation.status == "Active"
+                ).all()
 
     # Filter strictly for non-credit invoices (IN-...)
     inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
@@ -1072,12 +1089,28 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
         
         if not matched_item and alloc.sku:
             clean_sku = alloc.sku.strip().upper()
-            cand_items = db.query(OrderItem).filter(
+            cand_q = db.query(OrderItem).filter(
                 or_(
                     OrderItem.code.ilike(clean_sku),
                     OrderItem.one_one_code.ilike(clean_sku)
                 )
-            ).all()
+            )
+            # Scope search to this allocation's project to prevent cross-project contamination
+            if alloc.project_id:
+                proj = db.query(Project).filter(Project.id == alloc.project_id).first()
+                proj_orders = db.query(Order).filter(Order.project_id == alloc.project_id).all()
+                order_keys = [str(o.id) for o in proj_orders] + [o.po_number for o in proj_orders if o.po_number]
+                if proj and proj.project_key:
+                    cand_q = cand_q.filter(
+                        or_(
+                            OrderItem.order_id.in_(order_keys),
+                            OrderItem.order_id.ilike(f"{proj.project_key}%")
+                        )
+                    )
+                elif order_keys:
+                    cand_q = cand_q.filter(OrderItem.order_id.in_(order_keys))
+
+            cand_items = cand_q.all()
             if cand_items:
                 matched_item = cand_items[0]
 
@@ -1171,12 +1204,28 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
             affected_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
         
         if affected_skus:
-            cand_items = db.query(OrderItem).filter(
+            # Scope search to projects of the affected allocations
+            proj_ids = list(set([a.project_id for a in allocs_to_cancel if a.project_id]))
+            cand_q = db.query(OrderItem).filter(
                 or_(
                     OrderItem.code.in_(list(affected_skus)),
                     OrderItem.one_one_code.in_(list(affected_skus))
                 )
-            ).all()
+            )
+            if proj_ids:
+                proj_orders = db.query(Order).filter(Order.project_id.in_(proj_ids)).all()
+                order_keys = [str(o.id) for o in proj_orders] + [o.po_number for o in proj_orders if o.po_number]
+                projs = db.query(Project).filter(Project.id.in_(proj_ids)).all()
+                p_keys = [p.project_key for p in projs if p.project_key]
+                proj_filters = []
+                if order_keys:
+                    proj_filters.append(OrderItem.order_id.in_(order_keys))
+                for pk in p_keys:
+                    proj_filters.append(OrderItem.order_id.ilike(f"{pk}%"))
+                if proj_filters:
+                    cand_q = cand_q.filter(or_(*proj_filters))
+
+            cand_items = cand_q.all()
             for ci in cand_items:
                 if ci not in affected_items:
                     affected_items.append(ci)
