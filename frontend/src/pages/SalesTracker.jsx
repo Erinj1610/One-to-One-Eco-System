@@ -293,13 +293,27 @@ export default function SalesTracker() {
   const groupedItems = useMemo(() => {
     const groups = {};
     activeOrderItems.forEach(item => {
-      const codeKey = item.code || ('CUSTOM_' + item.id);
+      // 1. Strictly filter out spacer rows
+      const isSpacer = !!(
+        item.isSpacer ||
+        String(item.type || '').trim().toUpperCase() === 'SPACER' ||
+        String(item.code || '').trim().toUpperCase() === 'SPACER'
+      );
+      if (isSpacer) return;
+
+      // 2. Group by 1:1 Code and Item Code
+      const oneOne = (item.oneOneCode || item.one_one_code || '').trim();
+      const itemCode = (item.code || '').trim();
+      const codeKey = (oneOne || itemCode) ? `${oneOne}__${itemCode}` : ('CUSTOM_' + item.id);
+
       if (!groups[codeKey]) {
         groups[codeKey] = {
           code: item.code,
-          oneOneCode: item.oneOneCode || item.one_one_code || '',
+          oneOneCode: oneOne,
           description: item.description,
           type: item.type,
+          typesSet: new Set(),
+          planBreakdown: [],
           unitRetail: item.unitRetail || 0,
           unitCost: item.unitCost || 0,
           brand: item.brand,
@@ -332,11 +346,22 @@ export default function SalesTracker() {
         };
       }
 
-      
       const g = groups[codeKey];
-      g.qty += item.qty || 0;
+      const itemQty = Number(item.qty) || 0;
+      g.qty += itemQty;
       g.itemIds.push(item.id);
-      
+
+      if (item.type) g.typesSet.add(item.type);
+      g.planBreakdown.push({
+        id: item.id,
+        type: item.type || '—',
+        qty: itemQty,
+        area: item.area || '—',
+        floor: item.floor || 'Ground',
+        description: item.description || '',
+        unitRetail: item.unitRetail || 0,
+      });
+
       const defaults = getItemDefaults(item);
       const poRefVal = item.poRef !== undefined ? item.poRef : defaults.poRef;
       const poSupplierVal = item.poSupplier !== undefined ? item.poSupplier : defaults.poSupplier;
@@ -408,11 +433,15 @@ export default function SalesTracker() {
     });
 
     return Object.values(groups).map(g => {
+      const typeDisplay = g.typesSet.size > 0 ? Array.from(g.typesSet).join(', ') : (g.type || '—');
       return {
         id: g.itemIds[0],
         code: g.code || 'CUSTOM',
+        oneOneCode: g.oneOneCode,
         description: g.description,
-        type: g.type,
+        type: typeDisplay,
+        typesList: Array.from(g.typesSet),
+        planBreakdown: g.planBreakdown,
         unitRetail: g.unitRetail,
         unitCost: g.unitCost,
         brand: g.brand,
@@ -759,6 +788,7 @@ export default function SalesTracker() {
   
   // States for Document-Centric Logger Modal
   const [waybillHistoryModalItem, setWaybillHistoryModalItem] = useState(null);
+  const [planBreakdownModalItem, setPlanBreakdownModalItem] = useState(null);
   const [showPaymentViewer, setShowPaymentViewer] = useState(false);
 
 
@@ -4221,7 +4251,39 @@ export default function SalesTracker() {
                                   >
                                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                                     <td style={{ fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
-                                    <td style={{ fontFamily: 'monospace' }}>{item.type || '—'}</td>
+                                    <td style={{ fontFamily: 'monospace' }}>
+                                      {item.planBreakdown && item.planBreakdown.length > 0 ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-xs btn-ghost"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPlanBreakdownModalItem(item);
+                                          }}
+                                          title="Click to view plan code breakdown and location details"
+                                          style={{
+                                            padding: '2px 6px',
+                                            fontSize: '11px',
+                                            fontFamily: 'monospace',
+                                            fontWeight: 600,
+                                            color: 'var(--text-info)',
+                                            background: 'rgba(59, 130, 246, 0.08)',
+                                            borderRadius: '4px',
+                                            border: '1px solid rgba(59, 130, 246, 0.25)',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            textDecoration: 'none'
+                                          }}
+                                        >
+                                          <span>{item.type || '—'}</span>
+                                          <span style={{ fontSize: '9px', opacity: 0.7 }}>🔍</span>
+                                        </button>
+                                      ) : (
+                                        item.type || '—'
+                                      )}
+                                    </td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
                                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.description}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>
@@ -5409,6 +5471,91 @@ export default function SalesTracker() {
 
             <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" className="btn" onClick={() => setWaybillHistoryModalItem(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PLAN BREAKDOWN MODAL */}
+      {planBreakdownModalItem && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          paddingTop: '6vh', overflowY: 'auto',
+          zIndex: 1200, animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '580px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }}>
+            <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div className="card-title" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📐 Plan Code & Location Breakdown</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', fontFamily: 'monospace' }}>
+                  1:1 Code: <strong style={{ color: 'var(--text-primary)' }}>{planBreakdownModalItem.oneOneCode || '—'}</strong> │ Item: <strong style={{ color: 'var(--text-info)' }}>{planBreakdownModalItem.code || 'CUSTOM'}</strong>
+                </div>
+              </div>
+              <button type="button" className="btn btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setPlanBreakdownModalItem(null)}>✕</button>
+            </div>
+            
+            <div style={{ padding: '16px 20px', maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.4 }}>
+                {planBreakdownModalItem.description}
+              </div>
+              
+              <table className="table" style={{ width: '100%', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-primary)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', width: '90px' }}>Plan Code</th>
+                    <th style={{ textAlign: 'center', padding: '8px 10px', width: '60px' }}>Qty</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px' }}>Area / Room</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', width: '90px' }}>Floor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(planBreakdownModalItem.planBreakdown || []).map((pb, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span style={{
+                          fontFamily: 'monospace',
+                          fontWeight: 700,
+                          color: 'var(--text-info)',
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '11px'
+                        }}>
+                          {pb.type || '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, fontSize: '12px' }}>
+                        {pb.qty}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {pb.area || '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-secondary)' }}>
+                        {pb.floor || 'Ground'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--bg-primary)', fontWeight: 700, borderTop: '2px solid var(--border-strong)' }}>
+                    <td style={{ padding: '10px' }}>Total Units:</td>
+                    <td style={{ padding: '10px', textAlign: 'center', color: 'var(--text-success)', fontSize: '13px' }}>
+                      {planBreakdownModalItem.qty}
+                    </td>
+                    <td colSpan={2} style={{ padding: '10px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                      Across {(planBreakdownModalItem.planBreakdown || []).length} specification entries
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', background: 'var(--bg-primary)' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setPlanBreakdownModalItem(null)}>Close</button>
             </div>
           </div>
         </div>
