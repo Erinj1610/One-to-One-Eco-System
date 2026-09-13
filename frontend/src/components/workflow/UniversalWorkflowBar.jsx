@@ -146,18 +146,19 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '12px',
-          background: 'linear-gradient(90deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)',
-          border: '1px solid var(--border-strong)',
+          background: 'var(--bg-primary, #ffffff)',
+          border: '1px solid var(--border-strong, #cbd5e1)',
           borderRadius: '8px',
-          padding: '8px 14px',
+          padding: '9px 16px',
           marginBottom: '14px',
-          fontSize: '12px'
+          fontSize: '12.5px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
         }}
       >
         {/* LEFT: CURRENT STAGE & ASSIGNED WORKER */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.5px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: 'var(--text-secondary, #475569)', fontWeight: 700, textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px' }}>
               Project Flow:
             </span>
             <div 
@@ -165,36 +166,36 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '3px 10px',
+                padding: '4px 12px',
                 borderRadius: '16px',
-                background: `${stageColor}22`,
-                border: `1px solid ${stageColor}55`,
+                background: `${stageColor}18`,
+                border: `1.5px solid ${stageColor}`,
                 color: stageColor,
                 fontWeight: 700,
-                fontSize: '11.5px'
+                fontSize: '12px'
               }}
             >
-              <IconComponent size={13} />
+              <IconComponent size={14} />
               <span>{currentStageName}</span>
             </div>
           </div>
 
-          <div style={{ height: '14px', width: '1px', background: 'var(--border)' }} />
+          <div style={{ height: '16px', width: '1px', background: 'var(--border-strong, #cbd5e1)' }} />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <User size={13} style={{ color: 'var(--text-secondary)' }} />
-            <span style={{ color: 'var(--text-secondary)' }}>Desk:</span>
-            <strong style={{ color: 'var(--text-primary)' }}>
+            <User size={14} style={{ color: 'var(--text-info, #185fa5)' }} />
+            <span style={{ color: 'var(--text-secondary, #475569)', fontWeight: 600 }}>Desk:</span>
+            <strong style={{ color: 'var(--text-primary, #0f172a)', fontSize: '12.5px', background: 'var(--bg-secondary, #f1f5f9)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border, #e2e8f0)' }}>
               {activeTicket?.assigned_to || activeTicket?.assigned_role || 'Unassigned'}
             </strong>
           </div>
 
           {activeTicket?.action_note && (
             <>
-              <div style={{ height: '14px', width: '1px', background: 'var(--border)' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <MessageSquare size={12} style={{ color: 'var(--text-info)', flexShrink: 0 }} />
-                <span style={{ color: 'var(--text-primary)', fontStyle: 'italic' }}>
+              <div style={{ height: '16px', width: '1px', background: 'var(--border-strong, #cbd5e1)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <MessageSquare size={13} style={{ color: 'var(--text-info, #185fa5)', flexShrink: 0 }} />
+                <span style={{ color: 'var(--text-primary, #1e293b)', fontStyle: 'italic', fontWeight: 500 }}>
                   "{activeTicket.action_note}"
                 </span>
               </div>

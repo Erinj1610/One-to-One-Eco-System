@@ -110,34 +110,35 @@ export default function MyWorkspace() {
       {/* TOP HERO HEADER */}
       <div 
         style={{ 
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%)', 
-          border: '1.5px solid var(--border-strong)', 
+          background: 'var(--bg-primary, #ffffff)', 
+          border: '1px solid var(--border-strong, #cbd5e1)', 
           borderRadius: '12px', 
-          padding: '24px 28px', 
+          padding: '20px 24px', 
           marginBottom: '20px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
+          boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)'
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.6px' }}>
+              <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700, letterSpacing: '0.6px' }}>
                 Operational Task Queue
               </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary, #64748b)' }}>
                 First-In, First-Out (FIFO) Task Prioritization
               </span>
             </div>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span>📥 My Workspace</span>
               <span 
                 style={{ 
-                  fontSize: '13px', 
-                  background: 'rgba(59, 130, 246, 0.15)', 
-                  color: 'var(--text-info)', 
+                  fontSize: '12px', 
+                  background: 'var(--bg-info, #e0f2fe)', 
+                  color: 'var(--text-info, #0369a1)', 
                   padding: '2px 10px', 
                   borderRadius: '12px', 
-                  border: '1px solid rgba(59, 130, 246, 0.3)' 
+                  border: '1px solid var(--border-info, rgba(3, 105, 161, 0.2))',
+                  fontWeight: 700
                 }}
               >
                 {totalWaiting} Pending
@@ -159,30 +160,30 @@ export default function MyWorkspace() {
         </div>
 
         {/* QUICK STATS CARDS */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '20px' }}>
-          <div style={{ background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '18px' }}>
+          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
               Total Tasks on Desk
             </div>
-            <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
               {totalWaiting}
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
               High Priority / Urgent
             </div>
-            <div style={{ fontSize: '22px', fontWeight: 800, color: urgentCount > 0 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: urgentCount > 0 ? 'var(--text-danger, #ef4444)' : 'var(--text-success, #16a34a)' }}>
               {urgentCount > 0 ? `🔥 ${urgentCount}` : '0'}
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-secondary)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
               Oldest Pending Task
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: oldestTicket ? '#f59e0b' : 'var(--text-secondary)', marginTop: '4px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: oldestTicket ? '#d97706' : 'var(--text-secondary, #64748b)', marginTop: '6px' }}>
               {oldestTicket ? `${oldestTicket.project_name} (${oldestTicket.age_str})` : 'Queue Clear 🎉'}
             </div>
           </div>

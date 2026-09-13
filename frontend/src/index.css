@@ -110,3 +110,30 @@
 .resize-handle:active {
   background: var(--text-info) !important;
 }
+
+/* Universal Form Input Utility */
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong, rgba(0, 0, 0, 0.2));
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #1a1a1a);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--text-info, #185fa5);
+  box-shadow: 0 0 0 2px rgba(24, 95, 165, 0.15);
+}
+.input-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm, 4px);
+}
+select.input {
+  cursor: pointer;
+}
+

@@ -243,9 +243,15 @@ def get_my_queue(
 
     filters = []
     if user_name:
-        filters.append(func.lower(WorkflowTicket.assigned_to) == user_name.strip().lower())
+        u_clean = user_name.strip().lower()
+        filters.append(func.lower(WorkflowTicket.assigned_to) == u_clean)
+        filters.append(func.lower(WorkflowTicket.assigned_to).like(f"%{u_clean}%"))
     if user_email:
-        filters.append(func.lower(WorkflowTicket.assigned_to) == user_email.strip().lower())
+        e_clean = user_email.strip().lower()
+        filters.append(func.lower(WorkflowTicket.assigned_to) == e_clean)
+        # Also check username portion of email e.g. "erin.jones" -> "erin"
+        prefix = e_clean.split('@')[0].replace('.', ' ')
+        filters.append(func.lower(WorkflowTicket.assigned_to).like(f"%{prefix}%"))
     if role:
         filters.append(func.lower(WorkflowTicket.assigned_role) == role.strip().lower())
 
@@ -265,6 +271,7 @@ def get_my_queue(
     now = datetime.now(timezone.utc)
     for t in tickets:
         p = proj_map.get(t.project_key)
+        client_val = getattr(p, "client_name", None) or getattr(p, "client", None) or "—"
         
         age_seconds = (now - (t.created_at.replace(tzinfo=timezone.utc) if t.created_at.tzinfo is None else t.created_at)).total_seconds() if t.created_at else 0
         age_seconds = max(0, age_seconds)
@@ -280,7 +287,7 @@ def get_my_queue(
             "id": t.id,
             "project_key": t.project_key,
             "project_name": p.name if p else t.project_key,
-            "client_name": p.client if p else "—",
+            "client_name": client_val,
             "stage_id": t.stage_id,
             "stage_name": t.stage_name,
             "assigned_to": t.assigned_to,
