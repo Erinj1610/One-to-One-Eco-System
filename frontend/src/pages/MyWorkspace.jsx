@@ -45,13 +45,18 @@ export default function MyWorkspace() {
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewScope, setViewScope] = useState('all'); // default to 'all' so users immediately see active company tasks
   const [selectedTicketForRoute, setSelectedTicketForRoute] = useState(null);
 
   const fetchQueue = async () => {
     setLoading(true);
     try {
-      const userParam = user?.name || user?.email ? `?user_email=${encodeURIComponent(user?.email || '')}&user_name=${encodeURIComponent(user?.name || '')}` : '';
-      const res = await fetch(`${API_BASE}/api/workflow/my-queue${userParam}`);
+      let url = `${API_BASE}/api/workflow/my-queue`;
+      if (viewScope === 'my') {
+        const userParam = user?.name || user?.email ? `?user_email=${encodeURIComponent(user?.email || '')}&user_name=${encodeURIComponent(user?.name || '')}` : '';
+        url = `${url}${userParam}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setQueue(data);
@@ -65,7 +70,7 @@ export default function MyWorkspace() {
 
   useEffect(() => {
     fetchQueue();
-  }, [user]);
+  }, [user, viewScope]);
 
   // Priority and Filtering
   const filteredQueue = queue.filter(item => {
@@ -186,7 +191,27 @@ export default function MyWorkspace() {
 
       {/* FILTER & SEARCH STRIP */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '450px' }}>
+        {/* SCOPE TOGGLE: MY TASKS VS ALL COMPANY */}
+        <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          <button
+            type="button"
+            className={`btn btn-xs ${viewScope === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px', borderRadius: '6px' }}
+            onClick={() => setViewScope('all')}
+          >
+            All Company Projects ({totalWaiting})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${viewScope === 'my' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px', borderRadius: '6px' }}
+            onClick={() => setViewScope('my')}
+          >
+            Assigned to Me
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '400px' }}>
           <div style={{ position: 'relative', width: '100%' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
             <input 
@@ -201,7 +226,7 @@ export default function MyWorkspace() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stage Filter:</span>
+          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stage:</span>
           <select 
             className="input input-sm" 
             value={filterRole} 
@@ -346,8 +371,14 @@ export default function MyWorkspace() {
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
                     <CheckCircle size={32} style={{ color: '#4ade80', margin: '0 auto 8px auto', display: 'block' }} />
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>Your Queue is Clear!</div>
-                    <div style={{ fontSize: '12px', marginTop: '4px' }}>There are currently no pending tasks waiting on your desk.</div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {viewScope === 'my' ? 'Your Personal Desk is Clear!' : 'No Active Projects in the Workflow Queue'}
+                    </div>
+                    <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                      {viewScope === 'my' 
+                        ? 'No tasks are currently assigned to your username or email. Switch to "All Company Projects" above to see all pending projects.'
+                        : 'Projects will appear here automatically as staff route and hand over projects across departments.'}
+                    </div>
                   </td>
                 </tr>
               )}

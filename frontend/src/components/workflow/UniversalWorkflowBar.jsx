@@ -43,6 +43,25 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
   const [priority, setPriority] = useState('Normal');
   const [targetModule, setTargetModule] = useState('sales-tracker');
   const [targetTab, setTargetTab] = useState('purchasing');
+  const [staffList, setStaffList] = useState([]);
+
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/project-tickets/staff`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setStaffList(data);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching staff list for workflow:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaff();
+  }, []);
 
   const fetchWorkflow = async () => {
     if (!projectKey) return;
@@ -252,15 +271,36 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   Assign To (Person or Role)
                 </label>
-                <input
-                  type="text"
+                <select
                   className="input input-sm"
-                  placeholder="e.g. Sarah / Purchasing Team / John"
                   value={assignedTo}
                   onChange={e => setAssignedTo(e.target.value)}
-                  style={{ width: '100%', fontSize: '12px' }}
+                  style={{ width: '100%', fontSize: '12.5px', fontWeight: 600 }}
                   required
-                />
+                >
+                  <option value="">-- Select Person or Role --</option>
+                  
+                  {/* REAL USERS & STAFF */}
+                  {staffList.length > 0 && (
+                    <optgroup label="Staff Members / Users">
+                      {staffList.map(st => (
+                        <option key={st.id || st.name} value={st.name}>
+                          {st.name} {st.role && st.role !== 'Staff' ? `(${st.role})` : ''} {st.department ? `· ${st.department}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* TEAMS & DEPARTMENTS */}
+                  <optgroup label="Departments & Teams">
+                    <option value="Design">Design Team</option>
+                    <option value="Sales">Sales & Estimating</option>
+                    <option value="Purchasing">Purchasing / Procurement</option>
+                    <option value="Stores">Stores / Warehouse</option>
+                    <option value="Accounts">Accounts / Invoicing</option>
+                    <option value="Logistics">Logistics & Delivery</option>
+                  </optgroup>
+                </select>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
