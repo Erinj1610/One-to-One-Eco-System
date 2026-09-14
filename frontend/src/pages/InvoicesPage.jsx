@@ -118,6 +118,8 @@ export default function InvoicesPage() {
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [allocTargetItem, setAllocTargetItem] = useState(null);
   const [candidateOrders, setCandidateOrders] = useState([]);
+  const [showFulfilledCandidates, setShowFulfilledCandidates] = useState(false);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState(null);
   const [manualProjectId, setManualProjectId] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
@@ -314,13 +316,26 @@ export default function InvoicesPage() {
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
     const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
 
+    setShowFulfilledCandidates(false);
+    await fetchInvoicingCandidates(line, false, docRef, custName);
+    setAllocModalOpen(true);
+  };
+
+  const fetchInvoicingCandidates = async (line, includeFulfilled = false, docRefParam = null, custNameParam = null) => {
+    if (!line?.item_code) return;
+    setIsLoadingCandidates(true);
+
+    const cleanSku = (line.item_code || '').trim().toUpperCase();
+    const docRef = (docRefParam !== null ? docRefParam : (selectedDocument?.reference || '')).trim().toLowerCase();
+    const custName = (custNameParam !== null ? custNameParam : (selectedDocument?.customer_name || '')).trim().toLowerCase();
+
     // 1. Try Backend Candidates API first
     try {
-      const res = await fetch(`${API_BASE}/api/invoicing/candidate-orders?sku=${encodeURIComponent(line.item_code)}`);
+      const res = await fetch(`${API_BASE}/api/invoicing/candidate-orders?sku=${encodeURIComponent(line.item_code)}&include_fulfilled=${includeFulfilled}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.candidates && data.candidates.length > 0) {
-          const backendCandidates = data.candidates.map((cand, idx) => ({
+        if (data.candidates && (data.candidates.length > 0 || !includeFulfilled)) {
+          const backendCandidates = (data.candidates || []).map((cand, idx) => ({
             ...cand,
             candidate_key: String(cand.order_item_id || cand.id || idx),
             order_title: cand.order_title || cand.quote_name || cand.po_number || `Order #${cand.order_id}`,
@@ -329,10 +344,15 @@ export default function InvoicesPage() {
             is_direct_sku_match: cand.is_direct_sku_match !== false
           }));
           setCandidateOrders(backendCandidates);
-          setSelectedCandidateKey(backendCandidates[0].candidate_key);
-          setManualProjectId(backendCandidates[0].project_id ? String(backendCandidates[0].project_id) : (backendCandidates[0].project_key || ''));
-          setManualOrderId(backendCandidates[0].order_id ? String(backendCandidates[0].order_id) : '');
-          setAllocModalOpen(true);
+          if (backendCandidates.length > 0) {
+            const firstNeeded = backendCandidates.find(c => c.remaining_needed > 0) || backendCandidates[0];
+            setSelectedCandidateKey(firstNeeded.candidate_key);
+            setManualProjectId(firstNeeded.project_id ? String(firstNeeded.project_id) : (firstNeeded.project_key || ''));
+            setManualOrderId(firstNeeded.order_id ? String(firstNeeded.order_id) : '');
+          } else {
+            setSelectedCandidateKey('MANUAL');
+          }
+          setIsLoadingCandidates(false);
           return;
         }
       }
@@ -368,6 +388,14 @@ export default function InvoicesPage() {
           const isDirectSkuMatch = itemCode === cleanSku || oneOneCode === cleanSku;
           const isDescMatch = it.description && cleanSku && it.description.toUpperCase().includes(cleanSku);
 
+          const reqQty = Number(it.qty || it.quantity || 0);
+          const invoicedQty = Number(it.invoice_qty || 0);
+          const remainingNeeded = Math.max(0, reqQty - invoicedQty);
+
+          if (!includeFulfilled && remainingNeeded <= 0) {
+            return;
+          }
+
           if (isDirectSkuMatch || isDescMatch || projMatchScore > 0) {
             let itemScore = projMatchScore;
             if (isDirectSkuMatch) itemScore += 100;
@@ -387,8 +415,9 @@ export default function InvoicesPage() {
               match_type: isDirectSkuMatch ? 'Exact SKU Match' : (projMatchScore > 0 ? 'Project & Reference Match' : 'Keyword Match'),
               fitting_code: it.code || it.oneOneCode || line.item_code,
               description: it.description || it.name,
-              needed_qty: it.qty || it.quantity || 1,
-              invoiced_qty: it.invoice_qty || 0,
+              required_qty: reqQty,
+              invoiced_qty: invoicedQty,
+              remaining_needed: remainingNeeded,
               is_direct_sku_match: isDirectSkuMatch,
               match_score: itemScore
             });
@@ -397,20 +426,21 @@ export default function InvoicesPage() {
       });
     });
 
-    candidates.sort((a, b) => b.match_score - a.match_score);
+    candidates.sort((a, b) => (b.remaining_needed > 0 ? 1 : 0) - (a.remaining_needed > 0 ? 1 : 0) || b.match_score - a.match_score);
     setCandidateOrders(candidates);
 
     if (candidates.length > 0) {
-      setSelectedCandidateKey(candidates[0].candidate_key);
-      setManualProjectId(candidates[0].project_id ? String(candidates[0].project_id) : (candidates[0].project_key || ''));
-      setManualOrderId(candidates[0].order_id ? String(candidates[0].order_id) : '');
+      const firstNeeded = candidates.find(c => c.remaining_needed > 0) || candidates[0];
+      setSelectedCandidateKey(firstNeeded.candidate_key);
+      setManualProjectId(firstNeeded.project_id ? String(firstNeeded.project_id) : (firstNeeded.project_key || ''));
+      setManualOrderId(firstNeeded.order_id ? String(firstNeeded.order_id) : '');
     } else {
       setSelectedCandidateKey('MANUAL');
       setManualProjectId('');
       setManualOrderId('');
     }
 
-    setAllocModalOpen(true);
+    setIsLoadingCandidates(false);
   };
 
   const handleSelectCandidate = (cand) => {
@@ -2624,15 +2654,40 @@ export default function InvoicesPage() {
 
                 {/* Candidate Orders (Intelligent ERP Matching) */}
                 <div>
-                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Sparkles size={13} color="#3b82f6" />
-                    Intelligent Candidate Order Matches:
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Sparkles size={13} color="#3b82f6" />
+                      Intelligent Candidate Order Matches:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={showFulfilledCandidates}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setShowFulfilledCandidates(val);
+                            fetchInvoicingCandidates(allocTargetItem, val);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        Show fulfilled orders
+                      </label>
+                      {isLoadingCandidates && (
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <RefreshCw size={10} className="animate-spin" /> Finding matching orders...
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {candidateOrders.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {candidateOrders.map(cand => {
                         const isSelected = selectedCandidateKey === cand.candidate_key;
+                        const reqQty = cand.required_qty ?? cand.needed_qty ?? 0;
+                        const invQty = cand.invoiced_qty ?? 0;
+                        const remNeeded = cand.remaining_needed !== undefined ? cand.remaining_needed : Math.max(0, reqQty - invQty);
                         return (
                           <div 
                             key={cand.candidate_key}
@@ -2656,16 +2711,24 @@ export default function InvoicesPage() {
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                 Client: <strong style={{ color: 'var(--text-primary)' }}>{cand.client}</strong> • Match: <span style={{ color: '#3b82f6', fontWeight: 600 }}>{cand.match_type}</span>
                               </div>
+                              {cand.fitting_code && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '1px' }}>
+                                  Fitting: <strong>{cand.fitting_code}</strong> {reqQty > 0 ? `(Req: ${reqQty} • Invoiced: ${invQty})` : ''}
+                                </div>
+                              )}
                             </div>
 
-                            <div style={{ textAlign: 'right' }}>
+                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                              <div style={{ fontSize: '10.5px', fontWeight: 700, color: remNeeded > 0 ? '#f59e0b' : '#10b981' }}>
+                                {remNeeded > 0 ? `Needs: ${remNeeded}` : 'Already Fulfilled'}
+                              </div>
                               <span style={{ 
                                 background: isSelected ? '#3b82f6' : 'var(--bg-primary)', 
                                 color: isSelected ? '#fff' : 'var(--text-primary)', 
                                 border: '1px solid var(--border)',
-                                padding: '4px 10px', 
+                                padding: '3px 8px', 
                                 borderRadius: '6px', 
-                                fontSize: '11px', 
+                                fontSize: '10.5px', 
                                 fontWeight: 700 
                               }}>
                                 {isSelected ? 'Selected' : 'Select'}
