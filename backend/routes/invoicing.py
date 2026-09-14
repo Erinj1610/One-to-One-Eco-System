@@ -114,17 +114,19 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             ProcurementAllocation.status == "Active"
         ).all()
 
-        # Active allocations mapping: map by line_id and by doc_no
+        current_line_ids = set(l.id for l in all_lines)
+
+        # Active allocations mapping: map by line_id if valid, otherwise fallback to (source_doc_no, sku)
         alloc_by_line = {}
         alloc_by_doc_and_sku = {}
         for a in active_allocs:
-            if a.source_line_id:
+            if a.source_line_id and a.source_line_id in current_line_ids:
                 alloc_by_line[a.source_line_id] = alloc_by_line.get(a.source_line_id, 0.0) + float(a.allocated_qty or 0.0)
             else:
                 k = (a.source_doc_no, a.sku)
                 alloc_by_doc_and_sku[k] = alloc_by_doc_and_sku.get(k, 0.0) + float(a.allocated_qty or 0.0)
 
-        # Work on a copy of legacy doc_sku pools so they get consumed across duplicate lines instead of repeated
+        # Work on a copy of doc_sku pools so they get consumed across duplicate lines instead of repeated
         rem_legacy = dict(alloc_by_doc_and_sku)
 
         # Aggregate documents
@@ -246,11 +248,13 @@ def list_invoicing_documents(
             ProcurementAllocation.status == "Active"
         ).all()
 
-        # Active allocations mapping: map by line_id and by doc_no
+        current_line_ids = set(l.id for l in all_lines)
+
+        # Active allocations mapping: map by line_id if valid, otherwise fallback to (source_doc_no, sku)
         alloc_by_line = {}
         alloc_by_doc_and_sku = {}
         for a in active_allocs:
-            if a.source_line_id:
+            if a.source_line_id and a.source_line_id in current_line_ids:
                 alloc_by_line[a.source_line_id] = alloc_by_line.get(a.source_line_id, 0.0) + float(a.allocated_qty or 0.0)
             else:
                 k = (a.source_doc_no, a.sku)
@@ -408,7 +412,8 @@ def get_invoicing_document_details(
             ProcurementAllocation.status == "Active"
         ).all()
 
-        # Separate allocations: those with source_line_id vs legacy without source_line_id
+        # Separate allocations: those with valid source_line_id vs fallback by sku
+        current_line_ids = set(l.id for l in lines)
         alloc_by_line_id = {}
         legacy_alloc_by_sku = {}
         for a in allocs:
@@ -427,13 +432,13 @@ def get_invoicing_document_details(
                 "allocated_at": a.allocated_at.isoformat() if a.allocated_at else None,
                 "notes": a.notes
             }
-            if a.source_line_id is not None:
+            if a.source_line_id is not None and a.source_line_id in current_line_ids:
                 alloc_by_line_id.setdefault(a.source_line_id, []).append(alloc_dict)
             else:
                 legacy_alloc_by_sku.setdefault(a.sku, []).append(alloc_dict)
 
         # Build line-level allocations accurately
-        # If any legacy allocations exist, distribute them greedily across lines matching the SKU
+        # If any allocations exist by SKU/document, distribute them greedily across lines matching the SKU
         remaining_legacy_sku_allocs = {sku: list(al_list) for sku, al_list in legacy_alloc_by_sku.items()}
 
         parsed_lines = []
