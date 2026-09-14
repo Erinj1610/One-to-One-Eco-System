@@ -845,6 +845,42 @@ export default function SalesTracker() {
     eta: 'TBD'
   });
 
+  // External Sheet Actuals Comparison States (Saved to Portal Cloud SQL via /api/settings/salestracker_sheet_comparison_data)
+  const [showSheetComparisonModal, setShowSheetComparisonModal] = useState(false);
+  const [sheetComparisonRawText, setSheetComparisonRawText] = useState('');
+  const [sheetComparisonRows, setSheetComparisonRows] = useState([]);
+  const [sheetComparisonFilterTab, setSheetComparisonFilterTab] = useState('all'); // 'all' | 'discrepancies' | 'not_found' | 'in_sync'
+  const [sheetComparisonSearch, setSheetComparisonSearch] = useState('');
+  const [isSavingSheetComparison, setIsSavingSheetComparison] = useState(false);
+  const [isLoadingSheetComparison, setIsLoadingSheetComparison] = useState(false);
+
+  // Load saved comparison data from Portal Cloud SQL on mount
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        setIsLoadingSheetComparison(true);
+        const res = await fetch(`${API_BASE}/api/settings/salestracker_sheet_comparison_data`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.value && isMounted) {
+            if (Array.isArray(json.value.rows)) {
+              setSheetComparisonRows(json.value.rows);
+            }
+            if (typeof json.value.rawText === 'string') {
+              setSheetComparisonRawText(json.value.rawText);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load saved external sheet comparison data from Portal:", err);
+      } finally {
+        if (isMounted) setIsLoadingSheetComparison(false);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, []);
+
   // Date parser helper
   const parseProjectDate = (dateStr) => {
     if (!dateStr || dateStr === '—') return null;
@@ -3071,6 +3107,360 @@ export default function SalesTracker() {
     }
   };
 
+  // --- EXTERNAL SHEET ACTUALS COMPARISON ENGINE ---
+
+  // Normalize string for fuzzy comparison
+  const normalizeSheetText = (text) => {
+    if (!text) return '';
+    return String(text).toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+  };
+
+  // Parse raw pasted text (from Excel / Google Sheets) or array of arrays into structured rows
+  const parsePastedSheetText = (raw) => {
+    if (!raw || !raw.trim()) return [];
+    const lines = raw.trim().split(/\r?\n/);
+    if (lines.length === 0) return [];
+
+    // Parse each line (tab or comma delimited)
+    const parsedMatrix = lines.map(line => {
+      if (line.includes('\t')) {
+        return line.split('\t').map(c => c.trim());
+      }
+      // Simple CSV split (fallback)
+      return line.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
+    });
+
+    if (parsedMatrix.length === 0) return [];
+
+    // Detect header row or check if first row is data
+    let startIdx = 0;
+    const firstRowStr = parsedMatrix[0].join(' ').toLowerCase();
+    let colMap = { order: 0, status: 1, proc: 2, inv: 3, del: 4 };
+
+    if (firstRowStr.includes('order') || firstRowStr.includes('status') || firstRowStr.includes('procur')) {
+      startIdx = 1;
+      parsedMatrix[0].forEach((col, idx) => {
+        const cLower = col.toLowerCase();
+        if (cLower.includes('order')) colMap.order = idx;
+        else if (cLower.includes('status')) colMap.status = idx;
+        else if (cLower.includes('proc')) colMap.proc = idx;
+        else if (cLower.includes('inv')) colMap.inv = idx;
+        else if (cLower.includes('del')) colMap.del = idx;
+      });
+    }
+
+    const parsePct = (val) => {
+      if (val === undefined || val === null || val === '') return 0;
+      const clean = String(val).replace(/%/g, '').replace(/,/g, '.').trim();
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : Math.round(num * 100) / 100;
+    };
+
+    const rows = [];
+    for (let i = startIdx; i < parsedMatrix.length; i++) {
+      const row = parsedMatrix[i];
+      if (!row || row.length === 0 || !row.some(c => c)) continue;
+
+      const orderName = (row[colMap.order] !== undefined ? row[colMap.order] : (row[0] || '')).trim();
+      if (!orderName) continue;
+
+      const status = (row[colMap.status] !== undefined ? row[colMap.status] : (row[1] || '')).trim();
+      const procPct = parsePct(row[colMap.proc] !== undefined ? row[colMap.proc] : row[2]);
+      const invPct = parsePct(row[colMap.inv] !== undefined ? row[colMap.inv] : row[3]);
+      const delPct = parsePct(row[colMap.del] !== undefined ? row[colMap.del] : row[4]);
+
+      rows.push({
+        id: `row-${i}-${Date.now()}`,
+        orderName,
+        status,
+        procPct,
+        invPct,
+        delPct
+      });
+    }
+
+    return rows;
+  };
+
+  // Save comparison rows & text to Portal Cloud SQL via /api/settings/salestracker_sheet_comparison_data
+  const persistSheetComparisonToPortal = async (rows, rawText) => {
+    try {
+      setIsSavingSheetComparison(true);
+      const res = await fetch(`${API_BASE}/api/settings/salestracker_sheet_comparison_data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          value: {
+            updatedAt: new Date().toISOString(),
+            rows: rows || [],
+            rawText: rawText || ''
+          }
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error("Error saving sheet comparison to Portal Cloud SQL:", err);
+      alert(`Notice: Failed to save to Portal DB (${err.message}). Revisions are still held in local screen session.`);
+    } finally {
+      setIsSavingSheetComparison(false);
+    }
+  };
+
+  // Handler when user pastes or clicks parse
+  const handleApplyPastedSheet = async (textToApply) => {
+    const raw = textToApply !== undefined ? textToApply : sheetComparisonRawText;
+    if (!raw.trim()) {
+      alert("Please paste data or upload a file first.");
+      return;
+    }
+    const parsed = parsePastedSheetText(raw);
+    if (parsed.length === 0) {
+      alert("Could not detect any valid order rows. Ensure the format includes order names and percentage columns.");
+      return;
+    }
+    setSheetComparisonRows(parsed);
+    await persistSheetComparisonToPortal(parsed, raw);
+  };
+
+  // Clear comparison data from Portal
+  const handleClearSheetComparison = async () => {
+    if (!confirm("Are you sure you want to clear the saved sheet comparison data from the Portal?")) return;
+    setSheetComparisonRows([]);
+    setSheetComparisonRawText('');
+    await persistSheetComparisonToPortal([], '');
+  };
+
+  // File Upload Handler (.xlsx or .csv)
+  const handleSheetComparisonFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const firstSheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[firstSheetName];
+        const rawCsv = XLSX.utils.sheet_to_csv(ws);
+        setSheetComparisonRawText(rawCsv);
+        const parsed = parsePastedSheetText(rawCsv);
+        setSheetComparisonRows(parsed);
+        await persistSheetComparisonToPortal(parsed, rawCsv);
+      } catch (err) {
+        console.error("Failed to parse sheet file:", err);
+        alert(`Failed to read spreadsheet file: ${err.message}`);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // Evaluate comparison between external sheet rows and live allOrders
+  const evaluatedComparisonRows = useMemo(() => {
+    if (!sheetComparisonRows || sheetComparisonRows.length === 0) return [];
+
+    return sheetComparisonRows.map(sheetRow => {
+      const rawName = sheetRow.orderName || '';
+      
+      // Extract project name & quote name components
+      // e.g. "Singita (Gym Lighting)" -> project: "Singita", quote: "Gym Lighting"
+      let parsedProjPart = '';
+      let parsedQuotePart = '';
+      const parenMatch = rawName.match(/^(.*?)\((.*?)\)(.*)$/);
+      if (parenMatch) {
+        parsedProjPart = parenMatch[1].trim();
+        parsedQuotePart = (parenMatch[2] + ' ' + (parenMatch[3] || '')).trim();
+      } else if (rawName.includes('-')) {
+        const hyphenParts = rawName.split('-');
+        parsedProjPart = hyphenParts[0].trim();
+        parsedQuotePart = hyphenParts.slice(1).join('-').trim();
+      } else {
+        parsedProjPart = rawName.trim();
+        parsedQuotePart = rawName.trim();
+      }
+
+      const normFullName = normalizeSheetText(rawName);
+      const normProjPart = normalizeSheetText(parsedProjPart);
+      const normQuotePart = normalizeSheetText(parsedQuotePart);
+
+      // Score matching against allOrders
+      let bestMatch = null;
+      let highestScore = 0;
+
+      for (const ord of allOrders) {
+        const ordId = normalizeSheetText(ord.id);
+        const ordQuote = normalizeSheetText(ord.quote_name);
+        const ordProj = normalizeSheetText(ord.projectFullName || ord.projectName);
+        const ordCombined = `${ordProj}${ordQuote}`;
+
+        // 1. Exact match on combined project + quote
+        if (normFullName && (ordCombined === normFullName || normFullName === `${ordQuote}${ordProj}`)) {
+          bestMatch = ord;
+          highestScore = 100;
+          break;
+        }
+
+        // 2. Exact match on quote name or id
+        if (normFullName && (ordQuote === normFullName || ordId === normFullName)) {
+          if (highestScore < 90) {
+            bestMatch = ord;
+            highestScore = 90;
+          }
+        }
+
+        // 3. Project matches and Quote matches
+        if (normProjPart && ordProj && (ordProj === normProjPart || ordProj.includes(normProjPart) || normProjPart.includes(ordProj))) {
+          if (normQuotePart && ordQuote && (ordQuote === normQuotePart || ordQuote.includes(normQuotePart) || normQuotePart.includes(ordQuote))) {
+            if (highestScore < 85) {
+              bestMatch = ord;
+              highestScore = 85;
+            }
+          } else if (highestScore < 50) {
+            // Partial project match only
+            bestMatch = ord;
+            highestScore = 50;
+          }
+        }
+
+        // 4. Substring containment
+        if (normFullName && (ordCombined.includes(normFullName) || normFullName.includes(ordCombined))) {
+          if (highestScore < 70) {
+            bestMatch = ord;
+            highestScore = 70;
+          }
+        }
+      }
+
+      if (!bestMatch || highestScore < 50) {
+        return {
+          ...sheetRow,
+          matchStatus: 'NOT_FOUND',
+          portalOrder: null,
+          discrepancies: ['Order not found in Portal']
+        };
+      }
+
+      // Check differences against portal order
+      const discrepancies = [];
+
+      // Status comparison: normalize "7) Complete - Product" -> "complete"
+      const normSheetStatus = (sheetRow.status || '').toLowerCase();
+      const normPortalStatus = (bestMatch.status || '').toLowerCase();
+      let statusMatches = false;
+      if (normSheetStatus && normPortalStatus) {
+        if (normSheetStatus.includes(normPortalStatus) || normPortalStatus.includes(normSheetStatus)) {
+          statusMatches = true;
+        } else if (normSheetStatus.includes('complete') && normPortalStatus === 'complete') {
+          statusMatches = true;
+        } else if (normSheetStatus.includes('pending') && normPortalStatus === 'pending') {
+          statusMatches = true;
+        } else if (normSheetStatus.includes('ongoing') && normPortalStatus === 'ongoing') {
+          statusMatches = true;
+        }
+      } else if (!normSheetStatus) {
+        statusMatches = true; // Not provided in sheet
+      }
+
+      if (!statusMatches) {
+        discrepancies.push(`Status: Sheet "${sheetRow.status}" vs Portal "${bestMatch.status}"`);
+      }
+
+      // Percentage tolerances (within 1%)
+      const procDiff = Math.abs((sheetRow.procPct || 0) - (bestMatch.procPct || 0));
+      if (procDiff > 1) {
+        discrepancies.push(`Procured %: Sheet ${sheetRow.procPct}% vs Portal ${bestMatch.procPct || 0}%`);
+      }
+
+      const invDiff = Math.abs((sheetRow.invPct || 0) - (bestMatch.invPct || 0));
+      if (invDiff > 1) {
+        discrepancies.push(`Invoiced %: Sheet ${sheetRow.invPct}% vs Portal ${bestMatch.invPct || 0}%`);
+      }
+
+      const delDiff = Math.abs((sheetRow.delPct || 0) - (bestMatch.delPct || 0));
+      if (delDiff > 1) {
+        discrepancies.push(`Delivered %: Sheet ${sheetRow.delPct}% vs Portal ${bestMatch.delPct || 0}%`);
+      }
+
+      return {
+        ...sheetRow,
+        matchStatus: discrepancies.length === 0 ? 'IN_SYNC' : 'DISCREPANCY',
+        portalOrder: bestMatch,
+        discrepancies,
+        statusMatches,
+        procDiff,
+        invDiff,
+        delDiff
+      };
+    });
+  }, [sheetComparisonRows, allOrders]);
+
+  // Statistics for comparison
+  const comparisonStats = useMemo(() => {
+    const total = evaluatedComparisonRows.length;
+    const inSync = evaluatedComparisonRows.filter(r => r.matchStatus === 'IN_SYNC').length;
+    const discrepancies = evaluatedComparisonRows.filter(r => r.matchStatus === 'DISCREPANCY').length;
+    const notFound = evaluatedComparisonRows.filter(r => r.matchStatus === 'NOT_FOUND').length;
+    return { total, inSync, discrepancies, notFound };
+  }, [evaluatedComparisonRows]);
+
+  // Filtered comparison rows for display
+  const filteredComparisonRows = useMemo(() => {
+    let list = evaluatedComparisonRows;
+
+    if (sheetComparisonFilterTab === 'discrepancies') {
+      list = list.filter(r => r.matchStatus === 'DISCREPANCY');
+    } else if (sheetComparisonFilterTab === 'not_found') {
+      list = list.filter(r => r.matchStatus === 'NOT_FOUND');
+    } else if (sheetComparisonFilterTab === 'in_sync') {
+      list = list.filter(r => r.matchStatus === 'IN_SYNC');
+    }
+
+    if (sheetComparisonSearch && sheetComparisonSearch.trim()) {
+      const q = sheetComparisonSearch.toLowerCase().trim();
+      list = list.filter(r => 
+        (r.orderName || '').toLowerCase().includes(q) ||
+        (r.status || '').toLowerCase().includes(q) ||
+        (r.portalOrder?.id || '').toLowerCase().includes(q) ||
+        (r.portalOrder?.quote_name || '').toLowerCase().includes(q) ||
+        (r.portalOrder?.projectName || '').toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [evaluatedComparisonRows, sheetComparisonFilterTab, sheetComparisonSearch]);
+
+  // Download Discrepancy Report as Excel
+  const handleExportComparisonExcel = () => {
+    if (evaluatedComparisonRows.length === 0) {
+      alert("No comparison rows to export.");
+      return;
+    }
+
+    const reportData = evaluatedComparisonRows.map(r => ({
+      "Sheet Order Name": r.orderName,
+      "Match Status": r.matchStatus === 'IN_SYNC' ? 'In Sync' : r.matchStatus === 'DISCREPANCY' ? 'Discrepancy' : 'Not Found',
+      "Matched Portal Project": r.portalOrder ? (r.portalOrder.projectFullName || r.portalOrder.projectName) : '—',
+      "Matched Portal Order ID": r.portalOrder ? r.portalOrder.id : '—',
+      "Matched Portal Quote Name": r.portalOrder ? (r.portalOrder.quote_name || 'General Spec') : '—',
+      "Sheet Status": r.status || '—',
+      "Portal Status": r.portalOrder ? r.portalOrder.status : '—',
+      "Sheet Procured %": `${r.procPct}%`,
+      "Portal Procured %": r.portalOrder ? `${r.portalOrder.procPct || 0}%` : '—',
+      "Sheet Invoiced %": `${r.invPct}%`,
+      "Portal Invoiced %": r.portalOrder ? `${r.portalOrder.invPct || 0}%` : '—',
+      "Sheet Delivered %": `${r.delPct}%`,
+      "Portal Delivered %": r.portalOrder ? `${r.portalOrder.delPct || 0}%` : '—',
+      "Discrepancies Summary": r.discrepancies.join(' | ')
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(reportData);
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet Comparison Audit");
+    XLSX.writeFile(wb, `SalesTracker_Sheet_Actuals_Comparison_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
 
 
   // SAVE NEW DOCUMENT RUN TO HISTORY
@@ -3552,6 +3942,34 @@ export default function SalesTracker() {
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '30px', margin: 0, fontSize: '12px', background: '#7c3aed', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: 700 }}
                   >
                     🔍 3. Live Read-Only Audit Heatmap
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setShowSheetComparisonModal(true)}
+                    style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      height: '30px', 
+                      margin: 0, 
+                      fontSize: '12px', 
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', 
+                      color: '#ffffff', 
+                      border: 'none', 
+                      borderRadius: '4px', 
+                      fontWeight: 700,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }}
+                    title="Paste or upload tracking sheet to compare against live Portal order actuals"
+                  >
+                    📊 4. Compare External Sheet Actuals
+                    {sheetComparisonRows.length > 0 && (
+                      <span style={{ background: 'rgba(255,255,255,0.25)', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>
+                        {sheetComparisonRows.length}
+                      </span>
+                    )}
                   </button>
                 </div>
 
@@ -5808,6 +6226,525 @@ export default function SalesTracker() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button className="btn btn-secondary" onClick={() => { setShowAuditModal(false); setAuditResult(null); }}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXTERNAL SHEET ACTUALS RECONCILIATION & DISCREPANCY AUDIT MODAL */}
+      {showSheetComparisonModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1350, animation: 'fadeIn 0.2s ease', padding: '16px'
+        }}>
+          <div className="card" style={{ 
+            width: '100%', 
+            maxWidth: '1280px', 
+            height: '92vh', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            background: 'var(--bg-primary)', 
+            border: '1px solid var(--border)', 
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', 
+            borderRadius: '12px', 
+            overflow: 'hidden' 
+          }}>
+            
+            {/* MODAL HEADER */}
+            <div style={{ 
+              padding: '16px 20px', 
+              background: 'var(--bg-secondary)', 
+              borderBottom: '1px solid var(--border)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '24px' }}>📊</span>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      External Sheet Actuals vs Portal Live Audit
+                    </h3>
+                    {isSavingSheetComparison && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock size={12} /> Saving to Portal DB...
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    Paste your tracking spreadsheet (ORDERS, STATUS, PROCURED %, INVOICED %, DELIVERED %) — data persists in Portal Cloud SQL so you can inspect & fix orders.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {evaluatedComparisonRows.length > 0 && (
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-outline" 
+                    onClick={handleExportComparisonExcel}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px' }}
+                  >
+                    📥 Export Discrepancies Excel
+                  </button>
+                )}
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-secondary" 
+                  onClick={() => setShowSheetComparisonModal(false)}
+                  style={{ height: '32px', padding: '0 14px', fontSize: '12px' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* KPI STATS CARDS */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+              gap: '12px', 
+              padding: '14px 20px', 
+              background: 'var(--bg-primary)',
+              borderBottom: '1px solid var(--border)' 
+            }}>
+              <div style={{ padding: '10px 14px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Sheet Rows</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{comparisonStats.total}</div>
+                </div>
+                <ClipboardList size={22} style={{ opacity: 0.4, color: 'var(--text-primary)' }} />
+              </div>
+
+              <div 
+                style={{ 
+                  padding: '10px 14px', 
+                  background: sheetComparisonFilterTab === 'in_sync' ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-secondary)', 
+                  border: sheetComparisonFilterTab === 'in_sync' ? '1.5px solid #4ade80' : '1px solid var(--border)', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  cursor: 'pointer' 
+                }}
+                onClick={() => setSheetComparisonFilterTab(sheetComparisonFilterTab === 'in_sync' ? 'all' : 'in_sync')}
+                title="Click to filter In Sync orders"
+              >
+                <div>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#4ade80', fontWeight: 700 }}>✅ In Sync</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#4ade80' }}>{comparisonStats.inSync}</div>
+                </div>
+                <CheckCircle size={22} style={{ color: '#4ade80' }} />
+              </div>
+
+              <div 
+                style={{ 
+                  padding: '10px 14px', 
+                  background: sheetComparisonFilterTab === 'discrepancies' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)', 
+                  border: sheetComparisonFilterTab === 'discrepancies' ? '1.5px solid #f59e0b' : '1px solid var(--border)', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  cursor: 'pointer' 
+                }}
+                onClick={() => setSheetComparisonFilterTab(sheetComparisonFilterTab === 'discrepancies' ? 'all' : 'discrepancies')}
+                title="Click to filter Discrepancies"
+              >
+                <div>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 700 }}>⚠️ Discrepancies</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#f59e0b' }}>{comparisonStats.discrepancies}</div>
+                </div>
+                <AlertTriangle size={22} style={{ color: '#f59e0b' }} />
+              </div>
+
+              <div 
+                style={{ 
+                  padding: '10px 14px', 
+                  background: sheetComparisonFilterTab === 'not_found' ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-secondary)', 
+                  border: sheetComparisonFilterTab === 'not_found' ? '1.5px solid #ef4444' : '1px solid var(--border)', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  cursor: 'pointer' 
+                }}
+                onClick={() => setSheetComparisonFilterTab(sheetComparisonFilterTab === 'not_found' ? 'all' : 'not_found')}
+                title="Click to filter Not Found orders"
+              >
+                <div>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#ef4444', fontWeight: 700 }}>❌ Not Found in Portal</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>{comparisonStats.notFound}</div>
+                </div>
+                <AlertCircle size={22} style={{ color: '#ef4444' }} />
+              </div>
+            </div>
+
+            {/* INPUT ACCORDION / QUICK PASTE BAR */}
+            <div style={{ padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                
+                {/* File Upload Button */}
+                <label className="btn btn-sm btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0, height: '32px', fontSize: '12px' }}>
+                  📂 Upload Sheet (.xlsx, .csv)
+                  <input 
+                    type="file" 
+                    accept=".xlsx, .xls, .csv" 
+                    onChange={handleSheetComparisonFileUpload} 
+                    style={{ display: 'none' }} 
+                  />
+                </label>
+
+                {/* Paste Area Quick Toggle */}
+                <details style={{ flex: 1, minWidth: '280px' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text-info)', userSelect: 'none' }}>
+                    📋 {sheetComparisonRows.length > 0 ? `Update / Paste New Cells (Currently ${sheetComparisonRows.length} rows saved in Portal)` : 'Click here to paste cells directly from Excel / Google Sheets'}
+                  </summary>
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <textarea 
+                      className="form-control"
+                      rows={4}
+                      placeholder="Paste cells directly from Excel/Google Sheets (Columns: ORDERS, STATUS, PROCURED %, INVOICED %, DELIVERED %)..."
+                      value={sheetComparisonRawText}
+                      onChange={e => setSheetComparisonRawText(e.target.value)}
+                      style={{ fontFamily: 'monospace', fontSize: '11.5px', resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleApplyPastedSheet()}
+                        disabled={isSavingSheetComparison || !sheetComparisonRawText.trim()}
+                        style={{ fontSize: '12px', height: '28px' }}
+                      >
+                        💾 Save & Compare Against Live Actuals
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                {sheetComparisonRows.length > 0 && (
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={handleClearSheetComparison}
+                    style={{ color: 'var(--text-danger)', fontSize: '12px', height: '32px' }}
+                  >
+                    <Trash2 size={13} style={{ marginRight: '4px' }} /> Clear Saved Sheet
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* SEARCH & FILTER CONTROLS */}
+            <div style={{ 
+              padding: '10px 20px', 
+              background: 'var(--bg-primary)', 
+              borderBottom: '1px solid var(--border)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              {/* Filter Tabs */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${sheetComparisonFilterTab === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setSheetComparisonFilterTab('all')}
+                  style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                >
+                  All Rows ({comparisonStats.total})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${sheetComparisonFilterTab === 'discrepancies' ? 'btn-warning' : 'btn-outline'}`}
+                  onClick={() => setSheetComparisonFilterTab('discrepancies')}
+                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'discrepancies' ? '#000' : '#f59e0b' }}
+                >
+                  ⚠️ Discrepancies ({comparisonStats.discrepancies})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${sheetComparisonFilterTab === 'not_found' ? 'btn-danger' : 'btn-outline'}`}
+                  onClick={() => setSheetComparisonFilterTab('not_found')}
+                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'not_found' ? '#fff' : '#ef4444' }}
+                >
+                  ❌ Not Found ({comparisonStats.notFound})
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${sheetComparisonFilterTab === 'in_sync' ? 'btn-success' : 'btn-outline'}`}
+                  onClick={() => setSheetComparisonFilterTab('in_sync')}
+                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'in_sync' ? '#000' : '#4ade80' }}
+                >
+                  ✅ In Sync ({comparisonStats.inSync})
+                </button>
+              </div>
+
+              {/* Search input */}
+              <div style={{ position: 'relative', width: '280px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                <input 
+                  type="text"
+                  className="form-control"
+                  placeholder="Filter rows by order name..."
+                  value={sheetComparisonSearch}
+                  onChange={e => setSheetComparisonSearch(e.target.value)}
+                  style={{ paddingLeft: '32px', height: '32px', fontSize: '12px' }}
+                />
+              </div>
+            </div>
+
+            {/* COMPARISON RESULTS TABLE */}
+            <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', background: 'var(--bg-primary)' }}>
+              {filteredComparisonRows.length > 0 ? (
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)' }}>
+                    <tr>
+                      <th style={{ padding: '10px 14px', width: '240px' }}>External Sheet Order</th>
+                      <th style={{ padding: '10px 14px', width: '240px' }}>Matched Portal Order</th>
+                      <th style={{ padding: '10px 14px', width: '130px', textAlign: 'center' }}>Status</th>
+                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Procured %</th>
+                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Invoiced %</th>
+                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Delivered %</th>
+                      <th style={{ padding: '10px 14px', minWidth: '180px' }}>Discrepancies & Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredComparisonRows.map((row, idx) => {
+                      const isNotFound = row.matchStatus === 'NOT_FOUND';
+                      const isInSync = row.matchStatus === 'IN_SYNC';
+                      const hasDiscrepancy = row.matchStatus === 'DISCREPANCY';
+                      const po = row.portalOrder;
+
+                      return (
+                        <tr 
+                          key={row.id || idx}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            background: isNotFound 
+                              ? 'rgba(239, 68, 68, 0.04)' 
+                              : hasDiscrepancy 
+                                ? 'rgba(245, 158, 11, 0.04)' 
+                                : 'transparent'
+                          }}
+                        >
+                          {/* Sheet Order Name */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span>{row.orderName}</span>
+                            </div>
+                          </td>
+
+                          {/* Matched Portal Order */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle' }}>
+                            {po ? (
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{po.id}</span>
+                                  <span>—</span>
+                                  <span>{po.quote_name || 'General Spec'}</span>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                  Project: <strong>{po.projectFullName || po.projectName}</strong>
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <AlertCircle size={13} /> No matching quote in portal
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Status: Sheet vs Portal */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Sheet:</span>
+                              <span className="badge b-default" style={{ fontSize: '10.5px' }}>{row.status || '—'}</span>
+                              {po && (
+                                <>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>Portal:</span>
+                                  <span 
+                                    className={`badge ${statusColor[po.status] || 'b-default'}`} 
+                                    style={{ 
+                                      fontSize: '10.5px',
+                                      border: !row.statusMatches ? '1.5px solid #ef4444' : undefined 
+                                    }}
+                                  >
+                                    {po.status}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Procured % */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.procPct}%</div>
+                              {po && (
+                                <div style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 700, 
+                                  color: row.procDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: row.procDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  Portal: {po.procPct || 0}%
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Invoiced % */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.invPct}%</div>
+                              {po && (
+                                <div style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 700, 
+                                  color: row.invDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: row.invDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  Portal: {po.invPct || 0}%
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Delivered % */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.delPct}%</div>
+                              {po && (
+                                <div style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 700, 
+                                  color: row.delDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: row.delDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  Portal: {po.delPct || 0}%
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Discrepancies & Direct Open Action */}
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                              <div>
+                                {isInSync && (
+                                  <span className="badge b-success" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <CheckCircle size={12} /> In Sync
+                                  </span>
+                                )}
+                                {hasDiscrepancy && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {row.discrepancies.map((d, dIdx) => (
+                                      <span key={dIdx} style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        ⚠️ {d}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {isNotFound && (
+                                  <span className="badge b-danger" style={{ fontSize: '11px' }}>
+                                    Not Found in Database
+                                  </span>
+                                )}
+                              </div>
+
+                              {po && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => {
+                                    setShowSheetComparisonModal(false);
+                                    handleOpenWorkspace(po);
+                                  }}
+                                  style={{
+                                    fontSize: '11px',
+                                    height: '28px',
+                                    whiteSpace: 'nowrap',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '0 10px',
+                                    fontWeight: 600
+                                  }}
+                                  title="Open this quotation workspace to adjust items or allocations"
+                                >
+                                  Open Workspace ↗
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)' }}>
+                  <div style={{ fontSize: '42px', marginBottom: '10px' }}>📋</div>
+                  {sheetComparisonRows.length === 0 ? (
+                    <>
+                      <h4 style={{ color: 'var(--text-primary)', margin: '0 0 6px 0' }}>No External Sheet Data Loaded</h4>
+                      <p style={{ maxWidth: '500px', margin: '0 auto 16px auto', fontSize: '13px' }}>
+                        Paste rows directly from your tracking sheet above or upload an Excel/CSV file.
+                        Your pasted sheet will be saved to the Portal database so you can inspect and fix orders.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h4 style={{ color: 'var(--text-primary)', margin: '0 0 6px 0' }}>No Matching Rows Found</h4>
+                      <p style={{ margin: 0, fontSize: '13px' }}>
+                        Try changing your filter tab or clearing the search query.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div style={{ 
+              padding: '12px 20px', 
+              background: 'var(--bg-secondary)', 
+              borderTop: '1px solid var(--border)', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Showing <strong>{filteredComparisonRows.length}</strong> of <strong>{evaluatedComparisonRows.length}</strong> rows
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowSheetComparisonModal(false)}
+                  style={{ height: '32px', fontSize: '12px' }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
