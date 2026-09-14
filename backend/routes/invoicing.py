@@ -547,11 +547,13 @@ def get_invoicing_document_details(
 @router.get("/candidate-orders")
 def get_invoicing_candidate_orders(
     sku: str = Query(..., description="Item Code / SKU to find candidate orders for"),
+    include_fulfilled: bool = Query(False, description="Whether to include fulfilled orders"),
     db: Session = Depends(get_db)
 ):
     """
     Finds active client project orders and fittings in the portal matching the given SKU.
     Resolves project and order even with composite slug order IDs.
+    Filters out fulfilled orders (invoiced_qty >= req_qty) unless include_fulfilled is True.
     """
     try:
         clean_sku = sku.strip()
@@ -611,6 +613,10 @@ def get_invoicing_candidate_orders(
             invoiced_qty = int(it.invoice_qty or 0)
             rem = max(0, req_qty - invoiced_qty)
 
+            # If not including fulfilled orders, skip items with 0 remaining needed
+            if not include_fulfilled and rem <= 0:
+                continue
+
             candidates.append({
                 "order_item_id": it.id,
                 "order_id": matched_order.id if matched_order else None,
@@ -627,8 +633,12 @@ def get_invoicing_candidate_orders(
                 "is_direct_sku_match": bool(it.code and it.code.strip().upper() == clean_sku.upper())
             })
 
+        # Sort candidates: items still needing invoicing first, then by project name
+        candidates.sort(key=lambda x: (0 if x["remaining_needed"] > 0 else 1, x["project_name"]))
+
         return {
             "sku": clean_sku,
+            "include_fulfilled": include_fulfilled,
             "candidate_count": len(candidates),
             "candidates": candidates
         }

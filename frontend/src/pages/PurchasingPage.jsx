@@ -111,6 +111,7 @@ export default function PurchasingPage() {
   const [allocModalOpen, setAllocModalOpen] = useState(false);
   const [allocTargetItem, setAllocTargetItem] = useState(null);
   const [candidateOrders, setCandidateOrders] = useState([]);
+  const [showFulfilledCandidates, setShowFulfilledCandidates] = useState(false);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState(null); // 'orderItemId' or 'MANUAL'
   const [manualProjectId, setManualProjectId] = useState('');
@@ -366,27 +367,22 @@ export default function PurchasingPage() {
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS (SINGLE & BATCH)
   // -------------------------------------------------------------
-  const handleOpenAllocModal = async (item) => {
-    setAllocTargetItem(item);
-    setAllocQty(Math.max(1, Math.min(item.unallocated_qty || 1, item.total_qty || 1)));
-    const defaultEta = (item?.order_required_date || selectedDocument?.order_required_date || '').split('T')[0];
-    setAllocEta(defaultEta);
-    setAllocNotes('');
-    setSelectedCandidateKey(null);
-    setManualProjectId('');
-    setManualOrderId('');
-    setAllocModalOpen(true);
-
+  const fetchProcurementCandidates = async (item, includeFulfilled = false) => {
+    if (!item?.item_code) return;
     setIsLoadingCandidates(true);
     try {
-      const res = await fetch(`${API_BASE}/api/procurement/candidate-orders?sku=${encodeURIComponent(item.item_code)}`);
+      const docTypeParam = encodeURIComponent(item.doc_type || selectedDocument?.doc_type || 'PO');
+      const skuParam = encodeURIComponent(item.item_code);
+      const res = await fetch(`${API_BASE}/api/procurement/candidate-orders?sku=${skuParam}&doc_type=${docTypeParam}&include_fulfilled=${includeFulfilled}`);
       if (res.ok) {
         const data = await res.json();
-        setCandidateOrders(data.candidates || []);
-        if (data.candidates && data.candidates.length > 0) {
-          const firstCand = data.candidates[0];
-          setSelectedCandidateKey(firstCand.order_item_id);
-          const needed = firstCand.remaining_needed || 1;
+        const cands = data.candidates || [];
+        setCandidateOrders(cands);
+        if (cands.length > 0) {
+          // If current selected key is not in new list, pick first with remaining_needed > 0
+          const firstNeeded = cands.find(c => c.remaining_needed > 0) || cands[0];
+          setSelectedCandidateKey(firstNeeded.order_item_id);
+          const needed = firstNeeded.remaining_needed || 1;
           setAllocQty(Math.min(needed, item.unallocated_qty || needed));
         } else {
           setSelectedCandidateKey('MANUAL');
@@ -397,6 +393,21 @@ export default function PurchasingPage() {
     } finally {
       setIsLoadingCandidates(false);
     }
+  };
+
+  const handleOpenAllocModal = async (item) => {
+    setAllocTargetItem(item);
+    setAllocQty(Math.max(1, Math.min(item.unallocated_qty || 1, item.total_qty || 1)));
+    const defaultEta = (item?.order_required_date || selectedDocument?.order_required_date || '').split('T')[0];
+    setAllocEta(defaultEta);
+    setAllocNotes('');
+    setSelectedCandidateKey(null);
+    setShowFulfilledCandidates(false);
+    setManualProjectId('');
+    setManualOrderId('');
+    setAllocModalOpen(true);
+
+    await fetchProcurementCandidates(item, false);
   };
 
   const handleSelectCandidate = (cand) => {
@@ -2779,21 +2790,37 @@ export default function PurchasingPage() {
 
                 {/* Candidate Orders Section */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                     <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
                       🎯 Select Target Project Order:
                     </label>
-                    {isLoadingCandidates && (
-                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <RefreshCw size={10} className="animate-spin" /> Finding matching orders...
-                      </span>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={showFulfilledCandidates}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setShowFulfilledCandidates(val);
+                            fetchProcurementCandidates(allocTargetItem, val);
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        Show fulfilled orders
+                      </label>
+                      {isLoadingCandidates && (
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <RefreshCw size={10} className="animate-spin" /> Finding matching orders...
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {candidateOrders.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
                       {candidateOrders.map(cand => {
                         const isSelected = selectedCandidateKey === cand.order_item_id;
+                        const isGRN = (allocTargetItem?.doc_type || '').toUpperCase() === 'GRN';
                         return (
                           <div
                             key={cand.order_item_id}
@@ -2824,7 +2851,10 @@ export default function PurchasingPage() {
                                 {cand.remaining_needed > 0 ? `Needs: ${cand.remaining_needed} units` : 'Already Fulfilled'}
                               </div>
                               <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)' }}>
-                                Requested: {cand.requested_qty} • Ordered: {cand.po_qty_ordered}
+                                {isGRN 
+                                  ? `Requested: ${cand.requested_qty} • Received: ${cand.received_qty}`
+                                  : `Requested: ${cand.requested_qty} • Ordered: ${cand.po_qty_ordered}`
+                                }
                               </div>
                             </div>
                           </div>

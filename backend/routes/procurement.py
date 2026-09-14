@@ -767,11 +767,14 @@ def get_document_details(
 @router.get("/candidate-orders")
 def get_candidate_orders(
     sku: str = Query(..., description="Item Code / SKU to find candidate orders for"),
+    doc_type: Optional[str] = Query("PO", description="Document type: PO or GRN"),
+    include_fulfilled: bool = Query(False, description="Whether to include fulfilled orders"),
     db: Session = Depends(get_db)
 ):
     """
     Finds active client project orders and fittings in the portal matching the given SKU.
     Resolves project and order even with composite slug order IDs.
+    Calculates remaining needed based on doc_type (PO vs GRN).
     """
     try:
         clean_sku = sku.strip()
@@ -793,8 +796,14 @@ def get_candidate_orders(
             )
         ).all()
 
+        norm_doc_type = (doc_type or "PO").upper().strip()
+
         candidates = []
         for it in order_items:
+            # Skip obsolete manual credit entries
+            if it.is_credit or (it.id and str(it.id).startswith("C-")) or (it.qty is not None and it.qty < 0):
+                continue
+
             matched_order = None
             matched_proj = None
 
@@ -830,7 +839,16 @@ def get_candidate_orders(
             req_qty = int(it.qty or 0)
             po_ordered = int(it.po_qty_ordered or 0)
             received = int(it.received_qty or 0)
-            rem = max(0, req_qty - po_ordered)
+
+            # Calculate remaining needed depending on doc_type (PO vs GRN)
+            if norm_doc_type == "GRN":
+                rem = max(0, req_qty - received)
+            else:
+                rem = max(0, req_qty - po_ordered)
+
+            # If not including fulfilled orders, skip items with 0 remaining needed
+            if not include_fulfilled and rem <= 0:
+                continue
 
             candidates.append({
                 "order_item_id": it.id,
@@ -847,15 +865,18 @@ def get_candidate_orders(
                 "received_qty": received,
                 "remaining_needed": rem,
                 "current_po_ref": it.po_ref,
+                "doc_type": norm_doc_type,
                 "unit_cost": float(it.unit_cost or 0.0),
                 "unit_retail": float(it.unit_retail or 0.0)
             })
 
-        # Sort candidates: items still needing stock first
+        # Sort candidates: items still needing stock first, then by project name
         candidates.sort(key=lambda x: (0 if x["remaining_needed"] > 0 else 1, x["project_name"]))
 
         return {
             "sku": clean_sku,
+            "doc_type": norm_doc_type,
+            "include_fulfilled": include_fulfilled,
             "candidate_count": len(candidates),
             "candidates": candidates
         }
