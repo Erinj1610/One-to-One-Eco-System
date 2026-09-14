@@ -854,6 +854,16 @@ export default function SalesTracker() {
   const [isSavingSheetComparison, setIsSavingSheetComparison] = useState(false);
   const [isLoadingSheetComparison, setIsLoadingSheetComparison] = useState(false);
 
+  // Metric Audit Toggles (which metrics to check for discrepancies)
+  const [auditCheckStatus, setAuditCheckStatus] = useState(true);
+  const [auditCheckProc, setAuditCheckProc] = useState(true);
+  const [auditCheckInv, setAuditCheckInv] = useState(true);
+  const [auditCheckDel, setAuditCheckDel] = useState(false);
+
+  // Column Sorting States for Comparison Table
+  const [sheetSortField, setSheetSortField] = useState('orderName');
+  const [sheetSortDirection, setSheetSortDirection] = useState('asc'); // 'asc' | 'desc'
+
   // Load saved comparison data from Portal Cloud SQL on mount
   useEffect(() => {
     let isMounted = true;
@@ -3342,7 +3352,8 @@ export default function SalesTracker() {
         };
       }
 
-      // Check differences against portal order
+
+      // Check differences against portal order based on active metric audit toggles
       const discrepancies = [];
 
       // Status comparison: normalize "7) Complete - Product" -> "complete"
@@ -3363,23 +3374,23 @@ export default function SalesTracker() {
         statusMatches = true; // Not provided in sheet
       }
 
-      if (!statusMatches) {
+      if (auditCheckStatus && !statusMatches) {
         discrepancies.push(`Status: Sheet "${sheetRow.status}" vs Portal "${bestMatch.status}"`);
       }
 
       // Percentage tolerances (within 1%)
       const procDiff = Math.abs((sheetRow.procPct || 0) - (bestMatch.procPct || 0));
-      if (procDiff > 1) {
+      if (auditCheckProc && procDiff > 1) {
         discrepancies.push(`Procured %: Sheet ${sheetRow.procPct}% vs Portal ${bestMatch.procPct || 0}%`);
       }
 
       const invDiff = Math.abs((sheetRow.invPct || 0) - (bestMatch.invPct || 0));
-      if (invDiff > 1) {
+      if (auditCheckInv && invDiff > 1) {
         discrepancies.push(`Invoiced %: Sheet ${sheetRow.invPct}% vs Portal ${bestMatch.invPct || 0}%`);
       }
 
       const delDiff = Math.abs((sheetRow.delPct || 0) - (bestMatch.delPct || 0));
-      if (delDiff > 1) {
+      if (auditCheckDel && delDiff > 1) {
         discrepancies.push(`Delivered %: Sheet ${sheetRow.delPct}% vs Portal ${bestMatch.delPct || 0}%`);
       }
 
@@ -3394,7 +3405,7 @@ export default function SalesTracker() {
         delDiff
       };
     });
-  }, [sheetComparisonRows, allOrders]);
+  }, [sheetComparisonRows, allOrders, auditCheckStatus, auditCheckProc, auditCheckInv, auditCheckDel]);
 
   // Statistics for comparison
   const comparisonStats = useMemo(() => {
@@ -3405,7 +3416,7 @@ export default function SalesTracker() {
     return { total, inSync, discrepancies, notFound };
   }, [evaluatedComparisonRows]);
 
-  // Filtered comparison rows for display
+  // Filtered and Sorted comparison rows for display
   const filteredComparisonRows = useMemo(() => {
     let list = evaluatedComparisonRows;
 
@@ -3428,8 +3439,52 @@ export default function SalesTracker() {
       );
     }
 
-    return list;
-  }, [evaluatedComparisonRows, sheetComparisonFilterTab, sheetComparisonSearch]);
+    // Sort list according to sheetSortField & sheetSortDirection
+    return [...list].sort((a, b) => {
+      let valA = '';
+      let valB = '';
+
+      switch (sheetSortField) {
+        case 'orderName':
+          valA = (a.orderName || '').toLowerCase();
+          valB = (b.orderName || '').toLowerCase();
+          break;
+        case 'portalOrder':
+          valA = (a.portalOrder?.quote_name || a.portalOrder?.id || '').toLowerCase();
+          valB = (b.portalOrder?.quote_name || b.portalOrder?.id || '').toLowerCase();
+          break;
+        case 'status':
+          valA = (a.status || '').toLowerCase();
+          valB = (b.status || '').toLowerCase();
+          break;
+        case 'procPct':
+          valA = a.procPct || 0;
+          valB = b.procPct || 0;
+          break;
+        case 'invPct':
+          valA = a.invPct || 0;
+          valB = b.invPct || 0;
+          break;
+        case 'delPct':
+          valA = a.delPct || 0;
+          valB = b.delPct || 0;
+          break;
+        case 'matchStatus':
+          // Sort by NOT_FOUND (1), DISCREPANCY (2), IN_SYNC (3)
+          const rank = { NOT_FOUND: 1, DISCREPANCY: 2, IN_SYNC: 3 };
+          valA = rank[a.matchStatus] || 4;
+          valB = rank[b.matchStatus] || 4;
+          break;
+        default:
+          valA = (a.orderName || '').toLowerCase();
+          valB = (b.orderName || '').toLowerCase();
+      }
+
+      if (valA < valB) return sheetSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sheetSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [evaluatedComparisonRows, sheetComparisonFilterTab, sheetComparisonSearch, sheetSortField, sheetSortDirection]);
 
   // Download Discrepancy Report as Excel
   const handleExportComparisonExcel = () => {
@@ -6440,64 +6495,115 @@ export default function SalesTracker() {
               </div>
             </div>
 
-            {/* SEARCH & FILTER CONTROLS */}
+            {/* METRIC AUDIT TOGGLES & SEARCH/FILTER BAR */}
             <div style={{ 
               padding: '10px 20px', 
               background: 'var(--bg-primary)', 
               borderBottom: '1px solid var(--border)', 
               display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
+              flexDirection: 'column',
               gap: '10px'
             }}>
-              {/* Filter Tabs */}
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${sheetComparisonFilterTab === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => setSheetComparisonFilterTab('all')}
-                  style={{ fontSize: '11.5px', padding: '4px 10px' }}
-                >
-                  All Rows ({comparisonStats.total})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${sheetComparisonFilterTab === 'discrepancies' ? 'btn-warning' : 'btn-outline'}`}
-                  onClick={() => setSheetComparisonFilterTab('discrepancies')}
-                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'discrepancies' ? '#000' : '#f59e0b' }}
-                >
-                  ⚠️ Discrepancies ({comparisonStats.discrepancies})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${sheetComparisonFilterTab === 'not_found' ? 'btn-danger' : 'btn-outline'}`}
-                  onClick={() => setSheetComparisonFilterTab('not_found')}
-                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'not_found' ? '#fff' : '#ef4444' }}
-                >
-                  ❌ Not Found ({comparisonStats.notFound})
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-xs ${sheetComparisonFilterTab === 'in_sync' ? 'btn-success' : 'btn-outline'}`}
-                  onClick={() => setSheetComparisonFilterTab('in_sync')}
-                  style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'in_sync' ? '#000' : '#4ade80' }}
-                >
-                  ✅ In Sync ({comparisonStats.inSync})
-                </button>
+              {/* Row 1: Active Audit Metrics Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Audit Discrepancies On:
+                  </span>
+
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: auditCheckProc ? '#4ade80' : 'var(--text-tertiary)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={auditCheckProc} 
+                      onChange={e => setAuditCheckProc(e.target.checked)} 
+                    />
+                    Procured %
+                  </label>
+
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: auditCheckInv ? '#f59e0b' : 'var(--text-tertiary)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={auditCheckInv} 
+                      onChange={e => setAuditCheckInv(e.target.checked)} 
+                    />
+                    Invoiced %
+                  </label>
+
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: auditCheckDel ? '#60a5fa' : 'var(--text-tertiary)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={auditCheckDel} 
+                      onChange={e => setAuditCheckDel(e.target.checked)} 
+                    />
+                    Delivered %
+                  </label>
+
+                  <span style={{ borderLeft: '1px solid var(--border)', height: '16px' }}></span>
+
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: auditCheckStatus ? 'var(--text-info)' : 'var(--text-tertiary)' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={auditCheckStatus} 
+                      onChange={e => setAuditCheckStatus(e.target.checked)} 
+                    />
+                    Status
+                  </label>
+                </div>
+
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                  *Unchecked metrics are ignored in sync/discrepancy calculations
+                </div>
               </div>
 
-              {/* Search input */}
-              <div style={{ position: 'relative', width: '280px' }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                <input 
-                  type="text"
-                  className="form-control"
-                  placeholder="Filter rows by order name..."
-                  value={sheetComparisonSearch}
-                  onChange={e => setSheetComparisonSearch(e.target.value)}
-                  style={{ paddingLeft: '32px', height: '32px', fontSize: '12px' }}
-                />
+              {/* Row 2: Filter Tabs & Search */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${sheetComparisonFilterTab === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setSheetComparisonFilterTab('all')}
+                    style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                  >
+                    All Rows ({comparisonStats.total})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${sheetComparisonFilterTab === 'discrepancies' ? 'btn-warning' : 'btn-outline'}`}
+                    onClick={() => setSheetComparisonFilterTab('discrepancies')}
+                    style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'discrepancies' ? '#000' : '#f59e0b' }}
+                  >
+                    ⚠️ Discrepancies ({comparisonStats.discrepancies})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${sheetComparisonFilterTab === 'not_found' ? 'btn-danger' : 'btn-outline'}`}
+                    onClick={() => setSheetComparisonFilterTab('not_found')}
+                    style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'not_found' ? '#fff' : '#ef4444' }}
+                  >
+                    ❌ Not Found ({comparisonStats.notFound})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${sheetComparisonFilterTab === 'in_sync' ? 'btn-success' : 'btn-outline'}`}
+                    onClick={() => setSheetComparisonFilterTab('in_sync')}
+                    style={{ fontSize: '11.5px', padding: '4px 10px', color: sheetComparisonFilterTab === 'in_sync' ? '#000' : '#4ade80' }}
+                  >
+                    ✅ In Sync ({comparisonStats.inSync})
+                  </button>
+                </div>
+
+                {/* Search input */}
+                <div style={{ position: 'relative', width: '280px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                  <input 
+                    type="text"
+                    className="form-control"
+                    placeholder="Filter rows by order name..."
+                    value={sheetComparisonSearch}
+                    onChange={e => setSheetComparisonSearch(e.target.value)}
+                    style={{ paddingLeft: '32px', height: '32px', fontSize: '12px' }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -6507,13 +6613,145 @@ export default function SalesTracker() {
                 <table className="table" style={{ margin: 0, width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)' }}>
                     <tr>
-                      <th style={{ padding: '10px 14px', width: '240px' }}>External Sheet Order</th>
-                      <th style={{ padding: '10px 14px', width: '240px' }}>Matched Portal Order</th>
-                      <th style={{ padding: '10px 14px', width: '130px', textAlign: 'center' }}>Status</th>
-                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Procured %</th>
-                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Invoiced %</th>
-                      <th style={{ padding: '10px 14px', width: '120px', textAlign: 'center' }}>Delivered %</th>
-                      <th style={{ padding: '10px 14px', minWidth: '180px' }}>Discrepancies & Actions</th>
+                      {/* External Sheet Order Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '240px', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => {
+                          if (sheetSortField === 'orderName') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('orderName');
+                            setSheetSortDirection('asc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          External Sheet Order
+                          {sheetSortField === 'orderName' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Matched Portal Order Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '240px', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => {
+                          if (sheetSortField === 'portalOrder') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('portalOrder');
+                            setSheetSortDirection('asc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Matched Portal Order
+                          {sheetSortField === 'portalOrder' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Status Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '130px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => {
+                          if (sheetSortField === 'status') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('status');
+                            setSheetSortDirection('asc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Status
+                          {sheetSortField === 'status' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Procured % Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '120px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', opacity: auditCheckProc ? 1 : 0.4 }}
+                        onClick={() => {
+                          if (sheetSortField === 'procPct') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('procPct');
+                            setSheetSortDirection('desc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Procured %
+                          {sheetSortField === 'procPct' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Invoiced % Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '120px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', opacity: auditCheckInv ? 1 : 0.4 }}
+                        onClick={() => {
+                          if (sheetSortField === 'invPct') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('invPct');
+                            setSheetSortDirection('desc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Invoiced %
+                          {sheetSortField === 'invPct' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Delivered % Header */}
+                      <th 
+                        style={{ padding: '10px 14px', width: '120px', textAlign: 'center', cursor: 'pointer', userSelect: 'none', opacity: auditCheckDel ? 1 : 0.4 }}
+                        onClick={() => {
+                          if (sheetSortField === 'delPct') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('delPct');
+                            setSheetSortDirection('desc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Delivered %
+                          {sheetSortField === 'delPct' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
+
+                      {/* Discrepancies & Actions Header */}
+                      <th 
+                        style={{ padding: '10px 14px', minWidth: '180px', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => {
+                          if (sheetSortField === 'matchStatus') {
+                            setSheetSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                          } else {
+                            setSheetSortField('matchStatus');
+                            setSheetSortDirection('asc');
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          Discrepancies & Actions
+                          {sheetSortField === 'matchStatus' 
+                            ? (sheetSortDirection === 'asc' ? <ArrowUp size={12} color="var(--text-info)" /> : <ArrowDown size={12} color="var(--text-info)" />)
+                            : <ArrowUpDown size={12} style={{ opacity: 0.4 }} />}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6563,7 +6801,7 @@ export default function SalesTracker() {
                           </td>
 
                           {/* Status: Sheet vs Portal */}
-                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center', opacity: auditCheckStatus ? 1 : 0.4 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                               <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Sheet:</span>
                               <span className="badge b-default" style={{ fontSize: '10.5px' }}>{row.status || '—'}</span>
@@ -6574,7 +6812,7 @@ export default function SalesTracker() {
                                     className={`badge ${statusColor[po.status] || 'b-default'}`} 
                                     style={{ 
                                       fontSize: '10.5px',
-                                      border: !row.statusMatches ? '1.5px solid #ef4444' : undefined 
+                                      border: (auditCheckStatus && !row.statusMatches) ? '1.5px solid #ef4444' : undefined 
                                     }}
                                   >
                                     {po.status}
@@ -6585,15 +6823,15 @@ export default function SalesTracker() {
                           </td>
 
                           {/* Procured % */}
-                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center', opacity: auditCheckProc ? 1 : 0.4 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.procPct}%</div>
                               {po && (
                                 <div style={{ 
                                   fontSize: '11px', 
                                   fontWeight: 700, 
-                                  color: row.procDiff > 1 ? '#ef4444' : '#4ade80',
-                                  background: row.procDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  color: !auditCheckProc ? 'var(--text-secondary)' : row.procDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: !auditCheckProc ? 'transparent' : row.procDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
                                   padding: '2px 6px',
                                   borderRadius: '4px'
                                 }}>
@@ -6604,15 +6842,15 @@ export default function SalesTracker() {
                           </td>
 
                           {/* Invoiced % */}
-                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center', opacity: auditCheckInv ? 1 : 0.4 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.invPct}%</div>
                               {po && (
                                 <div style={{ 
                                   fontSize: '11px', 
                                   fontWeight: 700, 
-                                  color: row.invDiff > 1 ? '#ef4444' : '#4ade80',
-                                  background: row.invDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  color: !auditCheckInv ? 'var(--text-secondary)' : row.invDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: !auditCheckInv ? 'transparent' : row.invDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
                                   padding: '2px 6px',
                                   borderRadius: '4px'
                                 }}>
@@ -6623,15 +6861,15 @@ export default function SalesTracker() {
                           </td>
 
                           {/* Delivered % */}
-                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 14px', verticalAlign: 'middle', textAlign: 'center', opacity: auditCheckDel ? 1 : 0.4 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 600 }}>Sheet: {row.delPct}%</div>
                               {po && (
                                 <div style={{ 
                                   fontSize: '11px', 
                                   fontWeight: 700, 
-                                  color: row.delDiff > 1 ? '#ef4444' : '#4ade80',
-                                  background: row.delDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                                  color: !auditCheckDel ? 'var(--text-secondary)' : row.delDiff > 1 ? '#ef4444' : '#4ade80',
+                                  background: !auditCheckDel ? 'transparent' : row.delDiff > 1 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(74, 222, 128, 0.1)',
                                   padding: '2px 6px',
                                   borderRadius: '4px'
                                 }}>
