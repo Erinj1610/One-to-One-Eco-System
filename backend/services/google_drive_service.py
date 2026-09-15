@@ -84,7 +84,18 @@ DEFAULT_DRIVE_FOLDER_CONFIG = {
 def get_effective_drive_folder_config(db: Optional[Any] = None) -> Dict[str, Any]:
     """
     Fetches custom drive folder configuration from database or returns DEFAULT_DRIVE_FOLDER_CONFIG.
+    Automatically opens a database session if db is not provided.
     """
+    close_db_after = False
+    if db is None:
+        try:
+            from database.cloud_sql import SessionLocal
+            db = SessionLocal()
+            close_db_after = True
+        except Exception as e:
+            logger.warning(f"Could not initialize SessionLocal in get_effective_drive_folder_config: {e}")
+            db = None
+
     if db:
         try:
             from models.orm_models import TemplateConfig
@@ -99,6 +110,12 @@ def get_effective_drive_folder_config(db: Optional[Any] = None) -> Dict[str, Any
                 return merged
         except Exception as e:
             logger.warning(f"Could not load custom DRIVE_FOLDER_CONFIG from db: {e}")
+        finally:
+            if close_db_after:
+                try:
+                    db.close()
+                except Exception:
+                    pass
     return DEFAULT_DRIVE_FOLDER_CONFIG
 
 
