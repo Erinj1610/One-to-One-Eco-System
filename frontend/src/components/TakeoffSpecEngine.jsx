@@ -5449,9 +5449,9 @@ export default function TakeoffSpecEngine({
       {catalogModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1100
+          zIndex: 1250
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
             
@@ -5472,6 +5472,9 @@ export default function TakeoffSpecEngine({
                 )}
                 {catalogTargetMode === 'led_driver' && (
                   <span>Select 24V Constant Voltage Driver for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'led_run_driver' && (
+                  <span>Select Tailored Driver for Run of Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
                 )}
                 {catalogTargetMode === 'track_rail' && (
                   <span>Select Track Rail / Profile for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
@@ -5650,9 +5653,9 @@ export default function TakeoffSpecEngine({
       {inspectedProduct && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1200
+          zIndex: 1350
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '920px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px' }}>
             
