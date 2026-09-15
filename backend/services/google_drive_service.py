@@ -34,14 +34,57 @@ ORDER_STANDARD_SUBFOLDERS = [
     {"name": "04 - Invoices & Proof of Payment", "sort": 4},
 ]
 
-# Design-Level Standard Subfolders
-DESIGN_STANDARD_SUBFOLDERS = [
-    {"name": "01 - Drawings & CAD", "sort": 1},
-    {"name": "02 - Project Specifications", "sort": 2},
-    {"name": "03 - Site Photos & Snags", "sort": 3},
-    {"name": "04 - Proposals & Contracts", "sort": 4},
-    {"name": "05 - Moodboards & Presentations", "sort": 5},
-]
+# Default Drive Folder Configuration
+DEFAULT_DRIVE_FOLDER_CONFIG = {
+    "order_folder_pattern": "[ORDER_NUMBER] - [ORDER_NAME]",
+    "order_subfolders": [
+        {"name": "01 - Quotations & BOQs", "sort": 1, "key": "01 - Quotations & BOQs"},
+        {"name": "02 - Supplier POs & Confirmations", "sort": 2, "key": "02 - Supplier POs & Confirmations"},
+        {"name": "03 - Logistics & Work Orders", "sort": 3, "key": "03 - Logistics & Work Orders"},
+        {"name": "04 - Invoices & Proof of Payment", "sort": 4, "key": "04 - Invoices & Proof of Payment"},
+        {"name": "Documents", "sort": 5, "key": "Documents"}
+    ],
+    "routing_matrix": {
+        "QUOTATION": "01 - Quotations & BOQs",
+        "BOQ": "01 - Quotations & BOQs",
+        "PURCHASE_ORDER": "02 - Supplier POs & Confirmations",
+        "SUPPLIER_PO": "02 - Supplier POs & Confirmations",
+        "PO": "02 - Supplier POs & Confirmations",
+        "INVOICE": "04 - Invoices & Proof of Payment",
+        "TAX_INVOICE": "04 - Invoices & Proof of Payment",
+        "DEPOSIT_INVOICE": "04 - Invoices & Proof of Payment",
+        "BALANCE_INVOICE": "04 - Invoices & Proof of Payment",
+        "PRO_FORMA_INVOICE": "04 - Invoices & Proof of Payment",
+        "CREDIT_NOTE": "04 - Invoices & Proof of Payment",
+        "LOGISTICS": "03 - Logistics & Work Orders",
+        "DELIVERY": "03 - Logistics & Work Orders",
+        "GRN": "03 - Logistics & Work Orders",
+        "WORK_ORDER": "03 - Logistics & Work Orders",
+        "CUTTING_LIST": "03 - Logistics & Work Orders",
+        "SCHEDULE": "03 - Logistics & Work Orders",
+        "DEFAULT": "Documents"
+    }
+}
+
+def get_effective_drive_folder_config(db: Optional[Any] = None) -> Dict[str, Any]:
+    """
+    Fetches custom drive folder configuration from database or returns DEFAULT_DRIVE_FOLDER_CONFIG.
+    """
+    if db:
+        try:
+            from models.orm_models import TemplateConfig
+            cfg = db.query(TemplateConfig).filter(TemplateConfig.template_key == "DRIVE_FOLDER_CONFIG").first()
+            if cfg and cfg.config_json and isinstance(cfg.config_json, dict):
+                merged = dict(DEFAULT_DRIVE_FOLDER_CONFIG)
+                merged.update(cfg.config_json)
+                if not merged.get("order_subfolders"):
+                    merged["order_subfolders"] = DEFAULT_DRIVE_FOLDER_CONFIG["order_subfolders"]
+                if not merged.get("routing_matrix"):
+                    merged["routing_matrix"] = DEFAULT_DRIVE_FOLDER_CONFIG["routing_matrix"]
+                return merged
+        except Exception as e:
+            logger.warning(f"Could not load custom DRIVE_FOLDER_CONFIG from db: {e}")
+    return DEFAULT_DRIVE_FOLDER_CONFIG
 
 
 def get_drive_service():
@@ -516,12 +559,14 @@ def ensure_order_drive_tree(
     client_name: str, 
     project_name: str, 
     order_identifier: str, 
-    supplier_name: str = ""
+    supplier_name: str = "",
+    order_name: str = "",
+    db: Optional[Any] = None
 ) -> List[Dict[str, Any]]:
     """
     Ensures the path down to a specific Order:
     01 - PROJECTS -> [Project] -> Orders -> [Order Ref / PO]
-    Plus ensures the 4 standard order subfolders (BOQs, POs, Logistics, Invoices).
+    Plus ensures the configured order subfolders (BOQs, POs, Logistics, Invoices, Documents, etc.).
     Also ensures client folder in 02 - CLIENTS has a shortcut pointing to this project.
     Returns all folder nodes scoped to this order.
     """
@@ -531,8 +576,23 @@ def ensure_order_drive_tree(
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
     
-    supplier_part = f" - {supplier_name.strip()}" if supplier_name and supplier_name.strip() else ""
-    order_folder_name = f"{order_identifier.strip()}{supplier_part}"
+    cfg = get_effective_drive_folder_config(db)
+    pattern = cfg.get("order_folder_pattern") or "[ORDER_NUMBER] - [ORDER_NAME]"
+    
+    # Replace tokens in order folder pattern
+    ord_id_clean = (order_identifier or "").strip()
+    supp_clean = (supplier_name or "").strip()
+    ord_name_clean = (order_name or "").strip()
+    
+    resolved_folder_name = pattern
+    resolved_folder_name = resolved_folder_name.replace("[ORDER_NUMBER]", ord_id_clean)
+    resolved_folder_name = resolved_folder_name.replace("[ORDER_NAME]", ord_name_clean or supp_clean or ord_id_clean)
+    resolved_folder_name = resolved_folder_name.replace("[SUPPLIER]", supp_clean or ord_name_clean)
+    resolved_folder_name = resolved_folder_name.replace("[PROJECT]", clean_project)
+    resolved_folder_name = re.sub(r'\[[A-Z_]+\]', '', resolved_folder_name)
+    resolved_folder_name = re.sub(r'\s+-\s*$', '', resolved_folder_name.strip())
+    resolved_folder_name = re.sub(r'^\s*-\s+', '', resolved_folder_name.strip())
+    order_folder_name = resolved_folder_name if resolved_folder_name else (f"{ord_id_clean} - {supp_clean}" if supp_clean else ord_id_clean)
 
     # 1. Ensure Project in 01 - PROJECTS & complete project hierarchy
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
@@ -582,8 +642,9 @@ def ensure_order_drive_tree(
         }
     ]
 
-    # 5. Ensure 4 standard order subfolders
-    for starter in ORDER_STANDARD_SUBFOLDERS:
+    # 5. Ensure configured order subfolders
+    target_subfolders = cfg.get("order_subfolders") or ORDER_STANDARD_SUBFOLDERS
+    for starter in target_subfolders:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
         matched = existing_by_name.get(match_key)
@@ -604,7 +665,7 @@ def ensure_order_drive_tree(
             "name": matched['name'],
             "parent_id": order_folder_id,
             "type": "order_sub",
-            "sort_order": starter["sort"],
+            "sort_order": starter.get("sort", 1),
             "webViewLink": matched.get('webViewLink', '')
         })
 
