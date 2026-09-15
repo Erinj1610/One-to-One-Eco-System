@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
-  ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, Mail, Globe, Phone, MapPin, 
+  ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, ShieldAlert, Check, Edit, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
   RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
