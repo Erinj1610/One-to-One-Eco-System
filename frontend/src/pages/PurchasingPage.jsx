@@ -1341,8 +1341,11 @@ export default function PurchasingPage() {
                 <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
                   <div>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.vendor_name}</strong></div>
                   <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.transaction_date ? new Date(selectedDocument.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</strong></div>
+                  {selectedDocument.reference && (
+                    <div>Project Ref: <strong style={{ color: 'var(--text-primary)', background: 'rgba(59, 130, 246, 0.08)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>{selectedDocument.reference}</strong></div>
+                  )}
                   {selectedDocument.customer_name && (
-                    <div>Client Ref: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong></div>
+                    <div>Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong></div>
                   )}
                   <div>Total Value: <strong style={{ color: 'var(--text-primary)' }}>R {selectedDocument.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</strong></div>
                 </div>
@@ -1860,7 +1863,7 @@ export default function PurchasingPage() {
                   <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
                   <input
                     type="text"
-                    placeholder="Search Doc #, Supplier, SKU..."
+                    placeholder="Search Doc #, Supplier, Ref, SKU..."
                     className="form-control"
                     style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
                     value={searchQuery}
@@ -1902,6 +1905,7 @@ export default function PurchasingPage() {
                     <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Type</th>
                     <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600 }}>Date</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Supplier</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Project Reference</th>
                     <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Items / Qty</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Total Value</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Allocation Status</th>
@@ -1911,14 +1915,14 @@ export default function PurchasingPage() {
                 <tbody>
                   {isLoadingProcurement ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                         <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
                         Loading live ERP documents...
                       </td>
                     </tr>
                   ) : procurementDocs.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                         <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
                         <div style={{ fontWeight: 600, fontSize: '13px' }}>No documents found</div>
                         <div style={{ fontSize: '11px', marginTop: '4px' }}>All documents in this view may already be fully allocated or match no search query.</div>
@@ -1937,17 +1941,12 @@ export default function PurchasingPage() {
                           }}
                           className="hover-row"
                         >
-                          {/* Document # & Client Ref */}
+                          {/* Document # */}
                           <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <FileText size={14} color="#3b82f6" />
                               <span style={{ fontSize: '12.5px' }}>{doc.document_no}</span>
                             </div>
-                            {doc.customer_name && (
-                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400, marginTop: '2px' }}>
-                                Ref: {doc.customer_name}
-                              </div>
-                            )}
                           </td>
 
                           {/* Type Badge */}
@@ -1973,6 +1972,28 @@ export default function PurchasingPage() {
                           {/* Supplier */}
                           <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
                             {doc.vendor_name}
+                          </td>
+
+                          {/* Project Reference */}
+                          <td style={{ padding: '10px 12px', color: 'var(--text-primary)', maxWidth: '240px' }}>
+                            {doc.reference ? (
+                              <div>
+                                <span style={{ fontWeight: 600, fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                                  {doc.reference}
+                                </span>
+                                {doc.customer_name && doc.customer_name !== doc.reference && (
+                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    Client: {doc.customer_name}
+                                  </div>
+                                )}
+                              </div>
+                            ) : doc.customer_name ? (
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                Client: {doc.customer_name}
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                            )}
                           </td>
 
                           {/* Total Lines & Qty */}

@@ -467,19 +467,21 @@ def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[
 
         p_cursor.execute("""
             SELECT 
-                [Document #] AS document_no,
-                [Vendor Name] AS vendor_name,
-                [Item Code] AS item_code,
-                [Item Description (Line)] AS item_description,
-                [Item Unit] AS item_unit,
-                [Original Invoice Qty] AS received_qty,
-                [Last Unit Cost] AS unit_cost,
-                [Line Tot Excl] AS line_total_excl,
-                [Line Tot Incl] AS line_total_incl,
-                [Transaction Date] AS transaction_date,
-                [Location] AS location,
-                [Currency Code] AS currency_code
-            FROM biPurchaseInvoice
+                pi.[Document #] AS document_no,
+                pi.[Vendor Name] AS vendor_name,
+                pi.[Item Code] AS item_code,
+                pi.[Item Description (Line)] AS item_description,
+                pi.[Item Unit] AS item_unit,
+                pi.[Original Invoice Qty] AS received_qty,
+                pi.[Last Unit Cost] AS unit_cost,
+                pi.[Line Tot Excl] AS line_total_excl,
+                pi.[Line Tot Incl] AS line_total_incl,
+                pi.[Transaction Date] AS transaction_date,
+                pi.[Location] AS location,
+                pi.[Currency Code] AS currency_code,
+                inv.strReference AS reference
+            FROM biPurchaseInvoice pi
+            LEFT JOIN tblInvoiceDocP inv ON pi.[Document #] = inv.strInvPDocID
         """)
         grn_rows = p_cursor.fetchall()
         p_conn.close()
@@ -498,6 +500,7 @@ def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[
             tot_val = float(r.get("line_total_excl") or 0.0)
             raw_cost = float(r.get("unit_cost") or 0.0)
             effective_cost = raw_cost if raw_cost > 0 else (round(tot_val / rec_qty, 2) if rec_qty > 0 else 0.0)
+            ref_val = str(r.get("reference") or "").strip() or None
 
             grn_obj = PalladiumGRNLine(
                 document_no=doc_no,
@@ -512,6 +515,7 @@ def sync_palladium_goods_received(db_session: Optional[Session] = None) -> Dict[
                 transaction_date=r.get("transaction_date"),
                 location=str(r.get("location") or "").strip() or None,
                 currency_code=str(r.get("currency_code") or "ZAR").strip(),
+                reference=ref_val,
                 last_synced_at=now_dt
             )
             grn_objects.append(grn_obj)
