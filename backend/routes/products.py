@@ -69,6 +69,10 @@ class ProductBase(BaseModel):
     wetworks: Optional[str] = None
     is_active: Optional[bool] = True
     status: Optional[str] = 'Active'
+    palladium_status: Optional[str] = 'VERIFIED'
+    created_by_name: Optional[str] = None
+    source_reference: Optional[str] = None
+    pending_notes: Optional[str] = None
 
 class ProductCreate(ProductBase):
     pass
@@ -136,10 +140,15 @@ def products_summary(db: Session = Depends(get_db)):
         func.sum(Product.stock_level)
     ).filter(Product.stock_level > 0).scalar() or 0
 
+    pending_palladium = db.query(func.count(Product.id)).filter(
+        Product.palladium_status == 'PENDING_PALLADIUM'
+    ).scalar() or 0
+
     return {
         "total": total,
         "low_stock": low_stock,
         "out_of_stock": out_of_stock,
+        "pending_palladium": pending_palladium,
         "total_valuation": round(total_valuation, 2),
         "total_retail_valuation": round(total_retail_val, 2),
         "total_margin_val": round(total_margin_val, 2),
@@ -170,6 +179,7 @@ def list_products(
     brand: Optional[str] = None,
     family: Optional[str] = None,
     status: Optional[str] = None,
+    palladium_status: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = "asc",
     limit: Optional[int] = 100,
@@ -177,6 +187,9 @@ def list_products(
     db: Session = Depends(get_db)
 ):
     query = db.query(Product)
+    
+    if palladium_status:
+        query = query.filter(Product.palladium_status == palladium_status)
     
     if q:
         query = query.filter(
@@ -216,6 +229,8 @@ def list_products(
                 Product.stock_level > 0,
                 Product.stock_level <= Product.reorder_level
             )
+        elif status.lower() == "pending palladium":
+            query = query.filter(Product.palladium_status == 'PENDING_PALLADIUM')
 
     total_count = query.count()
 
@@ -310,6 +325,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     return serialize_product(product)
 
 
+@public_router.post("/")
 @router.post("/")
 def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     # Check if SKU is unique
@@ -322,6 +338,182 @@ def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_product)
     return {"message": "Product created successfully", "id": new_product.id, "product": serialize_product(new_product)}
+
+class RemapSkuPayload(BaseModel):
+    new_sku: str
+
+@public_router.post("/{product_id}/verify-palladium")
+@router.post("/{product_id}/verify-palladium")
+def verify_product_in_palladium(product_id: int, db: Session = Depends(get_db)):
+    """
+    100% Read-Only verification against Palladium ERP MS SQL.
+    Verifies that the product's SKU exists in tblInv.
+    If found, sets palladium_status = 'VERIFIED' and syncs latest stock/price.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    import pymssql
+    from services.palladium_sync import PALLADIUM_CONFIG
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=10
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+        
+        # Read-only existence check
+        p_cursor.execute("""
+            SELECT TOP 1 
+                i.strPartNumber AS sku,
+                i.strDesc AS name,
+                ISNULL(p.curSellingPrice, 0.0) AS retail_price,
+                ISNULL(e.dblOnHand, 0.0) AS stock_on_hand
+            FROM tblInv i
+            LEFT JOIN tblInvPrice p ON i.strPartNumber = p.strPartNumber AND p.intPriceLevel = 1
+            LEFT JOIN tblInvExt e ON i.strPartNumber = e.strPartNumber AND e.strLocation = 'MAIN'
+            WHERE UPPER(LTRIM(RTRIM(i.strPartNumber))) = UPPER(LTRIM(RTRIM(%s)))
+        """, (product.sku,))
+        
+        row = p_cursor.fetchone()
+        p_conn.close()
+
+        if not row:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"SKU '{product.sku}' was not found in Palladium ERP yet. Please enter this item in Palladium first."
+            )
+
+        # Found in Palladium! Mark as verified
+        product.palladium_status = "VERIFIED"
+        if row.get("retail_price") and row["retail_price"] > 0:
+            product.retail_price = float(row["retail_price"])
+        if row.get("stock_on_hand") is not None:
+            product.stock_on_hand = float(row["stock_on_hand"])
+            product.stock_level = int(row["stock_on_hand"])
+            
+        db.commit()
+        db.refresh(product)
+        return {
+            "success": True,
+            "message": f"Successfully verified SKU '{product.sku}' in Palladium ERP!",
+            "product": serialize_product(product)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query Palladium ERP: {str(e)}")
+
+@public_router.post("/{product_id}/remap-palladium-sku")
+@router.post("/{product_id}/remap-palladium-sku")
+def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = Depends(get_db)):
+    """
+    Updates the product SKU (and cascades to active orders/items)
+    and verifies it against Palladium ERP read-only.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    new_sku = payload.new_sku.strip()
+    if not new_sku:
+        raise HTTPException(status_code=400, detail="New SKU cannot be empty")
+
+    old_sku = product.sku
+
+    # Check if new SKU already exists in local DB under a DIFFERENT product
+    conflict = db.query(Product).filter(Product.sku == new_sku, Product.id != product_id).first()
+    if conflict:
+        raise HTTPException(status_code=400, detail=f"Product with SKU '{new_sku}' already exists in the portal database.")
+
+    import pymssql
+    from services.palladium_sync import PALLADIUM_CONFIG
+    from models.orm_models import OrderItem, BOQItem, Order
+
+    # Read-only existence check in Palladium
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=10
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+        p_cursor.execute("""
+            SELECT TOP 1 
+                i.strPartNumber AS sku,
+                i.strDesc AS name,
+                ISNULL(p.curSellingPrice, 0.0) AS retail_price,
+                ISNULL(e.dblOnHand, 0.0) AS stock_on_hand
+            FROM tblInv i
+            LEFT JOIN tblInvPrice p ON i.strPartNumber = p.strPartNumber AND p.intPriceLevel = 1
+            LEFT JOIN tblInvExt e ON i.strPartNumber = e.strPartNumber AND e.strLocation = 'MAIN'
+            WHERE UPPER(LTRIM(RTRIM(i.strPartNumber))) = UPPER(LTRIM(RTRIM(%s)))
+        """, (new_sku,))
+        row = p_cursor.fetchone()
+        p_conn.close()
+    except Exception as e:
+        row = None
+
+    # Update product record
+    product.sku = new_sku
+    if row:
+        product.palladium_status = "VERIFIED"
+        if row.get("retail_price") and row["retail_price"] > 0:
+            product.retail_price = float(row["retail_price"])
+        if row.get("stock_on_hand") is not None:
+            product.stock_on_hand = float(row["stock_on_hand"])
+            product.stock_level = int(row["stock_on_hand"])
+    else:
+        # If not verified in Palladium yet, still rename the SKU in portal
+        pass
+
+    # Cascade rename to OrderItem
+    order_items = db.query(OrderItem).filter(OrderItem.code == old_sku).all()
+    for oi in order_items:
+        oi.code = new_sku
+
+    # Cascade rename to BOQItem
+    boq_items = db.query(BOQItem).filter(BOQItem.product_code == old_sku).all()
+    for bi in boq_items:
+        bi.product_code = new_sku
+
+    # Cascade rename inside Order.takeoff_data JSON
+    orders_with_takeoff = db.query(Order).filter(Order.takeoff_data.isnot(None)).all()
+    for ord_obj in orders_with_takeoff:
+        if isinstance(ord_obj.takeoff_data, list):
+            changed = False
+            for item in ord_obj.takeoff_data:
+                if isinstance(item, dict) and item.get("code") == old_sku:
+                    item["code"] = new_sku
+                    changed = True
+            if changed:
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(ord_obj, "takeoff_data")
+
+    db.commit()
+    db.refresh(product)
+
+    status_msg = f"Remapped SKU from '{old_sku}' to '{new_sku}'."
+    if row:
+        status_msg += " Verified in Palladium ERP."
+    else:
+        status_msg += " Note: Not found in Palladium yet."
+
+    return {
+        "success": True,
+        "message": status_msg,
+        "is_verified": bool(row),
+        "product": serialize_product(product)
+    }
 
 @router.put("/{product_id}")
 def update_product(product_id: int, product_data: ProductUpdate, db: Session = Depends(get_db)):

@@ -649,7 +649,8 @@ export default function ProductsPage() {
     cat = categoryFilter, 
     sup = supplierFilter, 
     sort_by = sortField, 
-    sort_dir = sortDirection 
+    sort_dir = sortDirection,
+    palladium_status = activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined
   } = {}) => {
     setIsLoadingProducts(true);
     try {
@@ -658,6 +659,7 @@ export default function ProductsPage() {
       if (q) params.set('q', q);
       if (cat && cat !== 'All Categories') params.set('category', cat);
       if (sup && sup !== 'All Suppliers') params.set('supplier', sup);
+      if (palladium_status) params.set('palladium_status', palladium_status);
       if (sort_by) {
         params.set('sort_by', sort_by);
         params.set('sort_dir', sort_dir || 'asc');
@@ -1083,6 +1085,7 @@ export default function ProductsPage() {
   };
 
   // Filters State — changes trigger a new server fetch
+  const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all' | 'pending_palladium'
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
@@ -1096,9 +1099,17 @@ export default function ProductsPage() {
     clearTimeout(searchRef.current);
     searchRef.current = setTimeout(() => {
       setCurrentPage(1);
-      fetchPage({ page: 1, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
+      fetchPage({ 
+        page: 1, 
+        q: searchQuery, 
+        cat: categoryFilter, 
+        sup: supplierFilter, 
+        sort_by: sortField, 
+        sort_dir: sortDirection,
+        palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined
+      });
     }, 350);
-  }, [searchQuery, categoryFilter, supplierFilter]);
+  }, [searchQuery, categoryFilter, supplierFilter, activeFilterTab]);
 
   // Toast System
   const [toast, setToast] = useState({ show: false, message: '' });
@@ -1114,6 +1125,17 @@ export default function ProductsPage() {
   const [newRetailPrice, setNewRetailPrice] = useState('');
   const [newStock, setNewStock] = useState('50');
   const [newReorder, setNewReorder] = useState('100');
+  const [newCreatedByName, setNewCreatedByName] = useState('');
+  const [newSourceRef, setNewSourceRef] = useState('');
+  const [newPendingNotes, setNewPendingNotes] = useState('');
+  const [newIsPendingPalladium, setNewIsPendingPalladium] = useState(true);
+
+  // Remap SKU Modal State
+  const [showRemapModal, setShowRemapModal] = useState(false);
+  const [remapTargetProduct, setRemapTargetProduct] = useState(null);
+  const [remapNewSku, setRemapNewSku] = useState('');
+  const [isRemapping, setIsRemapping] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
 
   // Trigger temporary Toast
   const triggerToast = (msg) => {
@@ -1268,11 +1290,12 @@ export default function ProductsPage() {
     const totalSku = summary.total || totalCount;
     const lowStock = summary.low_stock || 0;
     const outStock = summary.out_of_stock || 0;
+    const pendingPalladium = summary.pending_palladium || 0;
     const avgMargin = summary.avg_margin_pct !== undefined ? summary.avg_margin_pct : 37;
     const totalVal = summary.total_valuation !== undefined ? summary.total_valuation : 0;
     const totalMargin = summary.total_margin_val !== undefined ? summary.total_margin_val : 0;
     const totalUnits = summary.total_units !== undefined ? summary.total_units : 0;
-    return { totalSku, lowStock, outStock, avgMargin, totalVal, totalMargin, totalUnits };
+    return { totalSku, lowStock, outStock, pendingPalladium, avgMargin, totalVal, totalMargin, totalUnits };
   }, [summary, totalCount]);
 
   // Commit changes from Workspace Engine (Save button trigger)
@@ -1358,8 +1381,8 @@ export default function ProductsPage() {
     const reorderVal = parseInt(newReorder) || 0;
 
     const newProd = {
-      sku: newSku,
-      name: newName,
+      sku: newSku.trim(),
+      name: newName.trim(),
       category: newCategory,
       brand: newBrand,
       cost_price: costVal,
@@ -1383,7 +1406,11 @@ export default function ProductsPage() {
       system_power: 14.0,
       lighting_type: 'Architectural',
       cutout: 'Ø76mm',
-      driver_spec: '- External or Remote Driver\n- Direct Connection'
+      driver_spec: '- External or Remote Driver\n- Direct Connection',
+      palladium_status: newIsPendingPalladium ? 'PENDING_PALLADIUM' : 'VERIFIED',
+      created_by_name: newCreatedByName.trim() || undefined,
+      source_reference: newSourceRef.trim() || undefined,
+      pending_notes: newPendingNotes.trim() || undefined
     };
 
     try {
@@ -1393,7 +1420,7 @@ export default function ProductsPage() {
         body: JSON.stringify(newProd)
       });
       if (res.ok) {
-        triggerToast(`Product SKU ${newSku} created successfully!`);
+        triggerToast(`Product SKU ${newSku} created successfully! ${newIsPendingPalladium ? 'Queued for Palladium verification.' : ''}`);
         setShowCreateModal(false);
         setNewSku('');
         setNewName('');
@@ -1401,7 +1428,12 @@ export default function ProductsPage() {
         setNewRetailPrice('');
         setNewStock('50');
         setNewReorder('100');
+        setNewCreatedByName('');
+        setNewSourceRef('');
+        setNewPendingNotes('');
+        setNewIsPendingPalladium(true);
         fetchProducts();
+        fetchSummary();
       } else {
         const errData = await res.json();
         alert(`Error: ${errData.detail || 'Could not create product'}`);
@@ -1409,6 +1441,58 @@ export default function ProductsPage() {
     } catch (err) {
       console.error(err);
       alert("Error creating product: " + err.message);
+    }
+  };
+
+  const handleVerifyInPalladium = async (productId, sku) => {
+    setVerifyingId(productId);
+    triggerToast(`Verifying SKU '${sku}' in Palladium ERP (Read-Only)...`);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${productId}/verify-palladium`, {
+        method: 'POST'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Verified in Palladium ERP!'}`);
+        fetchProducts();
+        fetchSummary();
+      } else {
+        alert(`❌ Verification Failed:\n\n${data.detail || 'SKU not found in Palladium ERP.'}`);
+      }
+    } catch (err) {
+      alert(`Network error during Palladium verification: ${err.message}`);
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleExecuteRemapSku = async () => {
+    if (!remapTargetProduct || !remapNewSku.trim()) {
+      alert("Please enter the new Palladium SKU code.");
+      return;
+    }
+    setIsRemapping(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${remapTargetProduct.id}/remap-palladium-sku`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_sku: remapNewSku.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message}`);
+        setShowRemapModal(false);
+        setRemapTargetProduct(null);
+        setRemapNewSku('');
+        fetchProducts();
+        fetchSummary();
+      } else {
+        alert(`❌ Remapping Error:\n\n${data.detail || 'Failed to remap SKU'}`);
+      }
+    } catch (err) {
+      alert(`Network error during SKU remapping: ${err.message}`);
+    } finally {
+      setIsRemapping(false);
     }
   };
 
@@ -1834,6 +1918,14 @@ export default function ProductsPage() {
                 <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
                   <Download size={14} /> Export Product Database
                 </button>
+
+                <button 
+                  onClick={() => setShowCreateModal(true)} 
+                  className="btn btn-primary" 
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box', fontWeight: 600 }}
+                >
+                  <Plus size={14} /> + New Product
+                </button>
               </div>
             </div>
           </div>
@@ -1877,9 +1969,13 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          {/* 4-KPI SUMMARY CARD GRID */}
-          <div className="stat-grid stat-grid-4" style={{ marginBottom: '20px' }}>
-            <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+          {/* 5-KPI SUMMARY CARD GRID */}
+          <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div 
+              className="stat" 
+              onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
+              style={{ background: 'var(--bg-primary)', border: activeFilterTab === 'all' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Products SKU</span>
                 <Package size={15} color="var(--text-info)" />
@@ -1888,8 +1984,36 @@ export default function ProductsPage() {
                 {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Total Stock Value: <strong>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                <span>Total Value: <strong>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
                 <span>Units: <strong>{kpis.totalUnits.toLocaleString()}</strong></span>
+              </div>
+            </div>
+
+            <div 
+              className="stat" 
+              onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
+              style={{ 
+                background: activeFilterTab === 'pending_palladium' ? 'rgba(239, 68, 68, 0.08)' : (kpis.pendingPalladium > 0 ? 'rgba(245, 158, 11, 0.04)' : 'var(--bg-primary)'), 
+                border: activeFilterTab === 'pending_palladium' ? '2px solid #ef4444' : (kpis.pendingPalladium > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)'), 
+                borderRadius: '12px', 
+                padding: '16px', 
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                  🔴 Pending Palladium
+                </span>
+                <ShieldAlert size={15} color={kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-tertiary)'} />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-primary)' }}>
+                {kpis.pendingPalladium.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Items</span>
+              </div>
+              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                <span className={`badge ${kpis.pendingPalladium > 0 ? 'b-danger' : 'b-secondary'}`} style={{ fontSize: '8.5px', padding: '1px 6px' }}>
+                  {kpis.pendingPalladium > 0 ? 'Action Required' : 'All Clear'}
+                </span> {kpis.pendingPalladium > 0 ? 'Click to review & verify' : 'All SKUs verified in ERP'}
               </div>
             </div>
 
@@ -1928,13 +2052,50 @@ export default function ProductsPage() {
                 {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg Margin</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                Stock Profit Potential: <strong>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                Profit: <strong>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
             </div>
           </div>
 
-          {/* FILTER CONTROL BAR */}
+          {/* VIEW TABS & FILTER CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
+            
+            {/* VIEW TABS (All vs Pending Palladium) */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center' }}>
+              <button
+                onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
+                className={`btn btn-sm ${activeFilterTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '8px', fontSize: '12.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', height: '32px' }}
+              >
+                <Package size={14} /> All Catalog Products ({kpis.totalSku.toLocaleString()})
+              </button>
+
+              <button
+                onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
+                className={`btn btn-sm ${activeFilterTab === 'pending_palladium' ? 'btn-danger' : 'btn-ghost'}`}
+                style={{ 
+                  borderRadius: '8px', 
+                  fontSize: '12.5px', 
+                  fontWeight: 600, 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  height: '32px',
+                  background: activeFilterTab === 'pending_palladium' ? '#ef4444' : undefined,
+                  color: activeFilterTab === 'pending_palladium' ? '#fff' : (kpis.pendingPalladium > 0 ? '#ef4444' : undefined),
+                  border: kpis.pendingPalladium > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : undefined
+                }}
+              >
+                <ShieldAlert size={14} /> 🔴 Pending Palladium Verification
+                {kpis.pendingPalladium > 0 && (
+                  <span style={{ background: activeFilterTab === 'pending_palladium' ? '#fff' : '#ef4444', color: activeFilterTab === 'pending_palladium' ? '#ef4444' : '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>
+                    {kpis.pendingPalladium}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* SEARCH & DROPDOWN FILTERS */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '320px', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: '220px', maxWidth: '380px' }}>
@@ -2013,7 +2174,7 @@ export default function ProductsPage() {
                     </th>
                     <th 
                       onClick={() => handleSort('sku')} 
-                      style={{ width: '130px', cursor: 'pointer', userSelect: 'none' }}
+                      style={{ width: '140px', cursor: 'pointer', userSelect: 'none' }}
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         SKU {renderSortIcon('sku')}
@@ -2083,6 +2244,11 @@ export default function ProductsPage() {
                         STOCK QTY {renderSortIcon('stock')}
                       </div>
                     </th>
+                    {activeFilterTab === 'pending_palladium' && (
+                      <th style={{ textAlign: 'center', width: '220px' }}>
+                        PALLADIUM VERIFICATION
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -2092,8 +2258,8 @@ export default function ProductsPage() {
                       className="clickable" 
                       style={{ 
                         cursor: 'pointer',
-                        background: gridEdits[p.id] ? 'rgba(245, 158, 11, 0.06)' : undefined,
-                        borderLeft: gridEdits[p.id] ? '3px solid #f59e0b' : undefined
+                        background: p.palladium_status === 'PENDING_PALLADIUM' ? 'rgba(239, 68, 68, 0.03)' : (gridEdits[p.id] ? 'rgba(245, 158, 11, 0.06)' : undefined),
+                        borderLeft: p.palladium_status === 'PENDING_PALLADIUM' ? '3px solid #ef4444' : (gridEdits[p.id] ? '3px solid #f59e0b' : undefined)
                       }} 
                       onClick={() => !isBulkGridMode && setSelectedSku(p.sku)}
                     >
@@ -2118,10 +2284,28 @@ export default function ProductsPage() {
                           <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>—</span>
                         )}
                       </td>
-                      <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>{p.sku}</td>
+                      <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <span>{p.sku}</span>
+                          {p.palladium_status === 'PENDING_PALLADIUM' && (
+                            <span className="badge b-warning" style={{ fontSize: '9px', padding: '1px 5px', width: 'fit-content' }}>
+                              🟡 Pending ERP
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       
                       {/* DESCRIPTION / NAME */}
-                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>{p.name}</td>
+                      <td style={{ verticalAlign: 'middle', fontWeight: 500 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span>{p.name}</span>
+                          {p.created_by_name && (
+                            <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                              Added by: {p.created_by_name} {p.source_reference ? `(${p.source_reference})` : ''}
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
                       {/* CATEGORY */}
                       <td style={{ verticalAlign: 'middle' }}>
@@ -2154,12 +2338,42 @@ export default function ProductsPage() {
                           {p.stock || p.stock_level || 0}
                         </span>
                       </td>
+
+                      {/* PALLADIUM VERIFICATION ACTIONS */}
+                      {activeFilterTab === 'pending_palladium' && (
+                        <td style={{ verticalAlign: 'middle', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            <button
+                              onClick={() => handleVerifyInPalladium(p.id, p.sku)}
+                              disabled={verifyingId === p.id}
+                              className="btn btn-sm btn-success"
+                              style={{ fontSize: '11px', padding: '3px 8px', height: '28px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title="Check if SKU now exists in Palladium (Read-only)"
+                            >
+                              {verifyingId === p.id ? <RefreshCw size={11} className="animate-spin" /> : <Check size={11} />}
+                              Verify
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRemapTargetProduct(p);
+                                setRemapNewSku(p.sku);
+                                setShowRemapModal(true);
+                              }}
+                              className="btn btn-sm btn-secondary"
+                              style={{ fontSize: '11px', padding: '3px 8px', height: '28px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              title="Remap to official Palladium SKU and update orders/quotes"
+                            >
+                              <Edit size={11} /> Remap
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                        {isLoadingProducts ? 'Loading page products...' : 'No products found matching the search and filter criteria.'}
+                      <td colSpan={activeFilterTab === 'pending_palladium' ? 12 : 11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                        {isLoadingProducts ? 'Loading page products...' : (activeFilterTab === 'pending_palladium' ? '🎉 All products have been verified in Palladium ERP! No pending items.' : 'No products found matching the search and filter criteria.')}
                       </td>
                     </tr>
                   )}
@@ -2180,7 +2394,7 @@ export default function ProductsPage() {
                     onClick={() => {
                       const nextP = currentPage - 1;
                       setCurrentPage(nextP);
-                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection, palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined });
                     }}
                   >
                     Previous
@@ -2191,7 +2405,7 @@ export default function ProductsPage() {
                     onClick={() => {
                       const nextP = currentPage + 1;
                       setCurrentPage(nextP);
-                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
+                      fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection, palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined });
                     }}
                   >
                     Next
@@ -3131,6 +3345,321 @@ export default function ProductsPage() {
             </div>
           </div>
         </>
+      )}
+      {/* ========================================================= */}
+      {/* MODAL: CREATE NEW PRODUCT (ON THE FLY / AD-HOC)           */}
+      {/* ========================================================= */}
+      {showCreateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', border: '1px solid var(--border)', background: 'var(--bg-primary)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>✨</span> Add New Product
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Create an ad-hoc or catalog product immediately for quotes and orders.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowCreateModal(false)}
+                className="btn btn-ghost btn-sm"
+                style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProduct} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* STATUS BANNER */}
+              <div style={{ background: newIsPendingPalladium ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)', border: newIsPendingPalladium ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <ShieldAlert size={18} color={newIsPendingPalladium ? '#ef4444' : '#10b981'} />
+                  <div>
+                    <strong style={{ fontSize: '12.5px', color: newIsPendingPalladium ? '#ef4444' : '#10b981' }}>
+                      {newIsPendingPalladium ? 'Queue for Palladium Verification' : 'Verified / Pre-existing in ERP'}
+                    </strong>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {newIsPendingPalladium ? 'Notifies inventory manager to create this item in Palladium.' : 'Product is already live in Palladium ERP.'}
+                    </div>
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={newIsPendingPalladium} 
+                    onChange={e => setNewIsPendingPalladium(e.target.checked)} 
+                  />
+                  Pending
+                </label>
+              </div>
+
+              {/* SKU & NAME */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Product SKU *
+                  </label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="e.g. DL-28402-FW"
+                    className="form-control"
+                    value={newSku}
+                    onChange={e => setNewSku(e.target.value)}
+                    style={{ fontFamily: 'monospace', fontWeight: 600 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Description / Product Name *
+                  </label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="e.g. Downlight Entero RD-S 14W 2700K White"
+                    className="form-control"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* CATEGORY & SUPPLIER & BRAND */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Category
+                  </label>
+                  <input 
+                    type="text"
+                    list="category-suggestions"
+                    placeholder="Downlight"
+                    className="form-control"
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                  />
+                  <datalist id="category-suggestions">
+                    {filterOptions.categories.map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Supplier
+                  </label>
+                  <input 
+                    type="text"
+                    list="supplier-suggestions"
+                    placeholder="ELDC"
+                    className="form-control"
+                    value={newSupplier}
+                    onChange={e => setNewSupplier(e.target.value)}
+                  />
+                  <datalist id="supplier-suggestions">
+                    {filterOptions.suppliers.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Brand / Family
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Delta Light"
+                    className="form-control"
+                    value={newBrand}
+                    onChange={e => setNewBrand(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* PRICING & INITIAL STOCK */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Unit Cost (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    value={newUnitCost}
+                    onChange={e => setNewUnitCost(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    RRP Retail Price (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    value={newRetailPrice}
+                    onChange={e => setNewRetailPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Initial Stock Qty
+                  </label>
+                  <input 
+                    type="number"
+                    className="form-control"
+                    value={newStock}
+                    onChange={e => setNewStock(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* QUOTER AUDIT TRACKING */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Quoter / Created By Name
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Dani / Erin"
+                    className="form-control"
+                    value={newCreatedByName}
+                    onChange={e => setNewCreatedByName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                    Source Quote / Project Ref
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Q-2026-041 or Waters Edge"
+                    className="form-control"
+                    value={newSourceRef}
+                    onChange={e => setNewSourceRef(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* NOTES */}
+              <div>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, marginBottom: '6px' }}>
+                  Inventory Notes / Palladium Instructions
+                </label>
+                <textarea 
+                  rows={2}
+                  placeholder="Special instructions or supplier part code for accounting/inventory..."
+                  className="form-control"
+                  style={{ fontSize: '12px', resize: 'vertical' }}
+                  value={newPendingNotes}
+                  onChange={e => setNewPendingNotes(e.target.value)}
+                />
+              </div>
+
+              {/* MODAL ACTIONS */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowCreateModal(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Plus size={14} /> Create Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: REMAP PALLADIUM SKU & VERIFY                       */}
+      {/* ========================================================= */}
+      {showRemapModal && remapTargetProduct && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', borderRadius: '16px', border: '1px solid var(--border)', background: 'var(--bg-primary)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Edit size={16} color="var(--primary)" /> Remap SKU to Palladium
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Updates product code and cascades to all existing quotes & orders automatically.
+                </p>
+              </div>
+              <button 
+                onClick={() => { setShowRemapModal(false); setRemapTargetProduct(null); }}
+                className="btn btn-ghost btn-sm"
+                style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Current Temporary Product</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)', marginTop: '2px' }}>
+                  {remapTargetProduct.sku}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  {remapTargetProduct.name}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
+                  Official Palladium ERP Part Number (SKU) *
+                </label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Enter official SKU created in Palladium..."
+                  className="form-control"
+                  style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '13px' }}
+                  value={remapNewSku}
+                  onChange={e => setRemapNewSku(e.target.value)}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                  Will read-only check Palladium database. If found, status becomes <strong>VERIFIED</strong>.
+                </span>
+              </div>
+
+              <div style={{ background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', padding: '10px 14px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                <strong>Automatic Cascade:</strong> Any accepted quotes or active orders with line items pointing to <code>{remapTargetProduct.sku}</code> will be instantly re-pointed to <code>{remapNewSku}</code> with zero re-work.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => { setShowRemapModal(false); setRemapTargetProduct(null); }}
+                  className="btn btn-secondary"
+                  disabled={isRemapping}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleExecuteRemapSku}
+                  disabled={isRemapping || !remapNewSku.trim()}
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {isRemapping ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  {isRemapping ? 'Remapping & Verifying...' : 'Remap SKU & Verify'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -436,6 +436,12 @@ class Product(Base):
     palladium_last_synced_at = Column(DateTime, nullable=True)
     supplier_details_json = Column(JSON, nullable=True)
     
+    # Ad-hoc / New Product Workflow Fields
+    palladium_status = Column(String, default="VERIFIED", index=True)  # 'VERIFIED', 'PENDING_PALLADIUM'
+    created_by_name = Column(String, nullable=True)
+    source_reference = Column(String, nullable=True)  # e.g., 'Quote #1042' or 'Order #501'
+    pending_notes = Column(Text, nullable=True)
+    
     # Relationships
     files = relationship("ProductFile", back_populates="product", cascade="all, delete-orphan")
     supplier = relationship("Supplier", back_populates="products")
