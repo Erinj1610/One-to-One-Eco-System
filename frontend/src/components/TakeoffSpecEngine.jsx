@@ -25,7 +25,8 @@ import {
   ChevronDown,
   X,
   Info,
-  Compass
+  Compass,
+  Zap
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
 import CadImportModal from './CadImportModal';
