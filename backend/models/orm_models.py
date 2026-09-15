@@ -739,6 +739,7 @@ class PalladiumGRNLine(Base):
     transaction_date = Column(DateTime, nullable=True)
     location = Column(String, nullable=True)
     currency_code = Column(String, default="ZAR")
+    reference = Column(String, nullable=True)                # e.g. "PO 01792 -House Fleming"
     last_synced_at = Column(DateTime, default=datetime.utcnow)
 
 

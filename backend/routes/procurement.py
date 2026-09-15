@@ -257,7 +257,8 @@ def get_procurement_documents(
                         PalladiumPOLine.item_code.ilike(search_term),
                         PalladiumPOLine.item_description.ilike(search_term),
                         PalladiumPOLine.vendor_name.ilike(search_term),
-                        PalladiumPOLine.customer_name.ilike(search_term)
+                        PalladiumPOLine.customer_name.ilike(search_term),
+                        PalladiumPOLine.reference.ilike(search_term)
                     )
                 )
             po_rows = po_query.order_by(desc(PalladiumPOLine.transaction_date)).all()
@@ -276,7 +277,8 @@ def get_procurement_documents(
                         PalladiumGRNLine.item_code.ilike(search_term),
                         PalladiumGRNLine.item_description.ilike(search_term),
                         PalladiumGRNLine.vendor_name.ilike(search_term),
-                        PalladiumGRNLine.location.ilike(search_term)
+                        PalladiumGRNLine.location.ilike(search_term),
+                        PalladiumGRNLine.reference.ilike(search_term)
                     )
                 )
             grn_rows = grn_query.order_by(desc(PalladiumGRNLine.transaction_date)).all()
@@ -359,6 +361,7 @@ def get_procurement_documents(
                     "total_value": float(r.line_total_excl or 0.0),
                     "currency_code": r.currency_code or "ZAR",
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
+                    "reference": r.reference or None,
                     "allocated_qty": round(total_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
@@ -476,6 +479,7 @@ def get_procurement_documents(
                     "vendor_name": r.vendor_name or "Unknown Supplier",
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                     "order_required_date": None,
+                    "reference": r.reference or None,
                     "erp_status": "Received",
                     "customer_name": None,
                     "total_lines": 0,
@@ -489,6 +493,8 @@ def get_procurement_documents(
                     "partial_lines_count": 0,
                     "lines": []
                 }
+            elif not doc_dict[dkey].get("reference") and r.reference:
+                doc_dict[dkey]["reference"] = r.reference
 
             lkey = f"GRN_{r.document_no}_{r.item_code}"
             active_allocs = alloc_map.get(lkey, [])
@@ -525,6 +531,7 @@ def get_procurement_documents(
                 "currency_code": r.currency_code or "ZAR",
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                 "order_required_date": None,
+                "reference": r.reference or None,
                 "erp_status": "Received",
                 "customer_name": None,
                 "allocated_qty": round(line_allocated, 2),
@@ -699,6 +706,7 @@ def get_document_details(
             for r in rows:
                 vendor_name = r.vendor_name or vendor_name
                 transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
+                reference = r.reference or reference
                 erp_status = "Received"
                 total_value += float(r.line_total_excl or 0.0)
 
@@ -729,6 +737,7 @@ def get_document_details(
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "reference": r.reference or None,
                     "allocations": active_allocs
                 })
 

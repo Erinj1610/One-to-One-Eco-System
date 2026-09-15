@@ -25,7 +25,8 @@ import {
   ChevronDown,
   X,
   Info,
-  Compass
+  Compass,
+  Zap
 } from 'lucide-react';
 import { API_BASE } from '../api_config';
 import CadImportModal from './CadImportModal';
@@ -130,6 +131,9 @@ export default function TakeoffSpecEngine({
   const [copySourceTag, setCopySourceTag] = useState(null);
   const [copyTargetTag, setCopyTargetTag] = useState('');
   const [showCustomCopyInput, setShowCustomCopyInput] = useState(false);
+
+  // Per-Run LED Runs & Drivers Configurator Modal State (e.g. 'LC', 'LJ')
+  const [activeLedRunConfigTag, setActiveLedRunConfigTag] = useState(null);
 
   // Generate BOQ Modal State
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -322,17 +326,22 @@ export default function TakeoffSpecEngine({
       const itemType = spec?.itemType || row.itemType || 'fixture';
 
       if (spec && itemType === 'linear_led') {
+        const runOv = spec.ledConfig?.runOverrides?.[row.id] || {};
         const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
-        const profMeters = spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen;
-        const stripMeters = spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen;
-        const drvQty = spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1;
+        const profMeters = runOv.profileMeters !== undefined ? Number(runOv.profileMeters) : (spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen);
+        const stripMeters = runOv.stripMeters !== undefined ? Number(runOv.stripMeters) : (spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen);
+        const drvQty = runOv.driverQty !== undefined ? Number(runOv.driverQty) : (spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1);
+
+        const drvProd = runOv.driverProduct || spec.ledConfig?.driverProduct;
+        const driverKey = runOv.driverSku || (drvProd ? (drvProd.sku || drvProd.one_to_one_code || drvProd.id) : (spec.ledConfig?.driverSku || 'default-driver'));
+        const overridePricing = spec.ledConfig?.driverPricing?.[driverKey] || {};
 
         const profCost = Number(spec.ledConfig?.profileCost !== undefined ? spec.ledConfig.profileCost : (spec.ledConfig?.profileProduct?.cost_price || 0));
         const profRet = Number(spec.ledConfig?.profileRetail !== undefined ? spec.ledConfig.profileRetail : (spec.ledConfig?.profileProduct?.retail_price || 0));
         const stripCost = Number(spec.ledConfig?.stripCost !== undefined ? spec.ledConfig.stripCost : (spec.ledConfig?.stripProduct?.cost_price || 0));
         const stripRet = Number(spec.ledConfig?.stripRetail !== undefined ? spec.ledConfig.stripRetail : (spec.ledConfig?.stripProduct?.retail_price || 0));
-        const drvCost = Number(spec.ledConfig?.driverCost !== undefined ? spec.ledConfig.driverCost : (spec.ledConfig?.driverProduct?.cost_price || 0));
-        const drvRet = Number(spec.ledConfig?.driverRetail !== undefined ? spec.ledConfig.driverRetail : (spec.ledConfig?.driverProduct?.retail_price || 0));
+        const drvCost = overridePricing.cost !== undefined ? Number(overridePricing.cost) : (runOv.driverCost !== undefined ? Number(runOv.driverCost) : (spec.ledConfig?.driverCost !== undefined ? Number(spec.ledConfig.driverCost) : Number(drvProd?.cost_price || 0)));
+        const drvRet = overridePricing.retail !== undefined ? Number(overridePricing.retail) : (runOv.driverRetail !== undefined ? Number(runOv.driverRetail) : (spec.ledConfig?.driverRetail !== undefined ? Number(spec.ledConfig.driverRetail) : Number(drvProd?.retail_price || 0)));
 
         estimatedCost += (profMeters * profCost) + (stripMeters * stripCost) + (drvQty * drvCost);
         estimatedRetail += (profMeters * profRet) + (stripMeters * stripRet) + (drvQty * drvRet);
@@ -366,12 +375,17 @@ export default function TakeoffSpecEngine({
 
       // Dynamic accessories across all item types (fixtures, linear leds, tracks)
       if (spec && Array.isArray(spec.accessories)) {
-        spec.accessories.forEach(acc => {
-          const accUnits = acc.qtyPerFitting !== undefined 
-            ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-            : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+        const runOv = spec.ledConfig?.runOverrides?.[row.id] || {};
+        spec.accessories.forEach((acc, aIdx) => {
+          const accKey = acc.id || acc.sku || aIdx;
+          const defaultUnits = acc.qtyPerFitting !== undefined 
+            ? Math.max(0, parseInt(acc.qtyPerFitting, 10) || 0) 
+            : (acc.ratio ? Math.max(0, Math.round(Number(acc.ratio))) : 1);
           const mult = itemType === 'fixture' ? qty : 1;
-          const accQty = mult * accUnits;
+          const runUnits = (itemType === 'linear_led' && runOv.accessories && runOv.accessories[accKey] !== undefined)
+            ? Number(runOv.accessories[accKey])
+            : defaultUnits;
+          const accQty = mult * runUnits;
           const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
           const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
           estimatedCost += (accQty * acCost);
@@ -402,12 +416,17 @@ export default function TakeoffSpecEngine({
   const handleAddRow = (defaults = {}, focusAfter = true) => {
     const newId = 'tu-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
     const lastRow = countUpRows[countUpRows.length - 1];
+    const newTag = (defaults.tag || (lastRow ? lastRow.tag : 'DL1')).trim().toUpperCase();
+    const existingSpecType = specifications[newTag]?.itemType;
+    const inferredType = defaults.itemType || existingSpecType || (lastRow ? lastRow.itemType : 'fixture');
     const newRow = {
       id: newId,
-      tag: defaults.tag || (lastRow ? lastRow.tag : 'DL1'),
+      tag: newTag,
+      itemType: inferredType,
+      unit: inferredType === 'fixture' ? 'pcs' : 'm',
       floor: defaults.floor || (lastRow ? lastRow.floor : 'Ground'),
       area: defaults.area || (lastRow ? lastRow.area : ''),
-      qty: defaults.qty || 1,
+      qty: defaults.qty || (inferredType === 'fixture' ? 1 : 3),
       notes: defaults.notes || ''
     };
     setCountUpRows(prev => [...prev, newRow]);
@@ -423,27 +442,50 @@ export default function TakeoffSpecEngine({
 
   const handleAddMultipleRows = (count = 5) => {
     const lastRow = countUpRows[countUpRows.length - 1];
+    const defTag = (lastRow ? lastRow.tag : 'DL1').trim().toUpperCase();
+    const defType = lastRow ? (lastRow.itemType || 'fixture') : 'fixture';
     const newRows = Array.from({ length: count }, (_, i) => ({
       id: 'tu-' + Date.now() + '-' + i + '-' + Math.random().toString(36).substr(2, 4),
-      tag: lastRow ? lastRow.tag : 'DL1',
+      tag: defTag,
+      itemType: defType,
+      unit: defType === 'fixture' ? 'pcs' : 'm',
       floor: lastRow ? lastRow.floor : 'Ground',
       area: '',
-      qty: 1,
+      qty: defType === 'fixture' ? 1 : 3,
       notes: ''
     }));
     setCountUpRows(prev => [...prev, ...newRows]);
   };
 
   const handleUpdateRow = (id, field, value) => {
+    if (field === 'itemType') {
+      const targetRow = countUpRows.find(r => r.id === id);
+      const tag = (targetRow?.tag || '').trim().toUpperCase();
+      // Use handleUpdateTagType to synchronize tag specification and all rows with this tag
+      if (tag) {
+        handleUpdateTagType(tag, value);
+        return;
+      }
+    }
+
     setCountUpRows(prev => prev.map(r => {
       if (r.id !== id) return r;
       let formattedVal = value;
-      if (field === 'tag') formattedVal = (value || '').toUpperCase();
+      let extraUpdates = {};
+
+      if (field === 'tag') {
+        formattedVal = (value || '').toUpperCase();
+        const existingType = specifications[formattedVal]?.itemType;
+        if (existingType) {
+          extraUpdates.itemType = existingType;
+          extraUpdates.unit = existingType === 'fixture' ? 'pcs' : 'm';
+        }
+      }
       if (field === 'qty') {
         const parsed = parseFloat(value);
         formattedVal = isNaN(parsed) ? 1 : Math.max(0.01, parsed);
       }
-      return { ...r, [field]: formattedVal };
+      return { ...r, [field]: formattedVal, ...extraUpdates };
     }));
   };
 
@@ -497,19 +539,47 @@ export default function TakeoffSpecEngine({
       if (parts.length < 2) parts = line.split(',');
       if (parts.length < 2) parts = line.split(';');
 
+      // Auto-detect header row
+      const lineLower = line.toLowerCase();
+      if (idx === 0 && (lineLower.includes('tag') || lineLower.includes('floor') || lineLower.includes('qty'))) {
+        return;
+      }
+
       const tag = (parts[0] || '').trim().toUpperCase();
       const floor = (parts[1] || 'Ground').trim();
       const area = (parts[2] || 'Area ' + (idx + 1)).trim();
-      const qty = parseInt(parts[3] || '1', 10) || 1;
+      const qty = parseFloat(parts[3] || '1') || 1;
       const notes = (parts[4] || '').trim();
+      const rawType = (parts[5] || '').trim().toLowerCase();
+
+      // Determine itemType: explicit column 6, or inferred from tag, notes, or unit
+      let itemType = 'fixture';
+      if (rawType.includes('led') || rawType.includes('linear') || rawType.includes('strip')) {
+        itemType = 'linear_led';
+      } else if (rawType.includes('track')) {
+        itemType = 'track_system';
+      } else if (rawType.includes('fit') || rawType.includes('downlight') || rawType.includes('spot')) {
+        itemType = 'fixture';
+      } else {
+        // Inferred from tag or notes
+        const u = tag.toUpperCase();
+        const n = notes.toLowerCase();
+        if (u.startsWith('LC') || u.startsWith('LJ') || u.startsWith('L-') || u.startsWith('LED') || u.startsWith('LF') || u.startsWith('LIN') || n.includes('strip') || n.includes('extrusion') || n.includes('profile') || n.includes('linear') || n.includes('cove')) {
+          itemType = 'linear_led';
+        } else if (u.startsWith('TRK') || u.startsWith('TRACK') || n.includes('track')) {
+          itemType = 'track_system';
+        }
+      }
 
       if (tag) {
         parsedRows.push({
           id: 'tu-paste-' + Date.now() + '-' + idx,
           tag,
+          itemType,
+          unit: itemType === 'fixture' ? 'pcs' : 'm',
           floor,
           area,
-          qty: Math.max(1, qty),
+          qty: Math.max(0.01, qty),
           notes
         });
       }
@@ -519,7 +589,7 @@ export default function TakeoffSpecEngine({
       setCountUpRows(prev => [...prev, ...parsedRows]);
       alert(`Successfully imported ${parsedRows.length} count-up lines from clipboard!`);
     } else {
-      alert("Could not parse rows. Please ensure columns are: Tag, Floor, Area, Quantity, Notes.");
+      alert("Could not parse rows. Please ensure columns are: Tag, Floor, Area, Quantity, Notes, (optional Type).");
     }
     setPasteRawText('');
     setShowPasteModal(false);
@@ -778,6 +848,37 @@ export default function TakeoffSpecEngine({
           }
         };
       });
+    } else if (catalogTargetMode === 'led_run_driver') {
+      const runId = catalogTargetSubId;
+      if (runId) {
+        setSpecifications(prev => {
+          const current = prev[activeTag] || {};
+          const ledConfig = current.ledConfig || {};
+          const runOverrides = { ...(ledConfig.runOverrides || {}) };
+          const existingRun = runOverrides[runId] || {};
+          runOverrides[runId] = {
+            ...existingRun,
+            driverProduct: product,
+            driverName: product.client_description || product.name,
+            driverSku: product.sku || product.one_to_one_code,
+            driverWattage: parseFloat(product.wattage) || existingRun.driverWattage || 60,
+            driverCost: product.cost_price !== undefined ? Number(product.cost_price) : 0,
+            driverTrade: product.trade_price !== undefined ? Number(product.trade_price) : 0,
+            driverRetail: product.retail_price !== undefined ? Number(product.retail_price) : 0
+          };
+          return {
+            ...prev,
+            [activeTag]: {
+              ...current,
+              itemType: 'linear_led',
+              ledConfig: {
+                ...ledConfig,
+                runOverrides
+              }
+            }
+          };
+        });
+      }
     } else if (catalogTargetMode === 'track_driver') {
       setSpecifications(prev => {
         const current = prev[activeTag] || {};
@@ -937,6 +1038,94 @@ export default function TakeoffSpecEngine({
             ...ledConfig,
             [field]: value
           }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateLedRunOverride = (tag, runId, field, value) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const ledConfig = cur.ledConfig || {};
+      const runOverrides = { ...(ledConfig.runOverrides || {}) };
+      const existing = runOverrides[runId] || {};
+      runOverrides[runId] = {
+        ...existing,
+        [field]: value
+      };
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: 'linear_led',
+          ledConfig: {
+            ...ledConfig,
+            runOverrides
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateLedRunAccessoryQty = (tag, runId, accKey, qty) => {
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const ledConfig = cur.ledConfig || {};
+      const runOverrides = { ...(ledConfig.runOverrides || {}) };
+      const existing = runOverrides[runId] || {};
+      const existingAccs = { ...(existing.accessories || {}) };
+      existingAccs[accKey] = Math.max(0, parseInt(qty, 10) || 0);
+
+      runOverrides[runId] = {
+        ...existing,
+        accessories: existingAccs
+      };
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: 'linear_led',
+          ledConfig: {
+            ...ledConfig,
+            runOverrides
+          }
+        }
+      };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateLedDriverPrice = (tag, driverKey, field, value) => {
+    const valNum = parseFloat(value) || 0;
+    setSpecifications(prev => {
+      const cur = prev[tag] || {};
+      const ledConfig = cur.ledConfig || {};
+      const driverPricing = { ...(ledConfig.driverPricing || {}) };
+      const existingPrice = driverPricing[driverKey] || {};
+      driverPricing[driverKey] = {
+        ...existingPrice,
+        [field]: valNum
+      };
+
+      // Also update master driver pricing if it matches
+      const updatedLedConfig = {
+        ...ledConfig,
+        driverPricing
+      };
+      const masterKey = ledConfig.driverSku || (ledConfig.driverProduct ? (ledConfig.driverProduct.sku || ledConfig.driverProduct.id) : null);
+      if (masterKey === driverKey) {
+        if (field === 'cost') updatedLedConfig.driverCost = valNum;
+        if (field === 'retail') updatedLedConfig.driverRetail = valNum;
+      }
+
+      return {
+        ...prev,
+        [tag]: {
+          ...cur,
+          itemType: 'linear_led',
+          ledConfig: updatedLedConfig
         }
       };
     });
@@ -1173,132 +1362,164 @@ export default function TakeoffSpecEngine({
       const len = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
       const cleanLen = Math.round(len * 100) / 100;
       const ledCfg = spec?.ledConfig || {};
-      const profMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
-      const stripMeters = ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen;
-      const drvQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
+      const runOv = ledCfg.runOverrides?.[row.id] || {};
 
-      // 1. Aluminium Profile / Extrusion
-      const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (ledCfg.profileProduct?.cost_price || 120);
-      const profileRetail = ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (ledCfg.profileProduct?.retail_price || 220);
+      // 1. Aluminium Profile / Extrusion (per-run override or master)
+      const profMeters = runOv.profileMeters !== undefined ? Number(runOv.profileMeters) : (ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen);
+      const profProd = runOv.profileProduct || ledCfg.profileProduct;
+      const profileCost = runOv.profileCost !== undefined ? Number(runOv.profileCost) : (ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : (profProd?.cost_price || 120));
+      const profileRetail = runOv.profileRetail !== undefined ? Number(runOv.profileRetail) : (ledCfg.profileRetail !== undefined ? Number(ledCfg.profileRetail) : (profProd?.retail_price || 220));
+      const profileSku = runOv.profileSku || ledCfg.profileSku || profProd?.sku || 'LED-PROFILE';
+      const profileName = runOv.profileName || ledCfg.profileName || profProd?.client_description || profProd?.name || 'Aluminium LED Profile';
+
       items.push({
         id: 'I-' + Date.now() + '-' + idSuffix + '-prof-' + Math.random().toString(36).substr(2, 4),
         qty: profMeters,
         type: tag,
         itemType: 'Hardware',
-        oneOneCode: ledCfg.profileProduct?.one_to_one_code || '',
-        code: ledCfg.profileSku || 'LED-PROFILE',
-        description: `${ledCfg.profileName || 'Aluminium LED Profile'} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+        oneOneCode: profProd?.one_to_one_code || '',
+        code: profileSku,
+        description: `${profileName} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: '—',
-        brand: ledCfg.profileProduct?.brand || '',
-        supplier: ledCfg.profileProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        brand: profProd?.brand || '',
+        supplier: profProd?.supplier || orderSupplier || 'Molecule Dist.',
         unitCost: profileCost,
         unitTrade: profileRetail * 0.8,
         unitRetail: profileRetail,
         selection: 'Profile',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.profileProduct?.image_url || '',
-        stock_available: ledCfg.profileProduct?.stock_available ?? ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
-        stockAvailable: ledCfg.profileProduct?.stock_available ?? ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
-        stock_on_hand: ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0,
-        stockOnHand: ledCfg.profileProduct?.stock_on_hand ?? ledCfg.profileProduct?.stock_level ?? 0
+        image_url: profProd?.image_url || '',
+        stock_available: profProd?.stock_available ?? profProd?.stock_on_hand ?? profProd?.stock_level ?? 0,
+        stockAvailable: profProd?.stock_available ?? profProd?.stock_on_hand ?? profProd?.stock_level ?? 0,
+        stock_on_hand: profProd?.stock_on_hand ?? profProd?.stock_level ?? 0,
+        stockOnHand: profProd?.stock_on_hand ?? profProd?.stock_level ?? 0
       });
 
-      // 2. LED Strip Tape
-      const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (ledCfg.stripProduct?.cost_price || 95);
-      const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (ledCfg.stripProduct?.retail_price || 185);
+      // 2. LED Strip Tape (per-run override or master)
+      const stripMeters = runOv.stripMeters !== undefined ? Number(runOv.stripMeters) : (ledCfg.stripMeters !== undefined ? Number(ledCfg.stripMeters) : cleanLen);
+      const stripProd = runOv.stripProduct || ledCfg.stripProduct;
+      const stripCost = runOv.stripCost !== undefined ? Number(runOv.stripCost) : (ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : (stripProd?.cost_price || 95));
+      const stripRetail = runOv.stripRetail !== undefined ? Number(runOv.stripRetail) : (ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : (stripProd?.retail_price || 185));
+      const stripSku = runOv.stripSku || ledCfg.stripSku || stripProd?.sku || 'LED-STRIP-24V';
+      const stripName = runOv.stripName || ledCfg.stripName || stripProd?.client_description || stripProd?.name || 'LED Strip Tape';
+
       items.push({
         id: 'I-' + Date.now() + '-' + idSuffix + '-strip-' + Math.random().toString(36).substr(2, 4),
         qty: stripMeters,
         type: tag,
         itemType: 'Hardware',
-        oneOneCode: ledCfg.stripProduct?.one_to_one_code || '',
-        code: ledCfg.stripSku || 'LED-STRIP-24V',
-        description: `${ledCfg.stripName || 'LED Strip Tape'} — ${stripMeters}m`,
+        oneOneCode: stripProd?.one_to_one_code || '',
+        code: stripSku,
+        description: `${stripName} — ${stripMeters}m`,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
-        dimming: ledCfg.stripProduct?.dimming_protocol || 'Phase Cut / 24V',
-        brand: ledCfg.stripProduct?.brand || '',
-        supplier: ledCfg.stripProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        dimming: stripProd?.dimming_protocol || 'Phase Cut / 24V',
+        brand: stripProd?.brand || '',
+        supplier: stripProd?.supplier || orderSupplier || 'Molecule Dist.',
         unitCost: stripCost,
         unitTrade: stripRetail * 0.8,
         unitRetail: stripRetail,
         selection: 'Strip',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.stripProduct?.image_url || '',
-        stock_available: ledCfg.stripProduct?.stock_available ?? ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
-        stockAvailable: ledCfg.stripProduct?.stock_available ?? ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
-        stock_on_hand: ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0,
-        stockOnHand: ledCfg.stripProduct?.stock_on_hand ?? ledCfg.stripProduct?.stock_level ?? 0
+        image_url: stripProd?.image_url || '',
+        stock_available: stripProd?.stock_available ?? stripProd?.stock_on_hand ?? stripProd?.stock_level ?? 0,
+        stockAvailable: stripProd?.stock_available ?? stripProd?.stock_on_hand ?? stripProd?.stock_level ?? 0,
+        stock_on_hand: stripProd?.stock_on_hand ?? stripProd?.stock_level ?? 0,
+        stockOnHand: stripProd?.stock_on_hand ?? stripProd?.stock_level ?? 0
       });
 
-      // 3. LED Driver / Power Supply
-      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (ledCfg.driverProduct?.cost_price || 220);
-      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (ledCfg.driverProduct?.retail_price || 395);
+      // 3. LED Driver / Power Supply (per-run tailored driver or master driver)
+      const drvQty = runOv.driverQty !== undefined ? Number(runOv.driverQty) : (ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1);
+      const drvProd = runOv.driverProduct || ledCfg.driverProduct;
+      const driverSku = runOv.driverSku || ledCfg.driverSku || drvProd?.sku || 'LED-DRIVER-24V';
+      const driverKey = runOv.driverSku || (drvProd ? (drvProd.sku || drvProd.one_to_one_code || drvProd.id) : (ledCfg.driverSku || 'default-driver'));
+      const overridePricing = ledCfg.driverPricing?.[driverKey] || {};
+
+      const driverCost = overridePricing.cost !== undefined
+        ? Number(overridePricing.cost)
+        : (runOv.driverCost !== undefined 
+            ? Number(runOv.driverCost) 
+            : (ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : (drvProd?.cost_price || 220)));
+      const driverRetail = overridePricing.retail !== undefined
+        ? Number(overridePricing.retail)
+        : (runOv.driverRetail !== undefined 
+            ? Number(runOv.driverRetail) 
+            : (ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : (drvProd?.retail_price || 395)));
+      const driverName = runOv.driverName || ledCfg.driverName || drvProd?.client_description || drvProd?.name || '24V Constant Voltage Driver';
+
       items.push({
         id: 'I-' + Date.now() + '-' + idSuffix + '-drv-' + Math.random().toString(36).substr(2, 4),
         qty: drvQty,
         type: tag,
         itemType: 'Hardware',
-        oneOneCode: ledCfg.driverProduct?.one_to_one_code || '',
-        code: ledCfg.driverSku || 'LED-DRIVER-24V',
-        description: `${ledCfg.driverName || '24V Constant Voltage Driver'}`,
+        oneOneCode: drvProd?.one_to_one_code || '',
+        code: driverSku,
+        description: `${driverName} (${cleanLen}m run)`,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
-        dimming: ledCfg.driverProduct?.dimming_protocol || 'Phase Cut',
-        brand: ledCfg.driverProduct?.brand || '',
-        supplier: ledCfg.driverProduct?.supplier || orderSupplier || 'Molecule Dist.',
+        dimming: drvProd?.dimming_protocol || 'Phase Cut',
+        brand: drvProd?.brand || '',
+        supplier: drvProd?.supplier || orderSupplier || 'Molecule Dist.',
         unitCost: driverCost,
         unitTrade: driverRetail * 0.8,
         unitRetail: driverRetail,
         selection: 'Driver',
         stockStatus: 'Stock',
         eta: '2 weeks',
-        image_url: ledCfg.driverProduct?.image_url || '',
-        stock_available: ledCfg.driverProduct?.stock_available ?? ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
-        stockAvailable: ledCfg.driverProduct?.stock_available ?? ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
-        stock_on_hand: ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0,
-        stockOnHand: ledCfg.driverProduct?.stock_on_hand ?? ledCfg.driverProduct?.stock_level ?? 0
+        image_url: drvProd?.image_url || '',
+        stock_available: drvProd?.stock_available ?? drvProd?.stock_on_hand ?? drvProd?.stock_level ?? 0,
+        stockAvailable: drvProd?.stock_available ?? drvProd?.stock_on_hand ?? drvProd?.stock_level ?? 0,
+        stock_on_hand: drvProd?.stock_on_hand ?? drvProd?.stock_level ?? 0,
+        stockOnHand: drvProd?.stock_on_hand ?? drvProd?.stock_level ?? 0
       });
 
-      // 4. Dynamic Accessories / End Caps
+      // 4. Dynamic Accessories (with per-run tailored quantities)
       if (Array.isArray(spec?.accessories) && spec.accessories.length > 0) {
         spec.accessories.forEach((acc, accIdx) => {
-          const accUnits = acc.qtyPerFitting !== undefined 
-            ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-            : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
-          const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
-          const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
-          items.push({
-            id: 'I-' + Date.now() + '-' + idSuffix + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
-            qty: accUnits,
-            type: tag,
-            itemType: 'Hardware',
-            oneOneCode: acc.one_to_one_code || '',
-            code: acc.sku || 'LED-ACC',
-            description: acc.name || acc.client_description || 'Linear LED Accessory',
-            floor: row.floor || 'Ground',
-            area: row.area || 'General Area',
-            dimming: '—',
-            brand: acc.brand || '',
-            supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
-            unitCost: accCost,
-            unitTrade: accRetail * 0.8,
-            unitRetail: accRetail,
-            selection: 'Accessory',
-            stockStatus: 'Stock',
-            eta: '2 weeks',
-            image_url: acc.image_url || '',
-            stock_available: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
-            stockAvailable: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
-            stock_on_hand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0,
-            stockOnHand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0
-          });
+          const accKey = acc.id || acc.sku || accIdx;
+          const defaultUnits = acc.qtyPerFitting !== undefined 
+            ? Math.max(0, parseInt(acc.qtyPerFitting, 10) || 0) 
+            : (acc.ratio ? Math.max(0, Math.round(Number(acc.ratio))) : 1);
+          const runAccUnits = runOv.accessories && runOv.accessories[accKey] !== undefined
+            ? Number(runOv.accessories[accKey])
+            : defaultUnits;
+
+          if (runAccUnits > 0) {
+            const accCost = acc.customCost !== undefined ? Number(acc.customCost) : (acc.cost_price || 0);
+            const accRetail = acc.customRetail !== undefined ? Number(acc.customRetail) : (acc.retail_price || 0);
+            items.push({
+              id: 'I-' + Date.now() + '-' + idSuffix + '-acc-' + accIdx + '-' + Math.random().toString(36).substr(2, 4),
+              qty: runAccUnits,
+              type: tag,
+              itemType: 'Hardware',
+              oneOneCode: acc.one_to_one_code || '',
+              code: acc.sku || 'LED-ACC',
+              description: `${acc.name || acc.client_description || 'Linear LED Accessory'} (${cleanLen}m run)`,
+              floor: row.floor || 'Ground',
+              area: row.area || 'General Area',
+              dimming: '—',
+              brand: acc.brand || '',
+              supplier: acc.supplier || orderSupplier || 'Molecule Dist.',
+              unitCost: accCost,
+              unitTrade: accRetail * 0.8,
+              unitRetail: accRetail,
+              selection: 'Accessory',
+              stockStatus: 'Stock',
+              eta: '2 weeks',
+              image_url: acc.image_url || '',
+              stock_available: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+              stockAvailable: acc.stock_available ?? acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_available ?? acc.product?.stock_on_hand ?? 0,
+              stock_on_hand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0,
+              stockOnHand: acc.stock_on_hand ?? acc.stock_level ?? acc.product?.stock_on_hand ?? 0
+            });
+          }
         });
       } else {
+        // Fallback default hardware kit if no accessories selected yet
         items.push({
           id: 'I-' + Date.now() + '-' + idSuffix + '-acc-kit-' + Math.random().toString(36).substr(2, 4),
           qty: 1,
@@ -1790,17 +2011,22 @@ export default function TakeoffSpecEngine({
         matchingAreas.add(areaKey);
 
         if (spec && itemType === 'linear_led') {
+          const runOv = spec.ledConfig?.runOverrides?.[row.id] || {};
           const rowLen = Number(row.lengthMeters) || (row.unit === 'm' ? Number(row.qty) : (Number(row.qty) || 3));
-          const profMeters = spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen;
-          const stripMeters = spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen;
-          const drvQty = spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1;
+          const profMeters = runOv.profileMeters !== undefined ? Number(runOv.profileMeters) : (spec.ledConfig?.profileMeters !== undefined ? Number(spec.ledConfig.profileMeters) : rowLen);
+          const stripMeters = runOv.stripMeters !== undefined ? Number(runOv.stripMeters) : (spec.ledConfig?.stripMeters !== undefined ? Number(spec.ledConfig.stripMeters) : rowLen);
+          const drvQty = runOv.driverQty !== undefined ? Number(runOv.driverQty) : (spec.ledConfig?.driverQty !== undefined ? Number(spec.ledConfig.driverQty) : 1);
+
+          const drvProd = runOv.driverProduct || spec.ledConfig?.driverProduct;
+          const driverKey = runOv.driverSku || (drvProd ? (drvProd.sku || drvProd.one_to_one_code || drvProd.id) : (spec.ledConfig?.driverSku || 'default-driver'));
+          const overridePricing = spec.ledConfig?.driverPricing?.[driverKey] || {};
 
           const profCost = Number(spec.ledConfig?.profileCost !== undefined ? spec.ledConfig.profileCost : (spec.ledConfig?.profileProduct?.cost_price || 0));
           const profRet = Number(spec.ledConfig?.profileRetail !== undefined ? spec.ledConfig.profileRetail : (spec.ledConfig?.profileProduct?.retail_price || 0));
           const stripCost = Number(spec.ledConfig?.stripCost !== undefined ? spec.ledConfig.stripCost : (spec.ledConfig?.stripProduct?.cost_price || 0));
           const stripRet = Number(spec.ledConfig?.stripRetail !== undefined ? spec.ledConfig.stripRetail : (spec.ledConfig?.stripProduct?.retail_price || 0));
-          const drvCost = Number(spec.ledConfig?.driverCost !== undefined ? spec.ledConfig.driverCost : (spec.ledConfig?.driverProduct?.cost_price || 0));
-          const drvRet = Number(spec.ledConfig?.driverRetail !== undefined ? spec.ledConfig.driverRetail : (spec.ledConfig?.driverProduct?.retail_price || 0));
+          const drvCost = overridePricing.cost !== undefined ? Number(overridePricing.cost) : (runOv.driverCost !== undefined ? Number(runOv.driverCost) : (spec.ledConfig?.driverCost !== undefined ? Number(spec.ledConfig.driverCost) : Number(drvProd?.cost_price || 0)));
+          const drvRet = overridePricing.retail !== undefined ? Number(overridePricing.retail) : (runOv.driverRetail !== undefined ? Number(runOv.driverRetail) : (spec.ledConfig?.driverRetail !== undefined ? Number(spec.ledConfig.driverRetail) : Number(drvProd?.retail_price || 0)));
 
           cost += (profMeters * profCost) + (stripMeters * stripCost) + (drvQty * drvCost);
           retail += (profMeters * profRet) + (stripMeters * stripRet) + (drvQty * drvRet);
@@ -1838,12 +2064,17 @@ export default function TakeoffSpecEngine({
         }
 
         if (spec && Array.isArray(spec.accessories)) {
-          spec.accessories.forEach(acc => {
-            const accUnits = acc.qtyPerFitting !== undefined 
-              ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) 
-              : (acc.ratio ? Math.max(1, Math.round(Number(acc.ratio))) : 1);
+          const runOv = spec.ledConfig?.runOverrides?.[row.id] || {};
+          spec.accessories.forEach((acc, aIdx) => {
+            const accKey = acc.id || acc.sku || aIdx;
+            const defaultUnits = acc.qtyPerFitting !== undefined 
+              ? Math.max(0, parseInt(acc.qtyPerFitting, 10) || 0) 
+              : (acc.ratio ? Math.max(0, Math.round(Number(acc.ratio))) : 1);
             const mult = itemType === 'fixture' ? qty : 1;
-            const accQty = mult * accUnits;
+            const runUnits = (itemType === 'linear_led' && runOv.accessories && runOv.accessories[accKey] !== undefined)
+              ? Number(runOv.accessories[accKey])
+              : defaultUnits;
+            const accQty = mult * runUnits;
             const acCost = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
             const acRet = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
             cost += (accQty * acCost);
@@ -2186,10 +2417,11 @@ export default function TakeoffSpecEngine({
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
                   <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
-                  <th style={{ padding: '8px 10px', width: '130px' }}>Plan Tag / Code</th>
-                  <th style={{ padding: '8px 10px', width: '140px' }}>Floor Level</th>
-                  <th style={{ padding: '8px 10px', width: '220px' }}>Room / Area</th>
-                  <th style={{ padding: '8px 10px', width: '105px', textAlign: 'center' }}>Qty / Length</th>
+                  <th style={{ padding: '8px 10px', width: '120px' }}>Plan Tag / Code</th>
+                  <th style={{ padding: '8px 10px', width: '135px' }}>Type</th>
+                  <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
+                  <th style={{ padding: '8px 10px', width: '210px' }}>Room / Area</th>
+                  <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
                   <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
                   <th style={{ padding: '8px 10px', width: '180px' }}>Catalog Mapping</th>
                   <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
@@ -2198,7 +2430,7 @@ export default function TakeoffSpecEngine({
               <tbody>
                 {filteredCountUpRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       No count-up lines recorded. Click <strong>+ Add Row</strong>, <strong>📐 Import CAD Plan (.dwg)</strong>, or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
                     </td>
                   </tr>
@@ -2206,7 +2438,8 @@ export default function TakeoffSpecEngine({
                   filteredCountUpRows.map((row, index) => {
                     const tag = (row.tag || '').trim().toUpperCase();
                     const spec = specifications[tag];
-                    const isConfigured = Boolean(spec?.product);
+                    const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+                    const currentType = spec?.itemType || row.itemType || 'fixture';
 
                     return (
                       <tr 
@@ -2251,6 +2484,39 @@ export default function TakeoffSpecEngine({
                             onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
                             onBlur={e => e.target.style.border = '1px solid transparent'}
                           />
+                        </td>
+
+                        {/* TYPE SELECTOR (Fitting, Linear LED, Track) */}
+                        <td style={{ padding: '4px 6px' }}>
+                          <select
+                            value={currentType}
+                            onChange={e => handleUpdateRow(row.id, 'itemType', e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              padding: '3px 6px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border)',
+                              background: currentType === 'linear_led' 
+                                ? 'rgba(59, 130, 246, 0.12)' 
+                                : currentType === 'track_system' 
+                                  ? 'rgba(168, 85, 247, 0.12)' 
+                                  : 'var(--bg-secondary)',
+                              color: currentType === 'linear_led' 
+                                ? 'var(--text-info)' 
+                                : currentType === 'track_system' 
+                                  ? '#a855f7' 
+                                  : 'var(--text-primary)',
+                              cursor: 'pointer',
+                              outline: 'none'
+                            }}
+                            title="Classify fixture category (Fitting, Linear LED, or Track System)"
+                          >
+                            <option value="fixture">💡 Fitting</option>
+                            <option value="linear_led">〰️ Linear LED</option>
+                            <option value="track_system">🛤️ Track</option>
+                          </select>
                         </td>
 
                         {/* FLOOR INPUT */}
@@ -2387,16 +2653,18 @@ export default function TakeoffSpecEngine({
                                 onClick={() => setActiveTab('spec')}
                                 title="Mapped! Click to view/edit specification"
                               >
-                                <CheckCircle size={12} /> {spec.product.sku || 'Mapped'}
+                                <CheckCircle size={12} /> {spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || 'Mapped'}
                               </span>
-                              <button 
-                                className="btn btn-ghost btn-xs"
-                                onClick={() => handleInspectItem(spec.product, tag)}
-                                title="View full fitting specification sheet"
-                                style={{ padding: '2px 4px', color: 'var(--text-info)' }}
-                              >
-                                <Eye size={12} />
-                              </button>
+                              {(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct) && (
+                                <button 
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() => handleInspectItem(spec.product || spec.ledConfig?.profileProduct || spec.trackConfig?.railProduct, tag)}
+                                  title="View full specification sheet"
+                                  style={{ padding: '2px 4px', color: 'var(--text-info)' }}
+                                >
+                                  <Eye size={12} />
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <span 
@@ -2412,10 +2680,18 @@ export default function TakeoffSpecEngine({
                                 cursor: 'pointer',
                                 fontWeight: 500
                               }}
-                              onClick={() => openCatalogPicker(tag, 'product')}
-                              title="Click to select catalog product for this tag"
+                              onClick={() => {
+                                if (currentType === 'linear_led') {
+                                  openCatalogPicker(tag, 'led_profile', 'Linear');
+                                } else if (currentType === 'track_system') {
+                                  openCatalogPicker(tag, 'track_rail', 'Track');
+                                } else {
+                                  openCatalogPicker(tag, 'product');
+                                }
+                              }}
+                              title={currentType === 'linear_led' ? 'Assign LED Profile' : currentType === 'track_system' ? 'Assign Track Rail' : 'Assign Product'}
                             >
-                              <Plus size={11} /> Assign Product
+                              <Plus size={11} /> {currentType === 'linear_led' ? 'Assign Profile' : currentType === 'track_system' ? 'Assign Rail' : 'Assign Product'}
                             </span>
                           )}
                         </td>
@@ -3123,9 +3399,11 @@ export default function TakeoffSpecEngine({
                       const tag = tagInfo.tag;
                       const spec = specifications[tag];
                       const ledCfg = spec?.ledConfig || {};
+                      const runOverrides = ledCfg.runOverrides || {};
                       const accessories = spec?.accessories || [];
                       const meters = tagInfo.totalMeters || tagInfo.totalQty || 3;
                       const cleanLen = Math.round(meters * 100) / 100;
+                      const runs = tagInfo.runs || [];
 
                       const profileMeters = ledCfg.profileMeters !== undefined ? Number(ledCfg.profileMeters) : cleanLen;
                       const profileCost = ledCfg.profileCost !== undefined ? Number(ledCfg.profileCost) : Number(ledCfg.profileProduct?.cost_price || 0);
@@ -3135,23 +3413,89 @@ export default function TakeoffSpecEngine({
                       const stripCost = ledCfg.stripCost !== undefined ? Number(ledCfg.stripCost) : Number(ledCfg.stripProduct?.cost_price || 0);
                       const stripRetail = ledCfg.stripRetail !== undefined ? Number(ledCfg.stripRetail) : Number(ledCfg.stripProduct?.retail_price || 0);
 
-                      const driverQty = ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1;
-                      const driverCost = ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : Number(ledCfg.driverProduct?.cost_price || 0);
-                      const driverRetail = ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : Number(ledCfg.driverProduct?.retail_price || 0);
+                      // Distinct drivers across all runs of this LED code
+                      const driverMap = new Map();
+                      runs.forEach(run => {
+                        const runOv = runOverrides[run.id] || {};
+                        const drvProd = runOv.driverProduct || ledCfg.driverProduct;
+                        const runDrvQty = runOv.driverQty !== undefined ? Number(runOv.driverQty) : 1;
+                        const key = runOv.driverSku || (drvProd ? (drvProd.sku || drvProd.one_to_one_code || drvProd.id) : (ledCfg.driverSku || 'default-driver'));
+                        
+                        if (!driverMap.has(key)) {
+                          const overridePricing = ledCfg.driverPricing?.[key] || {};
+                          const baseCost = overridePricing.cost !== undefined
+                            ? Number(overridePricing.cost)
+                            : (runOv.driverCost !== undefined 
+                                ? Number(runOv.driverCost) 
+                                : (drvProd?.cost_price !== undefined ? Number(drvProd.cost_price) : (ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : 180)));
+                          const baseRetail = overridePricing.retail !== undefined
+                            ? Number(overridePricing.retail)
+                            : (runOv.driverRetail !== undefined 
+                                ? Number(runOv.driverRetail) 
+                                : (drvProd?.retail_price !== undefined ? Number(drvProd.retail_price) : (ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : 350)));
 
-                      // Accessories totals
-                      let accsCost = 0;
-                      let accsRetail = 0;
-                      accessories.forEach(acc => {
-                        const units = acc.qtyPerFitting !== undefined ? Math.max(1, parseInt(acc.qtyPerFitting, 10) || 1) : 1;
-                        const c = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
-                        const r = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
-                        accsCost += (units * c);
-                        accsRetail += (units * r);
+                          driverMap.set(key, {
+                            key,
+                            product: drvProd,
+                            sku: runOv.driverSku || (drvProd ? drvProd.sku : null) || ledCfg.driverSku || key,
+                            name: runOv.driverName || (drvProd ? (drvProd.client_description || drvProd.name) : null) || ledCfg.driverName || '24V Constant Voltage Driver',
+                            wattage: runOv.driverWattage || drvProd?.wattage || ledCfg.driverWattage,
+                            totalQty: 0,
+                            cost: baseCost,
+                            retail: baseRetail
+                          });
+                        }
+                        const entry = driverMap.get(key);
+                        entry.totalQty += runDrvQty;
                       });
 
-                      const totalRunCost = Math.round((profileMeters * profileCost) + (stripMeters * stripCost) + (driverQty * driverCost) + accsCost);
-                      const totalRunRetail = Math.round((profileMeters * profileRetail) + (stripMeters * stripRetail) + (driverQty * driverRetail) + accsRetail);
+                      // If no runs or no overrides, ensure default master driver exists in driverMap if selected
+                      if (driverMap.size === 0 && ledCfg.driverProduct) {
+                        const masterKey = ledCfg.driverSku || ledCfg.driverProduct.sku || 'default-driver';
+                        driverMap.set(masterKey, {
+                          key: masterKey,
+                          product: ledCfg.driverProduct,
+                          sku: masterKey,
+                          name: ledCfg.driverName || ledCfg.driverProduct.client_description || ledCfg.driverProduct.name,
+                          wattage: ledCfg.driverWattage || ledCfg.driverProduct.wattage,
+                          totalQty: ledCfg.driverQty !== undefined ? Number(ledCfg.driverQty) : 1,
+                          cost: ledCfg.driverCost !== undefined ? Number(ledCfg.driverCost) : Number(ledCfg.driverProduct.cost_price || 180),
+                          retail: ledCfg.driverRetail !== undefined ? Number(ledCfg.driverRetail) : Number(ledCfg.driverProduct.retail_price || 350)
+                        });
+                      }
+
+                      const distinctDrivers = Array.from(driverMap.values());
+                      const totalDriversCost = distinctDrivers.reduce((sum, d) => sum + (d.totalQty * d.cost), 0);
+                      const totalDriversRetail = distinctDrivers.reduce((sum, d) => sum + (d.totalQty * d.retail), 0);
+
+                      // Accessories totals (aggregating across runs, factoring in per-run overrides if set)
+                      let accsCost = 0;
+                      let accsRetail = 0;
+                      accessories.forEach((acc, aIdx) => {
+                        const accKey = acc.id || acc.sku || aIdx;
+                        const defaultUnits = acc.qtyPerFitting !== undefined ? Math.max(0, parseInt(acc.qtyPerFitting, 10) || 0) : 1;
+                        const c = acc.customCost !== undefined ? Number(acc.customCost) : Number(acc.cost_price || 0);
+                        const r = acc.customRetail !== undefined ? Number(acc.customRetail) : Number(acc.retail_price || 0);
+                        
+                        let totalAccQty = 0;
+                        if (runs.length > 0) {
+                          runs.forEach(run => {
+                            const runOv = runOverrides[run.id] || {};
+                            const runQty = runOv.accessories && runOv.accessories[accKey] !== undefined
+                              ? Number(runOv.accessories[accKey])
+                              : defaultUnits;
+                            totalAccQty += runQty;
+                          });
+                        } else {
+                          totalAccQty = defaultUnits;
+                        }
+
+                        accsCost += (totalAccQty * c);
+                        accsRetail += (totalAccQty * r);
+                      });
+
+                      const totalRunCost = Math.round((profileMeters * profileCost) + (stripMeters * stripCost) + totalDriversCost + accsCost);
+                      const totalRunRetail = Math.round((profileMeters * profileRetail) + (stripMeters * stripRetail) + totalDriversRetail + accsRetail);
                       const marginPct = totalRunRetail > 0 ? Math.round(((totalRunRetail - totalRunCost) / totalRunRetail) * 100) : 0;
 
                       return (
@@ -3199,6 +3543,26 @@ export default function TakeoffSpecEngine({
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-xs"
+                                onClick={() => setActiveLedRunConfigTag(tag)}
+                                style={{
+                                  background: 'rgba(59, 130, 246, 0.15)',
+                                  color: 'var(--text-info)',
+                                  borderColor: 'rgba(59, 130, 246, 0.3)',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '2px 8px'
+                                }}
+                                title="Configure individual room run lengths, drivers, mounting clips and hardware"
+                              >
+                                <Zap size={11} /> Configure Runs ({tagInfo.runs.length})
+                              </button>
+
                               <select
                                 value="linear_led"
                                 onChange={(e) => handleUpdateTagType(tag, e.target.value)}
@@ -3598,7 +3962,7 @@ export default function TakeoffSpecEngine({
                               )}
                             </div>
 
-                            {/* COMPONENT 3: 24V DRIVER */}
+                            {/* COMPONENT 3: 24V DRIVER(S) */}
                             <div style={{ 
                               background: 'var(--bg-secondary)', 
                               border: '1px solid var(--border)', 
@@ -3610,174 +3974,152 @@ export default function TakeoffSpecEngine({
                             }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                  3. 24V Constant Voltage Driver
+                                  3. 24V Constant Voltage Drivers ({distinctDrivers.length})
                                 </span>
-                                {!ledCfg.driverProduct && (
-                                  <button 
-                                    className="btn btn-primary btn-xs"
-                                    onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
-                                    style={{ fontSize: '11px' }}
-                                  >
-                                    + Select Driver
-                                  </button>
-                                )}
+                                <button 
+                                  className="btn btn-primary btn-xs"
+                                  onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  {distinctDrivers.length > 0 ? '+ Add / Change Master Driver' : '+ Select Driver'}
+                                </button>
                               </div>
 
-                              {ledCfg.driverProduct ? (
-                                <>
-                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                    <div 
-                                      style={{ 
-                                        width: '56px', 
-                                        height: '56px', 
-                                        borderRadius: '6px', 
-                                        background: 'var(--bg-primary)', 
-                                        border: '1px solid var(--border)', 
-                                        overflow: 'hidden', 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center', 
-                                        flexShrink: 0,
-                                        cursor: 'pointer'
-                                      }}
-                                      onClick={() => handleInspectItem(ledCfg.driverProduct, tag)}
-                                      title="Click to view full specs"
-                                    >
-                                      {ledCfg.driverProduct.image_url ? (
-                                        <img 
-                                          src={ledCfg.driverProduct.image_url.startsWith('http') ? ledCfg.driverProduct.image_url : `${API_BASE}${ledCfg.driverProduct.image_url}`} 
-                                          alt="driver" 
-                                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
-                                        />
-                                      ) : (
-                                        <span style={{ fontSize: '18px', opacity: 0.5 }}>⚡</span>
-                                      )}
-                                    </div>
-
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12.5px' }}>
-                                          {ledCfg.driverSku || ledCfg.driverProduct.sku || ledCfg.driverProduct.one_to_one_code}
-                                        </span>
-                                        {ledCfg.driverProduct.brand && (
-                                          <span style={{ fontSize: '10px', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
-                                            {ledCfg.driverProduct.brand}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {ledCfg.driverName || ledCfg.driverProduct.client_description || ledCfg.driverProduct.name}
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
-                                        {(ledCfg.driverProduct.wattage || ledCfg.driverWattage) && <span>⚡ {ledCfg.driverProduct.wattage || ledCfg.driverWattage}W</span>}
-                                        <span>🔌 24V DC</span>
-                                        {(ledCfg.driverProduct.dimming_protocol || ledCfg.driverProduct.dimmable) && (
-                                          <span>🎛️ {ledCfg.driverProduct.dimming_protocol || (ledCfg.driverProduct.dimmable === 'Yes' ? 'Dimmable' : 'Non-Dim')}</span>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                                      {(() => {
-                                        const avail = ledCfg.driverProduct.stock_available !== undefined && ledCfg.driverProduct.stock_available !== null
-                                          ? Number(ledCfg.driverProduct.stock_available)
-                                          : (ledCfg.driverProduct.stock_on_hand !== undefined && ledCfg.driverProduct.stock_on_hand !== null
-                                              ? Number(ledCfg.driverProduct.stock_on_hand)
-                                              : (ledCfg.driverProduct.stock_level !== undefined ? Number(ledCfg.driverProduct.stock_level) : 0));
-                                        return (
-                                          <span 
-                                            title={`Available Stock: ${avail}`}
+                              {distinctDrivers.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  {distinctDrivers.map((drv) => {
+                                    return (
+                                      <div 
+                                        key={drv.key}
+                                        style={{
+                                          background: 'var(--bg-primary)',
+                                          border: '1px solid var(--border)',
+                                          borderRadius: '6px',
+                                          padding: '10px 12px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '8px'
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                          <div 
                                             style={{ 
-                                              fontSize: '10.5px', 
-                                              fontWeight: 700, 
-                                              padding: '2px 7px', 
-                                              borderRadius: '4px', 
-                                              background: avail > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)', 
-                                              color: avail > 0 ? 'var(--text-success)' : 'var(--text-warning)',
-                                              whiteSpace: 'nowrap'
+                                              width: '46px', 
+                                              height: '46px', 
+                                              borderRadius: '6px', 
+                                              background: 'var(--bg-secondary)', 
+                                              border: '1px solid var(--border)', 
+                                              overflow: 'hidden', 
+                                              display: 'flex', 
+                                              alignItems: 'center', 
+                                              justifyContent: 'center', 
+                                              flexShrink: 0,
+                                              cursor: drv.product ? 'pointer' : 'default'
                                             }}
+                                            onClick={() => drv.product && handleInspectItem(drv.product, tag)}
+                                            title="Click to view specs"
                                           >
-                                            {avail} Avail
-                                          </span>
-                                        );
-                                      })()}
-                                      <button 
-                                        className="btn btn-secondary btn-xs"
-                                        onClick={() => openCatalogPicker(tag, 'led_driver', 'Accessory')}
-                                        style={{ fontSize: '11px', width: '100%' }}
-                                      >
-                                        Change
-                                      </button>
-                                      <button 
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => handleInspectItem(ledCfg.driverProduct, tag)}
-                                        style={{ fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
-                                      >
-                                        <Eye size={11} /> Specs
-                                      </button>
-                                      <button 
-                                        className="btn btn-ghost btn-xs"
-                                        onClick={() => handleClearLedComponent(tag, 'driver')}
-                                        style={{ color: 'var(--text-danger)', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}
-                                        title="Clear driver"
-                                      >
-                                        <Trash2 size={11} /> Clear
-                                      </button>
-                                    </div>
-                                  </div>
+                                            {drv.product?.image_url ? (
+                                              <img 
+                                                src={drv.product.image_url.startsWith('http') ? drv.product.image_url : `${API_BASE}${drv.product.image_url}`} 
+                                                alt="driver" 
+                                                style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                              />
+                                            ) : (
+                                              <span style={{ fontSize: '16px', opacity: 0.6 }}>⚡</span>
+                                            )}
+                                          </div>
 
-                                  {/* EDITABLE DRIVER QTY & PRICING BAR */}
-                                  <div style={{ 
-                                    borderTop: '1px solid var(--border)', 
-                                    paddingTop: '8px', 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'space-between',
-                                    flexWrap: 'wrap',
-                                    gap: '8px'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Driver Qty:</span>
-                                        <input 
-                                          type="number" 
-                                          min="1" 
-                                          value={driverQty} 
-                                          onChange={e => handleUpdateLedConfig(tag, 'driverQty', Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                          style={{ width: '45px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
-                                        />
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12px' }}>
+                                                {drv.sku}
+                                              </span>
+                                              {drv.wattage && (
+                                                <span style={{ fontSize: '10px', background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: '3px', color: 'var(--text-secondary)' }}>
+                                                  ⚡ {drv.wattage}W
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div style={{ fontSize: '11.5px', color: 'var(--text-primary)', marginTop: '2px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {drv.name}
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            {drv.product && (
+                                              <button 
+                                                className="btn btn-ghost btn-xs"
+                                                onClick={() => handleInspectItem(drv.product, tag)}
+                                                style={{ fontSize: '10.5px', display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px' }}
+                                              >
+                                                <Eye size={11} /> Specs
+                                              </button>
+                                            )}
+                                            {distinctDrivers.length === 1 && (
+                                              <button 
+                                                className="btn btn-ghost btn-xs"
+                                                onClick={() => handleClearLedComponent(tag, 'driver')}
+                                                style={{ color: 'var(--text-danger)', fontSize: '10.5px', padding: '2px 4px' }}
+                                                title="Clear driver"
+                                              >
+                                                <Trash2 size={11} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* EDITABLE DRIVER QTY & PRICING BAR */}
+                                        <div style={{ 
+                                          borderTop: '1px solid var(--border)', 
+                                          paddingTop: '6px', 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          justifyContent: 'space-between',
+                                          flexWrap: 'wrap',
+                                          gap: '8px'
+                                        }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Total Qty:</span>
+                                              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', background: 'var(--bg-secondary)', padding: '1px 7px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                                                {drv.totalQty}
+                                              </span>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                              <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                value={drv.cost} 
+                                                onChange={e => handleUpdateLedDriverPrice(tag, drv.key, 'cost', e.target.value)}
+                                                style={{ width: '68px', height: '22px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
+                                              />
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                              <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                              <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                value={drv.retail} 
+                                                onChange={e => handleUpdateLedDriverPrice(tag, drv.key, 'retail', e.target.value)}
+                                                style={{ width: '72px', height: '22px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(drv.totalQty * drv.retail).toLocaleString()}</span>
+                                          </div>
+                                        </div>
                                       </div>
-
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
-                                        <input 
-                                          type="number" 
-                                          step="0.01" 
-                                          value={driverCost} 
-                                          onChange={e => handleUpdateLedConfig(tag, 'driverCost', parseFloat(e.target.value) || 0)}
-                                          style={{ width: '70px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 600, color: 'var(--text-primary)' }}
-                                        />
-                                      </div>
-
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
-                                        <input 
-                                          type="number" 
-                                          step="0.01" 
-                                          value={driverRetail} 
-                                          onChange={e => handleUpdateLedConfig(tag, 'driverRetail', parseFloat(e.target.value) || 0)}
-                                          style={{ width: '75px', height: '22px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '11px', textAlign: 'center', fontWeight: 700, color: 'var(--text-success)' }}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                      Total: <span style={{ color: 'var(--text-info)' }}>R {Math.round(driverQty * driverRetail).toLocaleString()}</span>
-                                    </div>
-                                  </div>
-                                </>
+                                    );
+                                  })}
+                                </div>
                               ) : (
                                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '10px' }}>
                                   No driver selected yet. Click "+ Select Driver" to choose from master catalog.
@@ -5107,9 +5449,9 @@ export default function TakeoffSpecEngine({
       {catalogModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1100
+          zIndex: 1250
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
             
@@ -5130,6 +5472,9 @@ export default function TakeoffSpecEngine({
                 )}
                 {catalogTargetMode === 'led_driver' && (
                   <span>Select 24V Constant Voltage Driver for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
+                )}
+                {catalogTargetMode === 'led_run_driver' && (
+                  <span>Select Tailored Driver for Run of Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
                 )}
                 {catalogTargetMode === 'track_rail' && (
                   <span>Select Track Rail / Profile for Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong></span>
@@ -5308,9 +5653,9 @@ export default function TakeoffSpecEngine({
       {inspectedProduct && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1200
+          zIndex: 1350
         }}>
           <div className="card" style={{ width: '100%', maxWidth: '920px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px' }}>
             
@@ -5702,6 +6047,283 @@ export default function TakeoffSpecEngine({
           </div>
         </div>
       )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: PER-RUN LED RUNS & DRIVERS CONFIGURATOR (e.g. 'LC', 'LJ') */}
+      {/* ------------------------------------------------------------- */}
+      {activeLedRunConfigTag && (() => {
+        const tag = activeLedRunConfigTag;
+        const spec = specifications[tag] || {};
+        const ledCfg = spec.ledConfig || {};
+        const runOverrides = ledCfg.runOverrides || {};
+        const runs = countUpRows.filter(r => (r.tag || '').trim().toUpperCase() === tag);
+        const specAccessories = spec.accessories || [];
+
+        // Strip power density (default 9.6W/m if unspecified)
+        const stripWpm = parseFloat(ledCfg.stripWattsPerMeter) || parseFloat(ledCfg.stripProduct?.wattage) || 9.6;
+
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1100
+          }}>
+            <div className="card" style={{ width: '95%', maxWidth: '1000px', maxHeight: '90vh', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.4)' }}>
+              
+              {/* MODAL HEADER */}
+              <div className="card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ 
+                    background: 'var(--bg-info)', 
+                    color: '#fff', 
+                    fontFamily: 'monospace', 
+                    fontWeight: 800, 
+                    fontSize: '13px', 
+                    padding: '3px 9px', 
+                    borderRadius: '4px' 
+                  }}>
+                    〰️ {tag}
+                  </span>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      LED Run Tailoring & Power Calculator
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Configure tailored drivers, lengths, mounting clips, and accessories for each room location of this LED code.
+                    </div>
+                  </div>
+                </div>
+                <button className="btn btn-ghost" style={{ padding: '6px' }} onClick={() => setActiveLedRunConfigTag(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* SHARED BASE SPECIFICATION SUMMARY BANNER */}
+              <div style={{ padding: '10px 20px', background: 'rgba(59, 130, 246, 0.08)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>Extrusion: </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{ledCfg.profileProduct ? (ledCfg.profileProduct.sku || ledCfg.profileProduct.name) : 'Standard 2m Aluminium Profile'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>LED Tape: </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{ledCfg.stripProduct ? (ledCfg.stripProduct.sku || ledCfg.stripProduct.name) : '24V COB / Strip Tape'} ({stripWpm} W/m)</strong>
+                  </div>
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-info)', fontWeight: 600 }}>
+                  ⚡ Total {runs.length} room run(s) recorded
+                </div>
+              </div>
+
+              {/* RUNS LIST BODY */}
+              <div style={{ padding: '16px 20px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {runs.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No room runs recorded for code {tag} yet. Add runs in the Count-Up tab first.
+                  </div>
+                ) : (
+                  runs.map((run, runIdx) => {
+                    const runLen = Math.round((Number(run.lengthMeters) || (run.unit === 'm' ? Number(run.qty) : (Number(run.qty) || 3))) * 100) / 100;
+                    const runOv = runOverrides[run.id] || {};
+
+                    // Wattage computation
+                    const runWatts = Math.round(runLen * stripWpm * 10) / 10;
+                    const recDriverWatts = Math.ceil(runWatts * 1.2); // +20% safety margin
+
+                    // Driver values
+                    const driver = runOv.driverProduct || ledCfg.driverProduct;
+                    const driverSku = runOv.driverSku || (driver ? driver.sku : null) || `${recDriverWatts}W Driver`;
+                    const driverName = runOv.driverName || (driver ? (driver.client_description || driver.name) : `24V Constant Voltage Driver (${recDriverWatts}W)`);
+                    const driverQty = runOv.driverQty !== undefined ? Number(runOv.driverQty) : 1;
+
+                    return (
+                      <div 
+                        key={run.id || runIdx}
+                        style={{
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          padding: '14px 16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px'
+                        }}
+                      >
+                        {/* RUN TOP BAR */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '2px 7px', borderRadius: '4px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                              #{runIdx + 1}
+                            </span>
+                            <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              📍 {run.floor || 'Ground'} — {run.area || 'General Area'}
+                            </span>
+                            {run.notes && (
+                              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                ({run.notes})
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Length:</span>
+                              <input 
+                                type="number" 
+                                step="0.01"
+                                min="0.1"
+                                value={run.qty}
+                                onChange={e => handleUpdateRow(run.id, 'qty', e.target.value)}
+                                style={{ width: '65px', height: '24px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '4px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}
+                              />
+                              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-info)' }}>m</span>
+                            </div>
+
+                            <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--text-success)', padding: '3px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: 700 }}>
+                              ⚡ {runWatts}W ({stripWpm}W/m)
+                            </div>
+                            <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'var(--text-info)', padding: '3px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: 700 }}>
+                              Rec. Driver: ≥ {recDriverWatts}W
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* DRIVER & DYNAMIC HARDWARE / ACCESSORIES CONFIGURATION ROW */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          
+                          {/* DRIVER SELECTION (SIMPLIFIED - NO COSTING HERE) */}
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                              <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🔌 Driver:
+                              </span>
+                              <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {driverSku ? `${driverSku} — ` : ''}{driverName}
+                              </div>
+                              <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'var(--text-info)', padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 700 }}>
+                                ≥ {recDriverWatts}W Rec.
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 600 }}>Qty:</span>
+                                <input 
+                                  type="number"
+                                  min="1"
+                                  value={driverQty}
+                                  onChange={e => handleUpdateLedRunOverride(tag, run.id, 'driverQty', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  style={{ width: '45px', height: '22px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '3px', color: 'var(--text-primary)', fontWeight: 600, fontSize: '11.5px' }}
+                                />
+                              </div>
+
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-primary"
+                                onClick={() => openCatalogPicker(tag, 'led_run_driver', 'Accessory', run.id)}
+                                style={{ fontSize: '10.5px', padding: '2px 9px', height: '22px' }}
+                              >
+                                {driver ? 'Change Driver' : '+ Select Driver'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* DYNAMIC ACCESSORIES LIST FOR THIS RUN */}
+                          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                                🧩 Tailored Accessories for Run #{runIdx + 1} ({specAccessories.length})
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-ghost"
+                                onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                style={{ fontSize: '10.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px', padding: '1px 6px' }}
+                              >
+                                <Plus size={11} /> + Add Accessory
+                              </button>
+                            </div>
+
+                            {specAccessories.length === 0 ? (
+                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 0' }}>
+                                No accessories added for this LED yet. Click "+ Add Accessory" above or on the main card to link mounting clips, end caps, joiners, or connectors.
+                              </div>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                                {specAccessories.map((acc, aIdx) => {
+                                  const accKey = acc.id || acc.sku || aIdx;
+                                  const defaultQty = acc.qtyPerFitting !== undefined ? Math.max(0, parseInt(acc.qtyPerFitting, 10) || 0) : 1;
+                                  const runAccQty = runOv.accessories && runOv.accessories[accKey] !== undefined
+                                    ? runOv.accessories[accKey]
+                                    : defaultQty;
+
+                                  return (
+                                    <div 
+                                      key={accKey}
+                                      style={{
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '5px',
+                                        padding: '7px 10px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                      }}
+                                    >
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-info)', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {acc.sku || acc.one_to_one_code || 'ACC'}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }} title={acc.name || acc.client_description}>
+                                          {acc.name || acc.client_description}
+                                        </div>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Qty:</span>
+                                        <input 
+                                          type="number"
+                                          min="0"
+                                          value={runAccQty}
+                                          onChange={e => handleUpdateLedRunAccessoryQty(tag, run.id, accKey, e.target.value)}
+                                          style={{ width: '42px', height: '22px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '3px', fontSize: '11px', color: 'var(--text-primary)', fontWeight: 700 }}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* MODAL FOOTER */}
+              <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  💡 Custom run configurations are saved automatically to the order specifications and will be compiled into your BOQ spreadsheet.
+                </div>
+                <button 
+                  className="btn btn-primary btn-sm" 
+                  onClick={() => setActiveLedRunConfigTag(null)}
+                  style={{ fontWeight: 700, minWidth: '110px' }}
+                >
+                  Done
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL: GENERATE INTO BOQ SPREADSHEET CONFIRMATION */}
