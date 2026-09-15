@@ -2168,8 +2168,12 @@ export default function OrdersPage() {
     // 2. Build complete order document tokens
     const vaultTokens = buildOrderDocumentTokens();
 
-    // 3. Parallel execution using Promise.allSettled across all selected document types
-    const docPromises = selectedVaultDocs.map(async (docType) => {
+    // 3. Sequential execution: Generate first document to establish and cache the folder, then remaining documents
+    for (const docType of selectedVaultDocs) {
+      setVaultProgress(prev => ({
+        ...prev,
+        [docType]: { status: 'generating' }
+      }));
       try {
         const res = await fetch(`${API_BASE}/admin/generate/${docType}?is_save_action=true`, {
           method: 'POST',
@@ -2181,7 +2185,6 @@ export default function OrdersPage() {
             ...prev,
             [docType]: { status: 'done' }
           }));
-          return { docType, success: true };
         } else {
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData.detail || res.statusText || 'Generation failed';
@@ -2189,18 +2192,15 @@ export default function OrdersPage() {
             ...prev,
             [docType]: { status: 'error', errorMsg: errMsg }
           }));
-          return { docType, success: false, error: errMsg };
         }
       } catch (e) {
         setVaultProgress(prev => ({
           ...prev,
           [docType]: { status: 'error', errorMsg: e.message }
         }));
-        return { docType, success: false, error: e.message };
       }
-    });
+    }
 
-    await Promise.allSettled(docPromises);
     setIsVaultGenerating(false);
     setIsVaultComplete(true);
   };

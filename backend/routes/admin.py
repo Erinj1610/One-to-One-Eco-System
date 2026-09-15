@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Depends, Response
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Depends, Response, Body
 from fastapi.responses import FileResponse, JSONResponse
 import os
 import shutil
@@ -412,8 +412,52 @@ def generate_batch_documents(request_body: dict = Body(...), db: Session = Depen
     service_account_config = db.query(TemplateConfig).filter(TemplateConfig.template_key == "GOOGLE_SERVICE_ACCOUNT_JSON").first()
     credentials_json = (service_account_config.config_json or {}) if service_account_config else None
 
-    from services.google_doc_engine import merge_google_sheet
+    from services.google_doc_engine import merge_google_sheet, get_or_create_folder
+    from services.google_drive_service import get_drive_service, get_or_create_root_containers, create_drive_shortcut, get_effective_drive_folder_config
     generated_pdf_paths = []
+
+    # Batch request-level folder cache and canonical order folder resolution
+    batch_folder_cache = {}
+    pre_resolved_order_folder_id = None
+
+    if is_save_action:
+        try:
+            drive_svc = get_drive_service()
+            projects_root, clients_root = get_or_create_root_containers(drive_svc)
+            
+            p_name = str(data.get('PROJECT_NAME') or data.get('PROJECT_NAME_LOCATION') or 'Project').strip()
+            c_name = str(data.get('CLIENT_NAME') or data.get('COMPANY_NAME') or data.get('CONTACT_PERSON') or 'Clients').strip()
+            o_num = str(data.get('ORDER_NUMBER') or data.get('DOCUMENT_NUMBER') or data.get('PO_NUMBER') or 'Order').strip()
+            o_name = str(data.get('ORDER_NAME') or data.get('QUOTE_NAME') or data.get('ORDER_TITLE') or '').strip()
+            s_name = str(data.get('SUPPLIER_NAME') or data.get('SUPPLIER') or '').strip()
+
+            p_fid = get_or_create_folder(drive_svc, p_name, projects_root['id'], folder_cache=batch_folder_cache)
+            if c_name and c_name.lower() != "general clients":
+                try:
+                    c_fid = get_or_create_folder(drive_svc, c_name, clients_root['id'], folder_cache=batch_folder_cache)
+                    create_drive_shortcut(drive_svc, p_name, p_fid, c_fid)
+                except Exception:
+                    pass
+
+            orders_parent_id = get_or_create_folder(drive_svc, "Orders", p_fid, folder_cache=batch_folder_cache)
+            
+            cfg = get_effective_drive_folder_config(db)
+            pat = cfg.get("order_folder_pattern") or "[ORDER_NUMBER] - [ORDER_NAME]"
+            
+            res_fold_name = pat
+            res_fold_name = res_fold_name.replace("[ORDER_NUMBER]", o_num)
+            res_fold_name = res_fold_name.replace("[ORDER_NAME]", o_name or s_name or o_num)
+            res_fold_name = res_fold_name.replace("[SUPPLIER]", s_name or o_name)
+            res_fold_name = res_fold_name.replace("[PROJECT]", p_name)
+            import re
+            res_fold_name = re.sub(r'\[[A-Z_]+\]', '', res_fold_name)
+            res_fold_name = re.sub(r'\s+-\s*$', '', res_fold_name.strip())
+            res_fold_name = re.sub(r'^\s*-\s+', '', res_fold_name.strip())
+            final_order_folder_name = res_fold_name if res_fold_name else (f"{o_num} - {s_name}" if s_name else o_num)
+
+            pre_resolved_order_folder_id = get_or_create_folder(drive_svc, final_order_folder_name, orders_parent_id, folder_cache=batch_folder_cache)
+        except Exception as pre_err:
+            print(f"Notice during batch folder pre-resolution: {pre_err}")
 
     for dt in doc_types:
         target_key = "MASTER_DESIGN_FEE_SHEET" if dt == "DESIGN_FEE_PROPOSAL" else "MASTER_ORDERS_SHEET"
@@ -445,7 +489,9 @@ def generate_batch_documents(request_body: dict = Body(...), db: Session = Depen
                 sheet_name=effective_sheet_name,
                 output_pdf_name=f"{dt.lower()}.pdf",
                 credentials_json=credentials_json,
-                is_save_action=is_save_action
+                is_save_action=is_save_action,
+                target_folder_id=pre_resolved_order_folder_id,
+                folder_cache=batch_folder_cache
             )
             if pdf_p and os.path.exists(pdf_p):
                 generated_pdf_paths.append(pdf_p)
@@ -709,4 +755,190 @@ def generate_batch_documents(request_body: dict = Body(...), db: Session = Depen
             friendly_detail = f"Google Docs Error: {error_str}"
 
         raise HTTPException(status_code=500, detail=friendly_detail)
+
+
+# --- DRIVE FOLDER HIERARCHY & DOCUMENT ROUTING CONFIGURATION ---
+
+@router.get("/drive-folder-config")
+def get_drive_folder_config_endpoint(db: Session = Depends(get_db)):
+    """
+    Returns the current Google Drive folder hierarchy, order naming pattern, document routing rules,
+    and dynamically discovered templates and custom categories from the database.
+    """
+    from services.google_drive_service import get_effective_drive_folder_config
+    config = dict(get_effective_drive_folder_config(db))
+
+    # Dynamically query all document templates stored in TemplateConfig
+    system_ignore_keys = {
+        'undefined', '_A_', 'DESIGN_FEE_RATES', 'MASTER_EXCEL', 'MASTER_GOOGLE_SHEET',
+        'MASTER_ORDERS_SHEET', 'MASTER_DESIGN_FEE_SHEET', 'DRIVE_FOLDER_CONFIG',
+        'CUSTOM_DOC_TYPES', 'SUMMARY', 'MASTER_TEMPLATE_ORDER'
+    }
+    
+    db_templates = db.query(TemplateConfig.template_key).all()
+    discovered_templates = []
+    for (t_key,) in db_templates:
+        if t_key and t_key not in system_ignore_keys:
+            discovered_templates.append({
+                "key": t_key,
+                "label": t_key.replace('_', ' ').title(),
+                "scope": "design" if "DESIGN" in t_key or "PROPOSAL" in t_key else "order",
+                "is_template": True
+            })
+
+    config["db_templates"] = discovered_templates
+    return config
+
+
+@router.post("/drive-folder-config")
+def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Persists updated Google Drive folder hierarchy, subfolders, document routing configuration,
+    and user-created custom document categories.
+    """
+    order_folder_pattern = payload.get("order_folder_pattern", "[ORDER_NUMBER] - [ORDER_NAME]")
+    design_folder_pattern = payload.get("design_folder_pattern", "[FEE_REF] - [DESIGN_NAME]")
+    design_subfolders = payload.get("design_subfolders", [])
+    order_subfolders = payload.get("order_subfolders", [])
+    routing_matrix = payload.get("routing_matrix", {})
+    custom_doc_categories = payload.get("custom_doc_categories", [])
+
+    cfg_record = db.query(TemplateConfig).filter(TemplateConfig.template_key == "DRIVE_FOLDER_CONFIG").first()
+    if not cfg_record:
+        cfg_record = TemplateConfig(
+            template_key="DRIVE_FOLDER_CONFIG",
+            config_json={
+                "order_folder_pattern": order_folder_pattern,
+                "design_folder_pattern": design_folder_pattern,
+                "design_subfolders": design_subfolders,
+                "order_subfolders": order_subfolders,
+                "routing_matrix": routing_matrix,
+                "custom_doc_categories": custom_doc_categories
+            }
+        )
+        db.add(cfg_record)
+    else:
+        existing = dict(cfg_record.config_json or {})
+        existing["order_folder_pattern"] = order_folder_pattern
+        existing["design_folder_pattern"] = design_folder_pattern
+        existing["design_subfolders"] = design_subfolders
+        existing["order_subfolders"] = order_subfolders
+        existing["routing_matrix"] = routing_matrix
+        existing["custom_doc_categories"] = custom_doc_categories
+        cfg_record.config_json = existing
+
+    db.commit()
+    return {"message": "Drive folder configuration saved successfully", "config": cfg_record.config_json}
+
+
+@router.post("/drive-consolidate-duplicates")
+def consolidate_drive_duplicates_endpoint(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Scans Google Drive for duplicate folders under Orders or Projects, merges files into the primary folder,
+    and removes the duplicate empty folders.
+    """
+    from services.google_drive_service import (
+        get_drive_service, get_or_create_root_containers, 
+        get_subfolders, normalize_name, ROOT_DRIVE_FOLDER_ID
+    )
+    
+    project_id_or_name = str(payload.get("project_id_or_name") or "").strip()
+    order_identifier = str(payload.get("order_identifier") or "").strip()
+    
+    drive_service = get_drive_service()
+    projects_root, _ = get_or_create_root_containers(drive_service)
+    
+    merged_count = 0
+    cleaned_folders = []
+
+    try:
+        # 1. List all projects in Drive
+        projects = get_subfolders(drive_service, projects_root['id'], include_shortcuts=False)
+        target_projects = projects
+        if project_id_or_name:
+            norm_p = normalize_name(project_id_or_name)
+            target_projects = [p for p in projects if norm_p in normalize_name(p['name'])]
+
+        for proj in target_projects:
+            proj_subs = get_subfolders(drive_service, proj['id'], include_shortcuts=False)
+            orders_root = next((f for f in proj_subs if normalize_name(f['name']) == "orders"), None)
+            if not orders_root:
+                continue
+
+            order_folders = get_subfolders(drive_service, orders_root['id'], include_shortcuts=False)
+            
+            # Group folders by normalized name
+            grouped = {}
+            for of in order_folders:
+                norm_of = normalize_name(of['name'])
+                if not norm_of:
+                    continue
+                if order_identifier and normalize_name(order_identifier) not in norm_of:
+                    continue
+                grouped.setdefault(norm_of, []).append(of)
+
+            # For any group with > 1 folder, merge into the first/oldest folder
+            for norm_key, folders_list in grouped.items():
+                if len(folders_list) <= 1:
+                    continue
+
+                primary_folder = folders_list[0]
+                primary_id = primary_folder['id']
+
+                for dup in folders_list[1:]:
+                    dup_id = dup['id']
+                    # List all files and subfolders inside duplicate
+                    dup_children = get_subfolders(drive_service, dup_id, include_shortcuts=False)
+                    # Also list actual files inside dup
+                    q_files = f"'{dup_id}' in parents and trashed=false"
+                    res_files = drive_service.files().list(
+                        q=q_files, corpora='drive', driveId=ROOT_DRIVE_FOLDER_ID,
+                        fields="files(id, name, mimeType)", supportsAllDrives=True,
+                        includeItemsFromAllDrives=True
+                    ).execute()
+                    files_in_dup = res_files.get('files', [])
+
+                    # Move items to primary
+                    for item in files_in_dup:
+                        try:
+                            drive_service.files().update(
+                                fileId=item['id'],
+                                addParents=primary_id,
+                                removeParents=dup_id,
+                                supportsAllDrives=True
+                            ).execute()
+                            merged_count += 1
+                        except Exception as move_err:
+                            print(f"Notice moving file {item['name']}: {move_err}")
+
+                    # Move subfolders
+                    for sub in dup_children:
+                        try:
+                            drive_service.files().update(
+                                fileId=sub['id'],
+                                addParents=primary_id,
+                                removeParents=dup_id,
+                                supportsAllDrives=True
+                            ).execute()
+                        except Exception:
+                            pass
+
+                    # Trash the empty duplicate folder
+                    try:
+                        drive_service.files().update(
+                            fileId=dup_id,
+                            body={'trashed': True},
+                            supportsAllDrives=True
+                        ).execute()
+                        cleaned_folders.append(dup.get('name'))
+                    except Exception as trash_err:
+                        print(f"Could not trash duplicate folder {dup_id}: {trash_err}")
+
+        return {
+            "message": f"Consolidation complete! Merged {merged_count} item(s) and removed {len(cleaned_folders)} duplicate folder(s).",
+            "merged_count": merged_count,
+            "cleaned_folders": cleaned_folders
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Consolidation failed: {str(e)}")
 

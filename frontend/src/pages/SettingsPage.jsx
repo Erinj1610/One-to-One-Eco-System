@@ -5,6 +5,7 @@ import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import TemplateEditor from './admin/TemplateEditor';
 import WorkflowManager from './admin/WorkflowManager';
+import DriveFolderSettings from './admin/DriveFolderSettings';
 import { 
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
@@ -881,8 +882,8 @@ export default function SettingsPage() {
 
   const availableTabs = isAdmin
     ? (isStaging 
-        ? ['General', 'Users & Permissions', 'Workflow Stages', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-        : ['General', 'Users & Permissions', 'Workflow Stages', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        ? ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
+        : ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
       )
     : ['General', 'Users & Permissions', 'Workflow Stages', 'Rate card', 'Alerts', 'Integrations'];
 
@@ -3384,6 +3385,10 @@ export default function SettingsPage() {
         </div>
       )}
 
+
+      {activeTab === 'Drive & Folders' && isAdmin && (
+        <DriveFolderSettings />
+      )}
 
       {activeTab === 'Templates' && isAdmin && (
         <div className="animation-fade-in">

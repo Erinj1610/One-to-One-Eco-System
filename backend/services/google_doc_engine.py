@@ -61,13 +61,70 @@ def clean_block_tags(text):
         return text
     return re.sub(r'\{\{/#?[a-zA-Z0-9_\.]+\}\}', '', str(text))
 
-def get_or_create_folder(drive_service, folder_name, parent_folder_id=None):
+# In-memory folder lookup cache to eliminate Google Drive API eventual consistency race conditions
+_FOLDER_CACHE = {}
+
+def get_or_create_folder(drive_service, folder_name, parent_folder_id=None, folder_cache=None):
     """
     Finds an existing folder by name under parent_folder_id or creates a new one.
+    Uses memory caching and direct child querying to eliminate Drive eventual consistency race conditions.
     """
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    if parent_folder_id:
-        query += f" and '{parent_folder_id}' in parents"
+    clean_name = str(folder_name or '').strip()
+    if not clean_name:
+        clean_name = "Untitled Folder"
+
+    clean_parent = str(parent_folder_id or '').strip()
+    cache_key = f"{clean_parent}::{clean_name.lower()}"
+    
+    # 1. Check local / request-level cache
+    if folder_cache is not None and cache_key in folder_cache:
+        return folder_cache[cache_key]
+    if cache_key in _FOLDER_CACHE:
+        return _FOLDER_CACHE[cache_key]
+
+    # 2. Check parent's immediate children first (most consistent and immune to search index lag)
+    if clean_parent:
+        try:
+            query = f"'{clean_parent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            res = drive_service.files().list(
+                q=query,
+                corpora='drive',
+                driveId=ROOT_DRIVE_FOLDER_ID,
+                fields="files(id, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=100
+            ).execute()
+            files = res.get('files', [])
+            norm_target = re.sub(r'[^a-z0-9]+', '', clean_name.lower())
+            
+            # Exact match first
+            for f in files:
+                f_name = f.get('name', '')
+                if f_name.strip().lower() == clean_name.lower():
+                    fid = f['id']
+                    if folder_cache is not None:
+                        folder_cache[cache_key] = fid
+                    _FOLDER_CACHE[cache_key] = fid
+                    return fid
+
+            # Normalized match
+            if norm_target:
+                for f in files:
+                    f_norm = re.sub(r'[^a-z0-9]+', '', f.get('name', '').lower())
+                    if f_norm == norm_target:
+                        fid = f['id']
+                        if folder_cache is not None:
+                            folder_cache[cache_key] = fid
+                        _FOLDER_CACHE[cache_key] = fid
+                        return fid
+        except Exception as e:
+            logger.warning(f"Error checking immediate children under {clean_parent}: {e}")
+
+    # 3. Global search query fallback
+    query = f"name='{clean_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    if clean_parent:
+        query += f" and '{clean_parent}' in parents"
     
     try:
         res = drive_service.files().list(
@@ -80,26 +137,44 @@ def get_or_create_folder(drive_service, folder_name, parent_folder_id=None):
         ).execute()
         files = res.get('files', [])
         if files:
-            return files[0]['id']
+            fid = files[0]['id']
+            if folder_cache is not None:
+                folder_cache[cache_key] = fid
+            _FOLDER_CACHE[cache_key] = fid
+            return fid
     except Exception as e:
-        logger.warn(f"Folder search error for '{folder_name}': {e}")
+        logger.warning(f"Folder search error for '{clean_name}': {e}")
     
-    # Create folder if missing
+    # 4. Create folder if missing
     folder_metadata = {
-        'name': folder_name,
+        'name': clean_name,
         'mimeType': 'application/vnd.google-apps.folder'
     }
-    if parent_folder_id:
-        folder_metadata['parents'] = [parent_folder_id]
+    if clean_parent:
+        folder_metadata['parents'] = [clean_parent]
         
     created = drive_service.files().create(
         body=folder_metadata,
         fields='id',
         supportsAllDrives=True
     ).execute()
-    return created.get('id')
+    new_id = created.get('id')
+    if folder_cache is not None:
+        folder_cache[cache_key] = new_id
+    _FOLDER_CACHE[cache_key] = new_id
+    return new_id
 
-def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name="output.pdf", credentials_json=None, is_save_action=False):
+def merge_google_sheet(
+    template_source, 
+    tokens, 
+    sheet_name=None, 
+    output_pdf_name="output.pdf", 
+    credentials_json=None, 
+    is_save_action=False,
+    target_folder_id=None,
+    target_subfolder_id=None,
+    folder_cache=None
+):
     """
     100% Comprehensive Engine for Google Sheets Master Template Merging.
     
@@ -311,38 +386,116 @@ def merge_google_sheet(template_source, tokens, sheet_name=None, output_pdf_name
         )
 
         if is_design_doc:
-            designs_parent_id = get_or_create_folder(drive_service, "Designs", project_folder_id)
+            designs_parent_id = get_or_create_folder(drive_service, "Designs", project_folder_id, folder_cache=folder_cache)
             fee_ref = str(tokens.get('FEE_REF') or tokens.get('PROPOSAL_NUMBER') or 'DF-01').strip()
             fee_name = str(tokens.get('FEE_NAME') or tokens.get('DESIGN_NAME') or doc_folder_name).strip()
-            design_folder_name = f"{fee_ref} - {fee_name}" if (fee_name and fee_name.lower() != fee_ref.lower()) else fee_ref
-            doc_container_folder_id = get_or_create_folder(drive_service, design_folder_name, designs_parent_id)
+            
+            from services.google_drive_service import get_effective_drive_folder_config
+            cfg = get_effective_drive_folder_config()
+            des_pattern = cfg.get("design_folder_pattern") or "[FEE_REF] - [DESIGN_NAME]"
+            
+            res_des_name = des_pattern
+            res_des_name = res_des_name.replace("[FEE_REF]", fee_ref)
+            res_des_name = res_des_name.replace("[DESIGN_NAME]", fee_name or fee_ref)
+            res_des_name = res_des_name.replace("[PROJECT]", project_name)
+            res_des_name = re.sub(r'\[[A-Z_]+\]', '', res_des_name)
+            res_des_name = re.sub(r'\s+-\s*$', '', res_des_name.strip())
+            res_des_name = re.sub(r'^\s*-\s+', '', res_des_name.strip())
+            design_folder_name = res_des_name if res_des_name else (f"{fee_ref} - {fee_name}" if fee_name else fee_ref)
+            
+            doc_container_folder_id = get_or_create_folder(drive_service, design_folder_name, designs_parent_id, folder_cache=folder_cache)
 
-            # Ensure all 5 standard design subfolders exist inside this design
-            get_or_create_folder(drive_service, "01 - Drawings & CAD", doc_container_folder_id)
-            get_or_create_folder(drive_service, "02 - Project Specifications", doc_container_folder_id)
-            get_or_create_folder(drive_service, "03 - Site Photos & Snags", doc_container_folder_id)
-            destination_subfolder_id = get_or_create_folder(drive_service, "04 - Proposals & Contracts", doc_container_folder_id)
-            get_or_create_folder(drive_service, "05 - Moodboards & Presentations", doc_container_folder_id)
+            # Ensure configured design subfolders exist inside this design
+            des_subfolders = cfg.get("design_subfolders", [])
+            des_created_subs = {}
+            for sf in des_subfolders:
+                sf_name = sf.get("name")
+                if sf_name:
+                    sid = get_or_create_folder(drive_service, sf_name, doc_container_folder_id, folder_cache=folder_cache)
+                    des_created_subs[sf_name.lower()] = sid
+
+            # Determine routing target subfolder name for design doc
+            routing_matrix = cfg.get("routing_matrix", {})
+            des_target_name = (
+                routing_matrix.get(s_upper) or 
+                routing_matrix.get(doc_type_token) or 
+                "04 - Proposals & Contracts"
+            )
+            destination_subfolder_id = None
+            for k, fid in des_created_subs.items():
+                if k in des_target_name.lower() or des_target_name.lower() in k:
+                    destination_subfolder_id = fid
+                    break
+            if not destination_subfolder_id:
+                destination_subfolder_id = get_or_create_folder(drive_service, des_target_name, doc_container_folder_id, folder_cache=folder_cache)
         else:
-            orders_parent_id = get_or_create_folder(drive_service, "Orders", project_folder_id)
-            order_identifier = str(order_num or tokens.get('PO_NUMBER') or tokens.get('ORDER_NUMBER') or 'Order').strip()
-            supp_name = str(tokens.get('SUPPLIER_NAME') or tokens.get('SUPPLIER') or '').strip()
-            order_folder_name = f"{order_identifier} - {supp_name}" if supp_name else (str(order_name).strip() if order_name else order_identifier)
-            doc_container_folder_id = get_or_create_folder(drive_service, order_folder_name, orders_parent_id)
+            # 1. Use pre-resolved target folder ID if supplied (e.g. from batch generator)
+            if target_folder_id:
+                doc_container_folder_id = target_folder_id
+            else:
+                orders_parent_id = get_or_create_folder(drive_service, "Orders", project_folder_id, folder_cache=folder_cache)
+                order_identifier = str(order_num or tokens.get('PO_NUMBER') or tokens.get('ORDER_NUMBER') or 'Order').strip()
+                supp_name = str(tokens.get('SUPPLIER_NAME') or tokens.get('SUPPLIER') or '').strip()
+                
+                # Fetch effective drive config for order folder naming pattern
+                from services.google_drive_service import get_effective_drive_folder_config
+                cfg = get_effective_drive_folder_config()
+                pattern = cfg.get("order_folder_pattern") or "[ORDER_NUMBER] - [ORDER_NAME]"
+                
+                resolved_folder_name = pattern
+                resolved_folder_name = resolved_folder_name.replace("[ORDER_NUMBER]", order_identifier)
+                resolved_folder_name = resolved_folder_name.replace("[ORDER_NAME]", str(order_name).strip() if order_name else (supp_name or order_identifier))
+                resolved_folder_name = resolved_folder_name.replace("[SUPPLIER]", supp_name or str(order_name).strip())
+                resolved_folder_name = resolved_folder_name.replace("[PROJECT]", project_name)
+                resolved_folder_name = re.sub(r'\[[A-Z_]+\]', '', resolved_folder_name)
+                resolved_folder_name = re.sub(r'\s+-\s*$', '', resolved_folder_name.strip())
+                resolved_folder_name = re.sub(r'^\s*-\s+', '', resolved_folder_name.strip())
+                order_folder_name = resolved_folder_name if resolved_folder_name else (f"{order_identifier} - {supp_name}" if supp_name else order_identifier)
 
-            # Ensure unified Documents folder exists for all order documents
-            documents_sub_id = get_or_create_folder(drive_service, "Documents", doc_container_folder_id)
-            get_or_create_folder(drive_service, "01 - BOQs & Quotations", doc_container_folder_id)
-            get_or_create_folder(drive_service, "02 - Supplier POs & Confirmations", doc_container_folder_id)
-            get_or_create_folder(drive_service, "03 - Logistics (Delivery Notes & Packing Lists)", doc_container_folder_id)
-            get_or_create_folder(drive_service, "04 - Invoices & Proof of Payment", doc_container_folder_id)
+                doc_container_folder_id = get_or_create_folder(drive_service, order_folder_name, orders_parent_id, folder_cache=folder_cache)
 
-            # Route all generated customer/order documents to the unified Documents folder
-            destination_subfolder_id = documents_sub_id
+            # 2. Provision configured subfolders & determine target destination
+            from services.google_drive_service import get_effective_drive_folder_config
+            cfg = get_effective_drive_folder_config()
+            configured_subfolders = cfg.get("order_subfolders", [])
+            routing_matrix = cfg.get("routing_matrix", {})
+
+            created_subs = {}
+            for sf in configured_subfolders:
+                sf_name = sf.get("name")
+                if sf_name:
+                    sub_id = get_or_create_folder(drive_service, sf_name, doc_container_folder_id, folder_cache=folder_cache)
+                    created_subs[sf_name.lower()] = sub_id
+                    created_subs[sf.get("key", "").lower()] = sub_id
+
+            # Determine routing target subfolder name
+            doc_key_candidates = [
+                s_upper,
+                doc_type_token,
+                str(tokens.get('DOC_TYPE') or '').upper().strip(),
+                str(tokens.get('TEMPLATE_TYPE') or '').upper().strip()
+            ]
+            target_subfolder_name = None
+            for cand in doc_key_candidates:
+                if cand and cand in routing_matrix:
+                    target_subfolder_name = routing_matrix[cand]
+                    break
+            if not target_subfolder_name:
+                target_subfolder_name = routing_matrix.get("DEFAULT") or "Documents"
+
+            # Match target subfolder name to created folder ID
+            destination_subfolder_id = target_subfolder_id
+            if not destination_subfolder_id:
+                for k, fid in created_subs.items():
+                    if k in target_subfolder_name.lower() or target_subfolder_name.lower() in k:
+                        destination_subfolder_id = fid
+                        break
+            if not destination_subfolder_id:
+                destination_subfolder_id = get_or_create_folder(drive_service, target_subfolder_name, doc_container_folder_id, folder_cache=folder_cache)
 
         # Maintain Latest and History revision containers inside the specific destination subfolder
-        latest_folder_id = get_or_create_folder(drive_service, "Latest", destination_subfolder_id)
-        history_folder_id = get_or_create_folder(drive_service, "History", destination_subfolder_id)
+        latest_folder_id = get_or_create_folder(drive_service, "Latest", destination_subfolder_id, folder_cache=folder_cache)
+        history_folder_id = get_or_create_folder(drive_service, "History", destination_subfolder_id, folder_cache=folder_cache)
 
         doc_subfolder_id = doc_container_folder_id
 

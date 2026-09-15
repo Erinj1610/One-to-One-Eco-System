@@ -178,6 +178,7 @@ def get_order_folders(order_id: str, db: Session = Depends(get_db)):
     if order:
         po_number = order.po_number or f"ORD-{order.id}"
         supplier_name = order.supplier_name or ""
+        order_title = order.order_name or "" if hasattr(order, 'order_name') else ""
         
         # Resolve Project & Client
         project = None
@@ -189,13 +190,17 @@ def get_order_folders(order_id: str, db: Session = Depends(get_db)):
         if project:
             _, client_name = resolve_project_client(project, db)
             project_name = project.name
+    else:
+        order_title = ""
 
     try:
         folders = ensure_order_drive_tree(
             client_name=client_name,
             project_name=project_name,
             order_identifier=po_number,
-            supplier_name=supplier_name
+            supplier_name=supplier_name,
+            order_name=order_title,
+            db=db
         )
         return folders
     except Exception as e:
@@ -245,7 +250,8 @@ def get_design_folders(design_id: str, db: Session = Depends(get_db)):
             client_name=client_name,
             project_name=project_name,
             fee_ref=fee_ref,
-            design_name=design_name
+            design_name=design_name,
+            db=db
         )
         return folders
     except Exception as e:
@@ -747,22 +753,39 @@ async def upload_file_to_order_category(
     if not folders:
         raise HTTPException(status_code=404, detail=f"Could not provision or find Google Drive folder tree for order {clean_id}")
 
+    from services.google_drive_service import get_effective_drive_folder_config
+    cfg = get_effective_drive_folder_config(db)
+    routing_matrix = cfg.get("routing_matrix", {})
+
     cat_upper = (category or "PO").upper().strip()
-    target_name_part = "02 - Supplier POs"
-    if "INVOICE" in cat_upper or "CREDIT" in cat_upper:
-        target_name_part = "04 - Invoices"
-    elif "LOGISTICS" in cat_upper or "DELIVERY" in cat_upper:
-        target_name_part = "03 - Logistics"
-    elif "BOQ" in cat_upper or "QUOTE" in cat_upper or "QUOTATION" in cat_upper:
-        target_name_part = "01 - BOQs"
+    configured_target_folder_name = (
+        routing_matrix.get(cat_upper) or 
+        routing_matrix.get(cat_upper.replace(" ", "_")) or
+        None
+    )
+
+    # Fallback to standard conventions if not found in custom matrix
+    if not configured_target_folder_name:
+        if "INVOICE" in cat_upper or "CREDIT" in cat_upper:
+            configured_target_folder_name = "04 - Invoices"
+        elif "LOGISTICS" in cat_upper or "DELIVERY" in cat_upper or "GRN" in cat_upper:
+            configured_target_folder_name = "03 - Logistics"
+        elif "BOQ" in cat_upper or "QUOTE" in cat_upper or "QUOTATION" in cat_upper:
+            configured_target_folder_name = "01 - BOQs"
+        else:
+            configured_target_folder_name = "02 - Supplier POs"
 
     target_folder = None
+    # 1. Exact or substring match against folders
+    norm_target = re.sub(r'[^a-z0-9]+', '', configured_target_folder_name.lower())
     for f in folders:
         f_name = f.get("name", "")
-        if target_name_part.lower() in f_name.lower():
+        norm_f = re.sub(r'[^a-z0-9]+', '', f_name.lower())
+        if norm_target in norm_f or norm_f in norm_target:
             target_folder = f
             break
 
+    # 2. Fallback to order root or first available subfolder
     target_folder_id = target_folder.get("gdrive_folder_id") if target_folder else folders[0].get("gdrive_folder_id")
 
     try:
