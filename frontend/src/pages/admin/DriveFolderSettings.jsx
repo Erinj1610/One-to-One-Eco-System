@@ -5,30 +5,39 @@ import {
   Layers, Sparkles, Save, X, Tag, FileText, ChevronRight, ChevronDown, Compass, ShoppingBag, PlusCircle
 } from 'lucide-react';
 
-const BASE_SYSTEM_DOCS = [
+// Standard operational manual upload / attachment categories
+const STANDARD_OPERATIONAL_UPLOADS = [
   // Design Scope
-  { key: 'DESIGN_FEE_PROPOSAL', label: 'Design Fee Proposals', scope: 'design', defaultFolder: '04 - Proposals & Contracts' },
-  { key: 'DESIGN_PROPOSAL', label: 'Design Proposals / Pitches', scope: 'design', defaultFolder: '04 - Proposals & Contracts' },
-  { key: 'DESIGN_SPECIFICATION', label: 'Design Specifications & Schedules', scope: 'design', defaultFolder: '02 - Project Specifications' },
-  { key: 'CAD', label: 'CAD & Technical Layouts (.dwg, .dxf)', scope: 'design', defaultFolder: '01 - Drawings & CAD' },
+  { key: 'CAD', label: 'CAD Layouts & Technical Files (.dwg, .dxf)', scope: 'design', defaultFolder: '01 - Drawings & CAD' },
   { key: 'DRAWINGS', label: 'Architectural Plans & Elevation Drawings', scope: 'design', defaultFolder: '01 - Drawings & CAD' },
   { key: 'MOODBOARD', label: 'Concept Boards & Renderings', scope: 'design', defaultFolder: '05 - Moodboards & Presentations' },
   { key: 'SITE_PHOTO', label: 'Site Progress Photos & Snag Lists', scope: 'design', defaultFolder: '03 - Site Photos & Snags' },
   
   // Order Scope
-  { key: 'QUOTATION', label: 'Client Quotations & Estimates', scope: 'order', defaultFolder: '01 - Quotations & BOQs' },
-  { key: 'BOQ', label: 'Bill of Quantities (BOQ)', scope: 'order', defaultFolder: '01 - Quotations & BOQs' },
-  { key: 'PURCHASE_ORDER', label: 'Supplier Purchase Orders (PO)', scope: 'order', defaultFolder: '02 - Supplier POs & Confirmations' },
   { key: 'PO', label: 'Manual PO Attachments & Allocations', scope: 'order', defaultFolder: '02 - Supplier POs & Confirmations' },
-  { key: 'GRN', label: 'Goods Received Notes (GRN) & Slips', scope: 'order', defaultFolder: '03 - Logistics & Work Orders' },
+  { key: 'GRN', label: 'Goods Received Notes (GRN) & Delivery Slips', scope: 'order', defaultFolder: '03 - Logistics & Work Orders' },
   { key: 'LOGISTICS', label: 'Waybills, Couriers & Packing Lists', scope: 'order', defaultFolder: '03 - Logistics & Work Orders' },
   { key: 'WORK_ORDER', label: 'Cutting Lists, Production & Work Orders', scope: 'order', defaultFolder: '03 - Logistics & Work Orders' },
-  { key: 'TAX_INVOICE', label: 'Client Tax Invoices & Statements', scope: 'order', defaultFolder: '04 - Invoices & Proof of Payment' },
-  { key: 'DEPOSIT_INVOICE', label: 'Deposit & Proforma Invoices', scope: 'order', defaultFolder: '04 - Invoices & Proof of Payment' },
-  { key: 'BALANCE_INVOICE', label: 'Balance Invoices', scope: 'order', defaultFolder: '04 - Invoices & Proof of Payment' },
-  { key: 'INVOICE', label: 'Supplier Invoices & Receipts', scope: 'order', defaultFolder: '04 - Invoices & Proof of Payment' },
   { key: 'DEFAULT', label: 'General / Unclassified Documents', scope: 'order', defaultFolder: 'Documents' }
 ];
+
+// Human-friendly labels for recognized system template keys
+const TEMPLATE_LABEL_MAP = {
+  'QUOTATION': 'Client Quotation',
+  'QUOTE': 'Client Quotation',
+  'BOQ': 'Bill of Quantities (BOQ)',
+  'SUMMARY': 'Summary / Executive Costing',
+  'PURCHASE_ORDER': 'Supplier Purchase Order (PO)',
+  'TAX_INVOICE': 'Tax Invoice',
+  'DEPOSIT_INVOICE': 'Deposit Invoice',
+  'BALANCE_INVOICE': 'Balance Invoice',
+  'PRO_FORMA_INVOICE': 'Pro Forma Invoice',
+  'INVOICE': 'Invoice / Proof of Payment',
+  'SCHEDULE': 'Lighting Specification Schedule',
+  'DESIGN_FEE_PROPOSAL': 'Design Fee Proposal',
+  'DESIGN_PROPOSAL': 'Design Concept Proposal',
+  'DESIGN_SPECIFICATION': 'Design Specification Document'
+};
 
 export default function DriveFolderSettings() {
   const [activeScope, setActiveScope] = useState('order'); // 'order' | 'design'
@@ -67,7 +76,7 @@ export default function DriveFolderSettings() {
   // Routing Modal state
   const [routingFolder, setRoutingFolder] = useState(null);
 
-  // New Custom Document Category Creator state inside modal
+  // Custom Category Creator
   const [showAddDocForm, setShowAddDocForm] = useState(false);
   const [newDocLabel, setNewDocLabel] = useState('');
 
@@ -120,30 +129,48 @@ export default function DriveFolderSettings() {
   const currentSubfolders = activeScope === 'order' ? config.order_subfolders : config.design_subfolders;
   const listKey = activeScope === 'order' ? 'order_subfolders' : 'design_subfolders';
 
-  // Compute unified list of document types: Built-in + Discovered Database Templates + User-Created Custom Types
+  // Compute unified document list:
+  // 1. Dynamic DB Templates (with friendly labels)
+  // 2. Standard Operational Manual Uploads (POs, GRNs, Drawings, etc.)
+  // 3. User-created custom categories
   const allAvailableDocCategories = React.useMemo(() => {
-    const list = [...BASE_SYSTEM_DOCS];
-    const existingKeys = new Set(list.map(d => d.key.toUpperCase()));
+    const list = [];
+    const seenKeys = new Set();
 
-    // 1. Add discovered templates from DB
+    // 1. Add all dynamic templates discovered from DB
     dbTemplates.forEach(t => {
       const k = t.key.toUpperCase();
-      if (!existingKeys.has(k)) {
+      if (!seenKeys.has(k)) {
+        seenKeys.add(k);
+        const friendlyLabel = TEMPLATE_LABEL_MAP[k] || t.label || k.replace(/_/g, ' ');
+        const isDesign = k.includes('DESIGN') || k.includes('PROPOSAL');
         list.push({
           key: t.key,
-          label: t.label,
-          scope: t.scope,
-          defaultFolder: t.scope === 'design' ? '04 - Proposals & Contracts' : 'Documents',
+          label: friendlyLabel,
+          scope: isDesign ? 'design' : 'order',
+          defaultFolder: isDesign ? '04 - Proposals & Contracts' : (k.includes('INVOICE') ? '04 - Invoices & Proof of Payment' : (k.includes('PO') ? '02 - Supplier POs & Confirmations' : '01 - Quotations & BOQs')),
           is_template: true
         });
-        existingKeys.add(k);
       }
     });
 
-    // 2. Add custom user-created categories
+    // 2. Add standard operational manual uploads
+    STANDARD_OPERATIONAL_UPLOADS.forEach(doc => {
+      const k = doc.key.toUpperCase();
+      if (!seenKeys.has(k)) {
+        seenKeys.add(k);
+        list.push({
+          ...doc,
+          is_manual: true
+        });
+      }
+    });
+
+    // 3. Add user custom categories
     (config.custom_doc_categories || []).forEach(c => {
       const k = c.key.toUpperCase();
-      if (!existingKeys.has(k)) {
+      if (!seenKeys.has(k)) {
+        seenKeys.add(k);
         list.push({
           key: c.key,
           label: c.label,
@@ -151,7 +178,6 @@ export default function DriveFolderSettings() {
           defaultFolder: c.defaultFolder || (c.scope === 'design' ? '04 - Proposals & Contracts' : 'Documents'),
           is_custom: true
         });
-        existingKeys.add(k);
       }
     });
 
@@ -287,7 +313,7 @@ export default function DriveFolderSettings() {
   };
 
   const handleDeleteCustomDocCategory = (key) => {
-    if (!window.confirm('Delete this custom document category?')) return;
+    if (!window.confirm('Delete this custom category?')) return;
     setConfig(prev => {
       const updatedCustom = (prev.custom_doc_categories || []).filter(c => c.key !== key);
       const updatedMatrix = { ...prev.routing_matrix };
@@ -503,8 +529,15 @@ export default function DriveFolderSettings() {
                           >
                             <FileText size={10} />
                             {doc.label}
+                            {doc.is_template && (
+                              <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', fontWeight: 600 }}>
+                                Template
+                              </span>
+                            )}
                             {doc.is_custom && (
-                              <span style={{ fontSize: '9px', opacity: 0.7 }}>[Custom]</span>
+                              <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontWeight: 600 }}>
+                                Custom
+                              </span>
                             )}
                           </span>
                         ))}
@@ -738,13 +771,18 @@ export default function DriveFolderSettings() {
                               {doc.label}
                             </span>
                             {doc.is_template && (
-                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', fontWeight: 500 }}>
+                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', fontWeight: 600 }}>
                                 Template
                               </span>
                             )}
                             {doc.is_custom && (
-                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontWeight: 500 }}>
-                                Custom Upload
+                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontWeight: 600 }}>
+                                Custom
+                              </span>
+                            )}
+                            {doc.is_manual && (
+                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1', fontWeight: 500 }}>
+                                Manual Upload
                               </span>
                             )}
                           </div>
