@@ -37,6 +37,14 @@ ORDER_STANDARD_SUBFOLDERS = [
 # Default Drive Folder Configuration
 DEFAULT_DRIVE_FOLDER_CONFIG = {
     "order_folder_pattern": "[ORDER_NUMBER] - [ORDER_NAME]",
+    "design_folder_pattern": "[FEE_REF] - [DESIGN_NAME]",
+    "design_subfolders": [
+        {"name": "01 - Drawings & CAD", "sort": 1, "key": "01 - Drawings & CAD"},
+        {"name": "02 - Project Specifications", "sort": 2, "key": "02 - Project Specifications"},
+        {"name": "03 - Site Photos & Snags", "sort": 3, "key": "03 - Site Photos & Snags"},
+        {"name": "04 - Proposals & Contracts", "sort": 4, "key": "04 - Proposals & Contracts"},
+        {"name": "05 - Moodboards & Presentations", "sort": 5, "key": "05 - Moodboards & Presentations"}
+    ],
     "order_subfolders": [
         {"name": "01 - Quotations & BOQs", "sort": 1, "key": "01 - Quotations & BOQs"},
         {"name": "02 - Supplier POs & Confirmations", "sort": 2, "key": "02 - Supplier POs & Confirmations"},
@@ -45,6 +53,13 @@ DEFAULT_DRIVE_FOLDER_CONFIG = {
         {"name": "Documents", "sort": 5, "key": "Documents"}
     ],
     "routing_matrix": {
+        "DESIGN_FEE_PROPOSAL": "04 - Proposals & Contracts",
+        "DESIGN_PROPOSAL": "04 - Proposals & Contracts",
+        "DESIGN_SPECIFICATION": "02 - Project Specifications",
+        "CAD": "01 - Drawings & CAD",
+        "DRAWINGS": "01 - Drawings & CAD",
+        "MOODBOARD": "05 - Moodboards & Presentations",
+        "SITE_PHOTO": "03 - Site Photos & Snags",
         "QUOTATION": "01 - Quotations & BOQs",
         "BOQ": "01 - Quotations & BOQs",
         "PURCHASE_ORDER": "02 - Supplier POs & Confirmations",
@@ -690,12 +705,13 @@ def ensure_design_drive_tree(
     client_name: str, 
     project_name: str, 
     fee_ref: str, 
-    design_name: str = ""
+    design_name: str = "",
+    db: Optional[Any] = None
 ) -> List[Dict[str, Any]]:
     """
     Ensures the path down to a specific Design Package:
     01 - PROJECTS -> [Project] -> Designs -> [Fee Ref - Design Name]
-    Plus ensures the 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards).
+    Plus ensures the configured design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards, etc.).
     Also ensures client folder in 02 - CLIENTS has a shortcut pointing to this project.
     Returns all folder nodes scoped to this design package.
     """
@@ -705,8 +721,19 @@ def ensure_design_drive_tree(
     clean_client = (client_name or "General Clients").strip()
     clean_project = (project_name or "General Project").strip()
     
-    name_part = f" - {design_name.strip()}" if design_name and design_name.strip() else ""
-    design_folder_name = f"{fee_ref.strip()}{name_part}"
+    cfg = get_effective_drive_folder_config(db)
+    pattern = cfg.get("design_folder_pattern") or "[FEE_REF] - [DESIGN_NAME]"
+    ref_clean = (fee_ref or "DF-01").strip()
+    des_clean = (design_name or "").strip()
+
+    resolved_folder_name = pattern
+    resolved_folder_name = resolved_folder_name.replace("[FEE_REF]", ref_clean)
+    resolved_folder_name = resolved_folder_name.replace("[DESIGN_NAME]", des_clean or ref_clean)
+    resolved_folder_name = resolved_folder_name.replace("[PROJECT]", clean_project)
+    resolved_folder_name = re.sub(r'\[[A-Z_]+\]', '', resolved_folder_name)
+    resolved_folder_name = re.sub(r'\s+-\s*$', '', resolved_folder_name.strip())
+    resolved_folder_name = re.sub(r'^\s*-\s+', '', resolved_folder_name.strip())
+    design_folder_name = resolved_folder_name if resolved_folder_name else (f"{ref_clean} - {des_clean}" if des_clean else ref_clean)
 
     # 1. Ensure Project in 01 - PROJECTS & complete project hierarchy
     project_folder = get_or_create_drive_folder(drive_service, clean_project, projects_root['id'])
@@ -756,8 +783,9 @@ def ensure_design_drive_tree(
         }
     ]
 
-    # 5. Ensure 5 standard design subfolders (Drawings, Specs, Site Photos, Proposals, Moodboards)
-    for starter in DESIGN_STANDARD_SUBFOLDERS:
+    # 5. Ensure configured design subfolders
+    target_subfolders = cfg.get("design_subfolders") or DESIGN_STANDARD_SUBFOLDERS
+    for starter in target_subfolders:
         s_name = starter["name"]
         match_key = s_name.lower().strip()
         matched = existing_by_name.get(match_key)
@@ -778,7 +806,7 @@ def ensure_design_drive_tree(
             "name": matched['name'],
             "parent_id": design_folder_id,
             "type": "design_sub",
-            "sort_order": starter["sort"],
+            "sort_order": starter.get("sort", 1),
             "webViewLink": matched.get('webViewLink', '')
         })
 

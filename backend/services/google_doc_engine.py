@@ -389,15 +389,45 @@ def merge_google_sheet(
             designs_parent_id = get_or_create_folder(drive_service, "Designs", project_folder_id, folder_cache=folder_cache)
             fee_ref = str(tokens.get('FEE_REF') or tokens.get('PROPOSAL_NUMBER') or 'DF-01').strip()
             fee_name = str(tokens.get('FEE_NAME') or tokens.get('DESIGN_NAME') or doc_folder_name).strip()
-            design_folder_name = f"{fee_ref} - {fee_name}" if (fee_name and fee_name.lower() != fee_ref.lower()) else fee_ref
+            
+            from services.google_drive_service import get_effective_drive_folder_config
+            cfg = get_effective_drive_folder_config()
+            des_pattern = cfg.get("design_folder_pattern") or "[FEE_REF] - [DESIGN_NAME]"
+            
+            res_des_name = des_pattern
+            res_des_name = res_des_name.replace("[FEE_REF]", fee_ref)
+            res_des_name = res_des_name.replace("[DESIGN_NAME]", fee_name or fee_ref)
+            res_des_name = res_des_name.replace("[PROJECT]", project_name)
+            res_des_name = re.sub(r'\[[A-Z_]+\]', '', res_des_name)
+            res_des_name = re.sub(r'\s+-\s*$', '', res_des_name.strip())
+            res_des_name = re.sub(r'^\s*-\s+', '', res_des_name.strip())
+            design_folder_name = res_des_name if res_des_name else (f"{fee_ref} - {fee_name}" if fee_name else fee_ref)
+            
             doc_container_folder_id = get_or_create_folder(drive_service, design_folder_name, designs_parent_id, folder_cache=folder_cache)
 
-            # Ensure all 5 standard design subfolders exist inside this design
-            get_or_create_folder(drive_service, "01 - Drawings & CAD", doc_container_folder_id, folder_cache=folder_cache)
-            get_or_create_folder(drive_service, "02 - Project Specifications", doc_container_folder_id, folder_cache=folder_cache)
-            get_or_create_folder(drive_service, "03 - Site Photos & Snags", doc_container_folder_id, folder_cache=folder_cache)
-            destination_subfolder_id = get_or_create_folder(drive_service, "04 - Proposals & Contracts", doc_container_folder_id, folder_cache=folder_cache)
-            get_or_create_folder(drive_service, "05 - Moodboards & Presentations", doc_container_folder_id, folder_cache=folder_cache)
+            # Ensure configured design subfolders exist inside this design
+            des_subfolders = cfg.get("design_subfolders", [])
+            des_created_subs = {}
+            for sf in des_subfolders:
+                sf_name = sf.get("name")
+                if sf_name:
+                    sid = get_or_create_folder(drive_service, sf_name, doc_container_folder_id, folder_cache=folder_cache)
+                    des_created_subs[sf_name.lower()] = sid
+
+            # Determine routing target subfolder name for design doc
+            routing_matrix = cfg.get("routing_matrix", {})
+            des_target_name = (
+                routing_matrix.get(s_upper) or 
+                routing_matrix.get(doc_type_token) or 
+                "04 - Proposals & Contracts"
+            )
+            destination_subfolder_id = None
+            for k, fid in des_created_subs.items():
+                if k in des_target_name.lower() or des_target_name.lower() in k:
+                    destination_subfolder_id = fid
+                    break
+            if not destination_subfolder_id:
+                destination_subfolder_id = get_or_create_folder(drive_service, des_target_name, doc_container_folder_id, folder_cache=folder_cache)
         else:
             # 1. Use pre-resolved target folder ID if supplied (e.g. from batch generator)
             if target_folder_id:

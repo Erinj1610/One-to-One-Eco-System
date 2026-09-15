@@ -250,7 +250,8 @@ def get_design_folders(design_id: str, db: Session = Depends(get_db)):
             client_name=client_name,
             project_name=project_name,
             fee_ref=fee_ref,
-            design_name=design_name
+            design_name=design_name,
+            db=db
         )
         return folders
     except Exception as e:

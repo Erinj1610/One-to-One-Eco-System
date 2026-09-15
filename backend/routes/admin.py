@@ -774,6 +774,8 @@ def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = D
     Persists updated Google Drive folder hierarchy, subfolders, and document routing configuration.
     """
     order_folder_pattern = payload.get("order_folder_pattern", "[ORDER_NUMBER] - [ORDER_NAME]")
+    design_folder_pattern = payload.get("design_folder_pattern", "[FEE_REF] - [DESIGN_NAME]")
+    design_subfolders = payload.get("design_subfolders", [])
     order_subfolders = payload.get("order_subfolders", [])
     routing_matrix = payload.get("routing_matrix", {})
 
@@ -783,6 +785,8 @@ def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = D
             template_key="DRIVE_FOLDER_CONFIG",
             config_json={
                 "order_folder_pattern": order_folder_pattern,
+                "design_folder_pattern": design_folder_pattern,
+                "design_subfolders": design_subfolders,
                 "order_subfolders": order_subfolders,
                 "routing_matrix": routing_matrix
             }
@@ -791,6 +795,8 @@ def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = D
     else:
         existing = dict(cfg_record.config_json or {})
         existing["order_folder_pattern"] = order_folder_pattern
+        existing["design_folder_pattern"] = design_folder_pattern
+        existing["design_subfolders"] = design_subfolders
         existing["order_subfolders"] = order_subfolders
         existing["routing_matrix"] = routing_matrix
         cfg_record.config_json = existing
