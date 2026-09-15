@@ -762,22 +762,46 @@ def generate_batch_documents(request_body: dict = Body(...), db: Session = Depen
 @router.get("/drive-folder-config")
 def get_drive_folder_config_endpoint(db: Session = Depends(get_db)):
     """
-    Returns the current Google Drive folder hierarchy, order naming pattern, and document routing rules.
+    Returns the current Google Drive folder hierarchy, order naming pattern, document routing rules,
+    and dynamically discovered templates and custom categories from the database.
     """
     from services.google_drive_service import get_effective_drive_folder_config
-    return get_effective_drive_folder_config(db)
+    config = dict(get_effective_drive_folder_config(db))
+
+    # Dynamically query all document templates stored in TemplateConfig
+    system_ignore_keys = {
+        'undefined', '_A_', 'DESIGN_FEE_RATES', 'MASTER_EXCEL', 'MASTER_GOOGLE_SHEET',
+        'MASTER_ORDERS_SHEET', 'MASTER_DESIGN_FEE_SHEET', 'DRIVE_FOLDER_CONFIG',
+        'CUSTOM_DOC_TYPES', 'SUMMARY', 'MASTER_TEMPLATE_ORDER'
+    }
+    
+    db_templates = db.query(TemplateConfig.template_key).all()
+    discovered_templates = []
+    for (t_key,) in db_templates:
+        if t_key and t_key not in system_ignore_keys:
+            discovered_templates.append({
+                "key": t_key,
+                "label": t_key.replace('_', ' ').title(),
+                "scope": "design" if "DESIGN" in t_key or "PROPOSAL" in t_key else "order",
+                "is_template": True
+            })
+
+    config["db_templates"] = discovered_templates
+    return config
 
 
 @router.post("/drive-folder-config")
 def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = Depends(get_db)):
     """
-    Persists updated Google Drive folder hierarchy, subfolders, and document routing configuration.
+    Persists updated Google Drive folder hierarchy, subfolders, document routing configuration,
+    and user-created custom document categories.
     """
     order_folder_pattern = payload.get("order_folder_pattern", "[ORDER_NUMBER] - [ORDER_NAME]")
     design_folder_pattern = payload.get("design_folder_pattern", "[FEE_REF] - [DESIGN_NAME]")
     design_subfolders = payload.get("design_subfolders", [])
     order_subfolders = payload.get("order_subfolders", [])
     routing_matrix = payload.get("routing_matrix", {})
+    custom_doc_categories = payload.get("custom_doc_categories", [])
 
     cfg_record = db.query(TemplateConfig).filter(TemplateConfig.template_key == "DRIVE_FOLDER_CONFIG").first()
     if not cfg_record:
@@ -788,7 +812,8 @@ def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = D
                 "design_folder_pattern": design_folder_pattern,
                 "design_subfolders": design_subfolders,
                 "order_subfolders": order_subfolders,
-                "routing_matrix": routing_matrix
+                "routing_matrix": routing_matrix,
+                "custom_doc_categories": custom_doc_categories
             }
         )
         db.add(cfg_record)
@@ -799,6 +824,7 @@ def save_drive_folder_config_endpoint(payload: dict = Body(...), db: Session = D
         existing["design_subfolders"] = design_subfolders
         existing["order_subfolders"] = order_subfolders
         existing["routing_matrix"] = routing_matrix
+        existing["custom_doc_categories"] = custom_doc_categories
         cfg_record.config_json = existing
 
     db.commit()

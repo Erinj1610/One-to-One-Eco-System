@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../api_config';
 import { 
   Folder, Plus, Trash2, Edit3, Check, RefreshCw, 
-  Layers, Sparkles, Save, X, Tag, FileText, ChevronRight, ChevronDown, Compass, ShoppingBag
+  Layers, Sparkles, Save, X, Tag, FileText, ChevronRight, ChevronDown, Compass, ShoppingBag, PlusCircle
 } from 'lucide-react';
 
-const SYSTEM_DOC_CATEGORIES = [
+const BASE_SYSTEM_DOCS = [
   // Design Scope
   { key: 'DESIGN_FEE_PROPOSAL', label: 'Design Fee Proposals', scope: 'design', defaultFolder: '04 - Proposals & Contracts' },
   { key: 'DESIGN_PROPOSAL', label: 'Design Proposals / Pitches', scope: 'design', defaultFolder: '04 - Proposals & Contracts' },
@@ -49,14 +49,16 @@ export default function DriveFolderSettings() {
       { name: '04 - Invoices & Proof of Payment', sort: 4, key: '04 - Invoices & Proof of Payment' },
       { name: 'Documents', sort: 5, key: 'Documents' }
     ],
-    routing_matrix: {}
+    routing_matrix: {},
+    custom_doc_categories: []
   });
 
+  const [dbTemplates, setDbTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
-  // Editing & adding
+  // Editing & adding folders
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingText, setEditingText] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
@@ -64,6 +66,10 @@ export default function DriveFolderSettings() {
 
   // Routing Modal state
   const [routingFolder, setRoutingFolder] = useState(null);
+
+  // New Custom Document Category Creator state inside modal
+  const [showAddDocForm, setShowAddDocForm] = useState(false);
+  const [newDocLabel, setNewDocLabel] = useState('');
 
   // Consolidation state
   const [consolidating, setConsolidating] = useState(false);
@@ -92,8 +98,13 @@ export default function DriveFolderSettings() {
             { name: '04 - Invoices & Proof of Payment', sort: 4, key: '04 - Invoices & Proof of Payment' },
             { name: 'Documents', sort: 5, key: 'Documents' }
           ],
-          routing_matrix: data.routing_matrix || {}
+          routing_matrix: data.routing_matrix || {},
+          custom_doc_categories: data.custom_doc_categories || []
         });
+
+        if (data.db_templates) {
+          setDbTemplates(data.db_templates);
+        }
       }
     } catch (e) {
       console.error('Error fetching drive config:', e);
@@ -108,6 +119,44 @@ export default function DriveFolderSettings() {
 
   const currentSubfolders = activeScope === 'order' ? config.order_subfolders : config.design_subfolders;
   const listKey = activeScope === 'order' ? 'order_subfolders' : 'design_subfolders';
+
+  // Compute unified list of document types: Built-in + Discovered Database Templates + User-Created Custom Types
+  const allAvailableDocCategories = React.useMemo(() => {
+    const list = [...BASE_SYSTEM_DOCS];
+    const existingKeys = new Set(list.map(d => d.key.toUpperCase()));
+
+    // 1. Add discovered templates from DB
+    dbTemplates.forEach(t => {
+      const k = t.key.toUpperCase();
+      if (!existingKeys.has(k)) {
+        list.push({
+          key: t.key,
+          label: t.label,
+          scope: t.scope,
+          defaultFolder: t.scope === 'design' ? '04 - Proposals & Contracts' : 'Documents',
+          is_template: true
+        });
+        existingKeys.add(k);
+      }
+    });
+
+    // 2. Add custom user-created categories
+    (config.custom_doc_categories || []).forEach(c => {
+      const k = c.key.toUpperCase();
+      if (!existingKeys.has(k)) {
+        list.push({
+          key: c.key,
+          label: c.label,
+          scope: c.scope,
+          defaultFolder: c.defaultFolder || (c.scope === 'design' ? '04 - Proposals & Contracts' : 'Documents'),
+          is_custom: true
+        });
+        existingKeys.add(k);
+      }
+    });
+
+    return list;
+  }, [dbTemplates, config.custom_doc_categories]);
 
   const handleSaveConfig = async () => {
     setSaving(true);
@@ -209,6 +258,48 @@ export default function DriveFolderSettings() {
     });
   };
 
+  const handleCreateCustomDocCategory = () => {
+    if (!newDocLabel.trim()) return;
+    const label = newDocLabel.trim();
+    const key = label.toUpperCase().replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_');
+
+    if (allAvailableDocCategories.some(c => c.key === key || c.label.toLowerCase() === label.toLowerCase())) {
+      alert('A document or upload category with this name already exists.');
+      return;
+    }
+
+    const newCategory = {
+      key,
+      label,
+      scope: activeScope,
+      defaultFolder: routingFolder || (activeScope === 'design' ? '04 - Proposals & Contracts' : 'Documents'),
+      is_custom: true
+    };
+
+    setConfig(prev => ({
+      ...prev,
+      custom_doc_categories: [...(prev.custom_doc_categories || []), newCategory],
+      routing_matrix: routingFolder ? { ...prev.routing_matrix, [key]: routingFolder } : prev.routing_matrix
+    }));
+
+    setNewDocLabel('');
+    setShowAddDocForm(false);
+  };
+
+  const handleDeleteCustomDocCategory = (key) => {
+    if (!window.confirm('Delete this custom document category?')) return;
+    setConfig(prev => {
+      const updatedCustom = (prev.custom_doc_categories || []).filter(c => c.key !== key);
+      const updatedMatrix = { ...prev.routing_matrix };
+      delete updatedMatrix[key];
+      return {
+        ...prev,
+        custom_doc_categories: updatedCustom,
+        routing_matrix: updatedMatrix
+      };
+    });
+  };
+
   const handleConsolidateDuplicates = async () => {
     if (!window.confirm('Scan Google Drive for duplicate folders and merge files into canonical folders?')) return;
     setConsolidating(true);
@@ -244,7 +335,7 @@ export default function DriveFolderSettings() {
               <Folder size={18} color="#f59e0b" /> Google Drive Folder Hierarchy & Document Routing
             </h3>
             <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
-              Control standard Google Drive subfolders and configure automatic routing for generated documents and manual uploads.
+              Control standard Google Drive subfolders and configure automatic routing for generated documents, custom templates, and manual uploads.
             </p>
           </div>
 
@@ -345,7 +436,7 @@ export default function DriveFolderSettings() {
             </thead>
             <tbody>
               {currentSubfolders.map((sf, idx) => {
-                const assignedDocs = SYSTEM_DOC_CATEGORIES.filter(c => 
+                const assignedDocs = allAvailableDocCategories.filter(c => 
                   c.scope === activeScope && (
                     config.routing_matrix[c.key] === sf.name || 
                     (!config.routing_matrix[c.key] && c.defaultFolder === sf.name)
@@ -412,12 +503,15 @@ export default function DriveFolderSettings() {
                           >
                             <FileText size={10} />
                             {doc.label}
+                            {doc.is_custom && (
+                              <span style={{ fontSize: '9px', opacity: 0.7 }}>[Custom]</span>
+                            )}
                           </span>
                         ))}
 
                         <button
                           type="button"
-                          onClick={() => setRoutingFolder(sf.name)}
+                          onClick={() => { setRoutingFolder(sf.name); setShowAddDocForm(false); }}
                           style={{
                             background: 'var(--bg-secondary)', border: '1px dashed var(--border-strong)',
                             borderRadius: '100px', padding: '2px 8px', fontSize: '10.5px',
@@ -546,10 +640,10 @@ export default function DriveFolderSettings() {
         )}
       </div>
 
-      {/* Modal: Document Routing Selector */}
+      {/* Modal: Document Routing Selector + Add Custom Category */}
       {routingFolder && (
-        <div className="modal-backdrop" onClick={() => setRoutingFolder(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '500px', maxWidth: '95vw' }}>
+        <div className="modal-backdrop" onClick={() => { setRoutingFolder(null); setShowAddDocForm(false); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: '540px', maxWidth: '95vw' }}>
             <div className="modal-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Folder size={16} color="#f59e0b" />
@@ -560,7 +654,7 @@ export default function DriveFolderSettings() {
               <button
                 type="button"
                 className="modal-close"
-                onClick={() => setRoutingFolder(null)}
+                onClick={() => { setRoutingFolder(null); setShowAddDocForm(false); }}
                 style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
                 <X size={16} />
@@ -568,12 +662,59 @@ export default function DriveFolderSettings() {
             </div>
 
             <div style={{ padding: '16px', maxHeight: '60vh', overflowY: 'auto' }}>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                Check the document types and uploads you want automatically stored in <strong>{routingFolder}</strong>:
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Select document types and uploads to automatically route to <strong>{routingFolder}</strong>:
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setShowAddDocForm(!showAddDocForm)}
+                  style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <PlusCircle size={12} /> {showAddDocForm ? 'Cancel' : '+ New Category'}
+                </button>
+              </div>
+
+              {/* Add Custom Document / Upload Category Form */}
+              {showAddDocForm && (
+                <div style={{
+                  marginBottom: '14px', padding: '10px 12px', borderRadius: '8px',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border-strong)'
+                }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                    Add Custom Document or Manual Upload Category:
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Electrical Compliance Certificates (COC)"
+                      value={newDocLabel}
+                      onChange={(e) => setNewDocLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleCreateCustomDocCategory();
+                      }}
+                      autoFocus
+                      style={{ height: '30px', fontSize: '12px' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleCreateCustomDocCategory}
+                      style={{ fontWeight: 600 }}
+                    >
+                      Add & Route
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                    Will be added as a custom {activeScope === 'design' ? 'Design' : 'Order'} category and routed to {routingFolder}.
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {SYSTEM_DOC_CATEGORIES
+                {allAvailableDocCategories
                   .filter(c => c.scope === activeScope)
                   .map(doc => {
                     const isAssigned = (config.routing_matrix[doc.key] === routingFolder) || 
@@ -591,9 +732,21 @@ export default function DriveFolderSettings() {
                           border: `1px solid ${isAssigned ? 'var(--border-info)' : 'var(--border)'}`
                         }}
                       >
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: 600, color: isAssigned ? 'var(--text-info)' : 'var(--text-primary)' }}>
-                            {doc.label}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: isAssigned ? 'var(--text-info)' : 'var(--text-primary)' }}>
+                              {doc.label}
+                            </span>
+                            {doc.is_template && (
+                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#dcfce7', color: '#15803d', fontWeight: 500 }}>
+                                Template
+                              </span>
+                            )}
+                            {doc.is_custom && (
+                              <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontWeight: 500 }}>
+                                Custom Upload
+                              </span>
+                            )}
                           </div>
                           {!isAssigned && currentMapped && (
                             <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
@@ -602,14 +755,29 @@ export default function DriveFolderSettings() {
                           )}
                         </div>
 
-                        <div style={{
-                          width: '18px', height: '18px', borderRadius: '4px',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: isAssigned ? 'var(--text-info)' : 'var(--bg-primary)',
-                          border: `1px solid ${isAssigned ? 'var(--text-info)' : 'var(--border-strong)'}`,
-                          color: '#fff'
-                        }}>
-                          {isAssigned && <Check size={12} strokeWidth={3} />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {doc.is_custom && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCustomDocCategory(doc.key);
+                              }}
+                              title="Delete custom category"
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '2px' }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                          <div style={{
+                            width: '18px', height: '18px', borderRadius: '4px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: isAssigned ? 'var(--text-info)' : 'var(--bg-primary)',
+                            border: `1px solid ${isAssigned ? 'var(--text-info)' : 'var(--border-strong)'}`,
+                            color: '#fff'
+                          }}>
+                            {isAssigned && <Check size={12} strokeWidth={3} />}
+                          </div>
                         </div>
                       </div>
                     );
@@ -621,7 +789,7 @@ export default function DriveFolderSettings() {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => setRoutingFolder(null)}
+                onClick={() => { setRoutingFolder(null); setShowAddDocForm(false); }}
                 style={{ fontWeight: 600 }}
               >
                 Done
