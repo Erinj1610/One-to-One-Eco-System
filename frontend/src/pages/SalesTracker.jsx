@@ -39,7 +39,9 @@ import {
   Calendar,
   Clock,
   Play,
-  CreditCard
+  CreditCard,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -210,7 +212,8 @@ const getItemDefaults = (item) => {
 };
 
 export default function SalesTracker() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const [marginMode, setMarginMode] = useState('pm'); // 'pm' (internal cost) | 'supplier' (confidential true factory cost)
   const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -1014,8 +1017,24 @@ export default function SalesTracker() {
             }
           }
 
+          // Calculate aggregated costs: PM Cost (costValue) and True Factory Cost (supplierCostValue)
+          let orderCostTotal = 0;
+          let orderSupplierCostTotal = 0;
+          itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+            const q = Number(item.qty) || 0;
+            const pmCost = Number(item.unitCost !== undefined ? item.unitCost : item.unit_cost) || 0;
+            const suppCost = Number(item.supplierCost !== undefined ? item.supplierCost : (item.supplier_cost !== undefined ? item.supplier_cost : pmCost)) || pmCost;
+            orderCostTotal += q * pmCost;
+            orderSupplierCostTotal += q * suppCost;
+          });
+
+          const resolvedCostValue = o.costValue !== undefined && o.costValue !== null ? Number(o.costValue) : Math.round(orderCostTotal);
+          const resolvedSupplierCostValue = orderSupplierCostTotal > 0 ? Math.round(orderSupplierCostTotal) : resolvedCostValue;
+
           list.push({
             ...o,
+            costValue: resolvedCostValue,
+            supplierCostValue: resolvedSupplierCostValue,
             projectKey: p.key,
             projectName: p.name,
             projectClient: p.client,
@@ -1136,7 +1155,7 @@ export default function SalesTracker() {
     if (!sortField) return filteredOrders;
 
     const getVal = (o, field) => {
-      const cost = o.costValue || 0;
+      const cost = (isAdmin && marginMode === 'supplier') ? (o.supplierCostValue || o.costValue || 0) : (o.costValue || 0);
       const retail = o.value || 0;
       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
       const outstandingVal = o.outstanding || 0;
@@ -1181,11 +1200,14 @@ export default function SalesTracker() {
       const valA = getVal(a, sortField);
       const valB = getVal(b, sortField);
 
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
       if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredOrders, sortField, sortDirection]);
+  }, [filteredOrders, sortField, sortDirection, marginMode, isAdmin]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -1203,12 +1225,16 @@ export default function SalesTracker() {
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
 
-  // Dynamic statistics
-  const totalCostCompany = allOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
+  // Dynamic statistics based on PM Cost vs True Factory Cost (Admin toggle)
+  const isSupplierMarginMode = isAdmin && marginMode === 'supplier';
+  const totalCostCompany = allOrders.reduce((sum, o) => {
+    const c = isSupplierMarginMode ? (o.supplierCostValue || o.costValue || 0) : (o.costValue || 0);
+    return sum + c;
+  }, 0);
   const totalValueCompany = allOrders.reduce((sum, o) => sum + (o.value || 0), 0);
   const blendedMarginCompany = totalValueCompany > 0 ? Math.round(((totalValueCompany - totalCostCompany) / totalValueCompany) * 100) : 0;
   const lowMarginPoCount = allOrders.filter(o => {
-    const cost = o.costValue || 0;
+    const cost = isSupplierMarginMode ? (o.supplierCostValue || o.costValue || 0) : (o.costValue || 0);
     const retail = o.value || 0;
     if (retail === 0) return false;
     return ((retail - cost) / retail) * 100 < 39;
@@ -3945,8 +3971,35 @@ export default function SalesTracker() {
                   </select>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{filteredOrders.length}</strong> active sales records
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setMarginMode(marginMode === 'supplier' ? 'pm' : 'supplier')}
+                      className="btn btn-sm"
+                      style={{
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        height: '32px',
+                        background: marginMode === 'supplier' ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-secondary)',
+                        color: marginMode === 'supplier' ? '#ef4444' : 'var(--text-secondary)',
+                        border: marginMode === 'supplier' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
+                        cursor: 'pointer'
+                      }}
+                      title={marginMode === 'supplier' ? "Click to view PM Margins (Internal Cost)" : "Click to view True Company Margins (Supplier Cost - Admin Only)"}
+                    >
+                      {marginMode === 'supplier' ? <Unlock size={14} color="#ef4444" /> : <Lock size={14} />}
+                      <span>{marginMode === 'supplier' ? '🔒 True Company Margins (Factory Cost)' : 'PM Margins (Internal Cost)'}</span>
+                    </button>
+                  )}
+
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Showing <strong>{filteredOrders.length}</strong> active sales records
+                  </div>
                 </div>
               </div>
 
@@ -4080,8 +4133,10 @@ export default function SalesTracker() {
                       <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
                       </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', background: isSupplierMarginMode ? 'rgba(239, 68, 68, 0.08)' : undefined }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isSupplierMarginMode ? '#ef4444' : undefined }}>
+                          {isSupplierMarginMode ? '🔒 Factory Margin' : 'Order Margin'} {renderSortIcon('margin')}
+                        </div>
                       </th>
                       <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
@@ -4111,7 +4166,7 @@ export default function SalesTracker() {
                   </thead>
                   <tbody>
                     {sortedOrders.map(o => {
-                      const cost = o.costValue || 0;
+                      const cost = isSupplierMarginMode ? (o.supplierCostValue || o.costValue || 0) : (o.costValue || 0);
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
@@ -4143,8 +4198,13 @@ export default function SalesTracker() {
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
                           <td style={{ fontWeight: 600 }}>{o.projectPm || '—'}</td>
-                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                          <td style={{ 
+                            fontWeight: 700, 
+                            color: isSupplierMarginMode ? '#ef4444' : (isLowMargin ? 'var(--text-danger)' : 'var(--text-success)'),
+                            background: isSupplierMarginMode ? 'rgba(239, 68, 68, 0.05)' : undefined
+                          }}>
+                            {margin}% {isLowMargin && !isSupplierMarginMode && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                            {isSupplierMarginMode && <Lock size={11} style={{ display: 'inline', marginLeft: '4px' }} />}
                           </td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>

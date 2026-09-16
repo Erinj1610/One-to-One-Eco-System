@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../api_config';
 import { 
   ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, ShieldAlert, Check, Edit, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
-  RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown
+  RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, Lock, Unlock, Eye, EyeOff
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import MobileProductsViewer from '../components/mobile/MobileProductsViewer';
@@ -514,6 +515,8 @@ const StockTrendChart = ({ chartPoints = [], currentStock = 0 }) => {
 
 export default function ProductsPage() {
   const { getModuleName } = useStore();
+  const { isAdmin, user } = useAuth();
+  const [showSupplierCost, setShowSupplierCost] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
 
   useEffect(() => {
@@ -545,10 +548,20 @@ export default function ProductsPage() {
   const [newAccessoryType, setNewAccessoryType] = useState('Required Driver');
 
   const mapProduct = (p) => {
-    const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - p.cost_price) / p.retail_price) * 100) : 37;
+    // PM Cost defaults to internal_cost if set, else cost_price
+    const pmCost = p.internal_cost !== undefined && p.internal_cost !== null && p.internal_cost > 0 
+      ? p.internal_cost 
+      : (p.cost_price || 0.0);
+    const suppCost = p.supplier_cost !== undefined && p.supplier_cost !== null 
+      ? p.supplier_cost 
+      : (p.cost_price || 0.0);
+    const calculatedMargin = p.retail_price > 0 ? Math.round(((p.retail_price - pmCost) / p.retail_price) * 100) : 37;
+
     return {
       ...p,
-      unitCost: p.cost_price || 0.0,
+      unitCost: pmCost,
+      internalCost: pmCost,
+      supplierCost: suppCost,
       retailPrice: p.retail_price || 0.0,
       tradePrice: p.trade_price || 0.0,
       stock: p.stock_level || 0,
@@ -558,16 +571,16 @@ export default function ProductsPage() {
       supplier_details_json: p.supplier_details_json || [],
       costing: p.costing || {
         supplierSku: p.sku,
-        supplierUnitCost: p.cost_price || 0.0,
+        supplierUnitCost: suppCost,
         supplierDiscount: 0,
-        landedCost: Math.round((p.cost_price || 0.0) * 1.15),
+        landedCost: Math.round((suppCost || pmCost || 0.0) * 1.15),
         lastUpdated: 'Jan 25, 2026',
         tiers: [
           { name: 'Retail / RRP', retailPrice: p.retail_price || 0.0, discount: 0, netRetail: p.retail_price || 0.0, margin: calculatedMargin },
           { name: 'Trade / Partner', retailPrice: p.retail_price || 0.0, discount: 10, netRetail: p.trade_price || 0.0, margin: calculatedMargin - 5 }
         ],
         avgMargin: calculatedMargin,
-        profitPerUnit: (p.retail_price || 0.0) - (p.cost_price || 0.0),
+        profitPerUnit: (p.retail_price || 0.0) - pmCost,
         contactInfo: { company: p.brand || 'Supplier', website: 'www.supplierportal.co.za', email: 'orders@supplierportal.co.za', phone: '+27 (0) 11 000 0000' },
         terms: 'Payment terms subject to credit application approval.'
       },
@@ -1258,6 +1271,9 @@ export default function ProductsPage() {
         case 'unit_cost':
         case 'unitCost':
           return Number(item.unitCost ?? item.cost_price ?? 0) || 0;
+        case 'supplier_cost':
+        case 'supplierCost':
+          return Number(item.supplierCost ?? item.supplier_cost ?? item.cost_price ?? 0) || 0;
         case 'retail_price':
         case 'retailPrice':
           return Number(item.retailPrice ?? item.recommended_retail_price ?? item.retail_price ?? 0) || 0;
@@ -2061,38 +2077,65 @@ export default function ProductsPage() {
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             
             {/* VIEW TABS (All vs Pending Palladium) */}
-            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center' }}>
-              <button
-                onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
-                className={`btn btn-sm ${activeFilterTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '8px', fontSize: '12.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', height: '32px' }}
-              >
-                <Package size={14} /> All Catalog Products ({kpis.totalSku.toLocaleString()})
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
+                  className={`btn btn-sm ${activeFilterTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ borderRadius: '8px', fontSize: '12.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', height: '32px' }}
+                >
+                  <Package size={14} /> All Catalog Products ({kpis.totalSku.toLocaleString()})
+                </button>
 
-              <button
-                onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
-                className={`btn btn-sm ${activeFilterTab === 'pending_palladium' ? 'btn-danger' : 'btn-ghost'}`}
-                style={{ 
-                  borderRadius: '8px', 
-                  fontSize: '12.5px', 
-                  fontWeight: 600, 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '6px', 
-                  height: '32px',
-                  background: activeFilterTab === 'pending_palladium' ? '#ef4444' : undefined,
-                  color: activeFilterTab === 'pending_palladium' ? '#fff' : (kpis.pendingPalladium > 0 ? '#ef4444' : undefined),
-                  border: kpis.pendingPalladium > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : undefined
-                }}
-              >
-                <ShieldAlert size={14} /> 🔴 Pending Palladium Verification
-                {kpis.pendingPalladium > 0 && (
-                  <span style={{ background: activeFilterTab === 'pending_palladium' ? '#fff' : '#ef4444', color: activeFilterTab === 'pending_palladium' ? '#ef4444' : '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>
-                    {kpis.pendingPalladium}
-                  </span>
-                )}
-              </button>
+                <button
+                  onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
+                  className={`btn btn-sm ${activeFilterTab === 'pending_palladium' ? 'btn-danger' : 'btn-ghost'}`}
+                  style={{ 
+                    borderRadius: '8px', 
+                    fontSize: '12.5px', 
+                    fontWeight: 600, 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    height: '32px',
+                    background: activeFilterTab === 'pending_palladium' ? '#ef4444' : undefined,
+                    color: activeFilterTab === 'pending_palladium' ? '#fff' : (kpis.pendingPalladium > 0 ? '#ef4444' : undefined),
+                    border: kpis.pendingPalladium > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : undefined
+                  }}
+                >
+                  <ShieldAlert size={14} /> 🔴 Pending Palladium Verification
+                  {kpis.pendingPalladium > 0 && (
+                    <span style={{ background: activeFilterTab === 'pending_palladium' ? '#fff' : '#ef4444', color: activeFilterTab === 'pending_palladium' ? '#ef4444' : '#fff', borderRadius: '10px', padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>
+                      {kpis.pendingPalladium}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Admin / Procurement Confidential Cost Toggle */}
+              {isAdmin && (
+                <button
+                  onClick={() => setShowSupplierCost(!showSupplierCost)}
+                  className="btn btn-sm"
+                  style={{
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '32px',
+                    background: showSupplierCost ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-secondary)',
+                    color: showSupplierCost ? '#ef4444' : 'var(--text-secondary)',
+                    border: showSupplierCost ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
+                    cursor: 'pointer'
+                  }}
+                  title={showSupplierCost ? "Hide true supplier factory costs" : "Reveal true supplier factory costs (Admin only)"}
+                >
+                  {showSupplierCost ? <Unlock size={14} color="#ef4444" /> : <Lock size={14} />}
+                  <span>{showSupplierCost ? 'Hide Supplier Cost' : '🔒 Show Supplier Cost'}</span>
+                </button>
+              )}
             </div>
 
             {/* SEARCH & DROPDOWN FILTERS */}
@@ -2220,12 +2263,22 @@ export default function ProductsPage() {
                         SUPPLIER {renderSortIcon('supplier')}
                       </div>
                     </th>
+                    {isAdmin && showSupplierCost && (
+                      <th 
+                        onClick={() => handleSort('supplier_cost')} 
+                        style={{ textAlign: 'right', width: '120px', cursor: 'pointer', userSelect: 'none', background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
+                          🔒 FACTORY COST {renderSortIcon('supplier_cost')}
+                        </div>
+                      </th>
+                    )}
                     <th 
                       onClick={() => handleSort('unit_cost')} 
                       style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
                     >
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
-                        UNIT COST {renderSortIcon('unit_cost')}
+                        COST {renderSortIcon('unit_cost')}
                       </div>
                     </th>
                     <th 
@@ -2332,7 +2385,14 @@ export default function ProductsPage() {
                       <td style={{ verticalAlign: 'middle' }}>{p.brand || '—'}</td>
                       <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '—'}</td>
                       
-                      {/* SUPPLIER COST PRICE */}
+                      {/* CONFIDENTIAL FACTORY COST (ADMIN ONLY) */}
+                      {isAdmin && showSupplierCost && (
+                        <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600, background: 'rgba(239, 68, 68, 0.04)', color: '#ef4444' }}>
+                          {`R ${(p.supplierCost ?? p.supplier_cost ?? p.cost_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </td>
+                      )}
+
+                      {/* PM COST PRICE (INTERNAL COST) */}
                       <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
                         {`R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </td>
@@ -2881,18 +2941,33 @@ export default function ProductsPage() {
                     {/* 1. TOP COMMERCIAL KPI SUMMARY CARDS */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
                       
-                      {/* Supplier Unit Cost */}
+                      {/* PM Cost Price */}
                       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          📦 Supplier Cost Price
+                          📦 PM Internal Cost Price
                         </span>
                         <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
                           R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          Palladium Price List Cost (Last PP)
+                          Base Cost for PMs & Quoting
                         </span>
                       </div>
+
+                      {/* Admin Only: Confidential Factory / Supplier Cost */}
+                      {isAdmin && (
+                        <div style={{ background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '12px', padding: '16px 18px' }}>
+                          <span style={{ fontSize: '10px', color: '#ef4444', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Lock size={12} /> True Factory Cost (Supplier)
+                          </span>
+                          <div style={{ fontSize: '22px', fontWeight: 700, color: '#ef4444', marginTop: '6px' }}>
+                            R {(activeProduct.supplierCost ?? activeProduct.supplier_cost ?? activeProduct.cost_price ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            Palladium REGULAR Local Cost
+                          </span>
+                        </div>
+                      )}
 
                       {/* RRP Selling Price */}
                       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>

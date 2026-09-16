@@ -55,6 +55,7 @@ class ProductBase(BaseModel):
     markup: Optional[str] = None
     recommended_retail_price: Optional[float] = 0.0
     internal_cost: Optional[float] = 0.0
+    supplier_cost: Optional[float] = 0.0
     supplier_name: Optional[str] = None
     local_or_import: Optional[str] = None
     driver_location: Optional[str] = None

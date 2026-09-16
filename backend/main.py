@@ -147,6 +147,9 @@ def init_db():
                     if 'pending_notes' not in p_cols:
                         quick_conn.execute(text("ALTER TABLE products ADD COLUMN pending_notes TEXT;"))
                         quick_conn.commit()
+                    if 'supplier_cost' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN supplier_cost FLOAT DEFAULT 0.0;"))
+                        quick_conn.commit()
         except Exception as quick_err:
             print(f"Quick migration notice: {quick_err}")
 
