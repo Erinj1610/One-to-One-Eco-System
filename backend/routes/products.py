@@ -68,7 +68,10 @@ class ProductBase(BaseModel):
     technical_image_url: Optional[str] = None
     wetworks: Optional[str] = None
     is_active: Optional[bool] = True
-    status: Optional[str] = 'Active'
+    palladium_status: Optional[str] = 'VERIFIED'
+    created_by_name: Optional[str] = None
+    source_reference: Optional[str] = None
+    pending_notes: Optional[str] = None
 
 class ProductCreate(ProductBase):
     pass
@@ -136,10 +139,15 @@ def products_summary(db: Session = Depends(get_db)):
         func.sum(Product.stock_level)
     ).filter(Product.stock_level > 0).scalar() or 0
 
+    pending_palladium = db.query(func.count(Product.id)).filter(
+        Product.palladium_status == 'PENDING_PALLADIUM'
+    ).scalar() or 0
+
     return {
         "total": total,
         "low_stock": low_stock,
         "out_of_stock": out_of_stock,
+        "pending_palladium": pending_palladium,
         "total_valuation": round(total_valuation, 2),
         "total_retail_valuation": round(total_retail_val, 2),
         "total_margin_val": round(total_margin_val, 2),
@@ -170,6 +178,7 @@ def list_products(
     brand: Optional[str] = None,
     family: Optional[str] = None,
     status: Optional[str] = None,
+    palladium_status: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = "asc",
     limit: Optional[int] = 100,
@@ -177,6 +186,9 @@ def list_products(
     db: Session = Depends(get_db)
 ):
     query = db.query(Product)
+    
+    if palladium_status:
+        query = query.filter(Product.palladium_status == palladium_status)
     
     if q:
         query = query.filter(
@@ -216,6 +228,8 @@ def list_products(
                 Product.stock_level > 0,
                 Product.stock_level <= Product.reorder_level
             )
+        elif status.lower() == "pending palladium":
+            query = query.filter(Product.palladium_status == 'PENDING_PALLADIUM')
 
     total_count = query.count()
 
@@ -310,6 +324,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     return serialize_product(product)
 
 
+@public_router.post("/")
 @router.post("/")
 def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     # Check if SKU is unique
@@ -317,11 +332,281 @@ def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail=f"Product SKU '{product_data.sku}' already exists.")
         
-    new_product = Product(**product_data.dict())
+    from sqlalchemy import inspect as sa_inspect
+    valid_cols = {c.key for c in sa_inspect(Product).columns}
+    product_dict = {k: v for k, v in product_data.dict().items() if k in valid_cols}
+
+    new_product = Product(**product_dict)
     db.add(new_product)
     db.commit()
     db.refresh(new_product)
     return {"message": "Product created successfully", "id": new_product.id, "product": serialize_product(new_product)}
+
+class RemapSkuPayload(BaseModel):
+    new_sku: str
+
+@public_router.post("/{product_id}/verify-palladium")
+@router.post("/{product_id}/verify-palladium")
+def verify_product_in_palladium(product_id: int, db: Session = Depends(get_db)):
+    """
+    100% Read-Only verification against Palladium ERP MS SQL.
+    Verifies that the product's SKU exists in tblInv.
+    If found, sets palladium_status = 'VERIFIED' and syncs latest stock/price.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    import pymssql
+    from services.palladium_sync import PALLADIUM_CONFIG
+
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=10
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+        
+        # Read-only existence check
+        p_cursor.execute("""
+            SELECT TOP 1 
+                i.strPartNumber AS sku,
+                i.strDesc AS name,
+                ISNULL(p.curSellingPrice, 0.0) AS retail_price,
+                ISNULL(e.dblOnHand, 0.0) AS stock_on_hand
+            FROM tblInv i
+            LEFT JOIN tblInvPrice p ON i.strPartNumber = p.strPartNumber AND p.intPriceLevel = 1
+            LEFT JOIN tblInvExt e ON i.strPartNumber = e.strPartNumber AND e.strLocation = 'MAIN'
+            WHERE UPPER(LTRIM(RTRIM(i.strPartNumber))) = UPPER(LTRIM(RTRIM(%s)))
+        """, (product.sku,))
+        
+        row = p_cursor.fetchone()
+        p_conn.close()
+
+        if not row:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"SKU '{product.sku}' was not found in Palladium ERP yet. Please enter this item in Palladium first."
+            )
+
+        # Found in Palladium! Mark as verified
+        product.palladium_status = "VERIFIED"
+        if row.get("retail_price") and row["retail_price"] > 0:
+            product.retail_price = float(row["retail_price"])
+        if row.get("stock_on_hand") is not None:
+            product.stock_on_hand = float(row["stock_on_hand"])
+            product.stock_level = int(row["stock_on_hand"])
+            
+        db.commit()
+        db.refresh(product)
+        return {
+            "success": True,
+            "message": f"Successfully verified SKU '{product.sku}' in Palladium ERP!",
+            "product": serialize_product(product)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query Palladium ERP: {str(e)}")
+
+@public_router.post("/{product_id}/remap-palladium-sku")
+@router.post("/{product_id}/remap-palladium-sku")
+def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = Depends(get_db)):
+    """
+    Updates the product SKU (and cascades to active orders/items)
+    and verifies it against Palladium ERP read-only.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    new_sku = payload.new_sku.strip()
+    if not new_sku:
+        raise HTTPException(status_code=400, detail="New SKU cannot be empty")
+
+    old_sku = product.sku
+
+    import pymssql
+    from services.palladium_sync import PALLADIUM_CONFIG
+    from models.orm_models import OrderItem, BOQItem, Order
+
+    # 1. Check if the target SKU already exists in the portal database (e.g. synced from Palladium)
+    existing_official = db.query(Product).filter(Product.sku == new_sku, Product.id != product_id).first()
+
+    # 2. Read-only existence check in Palladium ERP
+    row = None
+    try:
+        p_conn = pymssql.connect(
+            server=PALLADIUM_CONFIG['server'],
+            port=PALLADIUM_CONFIG['port'],
+            user=PALLADIUM_CONFIG['user'],
+            password=PALLADIUM_CONFIG['password'],
+            database=PALLADIUM_CONFIG['database'],
+            timeout=10
+        )
+        p_cursor = p_conn.cursor(as_dict=True)
+        p_cursor.execute("""
+            SELECT TOP 1 
+                i.strPartNumber AS sku,
+                i.strDesc AS name,
+                ISNULL(p.curSellingPrice, 0.0) AS retail_price,
+                ISNULL(e.dblOnHand, 0.0) AS stock_on_hand
+            FROM tblInv i
+            LEFT JOIN tblInvPrice p ON i.strPartNumber = p.strPartNumber AND p.intPriceLevel = 1
+            LEFT JOIN tblInvExt e ON i.strPartNumber = e.strPartNumber AND e.strLocation = 'MAIN'
+            WHERE UPPER(LTRIM(RTRIM(i.strPartNumber))) = UPPER(LTRIM(RTRIM(%s)))
+        """, (new_sku,))
+        row = p_cursor.fetchone()
+        p_conn.close()
+    except Exception as e:
+        row = None
+
+    # 3. Resolve target product & its metadata (name, brand, supplier, dimming)
+    # If the official product already exists in the portal database (e.g. synced from Palladium),
+    # purge the temporary placeholder product completely so no duplicate or temp code remains.
+    if existing_official:
+        target_product = existing_official
+        if row:
+            target_product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                target_product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                target_product.stock_on_hand = float(row["stock_on_hand"])
+                target_product.stock_level = int(row["stock_on_hand"])
+
+        # Delete the temporary product record completely
+        db.delete(product)
+        db.commit()
+        db.refresh(target_product)
+        purged_temp = True
+    else:
+        # The official product was not in portal DB yet: rename current record to official SKU
+        product.sku = new_sku
+        if row:
+            product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                product.stock_on_hand = float(row["stock_on_hand"])
+                product.stock_level = int(row["stock_on_hand"])
+        db.commit()
+        db.refresh(product)
+        target_product = product
+        purged_temp = False
+
+    # Extract official metadata to propagate to order line items (while strictly preserving cost/retail prices)
+    official_desc = target_product.client_description or target_product.name
+    official_brand = target_product.brand or ''
+    official_supplier = target_product.supplier_name or ''
+    official_dimming = target_product.dimming_protocol or target_product.dimmable or 'Non-dim'
+    serialized_target = serialize_product(target_product)
+
+    # 4. Cascade rename across all OrderItems, BOQItems, and Takeoff data
+    # (Existing quoted pricing remains locked on the line items)
+    order_items = db.query(OrderItem).filter(OrderItem.code == old_sku).all()
+    for oi in order_items:
+        oi.code = new_sku
+        if official_desc:
+            oi.description = official_desc
+        if official_brand:
+            oi.brand = official_brand
+        if official_supplier:
+            oi.supplier = official_supplier
+        if official_dimming and official_dimming != 'NOT FOUND':
+            oi.dimming = official_dimming
+
+    boq_items = db.query(BOQItem).filter(BOQItem.product_code == old_sku).all()
+    for bi in boq_items:
+        bi.product_code = new_sku
+
+    impacted_order_numbers = set()
+    for oi in order_items:
+        if not oi.order_id:
+            continue
+        order_rec = None
+        # oi.order_id is String in DB and may be an int string ('1042') or formatted string ('Q-2026-0664')
+        if str(oi.order_id).isdigit():
+            order_rec = db.query(Order).filter(Order.id == int(oi.order_id)).first()
+        else:
+            order_rec = db.query(Order).filter(Order.po_number == str(oi.order_id)).first()
+        
+        if order_rec:
+            impacted_order_numbers.add(order_rec.po_number or f"ORD-{order_rec.id}")
+        else:
+            impacted_order_numbers.add(f"Order #{oi.order_id}")
+
+    orders_with_takeoff = db.query(Order).filter(Order.takeoff_data.isnot(None)).all()
+    for ord_obj in orders_with_takeoff:
+        changed = False
+        tdata = ord_obj.takeoff_data
+        
+        # Format 1: List of items
+        if isinstance(tdata, list):
+            for item in tdata:
+                if isinstance(item, dict) and item.get("code") == old_sku:
+                    item["code"] = new_sku
+                    if official_desc:
+                        item["description"] = official_desc
+                    if official_brand:
+                        item["brand"] = official_brand
+                    if official_supplier:
+                        item["supplier"] = official_supplier
+                    if official_dimming and official_dimming != 'NOT FOUND':
+                        item["dimming"] = official_dimming
+                    changed = True
+        # Format 2: Dict with specifications and countUpRows
+        elif isinstance(tdata, dict):
+            # 1. Update specifications map
+            specs = tdata.get("specifications")
+            if isinstance(specs, dict):
+                for tag, s_val in specs.items():
+                    if isinstance(s_val, dict):
+                        prod_sub = s_val.get("product")
+                        if isinstance(prod_sub, dict) and prod_sub.get("sku") == old_sku:
+                            # Keep user's customCost and customRetail, but update product object
+                            s_val["product"] = serialized_target
+                            changed = True
+                        if s_val.get("product_code") == old_sku:
+                            s_val["product_code"] = new_sku
+                            changed = True
+            # 2. Update countUpRows
+            rows = tdata.get("countUpRows")
+            if isinstance(rows, list):
+                for r in rows:
+                    if isinstance(r, dict) and r.get("code") == old_sku:
+                        r["code"] = new_sku
+                        changed = True
+
+        if changed:
+            impacted_order_numbers.add(ord_obj.po_number or f"ORD-{ord_obj.id}")
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(ord_obj, "takeoff_data")
+
+    db.commit()
+
+    status_msg = f"Successfully remapped quote line items from '{old_sku}' to official SKU '{new_sku}'."
+    if purged_temp:
+        status_msg += f" Temporary code '{old_sku}' has been permanently purged from products."
+    if row:
+        status_msg += " Verified in Palladium ERP."
+    else:
+        status_msg += " Note: Not found in Palladium yet."
+
+    if impacted_order_numbers:
+        status_msg += f" Updated in {len(impacted_order_numbers)} order(s): {', '.join(sorted(impacted_order_numbers))}."
+
+    return {
+        "success": True,
+        "message": status_msg,
+        "is_verified": bool(row),
+        "purged_temp_sku": old_sku if purged_temp else None,
+        "impacted_orders": list(impacted_order_numbers),
+        "product": serialize_product(target_product)
+    }
 
 @router.put("/{product_id}")
 def update_product(product_id: int, product_data: ProductUpdate, db: Session = Depends(get_db)):
@@ -335,8 +620,11 @@ def update_product(product_id: int, product_data: ProductUpdate, db: Session = D
         if existing:
             raise HTTPException(status_code=400, detail=f"Product SKU '{product_data.sku}' already exists.")
 
+    from sqlalchemy import inspect as sa_inspect
+    valid_cols = {c.key for c in sa_inspect(Product).columns}
     for key, value in product_data.dict().items():
-        setattr(product, key, value)
+        if key in valid_cols:
+            setattr(product, key, value)
         
     db.commit()
     db.refresh(product)
@@ -350,9 +638,8 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
     sku = product.sku
     # PERMANENT ERP GUARD: Product deletion is completely disabled to protect order/quote history.
-    # Automatically convert status to 'Inactive' instead.
+    # Automatically convert is_active to False instead.
     setattr(product, 'is_active', False)
-    setattr(product, 'status', 'Inactive')
     db.commit()
     return {
         "message": f"Product deletion is disabled. SKU '{sku}' has been marked as 'Inactive' so it cannot be used on new orders, while preserving all historical records.",

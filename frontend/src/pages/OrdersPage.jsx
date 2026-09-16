@@ -45,7 +45,8 @@ import {
   CheckSquare,
   Square,
   Check,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -129,7 +130,7 @@ const PRODUCT_CATALOG = [
   { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30, eta: '2 weeks' },
 ];
 
-function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKeyDown }) {
+function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, rowIdx, colIdx, onKeyDown }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchVal, setSearchVal] = useState(value || '');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -300,19 +301,45 @@ function SearchableCodeSelect({ value, onChange, onSelect, rowIdx, colIdx, onKey
           border: '1px solid var(--border-strong, #ccc)',
           borderRadius: '6px',
           boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
-          maxHeight: '260px',
+          maxHeight: '280px',
           overflowY: 'auto',
           zIndex: 1000,
           textAlign: 'left'
         }}>
+          {/* IN-ORDER QUICK CREATE ACTION */}
+          {onOpenCreateProduct && (
+            <div 
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsOpen(false);
+                onOpenCreateProduct(searchVal.trim());
+              }}
+              style={{
+                padding: '8px 12px',
+                background: 'rgba(24, 95, 165, 0.08)',
+                borderBottom: '1px solid var(--border)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: 'var(--text-info)',
+                fontWeight: 700,
+                fontSize: '12px'
+              }}
+            >
+              <span>✨</span>
+              <span>+ Create New Product {searchVal.trim() ? `"${searchVal.trim()}"` : ''}</span>
+            </div>
+          )}
+
           {loading && (
             <div style={{ padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
               Loading matching products...
             </div>
           )}
           {!loading && filteredList.length === 0 && (
-            <div style={{ padding: '8px 12px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
-              No matching products found
+            <div style={{ padding: '12px', fontSize: '11.5px', color: 'var(--text-tertiary)', textAlign: 'center' }}>
+              No catalog match for "{searchVal}". Click above to create this as a new product.
             </div>
           )}
           {!loading && filteredList.map((prod, idx) => {
@@ -467,6 +494,120 @@ export default function OrdersPage() {
   const [orderPayments, setOrderPayments] = useState([]);
   const [takeoffData, setTakeoffData] = useState({ countUpRows: [], specifications: {} });
   const [showAreaBreakdown, setShowAreaBreakdown] = useState(true);
+  
+  // In-Order Ad-Hoc Product Creation Modal State (for BOQ Spreadsheet)
+  const [showBoqCreateProductModal, setShowBoqCreateProductModal] = useState(false);
+  const [boqTargetItemId, setBoqTargetItemId] = useState(null);
+  const [boqCustomSku, setBoqCustomSku] = useState('');
+  const [boqCustomName, setBoqCustomName] = useState('');
+  const [boqCustomCategory, setBoqCustomCategory] = useState('Downlight');
+  const [boqCustomSupplier, setBoqCustomSupplier] = useState('ELDC');
+  const [boqCustomBrand, setBoqCustomBrand] = useState('Delta Light');
+  const [boqCustomCost, setBoqCustomCost] = useState('');
+  const [boqCustomRetail, setBoqCustomRetail] = useState('');
+  const [isCreatingBoqProduct, setIsCreatingBoqProduct] = useState(false);
+
+  const handleOpenBoqCreateProduct = (initialText = '', targetItemId = null) => {
+    setBoqTargetItemId(targetItemId);
+    setBoqCustomSku(initialText || '');
+    setBoqCustomName(initialText || '');
+    setBoqCustomCategory('Downlight');
+    setBoqCustomSupplier(orderSupplier || 'ELDC');
+    setBoqCustomBrand('Delta Light');
+    setBoqCustomCost('');
+    setBoqCustomRetail('');
+    setShowBoqCreateProductModal(true);
+  };
+
+  const handleCreateCustomProductInBOQ = async (e) => {
+    e.preventDefault();
+    if (!boqCustomSku.trim() || !boqCustomName.trim()) {
+      alert("Please enter both SKU and Description for the custom product.");
+      return;
+    }
+    setIsCreatingBoqProduct(true);
+    const costVal = parseFloat(boqCustomCost) || 0.0;
+    const retailVal = parseFloat(boqCustomRetail) || 0.0;
+
+    const payload = {
+      sku: boqCustomSku.trim(),
+      name: boqCustomName.trim(),
+      category: boqCustomCategory || 'Downlight',
+      brand: boqCustomBrand || 'Delta Light',
+      supplier_name: boqCustomSupplier || 'ELDC',
+      cost_price: costVal,
+      retail_price: retailVal,
+      trade_price: Math.round(retailVal * 0.9),
+      stock_level: 0,
+      reorder_level: 10,
+      lead_time: '4-6 Weeks',
+      origin: 'Import',
+      palladium_status: 'PENDING_PALLADIUM',
+      source_reference: selectedOrderId ? `Order #${selectedOrderId}` : 'BOQ Spreadsheet',
+      created_by_name: 'Quoter (BOQ)'
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/products/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const createdProd = {
+          code: boqCustomSku.trim(),
+          description: boqCustomName.trim(),
+          brand: boqCustomBrand || '',
+          supplier: boqCustomSupplier || '',
+          dimming: 'Non-dim',
+          unitCost: costVal,
+          unitRetail: retailVal,
+          stock_available: 0,
+          stock_on_hand: 0,
+          stockQty: 0,
+          eta: '4-6 Weeks'
+        };
+
+        if (boqTargetItemId) {
+          // If launched from an existing row's code input
+          handleSelectProductFromCatalog(boqTargetItemId, createdProd);
+        } else {
+          // If launched from catalogue panel or top button, insert new row
+          const newRow = {
+            id: 'it-' + Date.now(),
+            qty: 1,
+            oneOneCode: '',
+            type: '',
+            itemType: 'Hardware',
+            code: createdProd.code,
+            description: createdProd.description,
+            floor: 'Ground',
+            area: 'General',
+            dimming: createdProd.dimming,
+            brand: createdProd.brand,
+            supplier: createdProd.supplier,
+            unitCost: createdProd.unitCost,
+            unitRetail: createdProd.unitRetail,
+            stockStatus: 'Pending ERP',
+            eta: createdProd.eta,
+            stock_available: 0,
+            stock_on_hand: 0
+          };
+          setActiveOrderItems(prev => [...prev, newRow]);
+        }
+
+        setShowBoqCreateProductModal(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Could not create product: ${err.detail || 'Server error'}`);
+      }
+    } catch (err) {
+      alert(`Network error creating product: ${err.message}`);
+    } finally {
+      setIsCreatingBoqProduct(false);
+    }
+  };
   
   // Link/Unlink modal state
   const [linkModalItem, setLinkModalItem] = useState(null);
@@ -4336,6 +4477,7 @@ export default function OrdersPage() {
                                         onSelect={prod => {
                                           handleSelectProductFromCatalog(item.id, prod);
                                         }}
+                                        onOpenCreateProduct={codeText => handleOpenBoqCreateProduct(codeText, item.id)}
                                         rowIdx={index}
                                         colIdx={3}
                                         onKeyDown={handleGridKeyDown}
@@ -4707,6 +4849,15 @@ export default function OrdersPage() {
                                     <option value="Outer">Outer</option>
                                     <option value="Power">Power</option>
                                   </select>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary btn-xs"
+                                    style={{ height: '28px', fontSize: '11px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                    onClick={() => handleOpenBoqCreateProduct(catalogSearch)}
+                                    title="Create an ad-hoc product and add to BOQ"
+                                  >
+                                    <Plus size={12} /> + New
+                                  </button>
                                 </div>
 
                                 {catalogLoading ? (
@@ -4714,8 +4865,16 @@ export default function OrdersPage() {
                                     Loading Catalogue...
                                   </div>
                                 ) : catalogProducts.length === 0 ? (
-                                  <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                    No products found
+                                  <div style={{ textAlign: 'center', padding: '24px 10px', fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-primary)', border: '1px dashed var(--border)', borderRadius: '6px' }}>
+                                    <div>No products found matching "{catalogSearch}"</div>
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary btn-xs"
+                                      style={{ marginTop: '10px', fontSize: '11px' }}
+                                      onClick={() => handleOpenBoqCreateProduct(catalogSearch)}
+                                    >
+                                      + Create "{catalogSearch || 'Custom Product'}"
+                                    </button>
                                   </div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '450px', overflowY: 'auto', paddingRight: '4px' }}>
@@ -7222,6 +7381,175 @@ export default function OrdersPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: IN-ORDER AD-HOC PRODUCT CREATION (BOQ SPREADSHEET) */}
+      {/* ========================================================= */}
+      {showBoqCreateProductModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1300, padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', borderRadius: '16px', background: 'var(--bg-primary)', border: '1px solid var(--border)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>✨</span> Add New Product to Quote / Order
+                </h3>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Will be inserted into BOQ for <strong style={{ color: 'var(--text-info)' }}>{selectedOrderId ? `Order #${selectedOrderId}` : 'Current Quote'}</strong>
+                </span>
+              </div>
+              <button 
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '4px' }}
+                onClick={() => setShowBoqCreateProductModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomProductInBOQ} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                <strong>🔴 Pending Palladium Queue:</strong> Item will be active in your BOQ and client quotes immediately. Accounting will receive an alert to set it up in Palladium ERP.
+              </div>
+
+              {/* SKU & NAME */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Proposed SKU *
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. DL-TEMP-01"
+                    className="form-control"
+                    style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '12px' }}
+                    value={boqCustomSku}
+                    onChange={e => setBoqCustomSku(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Description / Product Name *
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. Custom Trimless Downlight 3000K"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={boqCustomName}
+                    onChange={e => setBoqCustomName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* CATEGORY, SUPPLIER & BRAND */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Category
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Downlight"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={boqCustomCategory}
+                    onChange={e => setBoqCustomCategory(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Supplier
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="ELDC"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={boqCustomSupplier}
+                    onChange={e => setBoqCustomSupplier(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Brand
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Delta Light"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={boqCustomBrand}
+                    onChange={e => setBoqCustomBrand(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* PRICING */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Unit Cost Price (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    style={{ fontSize: '12.5px', fontWeight: 600 }}
+                    value={boqCustomCost}
+                    onChange={e => setBoqCustomCost(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    RRP Retail Price (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)' }}
+                    value={boqCustomRetail}
+                    onChange={e => setBoqCustomRetail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* ACTIONS */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowBoqCreateProductModal(false)}
+                  disabled={isCreatingBoqProduct}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary btn-sm"
+                  disabled={isCreatingBoqProduct || !boqCustomSku.trim() || !boqCustomName.trim()}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  {isCreatingBoqProduct ? <RefreshCw size={13} className="spin" /> : <Check size={13} />}
+                  {isCreatingBoqProduct ? 'Creating...' : 'Create & Add to BOQ'}
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}
