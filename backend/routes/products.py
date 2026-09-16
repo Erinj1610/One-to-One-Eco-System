@@ -477,9 +477,19 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
 
     impacted_order_numbers = set()
     for oi in order_items:
-        order_rec = db.query(Order).filter(Order.id == oi.order_id).first()
+        if not oi.order_id:
+            continue
+        order_rec = None
+        # oi.order_id is String in DB and may be an int string ('1042') or formatted string ('Q-2026-0664')
+        if str(oi.order_id).isdigit():
+            order_rec = db.query(Order).filter(Order.id == int(oi.order_id)).first()
+        else:
+            order_rec = db.query(Order).filter(Order.po_number == str(oi.order_id)).first()
+        
         if order_rec:
-            impacted_order_numbers.add(order_rec.order_number or f"ORD-{order_rec.id}")
+            impacted_order_numbers.add(order_rec.po_number or f"ORD-{order_rec.id}")
+        else:
+            impacted_order_numbers.add(f"Order #{oi.order_id}")
 
     orders_with_takeoff = db.query(Order).filter(Order.takeoff_data.isnot(None)).all()
     for ord_obj in orders_with_takeoff:
@@ -515,7 +525,7 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
                         changed = True
 
         if changed:
-            impacted_order_numbers.add(ord_obj.order_number or f"ORD-{ord_obj.id}")
+            impacted_order_numbers.add(ord_obj.po_number or f"ORD-{ord_obj.id}")
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(ord_obj, "takeoff_data")
 
