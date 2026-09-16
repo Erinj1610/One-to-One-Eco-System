@@ -430,16 +430,15 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
 
     old_sku = product.sku
 
-    # Check if new SKU already exists in local DB under a DIFFERENT product
-    conflict = db.query(Product).filter(Product.sku == new_sku, Product.id != product_id).first()
-    if conflict:
-        raise HTTPException(status_code=400, detail=f"Product with SKU '{new_sku}' already exists in the portal database.")
-
     import pymssql
     from services.palladium_sync import PALLADIUM_CONFIG
     from models.orm_models import OrderItem, BOQItem, Order
 
-    # Read-only existence check in Palladium
+    # 1. Check if the target SKU already exists in the portal database (e.g. synced from Palladium)
+    existing_official = db.query(Product).filter(Product.sku == new_sku, Product.id != product_id).first()
+
+    # 2. Read-only existence check in Palladium ERP
+    row = None
     try:
         p_conn = pymssql.connect(
             server=PALLADIUM_CONFIG['server'],
@@ -466,30 +465,16 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
     except Exception as e:
         row = None
 
-    # Update product record
-    product.sku = new_sku
-    if row:
-        product.palladium_status = "VERIFIED"
-        if row.get("retail_price") and row["retail_price"] > 0:
-            product.retail_price = float(row["retail_price"])
-        if row.get("stock_on_hand") is not None:
-            product.stock_on_hand = float(row["stock_on_hand"])
-            product.stock_level = int(row["stock_on_hand"])
-    else:
-        # If not verified in Palladium yet, still rename the SKU in portal
-        pass
-
-    # Cascade rename to OrderItem
+    # 3. Cascade rename across all OrderItems, BOQItems, and Takeoff data
+    # (Existing quoted pricing remains locked on the line items)
     order_items = db.query(OrderItem).filter(OrderItem.code == old_sku).all()
     for oi in order_items:
         oi.code = new_sku
 
-    # Cascade rename to BOQItem
     boq_items = db.query(BOQItem).filter(BOQItem.product_code == old_sku).all()
     for bi in boq_items:
         bi.product_code = new_sku
 
-    # Cascade rename inside Order.takeoff_data JSON (supports both list and dict {countUpRows, specifications})
     impacted_order_numbers = set()
     for oi in order_items:
         order_rec = db.query(Order).filter(Order.id == oi.order_id).first()
@@ -514,7 +499,6 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
             if isinstance(specs, dict):
                 for tag, s_val in specs.items():
                     if isinstance(s_val, dict):
-                        # check mapped product
                         prod_sub = s_val.get("product")
                         if isinstance(prod_sub, dict) and prod_sub.get("sku") == old_sku:
                             prod_sub["sku"] = new_sku
@@ -535,24 +519,57 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(ord_obj, "takeoff_data")
 
-    db.commit()
-    db.refresh(product)
+    # 4. Product Record Resolution:
+    # If the official product already exists in the portal database (e.g. synced from Palladium),
+    # purge the temporary placeholder product completely so no duplicate or temp code remains.
+    if existing_official:
+        target_product = existing_official
+        if row:
+            target_product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                target_product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                target_product.stock_on_hand = float(row["stock_on_hand"])
+                target_product.stock_level = int(row["stock_on_hand"])
 
-    status_msg = f"Remapped SKU from '{old_sku}' to '{new_sku}'."
+        # Delete the temporary product record completely
+        db.delete(product)
+        db.commit()
+        db.refresh(target_product)
+        purged_temp = True
+    else:
+        # The official product was not in portal DB yet: rename the current record to official SKU
+        product.sku = new_sku
+        if row:
+            product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                product.stock_on_hand = float(row["stock_on_hand"])
+                product.stock_level = int(row["stock_on_hand"])
+        db.commit()
+        db.refresh(product)
+        target_product = product
+        purged_temp = False
+
+    status_msg = f"Successfully remapped quote line items from '{old_sku}' to official SKU '{new_sku}'."
+    if purged_temp:
+        status_msg += f" Temporary code '{old_sku}' has been permanently purged from products."
     if row:
         status_msg += " Verified in Palladium ERP."
     else:
         status_msg += " Note: Not found in Palladium yet."
 
     if impacted_order_numbers:
-        status_msg += f" Automatically updated in {len(impacted_order_numbers)} order(s): {', '.join(sorted(impacted_order_numbers))}."
+        status_msg += f" Updated in {len(impacted_order_numbers)} order(s): {', '.join(sorted(impacted_order_numbers))}."
 
     return {
         "success": True,
         "message": status_msg,
         "is_verified": bool(row),
+        "purged_temp_sku": old_sku if purged_temp else None,
         "impacted_orders": list(impacted_order_numbers),
-        "product": serialize_product(product)
+        "product": serialize_product(target_product)
     }
 
 @router.put("/{product_id}")
