@@ -68,7 +68,6 @@ class ProductBase(BaseModel):
     technical_image_url: Optional[str] = None
     wetworks: Optional[str] = None
     is_active: Optional[bool] = True
-    status: Optional[str] = 'Active'
     palladium_status: Optional[str] = 'VERIFIED'
     created_by_name: Optional[str] = None
     source_reference: Optional[str] = None
@@ -333,7 +332,11 @@ def create_product(product_data: ProductCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail=f"Product SKU '{product_data.sku}' already exists.")
         
-    new_product = Product(**product_data.dict())
+    from sqlalchemy import inspect as sa_inspect
+    valid_cols = {c.key for c in sa_inspect(Product).columns}
+    product_dict = {k: v for k, v in product_data.dict().items() if k in valid_cols}
+
+    new_product = Product(**product_dict)
     db.add(new_product)
     db.commit()
     db.refresh(new_product)
@@ -564,8 +567,11 @@ def update_product(product_id: int, product_data: ProductUpdate, db: Session = D
         if existing:
             raise HTTPException(status_code=400, detail=f"Product SKU '{product_data.sku}' already exists.")
 
+    from sqlalchemy import inspect as sa_inspect
+    valid_cols = {c.key for c in sa_inspect(Product).columns}
     for key, value in product_data.dict().items():
-        setattr(product, key, value)
+        if key in valid_cols:
+            setattr(product, key, value)
         
     db.commit()
     db.refresh(product)
@@ -579,9 +585,8 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
     sku = product.sku
     # PERMANENT ERP GUARD: Product deletion is completely disabled to protect order/quote history.
-    # Automatically convert status to 'Inactive' instead.
+    # Automatically convert is_active to False instead.
     setattr(product, 'is_active', False)
-    setattr(product, 'status', 'Inactive')
     db.commit()
     return {
         "message": f"Product deletion is disabled. SKU '{sku}' has been marked as 'Inactive' so it cannot be used on new orders, while preserving all historical records.",
