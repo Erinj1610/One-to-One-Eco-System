@@ -322,6 +322,7 @@ export default function SalesTracker() {
           planBreakdown: [],
           unitRetail: item.unitRetail || 0,
           unitCost: item.unitCost || 0,
+          supplierCost: Number(item.supplierCost !== undefined ? item.supplierCost : (item.supplier_cost !== undefined ? item.supplier_cost : item.unitCost)) || (item.unitCost || 0),
           brand: item.brand,
           supplier: item.supplier,
           qty: 0,
@@ -450,6 +451,7 @@ export default function SalesTracker() {
         planBreakdown: g.planBreakdown,
         unitRetail: g.unitRetail,
         unitCost: g.unitCost,
+        supplierCost: g.supplierCost !== undefined ? g.supplierCost : g.unitCost,
         brand: g.brand,
         supplier: g.supplier,
         qty: g.qty,
@@ -3971,35 +3973,8 @@ export default function SalesTracker() {
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setMarginMode(marginMode === 'supplier' ? 'pm' : 'supplier')}
-                      className="btn btn-sm"
-                      style={{
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        height: '32px',
-                        background: marginMode === 'supplier' ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-secondary)',
-                        color: marginMode === 'supplier' ? '#ef4444' : 'var(--text-secondary)',
-                        border: marginMode === 'supplier' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
-                        cursor: 'pointer'
-                      }}
-                      title={marginMode === 'supplier' ? "Click to view PM Margins (Internal Cost)" : "Click to view True Company Margins (Supplier Cost - Admin Only)"}
-                    >
-                      {marginMode === 'supplier' ? <Unlock size={14} color="#ef4444" /> : <Lock size={14} />}
-                      <span>{marginMode === 'supplier' ? '🔒 True Company Margins (Factory Cost)' : 'PM Margins (Internal Cost)'}</span>
-                    </button>
-                  )}
-
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Showing <strong>{filteredOrders.length}</strong> active sales records
-                  </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Showing <strong>{filteredOrders.length}</strong> active sales records
                 </div>
               </div>
 
@@ -4645,6 +4620,32 @@ export default function SalesTracker() {
                               </button>
                             )}
 
+                            {/* Admin / Procurement Cost & Margin View Toggle */}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setMarginMode(marginMode === 'supplier' ? 'pm' : 'supplier')}
+                                className="btn btn-sm"
+                                style={{
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  height: '32px',
+                                  background: marginMode === 'supplier' ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-primary)',
+                                  color: marginMode === 'supplier' ? '#ef4444' : 'var(--text-secondary)',
+                                  border: marginMode === 'supplier' ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border)',
+                                  cursor: 'pointer'
+                                }}
+                                title={marginMode === 'supplier' ? "Currently viewing True Factory Cost & Company Margin. Click to switch to PM Cost." : "Currently viewing PM Internal Cost & PM Margin. Click to switch to True Factory Cost."}
+                              >
+                                {marginMode === 'supplier' ? <Unlock size={14} color="#ef4444" /> : <Lock size={14} />}
+                                <span>{marginMode === 'supplier' ? '🔒 True Factory Margins' : 'PM Margins (Internal Cost)'}</span>
+                              </button>
+                            )}
+
                             {/* Phase tabs */}
                             <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                             {[
@@ -4734,9 +4735,15 @@ export default function SalesTracker() {
                                 
                                 {activeTab === 'order' && (
                                   <>
-                                    <th style={{ width: '90px', textAlign: 'right' }}>Cost</th>
-                                    <th style={{ width: '90px', textAlign: 'right' }}>Total Cost</th>
-                                    <th style={{ width: '65px', textAlign: 'center' }}>Margin</th>
+                                    <th style={{ width: '90px', textAlign: 'right', color: isSupplierMarginMode ? '#ef4444' : 'inherit' }}>
+                                      {isSupplierMarginMode ? '🔒 Factory Cost' : 'Cost'}
+                                    </th>
+                                    <th style={{ width: '90px', textAlign: 'right', color: isSupplierMarginMode ? '#ef4444' : 'inherit' }}>
+                                      {isSupplierMarginMode ? '🔒 Total Factory' : 'Total Cost'}
+                                    </th>
+                                    <th style={{ width: '65px', textAlign: 'center', color: isSupplierMarginMode ? '#ef4444' : 'inherit' }}>
+                                      {isSupplierMarginMode ? '🔒 Margin' : 'Margin'}
+                                    </th>
                                     <th style={{ width: '90px' }}>Brand</th>
                                     <th style={{ width: '100px' }}>Supplier</th>
                                     <th style={{ width: '120px', borderRight: '1px solid var(--border-strong)' }}>Fitting Type</th>
@@ -4782,7 +4789,8 @@ export default function SalesTracker() {
                             </thead>
                             <tbody onKeyDown={handleSpreadsheetKeyDown} onPaste={handleSpreadsheetPaste}>
                               {groupedItems.filter(item => !(item.is_credit || item.isCredit)).map((item, rowIndex) => {
-                                const lineMargin = item.unitRetail > 0 ? ((item.unitRetail - item.unitCost) / item.unitRetail) * 100 : 0;
+                                const effectiveUnitCost = isSupplierMarginMode ? (item.supplierCost || item.unitCost || 0) : (item.unitCost || 0);
+                                const lineMargin = item.unitRetail > 0 ? ((item.unitRetail - effectiveUnitCost) / item.unitRetail) * 100 : 0;
                                 const isLowMargin = lineMargin < 39;
 
                                 const poRefVal = item.poRef;
@@ -4878,9 +4886,15 @@ export default function SalesTracker() {
 
                                     {activeTab === 'order' && (
                                       <>
-                                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitCost || 0).toLocaleString()}</td>
-                                        <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.qty * (item.unitCost || 0)).toLocaleString()}</td>
-                                        <td style={{ textAlign: 'center', fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>{Math.round(lineMargin)}%</td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: isSupplierMarginMode ? '#ef4444' : 'inherit' }}>
+                                          R {Math.round(effectiveUnitCost).toLocaleString()}
+                                        </td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: isSupplierMarginMode ? '#ef4444' : 'inherit' }}>
+                                          R {Math.round(item.qty * effectiveUnitCost).toLocaleString()}
+                                        </td>
+                                        <td style={{ textAlign: 'center', fontWeight: 700, color: isSupplierMarginMode ? '#ef4444' : (isLowMargin ? 'var(--text-danger)' : 'var(--text-success)') }}>
+                                          {Math.round(lineMargin)}%
+                                        </td>
                                         <td>{item.brand || '—'}</td>
                                         <td>{item.supplier || '—'}</td>
                                         <td style={{ borderRight: '1px solid var(--border-strong)', verticalAlign: 'middle', padding: '4px 8px' }}>
